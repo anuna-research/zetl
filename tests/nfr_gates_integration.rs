@@ -43,17 +43,17 @@ use std::time::{Duration, Instant};
 
 use serde_json::json;
 
-use zetl::hooks::ast::AST_VERSION;
-use zetl::hooks::failure_scoping::{exit_code_for, FailureReason, FailureRecord, HookFailOn};
-use zetl::hooks::manifest::{parse_manifest, DEFAULT_MEMORY_MIB};
-use zetl::hooks::nfr_gates::{
+use ztl::hooks::ast::AST_VERSION;
+use ztl::hooks::failure_scoping::{exit_code_for, FailureReason, FailureRecord, HookFailOn};
+use ztl::hooks::manifest::{parse_manifest, DEFAULT_MEMORY_MIB};
+use ztl::hooks::nfr_gates::{
     enforce_budget, overhead_ratio, p50, p95, BudgetExcursion, PageBudget,
     CANONICAL_OVERHEAD_PCT_BUDGET, DEFAULT_HOOK_MEMORY_LIMIT_BYTES, HOOK_FAIL_ON_NEVER_EXIT_CODE,
     PINNED_AST_SCHEMA_VERSION, PROTOCOL_OVERHEAD_BUDGET, PROTOCOL_OVERHEAD_TASK_TARGET,
     SELECTOR_P95_BUDGET, ZERO_HOOK_STARTUP_BUDGET,
 };
-use zetl::hooks::pipeline::Stage;
-use zetl::hooks::selector::{compile, selector_passes, SelectorInput};
+use ztl::hooks::pipeline::Stage;
+use ztl::hooks::selector::{compile, selector_passes, SelectorInput};
 
 // ── shared fixtures ─────────────────────────────────────────────────────────
 
@@ -265,13 +265,13 @@ fn nfr_3204_hook_fail_on_never_returns_exit_zero() {
 
 /// The startup-cost budget is process-level (subprocess spawn). The
 /// closest in-process proxy is "the cost of constructing an empty
-/// HookPipeline + composing zero stages" — i.e. the work zetl's main
+/// HookPipeline + composing zero stages" — i.e. the work ztl's main
 /// loop pays even when the user has no hooks. We sample 1,000
 /// constructions and assert the aggregate is well under the per-call
 /// budget × sample count.
 #[test]
 fn nfr_3205_zero_hook_startup_under_budget() {
-    use zetl::hooks::pipeline::HookPipeline;
+    use ztl::hooks::pipeline::HookPipeline;
 
     let mut samples = Vec::with_capacity(1_000);
     for _ in 0..1_000 {
@@ -309,7 +309,7 @@ fn nfr_3205_zero_hook_startup_under_budget() {
 
 // ── NFR-3206: AST schema stability ──────────────────────────────────────────
 
-/// Zetl-AST major version pinned at 1. A bump here is intentional and
+/// ztl-AST major version pinned at 1. A bump here is intentional and
 /// requires the additive-only / deprecation-window discipline from
 /// SPEC-032 §4 NFR-3206 — the gate trips on any unintentional change.
 #[test]
@@ -339,7 +339,7 @@ fn nfr_3206_ast_schema_version_within_major_one() {
 /// (which we re-route to via `--ignored` below).
 #[test]
 fn nfr_3207_protocol_overhead_smoke() {
-    use zetl::hooks::pipeline::PipelineStats;
+    use ztl::hooks::pipeline::PipelineStats;
 
     let budget = PageBudget::default();
     let mut quiet = PipelineStats::default();
@@ -373,7 +373,7 @@ fn nfr_3207_protocol_overhead_smoke() {
 fn over_report_for(
     slug: &str,
     b: &PageBudget,
-    stats: &zetl::hooks::pipeline::PipelineStats,
+    stats: &ztl::hooks::pipeline::PipelineStats,
 ) -> Vec<&'static str> {
     b.evaluate(slug, stats, &[])
         .violations
@@ -403,7 +403,7 @@ fn nfr_3207_protocol_overhead_strict() {
         Err(BudgetExcursion(s)) => panic!("FAIL {s}"),
     }
     // Sanity: the smoke surface should agree.
-    let stats = zetl::hooks::pipeline::PipelineStats::default();
+    let stats = ztl::hooks::pipeline::PipelineStats::default();
     let report = budget.evaluate("strict", &stats, &[]);
     assert!(report.passed());
 }

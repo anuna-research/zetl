@@ -1,8 +1,8 @@
 //! Invitation token generation for multi-user collaborative editing (REQ-020-006).
 //!
 //! Generates JWT invitation tokens signed with EdDSA (ed25519). The server's
-//! signing key is stored at `.zetl/collab/server.key` and created on first use.
-//! Nonces are tracked in `.zetl/collab/used-nonces.json` to enforce single-use.
+//! signing key is stored at `.ztl/collab/server.key` and created on first use.
+//! Nonces are tracked in `.ztl/collab/used-nonces.json` to enforce single-use.
 
 use anyhow::{Context, Result};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -13,7 +13,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const COLLAB_DIR: &str = ".zetl/collab";
+const COLLAB_DIR: &str = ".ztl/collab";
 const SERVER_KEY_FILE: &str = "server.key";
 const USED_NONCES_FILE: &str = "used-nonces.json";
 const PENDING_INVITES_FILE: &str = "pending-invites.json";
@@ -33,7 +33,7 @@ struct JwtHeader {
 pub struct InviteClaims {
     /// Inviter user ID.
     pub iss: String,
-    /// Always "zetl-invite".
+    /// Always "ztl-invite".
     pub sub: String,
     /// Role for the invitee: reader, editor, or admin.
     pub role: String,
@@ -70,7 +70,7 @@ fn used_nonces_path(vault_root: &Path) -> PathBuf {
 
 /// Load or create the server's ed25519 signing key.
 ///
-/// On first call, generates a new key and writes it to `.zetl/collab/server.key`
+/// On first call, generates a new key and writes it to `.ztl/collab/server.key`
 /// with 0600 permissions. Subsequent calls load the existing key.
 pub fn load_or_create_server_key(vault_root: &Path) -> Result<SigningKey> {
     let path = server_key_path(vault_root);
@@ -199,7 +199,7 @@ pub fn generate_invitation(
 
     let claims = InviteClaims {
         iss: inviter_id.to_string(),
-        sub: "zetl-invite".to_string(),
+        sub: "ztl-invite".to_string(),
         role: role.to_string(),
         pages: pages.map(|s| s.to_string()),
         exp,
@@ -275,7 +275,7 @@ pub fn decode_jwt_with_key(key: &VerifyingKey, token: &str) -> Result<InviteClai
         serde_json::from_slice(&payload_json).context("invalid JWT payload")?;
 
     // Verify it's an invitation token
-    if claims.sub != "zetl-invite" {
+    if claims.sub != "ztl-invite" {
         anyhow::bail!("JWT is not an invitation token (sub={})", claims.sub);
     }
 
@@ -291,7 +291,7 @@ pub fn decode_jwt_with_key(key: &VerifyingKey, token: &str) -> Result<InviteClai
     Ok(claims)
 }
 
-/// Record a nonce in `.zetl/collab/used-nonces.json`.
+/// Record a nonce in `.ztl/collab/used-nonces.json`.
 fn record_nonce(vault_root: &Path, nonce: &str, exp: u64) -> Result<()> {
     let path = used_nonces_path(vault_root);
     let mut nonces = load_used_nonces(vault_root)?;
@@ -444,7 +444,7 @@ pub fn invitation_url(host: &str, port: u16, token: &str) -> String {
 
 // ── Pending invitations ──────────────────────────────────────────────────
 
-/// A pending invitation record stored in `.zetl/collab/pending-invites.json`.
+/// A pending invitation record stored in `.ztl/collab/pending-invites.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PendingInvitation {
     /// The nonce (unique identifier for this invitation).
@@ -631,7 +631,7 @@ mod tests {
         // Verify the token
         let claims = decode_jwt(tmp.path(), &token).unwrap();
         assert_eq!(claims.iss, "alice-a1b2c3d4");
-        assert_eq!(claims.sub, "zetl-invite");
+        assert_eq!(claims.sub, "ztl-invite");
         assert_eq!(claims.role, "editor");
         assert_eq!(claims.pages.as_deref(), Some("projects/*"));
         assert_eq!(claims.nonce, nonce);
@@ -687,7 +687,7 @@ mod tests {
         // Create a token that's already expired
         let claims = InviteClaims {
             iss: "alice-a1b2c3d4".to_string(),
-            sub: "zetl-invite".to_string(),
+            sub: "ztl-invite".to_string(),
             role: "editor".to_string(),
             pages: None,
             exp: 1, // Unix epoch + 1 second (way in the past)

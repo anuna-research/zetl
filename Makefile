@@ -60,26 +60,26 @@ fmt-fix:
 theme-css:
 	cd tools/theme-build/default && npm install --silent && npm run build
 
-# Regenerate docs/zetl-ast-reference.md from tools/zetl-ast-schema-v1.json
+# Regenerate docs/ztl-ast-reference.md from tools/ztl-ast-schema-v1.json
 # (SPEC-032 REQ-3202). `ast-reference-check` is the CI diff gate — it exits
 # nonzero if the on-disk file is stale.
 ast-reference:
-	cargo run -p zetl-ast-reference-gen
+	cargo run -p ztl-ast-reference-gen
 
 ast-reference-check:
-	cargo run -p zetl-ast-reference-gen -- --check
+	cargo run -p ztl-ast-reference-gen -- --check
 
-# zetl-ast-js helper library (SPEC-032 REQ-3210). `helper-js-build` emits
+# ztl-ast-js helper library (SPEC-032 REQ-3210). `helper-js-build` emits
 # dist/{esm,cjs,types}/ so tests/helper_js_integration.rs can spawn the
-# helper against zetl's persistent-protocol driver.
+# helper against ztl's persistent-protocol driver.
 helper-js-install:
-	cd tools/zetl-ast-js && npm install
+	cd tools/ztl-ast-js && npm install
 
 helper-js-build:
-	cd tools/zetl-ast-js && npm run build
+	cd tools/ztl-ast-js && npm run build
 
 helper-js-test:
-	cd tools/zetl-ast-js && node --experimental-strip-types --test test/*.test.ts
+	cd tools/ztl-ast-js && node --experimental-strip-types --test test/*.test.ts
 
 # SPEC-032 REQ-3210 / CON-3210 cross-implementation contract gate.
 # Runs the fixture corpus under tests/fixtures/helper-contracts/ against
@@ -118,7 +118,7 @@ eco-features-check:
 	cargo check --no-default-features --features "ecosystem-pandoc ecosystem-mdbook ecosystem-remark"
 
 # SPEC-033 REQ-3311 / TEST-3311 ecosystem-matrix structural gate. Walks
-# every row in tools/zetl-ecosystem-matrix.toml, asserts required
+# every row in tools/ztl-ecosystem-matrix.toml, asserts required
 # columns, semver-range shape, fixture-path existence, tier→contract
 # coupling, and runs the tier-downgrade-without-rationale simulation.
 # Runs as a CI gate via `.woodpecker/ci.yaml`; local contributors can
@@ -137,7 +137,7 @@ nfr-gates:
 # Strict-budget arms (e.g. NFR-3201 P95 on 1k samples; NFR-3207 round
 # trip on 200 samples). Marked `#[ignore]` in the harness because they
 # are host-dependent; this target unlocks them on demand and runs in
-# release mode so the budgets bind to the fast path zetl ships.
+# release mode so the budgets bind to the fast path ztl ships.
 nfr-gates-strict:
 	cargo test --release --test nfr_gates_integration -- --ignored --nocapture
 
@@ -155,21 +155,21 @@ nfr-gates-033-strict:
 
 # SPEC-033 NFR-3305 / TEST-3305-fidelity translator round-trip property.
 # Drives `arb_document()` through each registered translator and asserts
-# canonical-form equivalence after a zetl→foreign→zetl round trip.
+# canonical-form equivalence after a ztl→foreign→ztl round trip.
 # Bump PROPTEST_CASES for the nightly / release sweep (NFR-3305 cites
 # 10,000 as the release-gate corpus).
 translator-roundtrip:
-	PROPTEST_CASES=$${PROPTEST_CASES:-256} cargo test --lib -p zetl translators::roundtrip -- --nocapture
+	PROPTEST_CASES=$${PROPTEST_CASES:-256} cargo test --lib -p ztl translators::roundtrip -- --nocapture
 
 # SPEC-034 REQ-3424 / ADR-3410 malicious-author PR gate. Walks every
 # fixture under tools/audit-diff-corpus/ and asserts that the expected
 # finding-kind markers fire. A miss means the adversary's sample got
-# past `zetl cap audit-diff` — an immediate CI failure. The same
+# past `ztl cap audit-diff` — an immediate CI failure. The same
 # corpus fixtures are also driven via the library API by
 # tests/cap_audit_diff_integration.rs; this target surfaces the
 # per-fixture PASS/MISS log on the CI console.
 audit-corpus:
-	cargo run --quiet --bin zetl -- cap audit-diff --corpus-root tools/audit-diff-corpus
+	cargo run --quiet --bin ztl -- cap audit-diff --corpus-root tools/audit-diff-corpus
 
 # SPEC-034 REQ-3413 / OBS-3407 referrer-leak canary. Runs the TEST-3413
 # integration suite that builds a mixed-link page through the
@@ -187,14 +187,14 @@ ref-leak-test:
 
 install: build
 	install -d $(PREFIX)/bin $(MANDIR) $(BASHCOMPDIR) $(ZSHCOMPDIR) $(FISHCOMPDIR)
-	install -m 755 target/release/zetl $(PREFIX)/bin/zetl
-	target/release/zetl man        > $(MANDIR)/zetl.1
-	target/release/zetl completions bash > $(BASHCOMPDIR)/zetl
-	target/release/zetl completions zsh  > $(ZSHCOMPDIR)/_zetl
-	target/release/zetl completions fish > $(FISHCOMPDIR)/zetl.fish
+	install -m 755 target/release/ztl $(PREFIX)/bin/ztl
+	target/release/ztl man        > $(MANDIR)/ztl.1
+	target/release/ztl completions bash > $(BASHCOMPDIR)/ztl
+	target/release/ztl completions zsh  > $(ZSHCOMPDIR)/_ztl
+	target/release/ztl completions fish > $(FISHCOMPDIR)/ztl.fish
 	@echo ""
-	@echo "Installed zetl to $(PREFIX)/bin/zetl"
-	@echo "Man page:       $(MANDIR)/zetl.1  (run 'man zetl')"
+	@echo "Installed ztl to $(PREFIX)/bin/ztl"
+	@echo "Man page:       $(MANDIR)/ztl.1  (run 'man ztl')"
 	@echo "Completions:    bash, zsh, fish installed under $(PREFIX)/share/"
 	@echo ""
 	@echo "Ensure these are on your paths:"
@@ -202,11 +202,11 @@ install: build
 	@echo "  MANPATH  includes $(PREFIX)/share/man"
 
 uninstall:
-	rm -f $(PREFIX)/bin/zetl
-	rm -f $(MANDIR)/zetl.1
-	rm -f $(BASHCOMPDIR)/zetl
-	rm -f $(ZSHCOMPDIR)/_zetl
-	rm -f $(FISHCOMPDIR)/zetl.fish
+	rm -f $(PREFIX)/bin/ztl
+	rm -f $(MANDIR)/ztl.1
+	rm -f $(BASHCOMPDIR)/ztl
+	rm -f $(ZSHCOMPDIR)/_ztl
+	rm -f $(FISHCOMPDIR)/ztl.fish
 
 clean:
 	cargo clean
@@ -230,7 +230,7 @@ DIST_FEATURES  = reason,history,mcp,vendored-openssl
 DIST_TAG      := $(shell git describe --tags --abbrev=0)
 DIST_VERSION  := $(shell echo $(DIST_TAG) | sed 's/^v//')
 R2_BUCKET      = anuna-files
-R2_PREFIX      = zetl
+R2_PREFIX      = ztl
 # Use rustup-managed cargo + rustc for cross-compilation. Homebrew installs
 # its own rustc earlier on PATH; explicitly pinning both binaries prevents
 # cargo from picking up the wrong compiler when cross-targeting.
@@ -245,19 +245,19 @@ dist-macos-arm64:
 	rustup target add aarch64-apple-darwin
 	RUSTC=$(RUSTC_RUSTUP) $(CARGO_RUSTUP) build --release --features "$(DIST_FEATURES)" --target aarch64-apple-darwin
 	mkdir -p $(DIST_DIR)
-	cp target/aarch64-apple-darwin/release/zetl $(DIST_DIR)/zetl
-	tar czf $(DIST_DIR)/zetl-macos-arm64.tar.gz -C $(DIST_DIR) zetl
-	rm $(DIST_DIR)/zetl
-	@echo "Packaged: $(DIST_DIR)/zetl-macos-arm64.tar.gz"
+	cp target/aarch64-apple-darwin/release/ztl $(DIST_DIR)/ztl
+	tar czf $(DIST_DIR)/ztl-macos-arm64.tar.gz -C $(DIST_DIR) ztl
+	rm $(DIST_DIR)/ztl
+	@echo "Packaged: $(DIST_DIR)/ztl-macos-arm64.tar.gz"
 
 dist-macos-x86_64:
 	rustup target add x86_64-apple-darwin
 	RUSTC=$(RUSTC_RUSTUP) $(CARGO_RUSTUP) build --release --features "$(DIST_FEATURES)" --target x86_64-apple-darwin
 	mkdir -p $(DIST_DIR)
-	cp target/x86_64-apple-darwin/release/zetl $(DIST_DIR)/zetl
-	tar czf $(DIST_DIR)/zetl-macos-x86_64.tar.gz -C $(DIST_DIR) zetl
-	rm $(DIST_DIR)/zetl
-	@echo "Packaged: $(DIST_DIR)/zetl-macos-x86_64.tar.gz"
+	cp target/x86_64-apple-darwin/release/ztl $(DIST_DIR)/ztl
+	tar czf $(DIST_DIR)/ztl-macos-x86_64.tar.gz -C $(DIST_DIR) ztl
+	rm $(DIST_DIR)/ztl
+	@echo "Packaged: $(DIST_DIR)/ztl-macos-x86_64.tar.gz"
 
 dist-windows:
 	rustup target add x86_64-pc-windows-gnu
@@ -267,24 +267,24 @@ dist-windows:
 	CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 \
 		$(CARGO_RUSTUP) build --release --features "$(DIST_FEATURES)" --target x86_64-pc-windows-gnu
 	mkdir -p $(DIST_DIR)
-	cp target/x86_64-pc-windows-gnu/release/zetl.exe $(DIST_DIR)/zetl.exe
-	zip -j $(DIST_DIR)/zetl-windows-x86_64.zip $(DIST_DIR)/zetl.exe
-	rm $(DIST_DIR)/zetl.exe
-	@echo "Packaged: $(DIST_DIR)/zetl-windows-x86_64.zip"
+	cp target/x86_64-pc-windows-gnu/release/ztl.exe $(DIST_DIR)/ztl.exe
+	zip -j $(DIST_DIR)/ztl-windows-x86_64.zip $(DIST_DIR)/ztl.exe
+	rm $(DIST_DIR)/ztl.exe
+	@echo "Packaged: $(DIST_DIR)/ztl-windows-x86_64.zip"
 
 dist-metadata:
 	mkdir -p $(DIST_DIR)
-	printf '{\n  "version": "%s",\n  "download_url": "https://files.anuna.io/zetl/v%s",\n  "features": "reason,history,mcp"\n}\n' \
+	printf '{\n  "version": "%s",\n  "download_url": "https://files.anuna.io/ztl/v%s",\n  "features": "reason,history,mcp"\n}\n' \
 		"$(DIST_VERSION)" "$(DIST_VERSION)" > $(DIST_DIR)/version.json
 	cp install.sh $(DIST_DIR)/install.sh
-	shasum -a 256 $(DIST_DIR)/zetl-*.tar.gz $(DIST_DIR)/zetl-*.zip > $(DIST_DIR)/SHA256SUMS
+	shasum -a 256 $(DIST_DIR)/ztl-*.tar.gz $(DIST_DIR)/ztl-*.zip > $(DIST_DIR)/SHA256SUMS
 	@echo "Metadata written to $(DIST_DIR)/"
 
 dist-upload:
 	@echo "Uploading $(DIST_DIR)/ → R2 $(R2_BUCKET)/$(R2_PREFIX)/$(DIST_TAG)/ + latest/"
-	@for f in $(DIST_DIR)/zetl-macos-arm64.tar.gz \
-	           $(DIST_DIR)/zetl-macos-x86_64.tar.gz \
-	           $(DIST_DIR)/zetl-windows-x86_64.zip \
+	@for f in $(DIST_DIR)/ztl-macos-arm64.tar.gz \
+	           $(DIST_DIR)/ztl-macos-x86_64.tar.gz \
+	           $(DIST_DIR)/ztl-windows-x86_64.zip \
 	           $(DIST_DIR)/version.json \
 	           $(DIST_DIR)/install.sh \
 	           $(DIST_DIR)/SHA256SUMS; do \
@@ -306,7 +306,7 @@ doc-open:
 	cargo doc --no-deps --open
 
 help:
-	@echo "zetl - Bi-directional wikilink graph CLI"
+	@echo "ztl - Bi-directional wikilink graph CLI"
 	@echo ""
 	@echo "Targets:"
 	@echo "  make build        - Build release binary"
@@ -322,17 +322,17 @@ help:
 	@echo "  make clippy       - Run clippy lints"
 	@echo "  make fmt          - Check formatting"
 	@echo "  make fmt-fix      - Auto-fix formatting"
-	@echo "  make helper-js-install   - npm install for tools/zetl-ast-js"
-	@echo "  make helper-js-build     - Build ESM/CJS/types for zetl-ast-js"
-	@echo "  make helper-js-test      - Run zetl-ast-js unit tests"
+	@echo "  make helper-js-install   - npm install for tools/ztl-ast-js"
+	@echo "  make helper-js-build     - Build ESM/CJS/types for ztl-ast-js"
+	@echo "  make helper-js-test      - Run ztl-ast-js unit tests"
 	@echo "  make helper-contracts    - Run cross-impl (py+js+rust) fixture corpus"
-	@echo "  make ast-reference       - Regenerate docs/zetl-ast-reference.md"
+	@echo "  make ast-reference       - Regenerate docs/ztl-ast-reference.md"
 	@echo "  make ast-reference-check - CI gate: fail if the reference is stale"
 	@echo "  make ext-golden          - Run CON-3212 canonical-extension golden-HTML gate"
 	@echo "  make ext-golden-update   - Regenerate expected.html for every extension fixture"
 	@echo "  make eco-features-check  - Compile-in-isolation gate for every ecosystem feature flag"
 	@echo "  make eco-matrix-check    - SPEC-033 REQ-3311 / TEST-3311 ecosystem-matrix structural gate"
-	@echo "  make translator-roundtrip - NFR-3305 property-test gate: zetl→foreign→zetl canonical equivalence"
+	@echo "  make translator-roundtrip - NFR-3305 property-test gate: ztl→foreign→ztl canonical equivalence"
 	@echo "  make nfr-gates           - SPEC-032 NFR-3201..NFR-3208 performance + determinism gates"
 	@echo "  make nfr-gates-strict    - Run the #[ignore]-gated strict-budget arms (release mode)"
 	@echo "  make nfr-gates-033       - SPEC-033 NFR-3301..NFR-3308 ecosystem performance + lifecycle gates"

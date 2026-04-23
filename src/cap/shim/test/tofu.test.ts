@@ -197,7 +197,7 @@ test("performTofu is idempotent — second call skips create() with 'already-bou
   assert.equal(auth2.calls.length, 0, "no second create() call — KEEP per REQ-3425");
 });
 
-test("performTofu HKDF-derives K_wrap from the PRF output + 'zetl/tofu-wrap/v1'", async () => {
+test("performTofu HKDF-derives K_wrap from the PRF output + 'ztl/tofu-wrap/v1'", async () => {
   // Reproduce the derivation offline and assert the wrapped
   // ciphertext decrypts with the expected K_wrap. Proves the
   // domain-separation info string + empty salt match CON-3409.

@@ -1,7 +1,7 @@
-//! SPEC-032 TEST-3209 — integration coverage for `zetl hook dry-run`.
+//! SPEC-032 TEST-3209 — integration coverage for `ztl hook dry-run`.
 //!
 //! TEST-3209 requires:
-//! - Running `zetl hook dry-run transform/callouts` against a fixture vault
+//! - Running `ztl hook dry-run transform/callouts` against a fixture vault
 //!   emits a byte-identical matched page list (sorted, one path per line).
 //! - Exit code 1 when the selector matches zero pages; 0 otherwise.
 //! - The hook itself is *not* invoked (no subprocess spawn, no writes).
@@ -37,7 +37,7 @@ fn scaffold_vault(vault: &Path) {
     // Hook manifest + stub executable. The stub is NEVER invoked by
     // `dry-run`, but composition requires the file to exist and be
     // marked executable for the hook to count as "enabled".
-    let hook_dir = vault.join(".zetl/hooks/transform.d");
+    let hook_dir = vault.join(".ztl/hooks/transform.d");
     fs::create_dir_all(&hook_dir).unwrap();
     write(
         &hook_dir.join("callouts.py"),
@@ -80,11 +80,11 @@ content_probe = [":::note"]
 }
 
 fn run_dry_run(vault: &Path, args: &[&str]) -> std::process::Output {
-    cargo_bin_cmd!("zetl")
+    cargo_bin_cmd!("ztl")
         .args(["--dir", vault.to_str().unwrap(), "hook", "dry-run"])
         .args(args)
         .output()
-        .expect("run zetl hook dry-run")
+        .expect("run ztl hook dry-run")
 }
 
 #[test]
@@ -113,7 +113,7 @@ fn dry_run_exits_one_when_selector_matches_nothing() {
 
     // Narrow the selector to a subdir that has no pages so the match set
     // is empty. Overwrite the sidecar manifest in place.
-    let manifest = vault.join(".zetl/hooks/transform.d/callouts.py.toml");
+    let manifest = vault.join(".ztl/hooks/transform.d/callouts.py.toml");
     write(
         &manifest,
         r#"stage = "transform"
@@ -204,7 +204,7 @@ fn dry_run_matches_hook_with_numeric_prefix_via_default_extension_id() {
     // to derive the default extension id.
     let tmp = TempDir::new().unwrap();
     let vault = tmp.path();
-    let hook_dir = vault.join(".zetl/hooks/transform.d");
+    let hook_dir = vault.join(".ztl/hooks/transform.d");
     fs::create_dir_all(&hook_dir).unwrap();
     let exe = hook_dir.join("20-callouts.py");
     write(&exe, "#!/usr/bin/env python3\nraise SystemExit(0)\n");
@@ -254,7 +254,7 @@ fn dry_run_frontmatter_predicate_gates_matches() {
     let tmp = TempDir::new().unwrap();
     let vault = tmp.path();
 
-    let hook_dir = vault.join(".zetl/hooks/transform.d");
+    let hook_dir = vault.join(".ztl/hooks/transform.d");
     fs::create_dir_all(&hook_dir).unwrap();
     let exe = hook_dir.join("callouts.py");
     write(&exe, "#!/usr/bin/env python3\n");

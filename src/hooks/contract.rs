@@ -30,7 +30,7 @@
 //! ## Property-test harness
 //!
 //! [`PropertyTestCase`] + [`run_property_test`] let a test (or a user
-//! invoking `zetl hook test --property`) take a hook, an input fixture,
+//! invoking `ztl hook test --property`) take a hook, an input fixture,
 //! and a [`ContractDecl`], then validate every declared claim in one
 //! pass. Each run produces a [`PropertyTestReport`] summarising
 //! violations — empty on success, populated when the hook's behaviour
@@ -175,9 +175,9 @@ fn advice_for(sub: ContractSubReason) -> (Option<&'static str>, Option<&'static 
                  drops inline nodes whose type it doesn't match.",
             ),
             Some(
-                "run `zetl ast diff <before.json> <after.json>` on the fixture\n\
+                "run `ztl ast diff <before.json> <after.json>` on the fixture\n\
                  input to locate the removed nodes; see:\n  \
-                 https://zetl.codeberg.page/docs/hook-authoring/preservation",
+                 https://ztl.codeberg.page/docs/hook-authoring/preservation",
             ),
         ),
         ContractSubReason::Idempotent => (
@@ -866,7 +866,7 @@ mod tests {
         // An unknown type name matches zero nodes in both docs; no
         // violation. (Manifest parser rejects ast_type typos; the type
         // *names* inside preserves are free-form strings because the
-        // CommonMark / zetl schema can grow.)
+        // CommonMark / ztl schema can grow.)
         let input = doc(vec![para(vec![wikilink("A")])]);
         let output = doc(vec![]);
         let preserves = vec!["NotAType".to_string()];
@@ -1183,7 +1183,7 @@ mod tests {
         let d = viol.to_diagnostic(r#"contract.preserves = ["Wikilink", "Embed"]"#);
         assert_eq!(d.class, DiagnosticClass::ContractViolation);
         let rendered = d.to_string();
-        assert!(rendered.starts_with("[zetl] hook 'callouts'"));
+        assert!(rendered.starts_with("[ztl] hook 'callouts'"));
         assert!(rendered.contains("projects/q2-review.md"));
         assert!(rendered.contains("preserves"));
         assert!(rendered.contains(r#"contract.preserves = ["Wikilink", "Embed"]"#));

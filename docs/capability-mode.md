@@ -1,6 +1,6 @@
 # Capability Mode — Operator Guide
 
-This is the **task-oriented operator guide** for `zetl build
+This is the **task-oriented operator guide** for `ztl build
 --capability`. It walks through the workflow an operator runs end to
 end: generating secrets, authoring config, issuing and revoking
 invites, rotating keys, deploying to a static host, and triaging
@@ -45,8 +45,8 @@ Seven adversaries are in scope (from §11.1):
 | A3 | CDN-compromised             | Attacker who substitutes bytes at the CDN layer — stolen credentials, rogue edge worker.   |
 | A4 | Authenticator thief         | Physical theft of an unlocked device with a paired authenticator.                           |
 | A5 | Malicious contributor       | PR author injecting XSS, exfiltrating CSS, or hostile markdown.                             |
-| A6 | Compromised CI              | Attacker controlling the build: leaked `ZETL_CAP_SECRET`, leaked `ZETL_CAP_SIGNING_KEY`.    |
-| A7 | Signing-key compromiser     | Attacker who extracts `ZETL_CAP_SIGNING_KEY` from CI, ops machine, or backup.               |
+| A6 | Compromised CI              | Attacker controlling the build: leaked `ztl_CAP_SECRET`, leaked `ztl_CAP_SIGNING_KEY`.    |
+| A7 | Signing-key compromiser     | Attacker who extracts `ztl_CAP_SIGNING_KEY` from CI, ops machine, or backup.               |
 
 ### 1.2 Attack/mitigation matrix
 
@@ -69,10 +69,10 @@ Reproduced from SPEC-034 §11.1:
 | Pre-registered ServiceWorker intercepts           | A3, prior compromise | **Fixed:** shim purges SWs on load (REQ-3428).                                              |
 | Concurrent-tab TOFU race                          | —                    | **Fixed:** `navigator.locks` (REQ-3429).                                                    |
 | Revoked reader retains past access                | —                    | Explicit non-goal (NFR-3414); forward secrecy not provided.                                 |
-| Signing-key compromise                            | A6, A7               | Rotate via `zetl cap rotate-signing-key`; rebuild; cache-invalidate shim.                   |
-| `ZETL_CAP_SECRET` compromise                      | A6                   | Rotate secret; rotate all cohorts; rebuild; re-issue all URLs; re-enrol.                    |
+| Signing-key compromise                            | A6, A7               | Rotate via `ztl cap rotate-signing-key`; rebuild; cache-invalidate shim.                   |
+| `ztl_CAP_SECRET` compromise                      | A6                   | Rotate secret; rotate all cohorts; rebuild; re-issue all URLs; re-enrol.                    |
 | Malicious PR                                      | A5                   | Sanitiser (ammonia) + CSP + audit-diff corpus (REQ-3424).                                   |
-| URL leak via shortener / preview bot              | A1                   | **Fixed:** CLI warning on every `zetl cap invite` (REQ-3410).                               |
+| URL leak via shortener / preview bot              | A1                   | **Fixed:** CLI warning on every `ztl cap invite` (REQ-3410).                               |
 
 ### 1.3 Acknowledged residual exposures
 
@@ -107,19 +107,19 @@ them is unacceptable must not use capability mode for that content.
 
 ### 1.4 Incident-response playbooks
 
-From §11.3. `zetl cap emergency-shutdown` prints a live checklist at
+From §11.3. `ztl cap emergency-shutdown` prints a live checklist at
 invocation time; the table is the reference snapshot:
 
 | Incident                                  | Response                                                                                                                           |
 | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Reader leaves                             | `zetl cap revoke <grant-id>` → rebuild → deploy. Latency ≤ NFR-3409 (rebuild + `max-age`, default ≤ 1 h).                           |
-| Authenticator compromised                 | Rotate affected cohort (`zetl cap rotate --cohort <id>`); redistribute entry URLs.                                                 |
-| Invite URL leaked pre-TOFU, within expiry | `zetl cap revoke <grant-id>` + re-invite on a fresh URL. Old URL becomes inert on next rebuild.                                    |
+| Reader leaves                             | `ztl cap revoke <grant-id>` → rebuild → deploy. Latency ≤ NFR-3409 (rebuild + `max-age`, default ≤ 1 h).                           |
+| Authenticator compromised                 | Rotate affected cohort (`ztl cap rotate --cohort <id>`); redistribute entry URLs.                                                 |
+| Invite URL leaked pre-TOFU, within expiry | `ztl cap revoke <grant-id>` + re-invite on a fresh URL. Old URL becomes inert on next rebuild.                                    |
 | Invite URL leaked post-expiry             | Already inert. Monitor for anomalous access patterns.                                                                              |
-| Signing-key compromised                   | `zetl cap rotate-signing-key` → rebuild all pages → deploy → invalidate `/assets/shim.js` cache at CDN. Monitor OBS-3413.          |
-| `ZETL_CAP_SECRET` compromised             | `zetl cap genkey` → rotate ALL cohorts → rebuild → re-issue all URLs → readers re-TOFU per device. Effectively a full re-onboard.   |
-| Malicious PR landed                       | Revert on main → rebuild → `zetl cap audit-diff` across exposure window → consider sanitiser allowlist tightening.                 |
-| Emergency shutdown                        | `zetl cap emergency-shutdown` → follow printed checklist (DNS, CDN purge, secret rotation, reader notification).                   |
+| Signing-key compromised                   | `ztl cap rotate-signing-key` → rebuild all pages → deploy → invalidate `/assets/shim.js` cache at CDN. Monitor OBS-3413.          |
+| `ztl_CAP_SECRET` compromised             | `ztl cap genkey` → rotate ALL cohorts → rebuild → re-issue all URLs → readers re-TOFU per device. Effectively a full re-onboard.   |
+| Malicious PR landed                       | Revert on main → rebuild → `ztl cap audit-diff` across exposure window → consider sanitiser allowlist tightening.                 |
+| Emergency shutdown                        | `ztl cap emergency-shutdown` → follow printed checklist (DNS, CDN purge, secret rotation, reader notification).                   |
 
 See `docs/capability-security.md` for long-form discussion of the
 threat model, the per-attack mitigation surface, and the quantitative
@@ -161,21 +161,21 @@ Use this table to pick a mode for each cohort.
   hardened mode. Assume URLs will leak; design so that alone does not
   grant access.
 - **Content you cannot afford to sign with a long-lived key.** Do not
-  use capability mode. Use `zetl serve` (SPEC-020) or reverse-proxy
+  use capability mode. Use `ztl serve` (SPEC-020) or reverse-proxy
   auth. See `docs/capability-security.md` §2 for the full "don't use
   capability mode for" table.
 
 ### 2.3 Configuring mode per cohort
 
 Cohort mode is set in `recipients.toml` (CON-3403), not in
-`.zetl/config.toml`:
+`.ztl/config.toml`:
 
 ```toml
 # recipients.toml
 version = 1
 
 [vault]
-signing_pubkey = "ed25519:<base64url-pubkey>"   # written by zetl cap genkey
+signing_pubkey = "ed25519:<base64url-pubkey>"   # written by ztl cap genkey
 
 [[cohort]]
 id      = "engineering"
@@ -195,13 +195,13 @@ pubkeys = [
 Split-key mode is an **invite-time** choice, not a cohort-mode choice:
 
 ```toml
-# .zetl/config.toml
+# .ztl/config.toml
 [access.split_key]
 enabled       = true                             # opt-in (REQ-3430)
 second_factor = "spoken-phrase"                  # or "qr"
 ```
 
-With `enabled = true`, `zetl cap invite --split-key` splits the
+With `enabled = true`, `ztl cap invite --split-key` splits the
 delegated-URL fragment into two halves; the URL carries `#k1=<half1>`
 and the second factor is conveyed separately (spoken phrase or QR
 code). See SPEC-034 REQ-3430 / ADR-3415.
@@ -213,34 +213,34 @@ code). See SPEC-034 REQ-3430 / ADR-3415.
 This walkthrough takes a vault from no-capability-mode to a first
 deployed build. Replace `wiki.example` with your hostname throughout.
 
-### 3.1 Generate the two secrets (`zetl cap genkey`)
+### 3.1 Generate the two secrets (`ztl cap genkey`)
 
 ```bash
-$ zetl cap genkey
-# ZETL_CAP_SECRET — 48-byte content-encryption secret
-export ZETL_CAP_SECRET='<base64url-secret>'
+$ ztl cap genkey
+# ztl_CAP_SECRET — 48-byte content-encryption secret
+export ztl_CAP_SECRET='<base64url-secret>'
 
-# ZETL_CAP_SIGNING_KEY — Ed25519 vault-signing private key
-export ZETL_CAP_SIGNING_KEY='<base64-standard-32-bytes>'
+# ztl_CAP_SIGNING_KEY — Ed25519 vault-signing private key
+export ztl_CAP_SIGNING_KEY='<base64-standard-32-bytes>'
 
 # recipients.toml[vault].signing_pubkey has been updated:
 #   ed25519:<base64url-pubkey>
 ```
 
 Both values print to stdout **exactly once**. Store them in a
-password manager immediately; `zetl cap genkey` does not persist
+password manager immediately; `ztl cap genkey` does not persist
 either secret.
 
 `recipients.toml` is modified in place to carry the vault-signing
 public key. Commit that change — the pubkey travels in version
 control alongside the content it authenticates.
 
-### 3.2 Author `.zetl/config.toml`
+### 3.2 Author `.ztl/config.toml`
 
 Minimum viable capability-mode config:
 
 ```toml
-# .zetl/config.toml
+# .ztl/config.toml
 
 [access]
 mode = "capability"                              # activates capability build
@@ -250,7 +250,7 @@ max_age = 300                                    # /c/* Cache-Control max-age (N
                                                  # bounds [60, 3600]; default 300
 
 [access.signing]
-key_env   = "ZETL_CAP_SIGNING_KEY"               # where the private signing key comes from
+key_env   = "ztl_CAP_SIGNING_KEY"               # where the private signing key comes from
 algorithm = "ed25519"                            # fixed in v0.4.0
 
 [access.split_key]
@@ -269,7 +269,7 @@ mode = "scoped"                                  # default; "global" is rejected
 ```
 
 Author `recipients.toml` (per §2.3) with at least one cohort. An
-empty `pubkeys = []` is fine for a delegated-URL cohort — `zetl cap
+empty `pubkeys = []` is fine for a delegated-URL cohort — `ztl cap
 invite` populates grants as you issue them.
 
 ### 3.3 First invite, then first build
@@ -277,7 +277,7 @@ invite` populates grants as you issue them.
 Issue a grant for the first reader:
 
 ```bash
-$ zetl cap invite alice \
+$ ztl cap invite alice \
     --cohort engineering \
     --expires 7d \
     --site-url https://wiki.example
@@ -299,14 +299,14 @@ url:       https://wiki.example/c/<path-cap>/welcome.html#k=<43-char-fragment>
 Now build:
 
 ```bash
-$ zetl build --capability
+$ ztl build --capability
 
-[zetl] capability build:
+[ztl] capability build:
   cohorts:       1 (engineering)
   pages:         34 signed + encrypted
   shim:          dist/assets/shim.js          (SRI sha384-…)
   signing-pub:   ed25519:<base64url-pubkey>
-  deploy recipes: dist/_zetl/deploy/          (nginx/Caddy/Netlify/Vercel)
+  deploy recipes: dist/_ztl/deploy/          (nginx/Caddy/Netlify/Vercel)
   tombstones:    0
 ```
 
@@ -323,15 +323,15 @@ $ zetl build --capability
 - `dist/_headers`, `dist/_redirects`, `dist/vercel.json` — root-level
   deploy artifacts consumed by Netlify / Cloudflare Pages / Vercel
   verbatim.
-- `dist/_zetl/deploy/*` — copy-paste recipes for nginx and Caddy plus
+- `dist/_ztl/deploy/*` — copy-paste recipes for nginx and Caddy plus
   the Netlify/Vercel recipes as standalone snippets for merging.
-- `dist/_zetl/_gone.map` — nginx-consumable tombstone map for retired
+- `dist/_ztl/_gone.map` — nginx-consumable tombstone map for retired
   path-caps.
 
 ### 3.4 Deploy
 
 Point your static host at `dist/`. The deploy recipe that matches
-your platform lives at `dist/_zetl/deploy/` — see §5 for copy-paste
+your platform lives at `dist/_ztl/deploy/` — see §5 for copy-paste
 blocks. The **four headers** a capability-mode deployment must emit
 are:
 
@@ -350,7 +350,7 @@ CSP (CON-3410):
 default-src 'none'; script-src 'self'; style-src 'self'; \
 img-src 'self' data:; connect-src 'self'; font-src 'self'; \
 frame-ancestors 'none'; base-uri 'none'; form-action 'none'; \
-require-trusted-types-for 'script'; trusted-types zetl-cap;
+require-trusted-types-for 'script'; trusted-types ztl-cap;
 ```
 
 The HTML shell carries the same CSP as a `<meta http-equiv>` tag, so
@@ -358,7 +358,7 @@ a CDN that drops the HTTP header still enforces CSP in the browser.
 
 ### 3.5 Send the invite
 
-Using the URL printed by `zetl cap invite`:
+Using the URL printed by `ztl cap invite`:
 
 - **Direct message / email without link rewriting.** Best channel for
   delegated-URL mode.
@@ -375,12 +375,12 @@ error catalogue.
 ### 3.6 Optional: sanity-check before exposing to real readers
 
 ```bash
-$ zetl cap list                                # who has access
-$ zetl cap check                               # stale-grant + public-safety audit
-$ zetl cap audit-diff main HEAD                # malicious-content scan on the diff
+$ ztl cap list                                # who has access
+$ ztl cap check                               # stale-grant + public-safety audit
+$ ztl cap audit-diff main HEAD                # malicious-content scan on the diff
 ```
 
-`zetl cap check` exits non-zero if any grant has expired since the
+`ztl cap check` exits non-zero if any grant has expired since the
 last build or if a public cohort is missing a required guardrail.
 Wire it into CI.
 
@@ -392,29 +392,29 @@ Every operational change in capability mode is one of: **issue**,
 **revoke**, **rotate**, **finalise**, or **rotate the signing key**.
 This section walks through each.
 
-### 4.1 Issue a grant (`zetl cap invite`)
+### 4.1 Issue a grant (`ztl cap invite`)
 
 ```bash
 # Delegated-URL (default)
-zetl cap invite alice --cohort eng --site-url https://wiki.example
+ztl cap invite alice --cohort eng --site-url https://wiki.example
 
 # With scope + expiry
-zetl cap invite bob --cohort ops \
+ztl cap invite bob --cohort ops \
     --expires 14d \
     --pages 'runbooks/*' \
     --site-url https://wiki.example
 
 # Hardened mode (reader enrols first, sends you their pubkey)
-zetl cap invite carol --cohort partners \
+ztl cap invite carol --cohort partners \
     --recipient age-recipient-v1:<base64url-pubkey>
 
 # Print the reader's /enroll.html URL instead (hardened handoff)
-zetl cap invite dan --cohort partners \
+ztl cap invite dan --cohort partners \
     --via enrol-page \
     --site-url https://wiki.example
 
 # Split-key mode (requires [access.split_key] enabled = true)
-zetl cap invite eve --cohort eng --split-key \
+ztl cap invite eve --cohort eng --split-key \
     --site-url https://wiki.example
 ```
 
@@ -423,10 +423,10 @@ prints the reader's URL. Re-running the build regenerates signatures
 and ciphertexts so the new grant's pubkey lands in the cohort's
 recipient list.
 
-### 4.2 Revoke a grant (`zetl cap revoke`)
+### 4.2 Revoke a grant (`ztl cap revoke`)
 
 ```bash
-$ zetl cap revoke g_01JABC...
+$ ztl cap revoke g_01JABC...
 revoked: g_01JABC... (engineering, alice)
 next: rebuild + deploy to flush the reader's entry from cohort ciphertexts.
 ```
@@ -439,10 +439,10 @@ of more CDN round-trips.
 Revocation is **not** forward-secret: the revoked reader retains
 every ciphertext they already downloaded. See §1.3.
 
-### 4.3 Rotate a cohort (`zetl cap rotate`)
+### 4.3 Rotate a cohort (`ztl cap rotate`)
 
 ```bash
-$ zetl cap rotate --cohort engineering
+$ ztl cap rotate --cohort engineering
 rotated content-key salt for cohort: engineering.
 URLs remain stable across rotation (REQ-3402).
 next: rebuild to re-encrypt every page in this cohort under the new content key.
@@ -455,16 +455,16 @@ new derived key (BUG-023 resolution). Schedule rotations ≥ every 180
 days (NFR-3411) or after an incident (stolen authenticator,
 suspicious access).
 
-### 4.4 Finalise a grant (`zetl cap finalise`)
+### 4.4 Finalise a grant (`ztl cap finalise`)
 
 ```bash
 # Operator has confirmed out-of-band that alice has TOFU-bound on her
 # laptop and phone; mark the grant as bound.
-$ zetl cap finalise g_01JABC...
+$ ztl cap finalise g_01JABC...
 grant g_01JABC... marked bound=true (REQ-3408).
 
 # Optional: reissue the delegated private key at finalisation time.
-$ zetl cap finalise g_01JABC... --rotate-grant
+$ ztl cap finalise g_01JABC... --rotate-grant
 grant g_01JABC... reissued with a fresh priv_A.
 next: send the new invite URL through the same channel.
 ```
@@ -475,7 +475,7 @@ It is an operational tool, not a security control. If the original
 invite channel is still compromised, the finalisation URL is too —
 revoke and re-invite via a different channel instead.
 
-### 4.5 Rotate the vault-signing key (`zetl cap rotate-signing-key`)
+### 4.5 Rotate the vault-signing key (`ztl cap rotate-signing-key`)
 
 Signing-key rotation is the high-stakes operation in this lifecycle.
 It is the only one where a mis-sequenced step locks readers out.
@@ -485,13 +485,13 @@ a cheat sheet:
 ```bash
 # 1. Generate a new Ed25519 keypair. recipients.toml[vault].signing_pubkey
 #    is updated in place. Capture stdout for the new private key.
-zetl cap rotate-signing-key > new-signing-key.txt
+ztl cap rotate-signing-key > new-signing-key.txt
 source new-signing-key.txt        # or paste into password manager
 shred -u new-signing-key.txt
 
 # 2. Rebuild: every page is re-signed; a new shim bundle is emitted
 #    with the new embedded pubkey (new SRI hash).
-zetl build --capability
+ztl build --capability
 
 # 3. Deploy. Critical ordering: INVALIDATE /assets/shim.js at the CDN
 #    BEFORE the new ciphertexts reach readers. Otherwise a reader with
@@ -512,19 +512,19 @@ deferred. See `docs/signing.md` §3.
 
 | Verb                            | Purpose                                                                                              |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `zetl cap list`                 | Enumerate grants; `--cohort <id>` to filter; `--output json` for scripting.                          |
-| `zetl cap sweep`                | Mark past-expiry grants revoked in place. Wire into a cron, not into the build.                      |
-| `zetl cap check`                | Stale-grant + public-safety audit. Exits non-zero on drift. Wire into CI.                            |
-| `zetl cap pair`                 | SPAKE2-authenticated pubkey handoff between two operators (hardened-mode pubkey exchange).           |
-| `zetl cap audit-diff OLD NEW`   | Malicious-content scan against the REQ-3424 corpus. Wire into the PR gate.                           |
-| `zetl cap emergency-shutdown`   | Print the operator runbook for taking the wiki offline at the host level. Documentation-only.        |
+| `ztl cap list`                 | Enumerate grants; `--cohort <id>` to filter; `--output json` for scripting.                          |
+| `ztl cap sweep`                | Mark past-expiry grants revoked in place. Wire into a cron, not into the build.                      |
+| `ztl cap check`                | Stale-grant + public-safety audit. Exits non-zero on drift. Wire into CI.                            |
+| `ztl cap pair`                 | SPAKE2-authenticated pubkey handoff between two operators (hardened-mode pubkey exchange).           |
+| `ztl cap audit-diff OLD NEW`   | Malicious-content scan against the REQ-3424 corpus. Wire into the PR gate.                           |
+| `ztl cap emergency-shutdown`   | Print the operator runbook for taking the wiki offline at the host level. Documentation-only.        |
 
 ---
 
 ## 5. Deploy recipes
 
-`zetl build --capability` writes deploy artifacts under
-`dist/_zetl/deploy/` and — for platforms that consume them verbatim
+`ztl build --capability` writes deploy artifacts under
+`dist/_ztl/deploy/` and — for platforms that consume them verbatim
 — at `dist/` root (`_headers`, `_redirects`, `vercel.json`). The
 recipes below are the copy-paste versions. Values assume
 `[access.cache] max_age = 300`; override with your own if you tuned
@@ -538,7 +538,7 @@ directives is a silent weakening.
 default-src 'none'; script-src 'self'; style-src 'self'; \
 img-src 'self' data:; connect-src 'self'; font-src 'self'; \
 frame-ancestors 'none'; base-uri 'none'; form-action 'none'; \
-require-trusted-types-for 'script'; trusted-types zetl-cap;
+require-trusted-types-for 'script'; trusted-types ztl-cap;
 ```
 
 ### 5.1 nginx
@@ -548,20 +548,20 @@ the enclosing `http { }` context so tombstones flow through.
 
 ```nginx
 # In your http { } context:
-map $uri $zetl_gone {
-    include /path/to/dist/_zetl/_gone.map;
+map $uri $ztl_gone {
+    include /path/to/dist/_ztl/_gone.map;
 }
 
 # In your server { } block:
 location ^~ /c/ {
-    if ($zetl_gone = 1) { return 410; }
+    if ($ztl_gone = 1) { return 410; }
     add_header Cache-Control "private, max-age=300, must-revalidate" always;
-    add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types zetl-cap;" always;
+    add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types ztl-cap;" always;
 }
 
 location = /enroll.html {
     add_header Clear-Site-Data '"cache", "storage", "executionContexts"' always;
-    add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types zetl-cap;" always;
+    add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types ztl-cap;" always;
 }
 
 location = /logout {
@@ -583,19 +583,19 @@ expected.
 Paste inside your site block.
 
 ```caddy
-@zetl_cap path /c/*
-header @zetl_cap Cache-Control "private, max-age=300, must-revalidate"
-header @zetl_cap Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types zetl-cap;"
+@ztl_cap path /c/*
+header @ztl_cap Cache-Control "private, max-age=300, must-revalidate"
+header @ztl_cap Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types ztl-cap;"
 
-@zetl_csd_0 path /enroll.html
-header @zetl_csd_0 Clear-Site-Data `"cache", "storage", "executionContexts"`
-header @zetl_csd_0 Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types zetl-cap;"
+@ztl_csd_0 path /enroll.html
+header @ztl_csd_0 Clear-Site-Data `"cache", "storage", "executionContexts"`
+header @ztl_csd_0 Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types ztl-cap;"
 
-@zetl_csd_1 path /logout
-header @zetl_csd_1 Clear-Site-Data `"cache", "storage", "executionContexts"`
+@ztl_csd_1 path /logout
+header @ztl_csd_1 Clear-Site-Data `"cache", "storage", "executionContexts"`
 
-@zetl_shim path /assets/shim.js
-header @zetl_shim Cache-Control "public, max-age=31536000, immutable"
+@ztl_shim path /assets/shim.js
+header @ztl_shim Cache-Control "public, max-age=31536000, immutable"
 ```
 
 The backtick wrappers around the `Clear-Site-Data` value keep Caddy's
@@ -604,7 +604,7 @@ tokenizer from consuming the inner double quotes.
 ### 5.3 Netlify
 
 Netlify reads `_headers` and `_redirects` at the site root. Both are
-written by `zetl build --capability`; deploy the `dist/` tree as-is
+written by `ztl build --capability`; deploy the `dist/` tree as-is
 and Netlify picks them up. The contents are reproduced here for
 operators who already maintain these files and want to merge by hand.
 
@@ -613,11 +613,11 @@ operators who already maintain these files and want to merge by hand.
 ```
 /c/*
   Cache-Control: private, max-age=300, must-revalidate
-  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types zetl-cap;
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types ztl-cap;
 
 /enroll.html
   Clear-Site-Data: "cache", "storage", "executionContexts"
-  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types zetl-cap;
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types ztl-cap;
 
 /logout
   Clear-Site-Data: "cache", "storage", "executionContexts"
@@ -656,14 +656,14 @@ contents for hand-merging:
       "source": "/c/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "private, max-age=300, must-revalidate" },
-        { "key": "Content-Security-Policy", "value": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types zetl-cap;" }
+        { "key": "Content-Security-Policy", "value": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types ztl-cap;" }
       ]
     },
     {
       "source": "/enroll.html",
       "headers": [
         { "key": "Clear-Site-Data", "value": "\"cache\", \"storage\", \"executionContexts\"" },
-        { "key": "Content-Security-Policy", "value": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types zetl-cap;" }
+        { "key": "Content-Security-Policy", "value": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types ztl-cap;" }
       ]
     },
     {
@@ -697,14 +697,14 @@ headers via a CloudFront **Response Headers Policy** and configure
 #    one per cache behaviour).
 
 aws cloudfront create-response-headers-policy \
-  --response-headers-policy-config file://zetl-csp.json
-# zetl-csp.json:
+  --response-headers-policy-config file://ztl-csp.json
+# ztl-csp.json:
 # {
-#   "Name": "zetl-cap-csp",
+#   "Name": "ztl-cap-csp",
 #   "SecurityHeadersConfig": {
 #     "ContentSecurityPolicy": {
 #       "Override": true,
-#       "ContentSecurityPolicy": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types zetl-cap;"
+#       "ContentSecurityPolicy": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types ztl-cap;"
 #     }
 #   },
 #   "CustomHeadersConfig": {
@@ -713,9 +713,9 @@ aws cloudfront create-response-headers-policy \
 # }
 
 aws cloudfront create-response-headers-policy \
-  --response-headers-policy-config file://zetl-cap-cache.json
-# zetl-cap-cache.json — Cache-Control for /c/*:
-# { "Name": "zetl-cap-cache",
+  --response-headers-policy-config file://ztl-cap-cache.json
+# ztl-cap-cache.json — Cache-Control for /c/*:
+# { "Name": "ztl-cap-cache",
 #   "CustomHeadersConfig": {
 #     "Quantity": 1,
 #     "Items": [{
@@ -727,9 +727,9 @@ aws cloudfront create-response-headers-policy \
 # }
 
 aws cloudfront create-response-headers-policy \
-  --response-headers-policy-config file://zetl-csd.json
-# zetl-csd.json — Clear-Site-Data for /enroll.html + /logout:
-# { "Name": "zetl-cap-csd",
+  --response-headers-policy-config file://ztl-csd.json
+# ztl-csd.json — Clear-Site-Data for /enroll.html + /logout:
+# { "Name": "ztl-cap-csd",
 #   "CustomHeadersConfig": {
 #     "Quantity": 1,
 #     "Items": [{
@@ -741,9 +741,9 @@ aws cloudfront create-response-headers-policy \
 # }
 
 # 2. Attach one policy per cache behaviour.
-#    /c/*                 → zetl-cap-cache + zetl-csp
-#    /enroll.html         → zetl-csd + zetl-csp
-#    /logout              → zetl-csd
+#    /c/*                 → ztl-cap-cache + ztl-csp
+#    /enroll.html         → ztl-csd + ztl-csp
+#    /logout              → ztl-csd
 #    /assets/shim.js      → (built-in CachingOptimized with max-age override)
 #
 # The Management Console path is simpler than the CLI for attaching;
@@ -841,7 +841,7 @@ causes dominate in practice:
 3. If you have **not** rotated:
    - Treat as a potential incident. Follow `docs/signing.md` §5
      (threat-model recap).
-   - Consider `zetl cap emergency-shutdown` while you investigate.
+   - Consider `ztl cap emergency-shutdown` while you investigate.
 4. Confirm recovery by asking the reader to open the page in a
    private/incognito window. Private windows bypass local shim
    caches; if the page renders there, the fix is cache-side on the
@@ -856,7 +856,7 @@ The browser has no binding and the URL carries no fragment. Either:
 - a second device tried to re-use an invite URL that a first device
   already consumed (delegated-URL grants are single-device-first-use).
 
-**Operator action.** Issue a fresh invite (`zetl cap invite`) for
+**Operator action.** Issue a fresh invite (`ztl cap invite`) for
 the reader and the new device. Do not try to reuse the original
 URL.
 
@@ -885,7 +885,7 @@ Usually one of:
 authenticator (platform vs. hardware key, make/model). If PRF is
 unavailable on their setup, switch them to **hardened mode** on a
 browser that does support PRF, or offer a different access path
-(`zetl serve`, VPN).
+(`ztl serve`, VPN).
 
 ### 6.6 `err-decrypt-failed` — "Could not decrypt this page"
 
@@ -893,8 +893,8 @@ Signature verified; the reader's key does not open the ciphertext.
 **This is the signal that the reader is no longer in the cohort's
 recipient list.** Causes:
 
-1. The reader has been **revoked** (someone ran `zetl cap revoke`).
-2. The cohort has been **rotated** (someone ran `zetl cap rotate
+1. The reader has been **revoked** (someone ran `ztl cap revoke`).
+2. The cohort has been **rotated** (someone ran `ztl cap rotate
    --cohort <id>`) and the reader's grant was not rebuilt into the
    new recipient list.
 3. The reader enrolled in cohort A but is trying to read a page that
@@ -903,7 +903,7 @@ recipient list.** Causes:
 
 **Operator action.**
 
-1. `zetl cap list --cohort <id>` — is the reader still in the
+1. `ztl cap list --cohort <id>` — is the reader still in the
    cohort's grants?
 2. `git log -- grants.toml` — was the cohort rotated or their grant
    revoked?
@@ -924,7 +924,7 @@ half-written object during a rolling deploy.
 2. Check your deploy pipeline for partial-upload modes. S3 `sync`
    can leave temporary files visible; use atomic CDN flip or
    canaried deploys.
-3. If it persists across a fresh deploy, re-run `zetl build
+3. If it persists across a fresh deploy, re-run `ztl build
    --capability` and inspect `dist/c/<path-cap>/<slug>.html` locally
    — the first seven lines must be the envelope header (CON-3404).
 
@@ -959,14 +959,14 @@ offer a different access path.
 
 ### 6.10 `err-host-missing` — "Capability-mode mount point missing"
 
-`<main data-zetl-capability>` is not in the HTML shell. Build /
+`<main data-ztl-capability>` is not in the HTML shell. Build /
 deploy artefact drift.
 
 **Operator actions.**
 
-1. Re-run `zetl build --capability`. Confirm the HTML shell at
+1. Re-run `ztl build --capability`. Confirm the HTML shell at
    `dist/c/<path-cap>/<slug>.html` contains `<main
-   data-zetl-capability>`.
+   data-ztl-capability>`.
 2. If a custom theme rendered the shell, confirm the theme template
    preserves the mount point.
 3. Deploy.
@@ -986,10 +986,10 @@ browsers you didn't plan for.
 
 | Tool                              | When to use                                                                          |
 | --------------------------------- | ------------------------------------------------------------------------------------ |
-| `zetl cap list`                   | Enumerate grants. First question for any "can't read" report.                         |
-| `zetl cap list --cohort <id>`     | Is the reporter in this cohort? Has their grant expired or been revoked?              |
-| `zetl cap check`                  | Stale-grant + public-safety audit. Run before deploying.                              |
-| `zetl cap audit-diff OLD NEW`     | Malicious-content scan. Run on PRs; essential for `err-signature-failed` triage.      |
+| `ztl cap list`                   | Enumerate grants. First question for any "can't read" report.                         |
+| `ztl cap list --cohort <id>`     | Is the reporter in this cohort? Has their grant expired or been revoked?              |
+| `ztl cap check`                  | Stale-grant + public-safety audit. Run before deploying.                              |
+| `ztl cap audit-diff OLD NEW`     | Malicious-content scan. Run on PRs; essential for `err-signature-failed` triage.      |
 | `OBS-3413` (performance timeline) | Signature-failure counter in reader RUM. Spikes after rotation are expected and brief. |
 | `OBS-3414`                        | ServiceWorker-purge counter. Persistent non-zero → origin shares with a SPA.          |
 | `OBS-3415`                        | `navigator.locks` wait > 100 ms counter. Persistent non-zero → concurrency anomaly.   |

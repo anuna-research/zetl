@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 #[cfg(any(feature = "reason", test))]
 use std::time::{Duration, UNIX_EPOCH};
 
-const CACHE_DIR: &str = ".zetl";
+const CACHE_DIR: &str = ".ztl";
 const CACHE_FILE: &str = "index.json";
 const CACHE_VERSION: u32 = 2;
 
@@ -26,7 +26,7 @@ struct CacheIndex {
     vault_root_hash: Option<String>,
 }
 
-/// Load cached index from .zetl/index.json
+/// Load cached index from .ztl/index.json
 pub fn load_cache(vault_root: &Path) -> Result<Option<HashMap<PathBuf, ParsedFile>>> {
     let cache_path = vault_root.join(CACHE_DIR).join(CACHE_FILE);
     if !cache_path.exists() {
@@ -40,7 +40,7 @@ pub fn load_cache(vault_root: &Path) -> Result<Option<HashMap<PathBuf, ParsedFil
     Ok(Some(index.files))
 }
 
-/// Save parsed files to .zetl/index.json.
+/// Save parsed files to .ztl/index.json.
 ///
 /// Also computes and persists the vault-level Merkle root (§4.6) from the
 /// per-file roots stored in each file's [`FileMerkle::root_hash`].
@@ -66,7 +66,7 @@ pub fn save_cache(vault_root: &Path, files: &[ParsedFile]) -> Result<()> {
     Ok(())
 }
 
-/// Load the vault-level Merkle root hex string from `.zetl/index.json`.
+/// Load the vault-level Merkle root hex string from `.ztl/index.json`.
 ///
 /// Returns the raw 64-character lowercase hex string, or `None` if the cache
 /// does not exist, has a version mismatch, or does not contain a vault root hash.
@@ -83,7 +83,7 @@ pub fn load_vault_root_hex(vault_root: &Path) -> Result<Option<String>> {
     Ok(index.vault_root_hash.filter(|h| h.len() == 64))
 }
 
-/// Load the vault-level Merkle root from `.zetl/index.json`.
+/// Load the vault-level Merkle root from `.ztl/index.json`.
 ///
 /// Returns `None` if the cache does not exist, has a version mismatch, or
 /// does not yet contain a vault root hash.
@@ -292,7 +292,7 @@ pub struct SplBlockCache {
     pub explicit_groundings: Vec<ExplicitGrounding>,
 }
 
-/// Serialized theory cache stored in `.zetl/theory.json`.
+/// Serialized theory cache stored in `.ztl/theory.json`.
 ///
 /// Contains everything needed to reconstruct a spindle-core `Theory` without
 /// re-parsing SPL text. Conclusions are NOT cached — re-reasoning happens on
@@ -327,7 +327,7 @@ pub struct TheoryCache {
     pub git_dirty: Option<bool>,
 }
 
-/// Load theory cache from `.zetl/theory.json`.
+/// Load theory cache from `.ztl/theory.json`.
 pub fn load_theory_cache(vault_root: &Path) -> Result<Option<TheoryCache>> {
     let cache_path = vault_root.join(CACHE_DIR).join(THEORY_CACHE_FILE);
     if !cache_path.exists() {
@@ -341,7 +341,7 @@ pub fn load_theory_cache(vault_root: &Path) -> Result<Option<TheoryCache>> {
     Ok(Some(cache))
 }
 
-/// Save theory cache to `.zetl/theory.json`.
+/// Save theory cache to `.ztl/theory.json`.
 pub fn save_theory_cache(vault_root: &Path, cache: &TheoryCache) -> Result<()> {
     let cache_dir = vault_root.join(CACHE_DIR);
     std::fs::create_dir_all(&cache_dir)?;

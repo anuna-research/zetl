@@ -2,9 +2,9 @@
 //!
 //! Resolves the ONNX model and tokenizer paths, downloading from HuggingFace Hub
 //! with user confirmation when files are absent, validating integrity via SHA-256,
-//! and caching permanently under `.zetl/models/`.
+//! and caching permanently under `.ztl/models/`.
 //!
-//! `ZETL_MODEL_PATH` env var overrides the model path entirely (no download,
+//! `ztl_MODEL_PATH` env var overrides the model path entirely (no download,
 //! no SHA validation; tokenizer must reside alongside the model).
 
 use std::io::{Read, Write};
@@ -25,19 +25,19 @@ const TOKENIZER_URL: &str =
 /// Resolve the ONNX model and tokenizer paths, downloading if needed.
 ///
 /// # Precedence
-/// 1. `ZETL_MODEL_PATH` → use as-is (skip SHA validation; tokenizer must be
+/// 1. `ztl_MODEL_PATH` → use as-is (skip SHA validation; tokenizer must be
 ///    alongside the model as `{MODEL_NAME}-tokenizer.json`)
-/// 2. `.zetl/models/{MODEL_NAME}.onnx` cached in vault → verify SHA sidecar, return
+/// 2. `.ztl/models/{MODEL_NAME}.onnx` cached in vault → verify SHA sidecar, return
 /// 3. File absent or sidecar mismatch → prompt user, download, validate, cache
 ///
 /// Returns `(model_path, tokenizer_path)`.
 pub fn ensure_model(vault_root: &Path) -> Result<(PathBuf, PathBuf)> {
-    // 1. ZETL_MODEL_PATH override — skip download and SHA validation entirely.
-    if let Ok(override_path) = std::env::var("ZETL_MODEL_PATH") {
+    // 1. ztl_MODEL_PATH override — skip download and SHA validation entirely.
+    if let Ok(override_path) = std::env::var("ztl_MODEL_PATH") {
         let model_path = PathBuf::from(&override_path);
         anyhow::ensure!(
             model_path.exists(),
-            "ZETL_MODEL_PATH='{}' does not exist",
+            "ztl_MODEL_PATH='{}' does not exist",
             override_path
         );
         let tokenizer_path = model_path
@@ -47,14 +47,14 @@ pub fn ensure_model(vault_root: &Path) -> Result<(PathBuf, PathBuf)> {
         anyhow::ensure!(
             tokenizer_path.exists(),
             "Tokenizer not found at '{}'. \
-             Expected alongside ZETL_MODEL_PATH as '{MODEL_NAME}-tokenizer.json'.",
+             Expected alongside ztl_MODEL_PATH as '{MODEL_NAME}-tokenizer.json'.",
             tokenizer_path.display()
         );
         return Ok((model_path, tokenizer_path));
     }
 
     // 2. Default cache location.
-    let models_dir = vault_root.join(".zetl").join("models");
+    let models_dir = vault_root.join(".ztl").join("models");
     let model_path = models_dir.join(format!("{MODEL_NAME}.onnx"));
     let tokenizer_path = models_dir.join(format!("{MODEL_NAME}-tokenizer.json"));
 
@@ -67,7 +67,7 @@ pub fn ensure_model(vault_root: &Path) -> Result<(PathBuf, PathBuf)> {
 
     // 3. Prompt user and download.
     eprintln!();
-    eprintln!("zetl needs '{MODEL_NAME}' for semantic search.");
+    eprintln!("ztl needs '{MODEL_NAME}' for semantic search.");
     eprintln!("Files will be downloaded from HuggingFace Hub (~90 MB) and cached at:");
     eprintln!("  {}", models_dir.display());
     eprint!("\nDownload now? [y/N] ");
@@ -78,7 +78,7 @@ pub fn ensure_model(vault_root: &Path) -> Result<(PathBuf, PathBuf)> {
         .read_line(&mut answer)
         .context("reading user confirmation")?;
     if !matches!(answer.trim().to_lowercase().as_str(), "y" | "yes") {
-        anyhow::bail!("Model download cancelled. Re-run `zetl index` to try again.");
+        anyhow::bail!("Model download cancelled. Re-run `ztl index` to try again.");
     }
 
     std::fs::create_dir_all(&models_dir)

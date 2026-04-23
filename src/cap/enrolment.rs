@@ -13,7 +13,7 @@
 //! The page expects a `?cohort=<cohort-id>` query parameter. The
 //! browser then:
 //!
-//! 1. Computes `prf_salt = SHA-256("zetl/webauthn-prf/v1/" || origin
+//! 1. Computes `prf_salt = SHA-256("ztl/webauthn-prf/v1/" || origin
 //!    || "/" || cohort_id)` — the string in [`PRF_SALT_PREFIX`]
 //!    followed by the concrete origin and cohort id. The Rust half
 //!    of that derivation lives in [`compute_prf_salt`] so Rust and
@@ -25,7 +25,7 @@
 //!    public half as `age-recipient-v1:<b64url>` (REQ-3409) with
 //!    copy and QR affordances.
 //!
-//! No network traffic to zetl endpoints is required at runtime:
+//! No network traffic to ztl endpoints is required at runtime:
 //! once `/enroll.html` + `/assets/enroll.js` are fetched, the whole
 //! flow runs locally and the reader sends the resulting pubkey to
 //! the operator out of band.
@@ -51,7 +51,7 @@ use crate::cap::deploy_headers::CAP_CSP;
 /// spells it — a change here is a wire-format break that would
 /// cause every hardened-cohort enrolment to derive a different
 /// pubkey. Leading + trailing slashes included.
-pub const PRF_SALT_PREFIX: &str = "zetl/webauthn-prf/v1/";
+pub const PRF_SALT_PREFIX: &str = "ztl/webauthn-prf/v1/";
 
 /// Filename the capability build writes the enrolment page to,
 /// relative to `<out_dir>`. Paired with the deploy recipes in
@@ -67,7 +67,7 @@ pub const ENROLL_JS_PATH: &str = "/assets/enroll.js";
 /// DOM element id the bundled JS mounts into. Kept as a constant
 /// so the Rust shell and the TS runtime can cross-check the
 /// selector.
-pub const ENROLL_MOUNT_ID: &str = "zetl-enroll";
+pub const ENROLL_MOUNT_ID: &str = "ztl-enroll";
 
 /// Filename the shim bundler writes the enrolment-bundle SRI hash
 /// to, next to `enroll.js`, inside `src/cap/shim/dist/`. Paired
@@ -114,7 +114,7 @@ pub fn load_enroll_integrity(shim_dist_dir: &Path) -> Result<String, EnrolmentEr
 
 /// Compute the REQ-3414 per-cohort PRF salt.
 ///
-/// `prf_salt = SHA-256("zetl/webauthn-prf/v1/" || origin || "/" ||
+/// `prf_salt = SHA-256("ztl/webauthn-prf/v1/" || origin || "/" ||
 /// cohort_id)`
 ///
 /// `origin` is the browser-visible origin (`scheme://host[:port]`)
@@ -163,7 +163,7 @@ pub fn render_enroll_html(enroll_js_sri: &str) -> String {
     out.push_str("<meta http-equiv=\"Content-Security-Policy\" content=\"");
     out.push_str(&attr_escape(CAP_CSP));
     out.push_str("\">\n");
-    out.push_str("<title>zetl — enrol</title>\n");
+    out.push_str("<title>ztl — enrol</title>\n");
     out.push_str("<link rel=\"stylesheet\" href=\"/assets/enroll.css\">\n");
     out.push_str("<script defer src=\"");
     out.push_str(ENROLL_JS_PATH);
@@ -174,8 +174,8 @@ pub fn render_enroll_html(enroll_js_sri: &str) -> String {
     out.push_str("<body>\n");
     out.push_str("<main id=\"");
     out.push_str(ENROLL_MOUNT_ID);
-    out.push_str("\" data-zetl-enroll>\n");
-    out.push_str("<h1>zetl — hardened-mode enrolment</h1>\n");
+    out.push_str("\" data-ztl-enroll>\n");
+    out.push_str("<h1>ztl — hardened-mode enrolment</h1>\n");
     out.push_str("<noscript>\n");
     out.push_str(
         "<p>This page needs JavaScript enabled to create a \
@@ -228,13 +228,13 @@ mod tests {
     #[test]
     fn prf_salt_matches_spec_formula() {
         // Spec spells the formula as
-        //     SHA-256("zetl/webauthn-prf/v1/" || origin || "/" ||
+        //     SHA-256("ztl/webauthn-prf/v1/" || origin || "/" ||
         //             cohort_id)
         // so we recompute the literal bytes here and compare.
         let origin = "https://example.org";
         let cohort = "engineering";
         let mut reference = Sha256::new();
-        reference.update(b"zetl/webauthn-prf/v1/");
+        reference.update(b"ztl/webauthn-prf/v1/");
         reference.update(origin.as_bytes());
         reference.update(b"/");
         reference.update(cohort.as_bytes());
@@ -249,7 +249,7 @@ mod tests {
         // Byte-stable surface — a change here is a wire-format
         // break that invalidates every prior hardened-cohort
         // enrolment.
-        assert_eq!(PRF_SALT_PREFIX, "zetl/webauthn-prf/v1/");
+        assert_eq!(PRF_SALT_PREFIX, "ztl/webauthn-prf/v1/");
     }
 
     #[test]
@@ -352,7 +352,7 @@ mod tests {
     #[test]
     fn enroll_html_mounts_to_pinned_id() {
         let html = render_enroll_html(SAMPLE_SRI);
-        let expected = format!("<main id=\"{ENROLL_MOUNT_ID}\" data-zetl-enroll>");
+        let expected = format!("<main id=\"{ENROLL_MOUNT_ID}\" data-ztl-enroll>");
         assert!(
             html.contains(&expected),
             "missing mount point #{ENROLL_MOUNT_ID}, got:\n{html}"

@@ -11,7 +11,7 @@
 //!
 //! ## Namespacing
 //!
-//! - `page.ext` is reserved for extensions; zetl does not write into
+//! - `page.ext` is reserved for extensions; ztl does not write into
 //!   it. Two hooks that share an `extension_id` coalesce into the same
 //!   bucket — pipeline-order wins and a warning is logged (REQ-3214
 //!   cross-extension coordination).
@@ -271,7 +271,7 @@ impl PageTemplateVars {
 
     /// Pop the accumulator's warnings. The build orchestrator drains
     /// these to emit the OBS-3209 log lines and increment the
-    /// `zetl_hook_template_vars_total{outcome}` counter.
+    /// `ztl_hook_template_vars_total{outcome}` counter.
     pub fn drain_warnings(&mut self) -> Vec<TemplateVarWarning> {
         std::mem::take(&mut self.warnings)
     }
@@ -380,7 +380,7 @@ impl VaultTemplateVars {
         self.inner.lock().unwrap().entries.get(hook_id).cloned()
     }
 
-    /// Reset the aggregator — called at the top of `zetl serve`
+    /// Reset the aggregator — called at the top of `ztl serve`
     /// renders so each build starts clean (CON-3219 parity).
     pub fn clear(&self) {
         self.inner.lock().unwrap().entries.clear();
@@ -723,7 +723,7 @@ mod tests {
         );
 
         let mut env = minijinja::Environment::new();
-        // Match the global autoescape rule zetl uses for .html templates.
+        // Match the global autoescape rule ztl uses for .html templates.
         env.set_auto_escape_callback(|_| minijinja::AutoEscape::Html);
         env.add_template("t.html", "{{ page.ext.xss.note }}")
             .unwrap();
@@ -747,7 +747,7 @@ mod tests {
 
     /// TEST-3214 row 6: `{{ page.ext.unknown.field }}` on an absent
     /// extension renders empty (minijinja's default) rather than
-    /// raising. zetl's render env uses `Chainable` undefined
+    /// raising. ztl's render env uses `Chainable` undefined
     /// behaviour so deeply-chained access on a missing extension
     /// keeps returning undefined.
     #[test]

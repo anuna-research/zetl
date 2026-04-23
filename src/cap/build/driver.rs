@@ -1,7 +1,7 @@
 //! Capability-URL build driver (SPEC-034 REQ-3401, REQ-3403, REQ-3418,
 //! OBS-3401).
 //!
-//! The driver is the top-level orchestrator for `zetl build
+//! The driver is the top-level orchestrator for `ztl build
 //! --capability`. Given a vault's recipients/grants/secret/signing-key
 //! plus a list of rendered pages, it produces the per-cohort ciphertext
 //! tree under `dist/c/<path-cap>/<slug>.html` and returns a
@@ -22,7 +22,7 @@
 //!   `expires` string against `build_epoch` and never parse a
 //!   timestamp.
 //! - [`ParsedSecret`] and [`VaultSigningKey`] come from the env-loaded
-//!   `ZETL_CAP_SECRET` / `ZETL_CAP_SIGNING_KEY` (the effectful shell
+//!   `ztl_CAP_SECRET` / `ztl_CAP_SIGNING_KEY` (the effectful shell
 //!   unwraps them upstream).
 //! - [`PageInput::html`] is the post-render HTML for a page; the
 //!   driver sanitises it via [`crate::cap::sanitiser::sanitise`]
@@ -97,7 +97,7 @@ use crate::cap::sign::{self, EnvelopeHeader, VaultSigningKey};
 
 /// Effective build configuration threaded into [`run_capability_build`].
 ///
-/// Each field has a documented default in the CLI (`zetl build
+/// Each field has a documented default in the CLI (`ztl build
 /// --capability`) but the library entry point forces every value to be
 /// supplied so unit tests and future callers can exercise the driver
 /// in isolation.
@@ -111,7 +111,7 @@ pub struct BuildConfig {
     /// Destination root. The driver writes envelopes under
     /// `<out_dir>/c/<path-cap>/<slug>.html`.
     pub out_dir: PathBuf,
-    /// Envelope `Zetl-Build-Epoch` header (CON-3404). RFC 3339 / `Z`.
+    /// Envelope `ztl-Build-Epoch` header (CON-3404). RFC 3339 / `Z`.
     pub build_epoch: String,
     /// Unix timestamp (seconds since epoch) used to filter expired
     /// grants out of the active-grants counter.
@@ -132,7 +132,7 @@ pub struct BuildConfig {
     /// SHA-384 SRI integrity token for `/assets/shim.js` (REQ-3421 /
     /// CON-3410). When `Some`, `run_capability_build` additionally
     /// emits the capability-mode HTML shell under
-    /// `<out_dir>/_zetl/capability-shell.html` with a
+    /// `<out_dir>/_ztl/capability-shell.html` with a
     /// `<meta http-equiv="Content-Security-Policy">` fallback and an
     /// SRI-tagged shim `<script>`. When `None`, shell emission is
     /// skipped — this keeps pre-shim-bundle dev builds unblocked and
@@ -260,12 +260,12 @@ impl BuildSummary {
     /// Render the OBS-3401 stderr line. The exact key order is pinned
     /// here so CI greps and operator dashboards can depend on it.
     ///
-    /// Shape: `[zetl] cap build: cohorts=N pages=M grants_active=K
+    /// Shape: `[ztl] cap build: cohorts=N pages=M grants_active=K
     /// emitted=E plaintext_bytes=P ciphertext_bytes=C envelope_bytes=B
     /// duration_ms=D`.
     pub fn stderr_line(&self) -> String {
         format!(
-            "[zetl] cap build: cohorts={} pages={} grants_active={} emitted={} \
+            "[ztl] cap build: cohorts={} pages={} grants_active={} emitted={} \
              plaintext_bytes={} ciphertext_bytes={} envelope_bytes={} duration_ms={}",
             self.cohorts,
             self.pages,
@@ -284,7 +284,7 @@ impl BuildSummary {
 /// driver so a build log can narrate which step tripped.
 #[derive(Debug, thiserror::Error)]
 pub enum BuildError {
-    #[error("cohort {cohort:?} has no `salt_stable` set — run `zetl cap invite --cohort {cohort} ...` to initialise it")]
+    #[error("cohort {cohort:?} has no `salt_stable` set — run `ztl cap invite --cohort {cohort} ...` to initialise it")]
     MissingCohortSaltStable { cohort: String },
     #[error("cohort {cohort:?} `salt_stable` is not valid base64url ({detail})")]
     CohortSaltBase64 { cohort: String, detail: String },
@@ -566,7 +566,7 @@ pub fn run_capability_build(
     let header_spec = HeaderSpec::from_cache_config(&config.access.cache);
     deploy_headers::write_deploy_recipes(&config.out_dir, &header_spec).map_err(|e| {
         BuildError::Io {
-            path: config.out_dir.join("_zetl").join("deploy"),
+            path: config.out_dir.join("_ztl").join("deploy"),
             source: e,
         }
     })?;
@@ -585,7 +585,7 @@ pub fn run_capability_build(
     };
     deploy_artifacts::write_deploy_artifacts(&config.out_dir, &artifacts_input).map_err(|e| {
         BuildError::Io {
-            path: config.out_dir.join("_zetl"),
+            path: config.out_dir.join("_ztl"),
             source: e,
         }
     })?;
@@ -599,7 +599,7 @@ pub fn run_capability_build(
         html_shell::write_shell(&config.out_dir, sri_hash).map_err(|source| BuildError::Io {
             path: config
                 .out_dir
-                .join("_zetl")
+                .join("_ztl")
                 .join(html_shell::CAPABILITY_SHELL_FILENAME),
             source,
         })?;
@@ -1165,7 +1165,7 @@ mod tests {
     }
 
     /// REQ-3421 / CON-3410: when `shim_integrity` is Some, the shell
-    /// lands under `_zetl/capability-shell.html` with the pinned CSP
+    /// lands under `_ztl/capability-shell.html` with the pinned CSP
     /// meta tag and the SRI-tagged shim script. When None, the shell
     /// file is absent (pre-bundle dev-build / unit-test path).
     #[test]
@@ -1192,7 +1192,7 @@ mod tests {
         .unwrap();
         let shell_path = tmp
             .path()
-            .join("_zetl")
+            .join("_ztl")
             .join(html_shell::CAPABILITY_SHELL_FILENAME);
         assert!(
             !shell_path.exists(),
@@ -1220,14 +1220,14 @@ mod tests {
         .unwrap();
         let shell = fs::read_to_string(
             tmp2.path()
-                .join("_zetl")
+                .join("_ztl")
                 .join(html_shell::CAPABILITY_SHELL_FILENAME),
         )
         .expect("shell must be written");
         assert!(shell.contains("<meta http-equiv=\"Content-Security-Policy\""));
         assert!(shell.contains(sri));
         assert!(shell.contains("crossorigin=\"anonymous\""));
-        assert!(shell.contains("<main data-zetl-capability></main>"));
+        assert!(shell.contains("<main data-ztl-capability></main>"));
     }
 
     #[test]

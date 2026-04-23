@@ -1,48 +1,48 @@
 ---
-title: "SPEC-013: zetl search — Tantivy Full-Text Search, Graph Scoping, and Browser Search"
+title: "SPEC-013: ztl search — Tantivy Full-Text Search, Graph Scoping, and Browser Search"
 version: 0.3.0
 status: draft
 audience: agent, human
 date: 2026-03-01
 ---
 
-# SPEC-013: zetl search — Tantivy Full-Text Search, Graph Scoping, and Browser Search
+# SPEC-013: ztl search — Tantivy Full-Text Search, Graph Scoping, and Browser Search
 
 ## Information Table
 
 | Field          | Value                                                          |
 | -------------- | -------------------------------------------------------------- |
 | Document ID    | SPEC-013                                                       |
-| Title          | zetl search — Tantivy Full-Text Search, Graph Scoping, and Browser Search |
+| Title          | ztl search — Tantivy Full-Text Search, Graph Scoping, and Browser Search |
 | Version        | 0.3.0                                                          |
 | Status         | Draft                                                          |
 | Author         | Agent (USDD Protocol v1.0.0)                                   |
 | Date           | 2026-03-01                                                     |
 | Audience       | Agent, Human                                                   |
 | Trace          | USDD Agent Protocol v1.0.0                                     |
-| Parent         | SPEC-002: zetl search — Full-Text Content Search               |
-| Related        | SPEC-001: zetl — Bi-directional Link Graph CLI, SPEC-012: Web Templates |
+| Parent         | SPEC-002: ztl search — Full-Text Content Search               |
+| Related        | SPEC-001: ztl — Bi-directional Link Graph CLI, SPEC-012: Web Templates |
 | Dependencies   | SPEC-001 graph engine, SPEC-002 search, SPEC-012 web, tantivy crate |
 
 ---
 
 ## 1. Overview
 
-SPEC-002 gave zetl full-text content search via brute-force grep. Results are unranked, searches have no awareness of the link graph, matches report line numbers without structural context, and search is CLI-only. This specification replaces the grep engine with Tantivy and extends search to the browser:
+SPEC-002 gave ztl full-text content search via brute-force grep. Results are unranked, searches have no awareness of the link graph, matches report line numbers without structural context, and search is CLI-only. This specification replaces the grep engine with Tantivy and extends search to the browser:
 
-1. **Tantivy-backed search.** All `zetl search` queries go through Tantivy's inverted index. Results are BM25-scored — a search for "algorithm" ranks the dedicated concept page above a journal entry that mentions it in passing. No `--rank` flag; scoring is always on.
+1. **Tantivy-backed search.** All `ztl search` queries go through Tantivy's inverted index. Results are BM25-scored — a search for "algorithm" ranks the dedicated concept page above a journal entry that mentions it in passing. No `--rank` flag; scoring is always on.
 
 2. **Graph-scoped search** (`--near <PAGE> --depth N`) restricts results to pages within N link-hops of a given page — a query natural for graph-structured knowledge but impossible with text search alone.
 
 3. **Heading-aware context** enriches every search result with the heading the match falls under — structural context that helps agents and humans decide whether to read the full page.
 
-4. **Browser search.** In `zetl serve`, a backend API endpoint (`GET /api/search`) queries the same Tantivy index. In `zetl build`, a compact search index is emitted as a static asset alongside a client-side JS BM25 scorer, upgrading the Cmd+K modal from fuzzy page-name matching to full-text ranked search.
+4. **Browser search.** In `ztl serve`, a backend API endpoint (`GET /api/search`) queries the same Tantivy index. In `ztl build`, a compact search index is emitted as a static asset alongside a client-side JS BM25 scorer, upgrading the Cmd+K modal from fuzzy page-name matching to full-text ranked search.
 
 ### 1.1 Motivation
 
-**Why Tantivy replaces grep.** The SPEC-002 search is a linear scan: read every file, match text, emit results. Adding scoring, tokenization, or term frequency to a grep loop is reimplementing a search engine badly. Tantivy is the standard Rust answer: BM25, tokenization, inverted index, sub-millisecond queries. For a tool that already maintains `.zetl/` caches with invalidation logic, adding a search index is a natural extension. Users who want unranked substring matching can use `grep` or `rg` directly on their vault folder.
+**Why Tantivy replaces grep.** The SPEC-002 search is a linear scan: read every file, match text, emit results. Adding scoring, tokenization, or term frequency to a grep loop is reimplementing a search engine badly. Tantivy is the standard Rust answer: BM25, tokenization, inverted index, sub-millisecond queries. For a tool that already maintains `.ztl/` caches with invalidation logic, adding a search index is a natural extension. Users who want unranked substring matching can use `grep` or `rg` directly on their vault folder.
 
-**Why graph scoping.** Agents frequently want to search within a topic cluster. An agent writing about "spaced repetition" wants mentions of "recall" in the connected neighbourhood, not in unrelated pages. Today this requires running `zetl links --depth 2`, extracting page names, and filtering manually. A `--near` flag expresses this intent directly.
+**Why graph scoping.** Agents frequently want to search within a topic cluster. An agent writing about "spaced repetition" wants mentions of "recall" in the connected neighbourhood, not in unrelated pages. Today this requires running `ztl links --depth 2`, extracting page names, and filtering manually. A `--near` flag expresses this intent directly.
 
 **Why heading context.** A match on line 45 of a 200-line document is ambiguous. The heading hierarchy answers whether the match is in the introduction, a subsection on caveats, or a footnote.
 
@@ -50,9 +50,9 @@ SPEC-002 gave zetl full-text content search via brute-force grep. Results are un
 
 ### 1.2 Design Principles
 
-1. **Single search engine.** Tantivy is the only search path. There is no grep fallback. `zetl search` always queries the Tantivy index and returns BM25-scored results.
-2. **Index builds alongside the graph.** `zetl index` builds both the link graph cache and the Tantivy search index. Both live in `.zetl/` and share the same invalidation semantics.
-3. **Lazy index construction.** If no index exists when `zetl search` is invoked, it is built on the fly. Users are not forced to run `zetl index` first.
+1. **Single search engine.** Tantivy is the only search path. There is no grep fallback. `ztl search` always queries the Tantivy index and returns BM25-scored results.
+2. **Index builds alongside the graph.** `ztl index` builds both the link graph cache and the Tantivy search index. Both live in `.ztl/` and share the same invalidation semantics.
+3. **Lazy index construction.** If no index exists when `ztl search` is invoked, it is built on the fly. Users are not forced to run `ztl index` first.
 4. **Composable flags.** `--near`, heading context, and all existing flags (`--case-sensitive`, `--path`, `--context`, `--limit`) compose orthogonally.
 5. **Always-on headings.** Heading context appears on every search result as a nullable field.
 6. **Parity across interfaces.** CLI, serve, and build produce the same search results for the same query. The ranking algorithm (BM25) is identical; only the transport differs.
@@ -61,8 +61,8 @@ SPEC-002 gave zetl full-text content search via brute-force grep. Results are un
 
 **In scope:**
 
-- Tantivy-backed search index built during `zetl index`
-- BM25 relevance scoring on all `zetl search` results
+- Tantivy-backed search index built during `ztl index`
+- BM25 relevance scoring on all `ztl search` results
 - `score` field on every search result
 - Index invalidation using existing file-mtime cache mechanism
 - Lazy index build when no index exists
@@ -70,9 +70,9 @@ SPEC-002 gave zetl full-text content search via brute-force grep. Results are un
 - `--near <PAGE> --depth N` graph-scoped search
 - Bidirectional BFS for neighbourhood computation
 - `heading` and `heading_level` fields on every search result
-- `GET /api/search` endpoint in `zetl serve`
+- `GET /api/search` endpoint in `ztl serve`
 - Cmd+K modal upgrade in serve mode to use full-text search
-- Static search index generation in `zetl build`
+- Static search index generation in `ztl build`
 - Client-side full-text search in built HTML
 
 **Out of scope:**
@@ -96,11 +96,11 @@ The existing user profiles from SPEC-001 (section 2) and SPEC-002 (section 2) ap
 ```
 Daily workflow (updated):
   1. Create/edit markdown files with [[wikilinks]]
-  2. Run `zetl index` to build the link graph and search index
-  3. Run `zetl search "recall"` to find relevant pages ranked
+  2. Run `ztl index` to build the link graph and search index
+  3. Run `ztl search "recall"` to find relevant pages ranked
      by BM25 — the dedicated concept page surfaces above
      journal entries that mention the term in passing
-  4. Run `zetl search "recall" --near "Spaced Repetition"` to
+  4. Run `ztl search "recall" --near "Spaced Repetition"` to
      narrow further: only results in the topic neighbourhood
   5. Examine the `heading` field to decide which sections to read
 ```
@@ -110,7 +110,7 @@ Daily workflow (updated):
 ```
 Daily workflow (updated):
   1. Write notes in Obsidian/Logseq/editor
-  2. Run `zetl serve` or open the built static site
+  2. Run `ztl serve` or open the built static site
   3. Press Cmd+K, type "emergence" — full-text search returns
      ranked results with heading context, right in the browser
   4. Navigate directly to the most relevant sections
@@ -126,7 +126,7 @@ Daily workflow (updated):
 REQ-013-001: Search Index Construction
 
 The system SHALL build a Tantivy full-text search index during
-`zetl index`, indexing the body text of every Markdown file in
+`ztl index`, indexing the body text of every Markdown file in
 the vault,
 FOR all user roles
 WITH each document in the index containing:
@@ -135,8 +135,8 @@ WITH each document in the index containing:
   - body: the body text content (same exclusion zones as
     SPEC-002: no frontmatter, code blocks, inline code, HTML
     comments)
-AND the index stored in `.zetl/search/`
-AND index construction respecting `.zetlignore` and default
+AND the index stored in `.ztl/search/`
+AND index construction respecting `.ztlignore` and default
 ignore patterns.
 
 Trace:
@@ -148,7 +148,7 @@ Trace:
 ```
 REQ-013-002: BM25-Scored Search Results
 
-The system SHALL return all `zetl search` results ordered by
+The system SHALL return all `ztl search` results ordered by
 descending BM25 relevance score,
 FOR all user roles
 WITH each result including a `score` field containing the BM25
@@ -179,12 +179,12 @@ Trace:
 ```
 REQ-013-004: Lazy Index Construction
 
-The system SHALL, when `zetl search` is invoked and no search
-index exists in `.zetl/search/`, build the index on the fly
+The system SHALL, when `ztl search` is invoked and no search
+index exists in `.ztl/search/`, build the index on the fly
 before executing the query,
 FOR all user roles
 WITH a diagnostic message to stderr: "Building search index
-(run `zetl index` to avoid this delay on future queries)"
+(run `ztl index` to avoid this delay on future queries)"
 AND the built index persisted for future queries.
 
 Trace:
@@ -215,7 +215,7 @@ Trace:
 REQ-013-006: Graph-Scoped Search via --near
 
 The system SHALL, when the `--near <PAGE>` flag is provided to
-`zetl search`, restrict search results to only those pages that
+`ztl search`, restrict search results to only those pages that
 are within `--depth N` link-hops of the specified anchor page,
 FOR all user roles
 WITH the anchor page itself included in the search scope
@@ -315,7 +315,7 @@ Trace:
 ```
 REQ-013-012: Serve Mode Search API Endpoint
 
-The system SHALL, when running `zetl serve`, expose a
+The system SHALL, when running `ztl serve`, expose a
 `GET /api/search` endpoint that queries the Tantivy index and
 returns JSON results,
 FOR all user roles
@@ -353,7 +353,7 @@ Trace:
 ```
 REQ-013-014: Static Search Index Generation
 
-The system SHALL, during `zetl build`, emit a compact search
+The system SHALL, during `ztl build`, emit a compact search
 index file (`search-index.json`) containing the data needed for
 client-side BM25 scoring,
 FOR all user roles
@@ -436,7 +436,7 @@ files WITH 95th percentile.
 ```
 NFR-013-006: Static Search Index Size
 
-The `search-index.json` emitted by `zetl build` SHALL be
+The `search-index.json` emitted by `ztl build` SHALL be
 ≤ 30% of the total vault text content UNDER 10,000 files.
 ```
 
@@ -478,7 +478,7 @@ Decision:
 Rationale:
   - Maintaining two search engines (grep + Tantivy) doubles
     the surface area for bugs and behavioral divergence.
-  - `zetl index` already exists for the link graph, so an
+  - `ztl index` already exists for the link graph, so an
     index is always available. The grep path's "zero setup"
     benefit is moot.
   - Users who want unranked substring matching can use `grep`
@@ -491,7 +491,7 @@ Consequences:
   + BM25 scoring on every query
   + Foundation for phrase, boolean, and fuzzy queries
   + Consistent behavior across CLI, serve, and build
-  - `zetl search` now requires an index (built lazily if absent)
+  - `ztl search` now requires an index (built lazily if absent)
   - Adds tantivy to the dependency tree (~50 transitive deps)
   - Adds ~5–8 MB to binary size
   - `--regex` flag from SPEC-002 is removed (Tantivy handles
@@ -554,7 +554,7 @@ ADR-013-004: Client-Side JS BM25 for Static Build
 Status: Proposed
 
 Context:
-  `zetl build` generates a static HTML site with no backend.
+  `ztl build` generates a static HTML site with no backend.
   Search must run entirely in the browser. Three approaches:
 
   Option A — Tantivy compiled to WASM: Identical engine to
@@ -585,7 +585,7 @@ Rationale:
   - Total added payload: ~2 KB JS + search index JSON.
 
 Consequences:
-  + Zero build-time dependencies beyond what zetl already has
+  + Zero build-time dependencies beyond what ztl already has
   + Works in all browsers without WASM support
   + Index format is implementation-agnostic — JS or WASM
   - Slightly different floating-point behavior vs Tantivy
@@ -647,15 +647,15 @@ Heading detection runs in all modes.
 
 **Integration points:**
 
-1. **Scanner → Tantivy (index build).** During `zetl index`, body text from each file is tokenized and added to the Tantivy index. Same `body_text_ranges()` exclusion logic.
+1. **Scanner → Tantivy (index build).** During `ztl index`, body text from each file is tokenized and added to the Tantivy index. Same `body_text_ranges()` exclusion logic.
 
-2. **Tantivy → Search (query).** `zetl search` queries Tantivy, which returns matching documents with BM25 scores. The search module re-reads each matched file to extract per-occurrence line/column/context/heading data.
+2. **Tantivy → Search (query).** `ztl search` queries Tantivy, which returns matching documents with BM25 scores. The search module re-reads each matched file to extract per-occurrence line/column/context/heading data.
 
 3. **Graph → Search (neighbourhood filter).** When `--near` is used, the graph engine computes the neighbourhood page set, used to filter Tantivy results.
 
 4. **Tantivy → Serve API.** The `/api/search` handler queries the same in-memory Tantivy index.
 
-5. **Tantivy → Build Index.** During `zetl build`, corpus statistics (TF, DF, document lengths) are extracted from the Tantivy index and serialized to `search-index.json`.
+5. **Tantivy → Build Index.** During `ztl build`, corpus statistics (TF, DF, document lengths) are extracted from the Tantivy index and serialized to `search-index.json`.
 
 ### 4.3 Tantivy Index Schema
 
@@ -672,7 +672,7 @@ Heading detection runs in all modes.
 
 **Tokenization:** Tantivy's default tokenizer (lowercase, split on whitespace and punctuation).
 
-**Index location:** `.zetl/search/`
+**Index location:** `.ztl/search/`
 
 ### 4.4 Query Flow
 
@@ -748,7 +748,7 @@ struct FileHeading {
 ### 4.8 Serve Search Architecture
 
 ```
-Browser                        Server (zetl serve)
+Browser                        Server (ztl serve)
   │                               │
   │ Cmd+K → type query            │
   │                               │
@@ -768,7 +768,7 @@ The Tantivy index is opened once at server startup and held in `WebState`. The `
 ### 4.9 Build Search Architecture
 
 ```
-zetl build                          Browser (static site)
+ztl build                          Browser (static site)
   │                                     │
   │  1. Build Tantivy index             │
   │  2. Extract corpus stats            │
@@ -822,7 +822,7 @@ where:
 ```
 CON-013-001: search (Tantivy-backed, with --near and heading context)
 
-zetl search <QUERY> [OPTIONS]
+ztl search <QUERY> [OPTIONS]
 
 Changed behavior (replaces SPEC-002 CON-008):
   All queries go through the Tantivy index. Results are ordered
@@ -909,11 +909,11 @@ Verified by:
 ```
 CON-013-002: index (extended with search index)
 
-zetl index [OPTIONS]
+ztl index [OPTIONS]
 
 Extended behavior (adds to CON-002):
   - After building the link graph, also builds the Tantivy
-    full-text search index in `.zetl/search/`.
+    full-text search index in `.ztl/search/`.
   - Only body text is indexed (same exclusions as SPEC-002).
   - Incremental: only re-indexes changed files.
   - Reports index stats alongside graph stats.
@@ -969,7 +969,7 @@ Verified by: TEST-013-012
 ```
 CON-013-004: Build Search Assets
 
-zetl build [--output <DIR>]
+ztl build [--output <DIR>]
 
 Extended behavior (adds to existing build contract):
   - Emits `search-index.json` in the output directory root.
@@ -1003,23 +1003,23 @@ Verified by: TEST-013-014, TEST-013-015
 ```
 TEST-013-001: Search Index Construction
 
-Scenario: Index built during zetl index
+Scenario: Index built during ztl index
 Given: A vault with 5 Markdown files
-When: `zetl index` is run
+When: `ztl index` is run
 Then:
-  - `.zetl/search/` directory is created
+  - `.ztl/search/` directory is created
   - JSON output includes search_index_docs: 5
 
 Scenario: Index excludes non-body content
 Given: A file with frontmatter "secret", code block "hidden",
        and body text "visible"
-When: `zetl search "secret"` is run
+When: `ztl search "secret"` is run
 Then: No results
-When: `zetl search "visible"` is run
+When: `ztl search "visible"` is run
 Then: Returns a result with a BM25 score
 
 Scenario: Index respects ignore patterns
-Given: A vault with `.zetlignore` containing "drafts/"
+Given: A vault with `.ztlignore` containing "drafts/"
 When: Index is built
 Then: Files under drafts/ are not indexed
 
@@ -1032,14 +1032,14 @@ TEST-013-002: BM25-Scored Results
 Scenario: Results ordered by relevance
 Given: "Algorithm.md" (200 words, "algorithm" 15×) and
        "Journal.md" (5000 words, "algorithm" 1×)
-When: `zetl search "algorithm"` is run
+When: `ztl search "algorithm"` is run
 Then:
   - Algorithm.md results appear before Journal.md
   - Each result has a `score` field
   - Algorithm.md score > Journal.md score
 
 Scenario: Score always present
-When: `zetl search "test"` is run
+When: `ztl search "test"` is run
 Then: Every result has a `score` field as a number
 
 Verifies: REQ-013-002
@@ -1050,17 +1050,17 @@ TEST-013-003: Search Index Invalidation
 
 Scenario: Modified file is re-indexed
 Given: A vault indexed once, then one file modified to add "newterm"
-When: `zetl index` is run again
-Then: `zetl search "newterm"` finds the modified file
+When: `ztl index` is run again
+Then: `ztl search "newterm"` finds the modified file
 
 Scenario: Deleted file is removed
 Given: A vault indexed once, then one file deleted
-When: `zetl index` is run again
+When: `ztl index` is run again
 Then: Deleted file does not appear in results
 
 Scenario: --no-cache forces full rebuild
 Given: A cached vault with no changes
-When: `zetl index --no-cache` is run
+When: `ztl index --no-cache` is run
 Then: search_index_docs matches file count
 
 Verifies: REQ-013-003
@@ -1069,13 +1069,13 @@ Verifies: REQ-013-003
 ```
 TEST-013-004: Lazy Index Construction
 
-Scenario: Search without prior zetl index
-Given: No `.zetl/search/` directory
-When: `zetl search "test"` is run
+Scenario: Search without prior ztl index
+Given: No `.ztl/search/` directory
+When: `ztl search "test"` is run
 Then:
   - Stderr includes index-building message
   - Results are returned with BM25 scores
-  - `.zetl/search/` now exists
+  - `.ztl/search/` now exists
 
 Verifies: REQ-013-004
 ```
@@ -1085,7 +1085,7 @@ TEST-013-005: Line-Level Results
 
 Scenario: Per-occurrence positions
 Given: A file where "algorithm" appears on lines 5, 12, 30
-When: `zetl search "algorithm"` is run
+When: `ztl search "algorithm"` is run
 Then:
   - 3 results for that file, each with correct line/column
   - All share the same BM25 score
@@ -1100,16 +1100,16 @@ TEST-013-006: Graph-Scoped Search
 
 Scenario: --near restricts results
 Given: A→B, A→C, B→D, E isolated. All contain "test"
-When: `zetl search "test" --near A` (depth 1)
+When: `ztl search "test" --near A` (depth 1)
 Then: Results include A, B, C. Not D, E.
 
 Scenario: --near depth 2
-When: `zetl search "test" --near A --depth 2`
+When: `ztl search "test" --near A --depth 2`
 Then: Results include A, B, C, D. Not E.
 
 Scenario: Backlinks included (bidirectional)
 Given: X→Y. Both contain "hello"
-When: `zetl search "hello" --near Y`
+When: `ztl search "hello" --near Y`
 Then: Results include X and Y.
 
 Verifies: REQ-013-006
@@ -1119,11 +1119,11 @@ Verifies: REQ-013-006
 TEST-013-007: Neighbourhood Depth Control
 
 Scenario: --depth without --near rejected
-When: `zetl search "test" --depth 2`
+When: `ztl search "test" --depth 2`
 Then: Exit code 2
 
 Scenario: --depth 0 rejected
-When: `zetl search "test" --near A --depth 0`
+When: `ztl search "test" --near A --depth 0`
 Then: Exit code 2
 
 Verifies: REQ-013-007
@@ -1134,11 +1134,11 @@ TEST-013-008: Anchor Page Resolution
 
 Scenario: Case-insensitive
 Given: "Spaced Repetition.md" exists
-When: `zetl search "test" --near "spaced repetition"`
+When: `ztl search "test" --near "spaced repetition"`
 Then: Resolves to "Spaced Repetition"
 
 Scenario: Unresolvable page
-When: `zetl search "test" --near "Nonexistent"`
+When: `ztl search "test" --near "Nonexistent"`
 Then: Exit code 2, suggests similar names
 
 Verifies: REQ-013-008
@@ -1149,11 +1149,11 @@ TEST-013-009: Neighbourhood Metadata
 
 Scenario: Metadata present with --near
 Given: A has 4 neighbours
-When: `zetl search "test" --near A`
+When: `ztl search "test" --near A`
 Then: near: "A", depth: 1, neighbourhood_size: 5
 
 Scenario: Metadata absent without --near
-When: `zetl search "test"`
+When: `ztl search "test"`
 Then: No near/depth/neighbourhood_size fields
 
 Verifies: REQ-013-009
@@ -1166,17 +1166,17 @@ TEST-013-010: Heading-Aware Results
 
 Scenario: Match under a heading
 Given: "## Details\nThe algorithm works..."
-When: `zetl search "algorithm"`
+When: `ztl search "algorithm"`
 Then: heading: "Details", heading_level: 2
 
 Scenario: Match before any heading
 Given: "Preamble target.\n# First"
-When: `zetl search "target"`
+When: `ztl search "target"`
 Then: heading: null
 
 Scenario: Nearest heading wins
 Given: "# Top\n## Sub\n### Deep\ntarget"
-When: `zetl search "target"`
+When: `ztl search "target"`
 Then: heading: "Deep", heading_level: 3
 
 Verifies: REQ-013-010
@@ -1199,7 +1199,7 @@ Verifies: REQ-013-011
 TEST-013-012: Serve Search API
 
 Scenario: Basic query
-Given: `zetl serve` running with indexed vault
+Given: `ztl serve` running with indexed vault
 When: GET /api/search?q=algorithm
 Then:
   - 200 OK with JSON body
@@ -1221,7 +1221,7 @@ Verifies: REQ-013-012
 TEST-013-013: Serve Cmd+K Full-Text Search
 
 Scenario: Full-text search in modal
-Given: `zetl serve` running
+Given: `ztl serve` running
 When: User presses Cmd+K and types "algorithm"
 Then:
   - Results show page name, heading, context, score
@@ -1236,7 +1236,7 @@ TEST-013-014: Static Search Index Generation
 
 Scenario: search-index.json emitted
 Given: A vault with 10 pages
-When: `zetl build --output dist/`
+When: `ztl build --output dist/`
 Then:
   - dist/search-index.json exists
   - Contains avgDl, docs (10 entries), df
@@ -1244,7 +1244,7 @@ Then:
 
 Scenario: Index content correctness
 Given: "Algorithm.md" with body text "the algorithm is fast"
-When: `zetl build`
+When: `ztl build`
 Then:
   - search-index.json doc for "Algorithm" has
     tf with algorithm and fast entries, dl > 0
@@ -1273,11 +1273,11 @@ TEST-013-016: Flags Compose
 
 Scenario: --near with --path
 Given: Pages in A's neighbourhood, some in "concepts/"
-When: `zetl search "idea" --near A --path "concepts/**"`
+When: `ztl search "idea" --near A --path "concepts/**"`
 Then: Only results from concepts/ in A's neighbourhood
 
 Scenario: --near with --context
-When: `zetl search "keyword" --near A --context 30`
+When: `ztl search "keyword" --near A --context 30`
 Then: Results scoped, with context snippets and headings
 
 Verifies: REQ-013-002, REQ-013-006, REQ-013-010
@@ -1290,14 +1290,14 @@ Verifies: REQ-013-002, REQ-013-006, REQ-013-010
 ```
 OBS-013-001: Index Build Metrics
 
-When --verbose, `zetl index` SHALL emit to stderr:
+When --verbose, `ztl index` SHALL emit to stderr:
   - Documents indexed, index size, index build time (ms)
 ```
 
 ```
 OBS-013-002: Search Metrics
 
-When --verbose, `zetl search` SHALL emit to stderr:
+When --verbose, `ztl search` SHALL emit to stderr:
   - Whether index loaded from cache or built on the fly
   - Tantivy query time (ms)
   - Documents matched by Tantivy (before line-level expansion)
@@ -1345,15 +1345,15 @@ When --verbose, emit to stderr:
 
 ### 9.1 Impact on SPEC-002
 
-SPEC-002's grep-based search is replaced entirely by Tantivy. ADR-002 ("Search Without a Pre-Built Index") is superseded — `zetl search` now always uses an index (built lazily if absent). The `--regex` and `--all` flags from CON-008 are removed. The `SearchMatch` struct gains `heading`, `heading_level`, and `score` fields. The `SearchOutput` envelope gains optional neighbourhood metadata. The `regex` field is removed from the output envelope.
+SPEC-002's grep-based search is replaced entirely by Tantivy. ADR-002 ("Search Without a Pre-Built Index") is superseded — `ztl search` now always uses an index (built lazily if absent). The `--regex` and `--all` flags from CON-008 are removed. The `SearchMatch` struct gains `heading`, `heading_level`, and `score` fields. The `SearchOutput` envelope gains optional neighbourhood metadata. The `regex` field is removed from the output envelope.
 
 ### 9.2 Impact on SPEC-001
 
-`zetl index` (CON-002) is extended to build the search index. The graph engine gains a `neighbourhood()` method.
+`ztl index` (CON-002) is extended to build the search index. The graph engine gains a `neighbourhood()` method.
 
 ### 9.3 Impact on SPEC-012
 
-The `zetl build` output gains a `search-index.json` file. The HTML layout gains an embedded BM25 scorer. The Cmd+K modal is upgraded from fuzzy page-name matching to full-text ranked search.
+The `ztl build` output gains a `search-index.json` file. The HTML layout gains an embedded BM25 scorer. The Cmd+K modal is upgraded from fuzzy page-name matching to full-text ranked search.
 
 ### 9.4 Impact on NFR-004 (Binary Size)
 
@@ -1361,7 +1361,7 @@ Tantivy adds ~5–8 MB. The effective binary size budget is relaxed per project 
 
 ### 9.5 Impact on Serve Mode
 
-`zetl serve` gains a `/api/search` route. The Cmd+K modal is upgraded to query the API. `WebState` gains a Tantivy index handle.
+`ztl serve` gains a `/api/search` route. The Cmd+K modal is upgraded to query the API. `WebState` gains a Tantivy index handle.
 
 ---
 

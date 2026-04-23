@@ -1,17 +1,17 @@
 ;; ════════════════════════════════════════════════════════════════════════════
-;; IMPL-014: zetl theme — Theme Distribution and Installation
+;; IMPL-014: ztl theme — Theme Distribution and Installation
 ;; Implementation plan for SPEC-014
 ;; ════════════════════════════════════════════════════════════════════════════
 
 (meta plan
   (id "IMPL-014")
-  (title "zetl theme — Theme Distribution and Installation")
+  (title "ztl theme — Theme Distribution and Installation")
   (version "0.1.0")
   (status "active")
   (created "2026-03-02")
   (author "agent:claude")
   (spec "SPEC-014")
-  (description "Implement theme distribution for zetl. Phase 1: extract built-in templates into themes/default/, add a minimal bundled theme, embed themes at compile time via include_dir or build.rs, refactor engine.rs for three-tier resolution, add `zetl theme list` subcommand. Phase 2: implement `zetl theme install` with git clone, source format parsing (GitHub shorthand, URLs, #ref, --path), name resolution, provenance tracking, and `zetl theme remove`. Phase 3: implement `zetl theme export`, add a docs bundled theme, polish error messages and verbose logging. Covers REQ-014-001 through REQ-014-016, ADR-014-001 through ADR-014-003."))
+  (description "Implement theme distribution for ztl. Phase 1: extract built-in templates into themes/default/, add a minimal bundled theme, embed themes at compile time via include_dir or build.rs, refactor engine.rs for three-tier resolution, add `ztl theme list` subcommand. Phase 2: implement `ztl theme install` with git clone, source format parsing (GitHub shorthand, URLs, #ref, --path), name resolution, provenance tracking, and `ztl theme remove`. Phase 3: implement `ztl theme export`, add a docs bundled theme, polish error messages and verbose logging. Covers REQ-014-001 through REQ-014-016, ADR-014-001 through ADR-014-003."))
 
 ;; ════════════════════════════════════════════════════════════════════════════
 ;; Agents
@@ -25,8 +25,8 @@
 ;;
 ;; Goal: Move built-in templates from src/web/templates/ into themes/default/,
 ;; create a minimal bundled theme, embed all bundled themes at compile time,
-;; refactor the template engine for three-tier resolution, and add `zetl theme
-;; list`. After this phase, `zetl serve --theme minimal` works with a new
+;; refactor the template engine for three-tier resolution, and add `ztl theme
+;; list`. After this phase, `ztl serve --theme minimal` works with a new
 ;; bundled theme and users can see all available themes.
 ;; ════════════════════════════════════════════════════════════════════════════
 
@@ -42,8 +42,8 @@
 [theme]
 name = \"default\"
 version = \"0.9.0\"
-description = \"The default zetl theme\"
-author = \"zetl contributors\"
+description = \"The default ztl theme\"
+author = \"ztl contributors\"
 license = \"AGPL-3.0\"
 
 [theme.templates]
@@ -84,7 +84,7 @@ Add theme.toml:
 name = \"minimal\"
 version = \"0.9.0\"
 description = \"A minimal, typography-focused theme with no CDN dependencies\"
-author = \"zetl contributors\"
+author = \"ztl contributors\"
 license = \"AGPL-3.0\"
 
 [theme.templates]
@@ -152,7 +152,7 @@ REQ-014-004, ADR-014-002.")
 (meta task-three-tier-resolution
   (description "Refactor the template loader in engine.rs build_env() to implement three-tier resolution per REQ-014-004:
 
-1. Tier 1 (User Theme): .zetl/themes/<active-theme>/<template>.html on disk
+1. Tier 1 (User Theme): .ztl/themes/<active-theme>/<template>.html on disk
 2. Tier 2 (Bundled Theme): bundled_template(active_theme, template) from compile-time embed
 3. Tier 3 (Default Fallback): bundled_template(\"default\", template) from compile-time embed
 
@@ -165,15 +165,15 @@ When --theme default: Tier 1 is skipped (existing behaviour), Tier 2 = Tier 3.
 When --theme minimal: Tier 1 checks disk, Tier 2 checks bundled minimal/, Tier 3 falls back to bundled default/.
 When --theme custom-user-theme: Tier 1 checks disk, Tier 2 has no bundled match (returns None), Tier 3 falls back to default.
 
-Update validate_theme() in main.rs: currently it requires .zetl/themes/<name>/ to exist for non-default themes. It must now also accept names that match a bundled theme (bundled_theme_names().contains(theme)). A theme is valid if it exists on disk OR is bundled. Both can be true (installed shadows bundled).
+Update validate_theme() in main.rs: currently it requires .ztl/themes/<name>/ to exist for non-default themes. It must now also accept names that match a bundled theme (bundled_theme_names().contains(theme)). A theme is valid if it exists on disk OR is bundled. Both can be true (installed shadows bundled).
 
 Update verbose logging to show which tier resolved each template (OBS-014-002):
-  theme: base.html  <- .zetl/themes/garden/base.html (disk)
+  theme: base.html  <- .ztl/themes/garden/base.html (disk)
   theme: index.html <- bundled:minimal/index.html
   theme: page.html  <- bundled:default/page.html (fallback)
 
 REQ-014-004, OBS-014-002.")
-  (acceptance "Three-tier resolution works: disk > bundled active > bundled default; validate_theme accepts bundled theme names without disk presence; --theme minimal works with only bundled templates (no .zetl/themes/minimal/ on disk); verbose output shows resolution tier per template; existing tests pass; new tests cover all three tiers"))
+  (acceptance "Three-tier resolution works: disk > bundled active > bundled default; validate_theme accepts bundled theme names without disk presence; --theme minimal works with only bundled templates (no .ztl/themes/minimal/ on disk); verbose output shows resolution tier per template; existing tests pass; new tests cover all three tiers"))
 
 (normally r-ready-three-tier-resolution
   (and task-three-tier-resolution completed-compile-time-embedding)
@@ -209,7 +209,7 @@ pub struct ThemeInfo {
     #[serde(default)]
     pub homepage: Option<String>,
     #[serde(default)]
-    pub min_zetl_version: Option<String>,
+    pub min_ztl_version: Option<String>,
     #[serde(default)]
     pub templates: Option<ThemeTemplates>,
 }
@@ -233,7 +233,7 @@ Public API:
   - validate_theme_name(name: &str) -> Result<()>
     Validates the name pattern. Returns descriptive error on failure.
 
-Also parse .zetl-source.toml (provenance) with a separate struct — needed for theme list in the next task:
+Also parse .ztl-source.toml (provenance) with a separate struct — needed for theme list in the next task:
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -250,7 +250,7 @@ pub struct ThemeSourceInfo {
     #[serde(default)]
     pub path: Option<String>,
     pub installed_at: String,
-    pub zetl_version: String,
+    pub ztl_version: String,
 }
 ```
 
@@ -265,12 +265,12 @@ REQ-014-001, REQ-014-002, CON-014-001.")
   (and ready-theme-toml-parsing agent-claude-available)
   assign-to-theme-toml-parsing-claude)
 
-;; ── Task: zetl theme list ───────────────────────────────────────────────
+;; ── Task: ztl theme list ───────────────────────────────────────────────
 
 (given task-theme-list)
 
 (meta task-theme-list
-  (description "Implement the `zetl theme list` subcommand per REQ-014-012, CON-014-003.
+  (description "Implement the `ztl theme list` subcommand per REQ-014-012, CON-014-003.
 
 Add to cli.rs a Theme subcommand group:
 ```rust
@@ -291,15 +291,15 @@ pub enum ThemeCommand {
 
 Implementation in main.rs (new fn cmd_theme_list):
 1. Collect bundled themes from bundled_theme_names(), load manifests via load_bundled_manifest().
-2. Scan .zetl/themes/ for installed themes, load manifests via load_theme_manifest().
+2. Scan .ztl/themes/ for installed themes, load manifests via load_theme_manifest().
 3. Determine source for each: 'bundled', 'installed', or 'installed (shadows bundled)'.
-4. For installed themes with .zetl-source.toml, include origin URL.
+4. For installed themes with .ztl-source.toml, include origin URL.
 5. Output JSON by default; table with -f table.
 
 JSON schema per CON-014-003. Table columns: Name, Source, Version, Description.
 
 REQ-014-005, REQ-014-012, CON-014-003.")
-  (acceptance "zetl theme list outputs JSON with correct schema; bundled themes shown even without .zetl/themes/; installed themes shown with metadata from theme.toml; shadowed themes labelled correctly; -f table produces readable table; origin URL shown for git-installed themes"))
+  (acceptance "ztl theme list outputs JSON with correct schema; bundled themes shown even without .ztl/themes/; installed themes shown with metadata from theme.toml; shadowed themes labelled correctly; -f table produces readable table; origin URL shown for git-installed themes"))
 
 (normally r-ready-theme-list
   (and task-theme-list completed-theme-toml-parsing completed-three-tier-resolution)
@@ -317,12 +317,12 @@ REQ-014-005, REQ-014-012, CON-014-003.")
   (description "End-to-end verification of Phase 1:
 
 1. src/web/templates/ no longer exists — templates sourced from themes/default/.
-2. zetl serve (no --theme) renders identically to before (no visual regression).
-3. zetl serve --theme minimal renders with the minimal theme (no CDN, system fonts).
-4. zetl build --theme minimal produces valid static site.
-5. zetl theme list shows both bundled themes with correct metadata.
-6. Create .zetl/themes/custom/ with a page.html override. zetl serve --theme custom uses disk template for page.html, falls back to bundled default for others (three-tier).
-7. Create .zetl/themes/minimal/ with a page.html override. zetl serve --theme minimal uses disk page.html (Tier 1), bundled minimal base.html (Tier 2). zetl theme list shows 'installed (shadows bundled)'.
+2. ztl serve (no --theme) renders identically to before (no visual regression).
+3. ztl serve --theme minimal renders with the minimal theme (no CDN, system fonts).
+4. ztl build --theme minimal produces valid static site.
+5. ztl theme list shows both bundled themes with correct metadata.
+6. Create .ztl/themes/custom/ with a page.html override. ztl serve --theme custom uses disk template for page.html, falls back to bundled default for others (three-tier).
+7. Create .ztl/themes/minimal/ with a page.html override. ztl serve --theme minimal uses disk page.html (Tier 1), bundled minimal base.html (Tier 2). ztl theme list shows 'installed (shadows bundled)'.
 8. --verbose shows resolution tier per template.
 9. Binary size increase from bundled themes is < 100 KB (NFR-014-002).
 10. cargo test passes.
@@ -342,8 +342,8 @@ TEST-014-001 through TEST-014-005.")
 ;; Phase 2 — Git-Based Install and Remove
 ;; ════════════════════════════════════════════════════════════════════════════
 ;;
-;; Goal: Implement zetl theme install (git clone, source parsing, name
-;; resolution, provenance) and zetl theme remove. After this phase, users
+;; Goal: Implement ztl theme install (git clone, source parsing, name
+;; resolution, provenance) and ztl theme remove. After this phase, users
 ;; can install themes from any git repository.
 ;; ════════════════════════════════════════════════════════════════════════════
 
@@ -354,7 +354,7 @@ TEST-014-001 through TEST-014-005.")
 (meta task-source-parsing
   (description "Implement git source format parsing in src/theme.rs per REQ-014-006, REQ-014-007.
 
-Create a ThemeSource struct (not to be confused with .zetl-source.toml — this is the parsed install source):
+Create a ThemeSource struct (not to be confused with .ztl-source.toml — this is the parsed install source):
 
 ```rust
 pub struct ThemeInstallSource {
@@ -448,9 +448,9 @@ REQ-014-006, REQ-014-008, REQ-014-015, ADR-014-003.")
 (given task-provenance)
 
 (meta task-provenance
-  (description "Implement .zetl-source.toml provenance writing per REQ-014-011.
+  (description "Implement .ztl-source.toml provenance writing per REQ-014-011.
 
-After clone_theme() succeeds and files are copied to .zetl/themes/<name>/, write .zetl-source.toml:
+After clone_theme() succeeds and files are copied to .ztl/themes/<name>/, write .ztl-source.toml:
 
 ```toml
 [source]
@@ -459,7 +459,7 @@ ref = \"v2.0.0\"
 commit = \"abc1234def5678...\"
 path = \"themes/garden\"
 installed_at = \"2026-03-02T14:30:00Z\"
-zetl_version = \"0.9.0\"
+ztl_version = \"0.9.0\"
 ```
 
 Public API:
@@ -467,10 +467,10 @@ Public API:
   - read_provenance(theme_dir: &Path) -> Option<ThemeSource>
     (Uses the ThemeSource struct from task-theme-toml-parsing.)
 
-The installed_at timestamp uses UTC ISO 8601. zetl_version is read from env!(\"CARGO_PKG_VERSION\").
+The installed_at timestamp uses UTC ISO 8601. ztl_version is read from env!(\"CARGO_PKG_VERSION\").
 
 REQ-014-011.")
-  (acceptance ".zetl-source.toml written after install with all fields; read_provenance parses it back correctly; missing file returns None; timestamp is valid ISO 8601 UTC"))
+  (acceptance ".ztl-source.toml written after install with all fields; read_provenance parses it back correctly; missing file returns None; timestamp is valid ISO 8601 UTC"))
 
 (normally r-ready-provenance
   (and task-provenance completed-git-clone)
@@ -480,12 +480,12 @@ REQ-014-011.")
   (and ready-provenance agent-claude-available)
   assign-to-provenance-claude)
 
-;; ── Task: zetl theme install command ────────────────────────────────────
+;; ── Task: ztl theme install command ────────────────────────────────────
 
 (given task-theme-install-cmd)
 
 (meta task-theme-install-cmd
-  (description "Wire up the `zetl theme install` CLI subcommand per CON-014-002.
+  (description "Wire up the `ztl theme install` CLI subcommand per CON-014-002.
 
 Add to ThemeCommand enum:
 ```rust
@@ -507,20 +507,20 @@ Install {
 
 Implementation in cmd_theme_install():
 1. Parse source with parse_install_source().
-2. Check if target name already exists in .zetl/themes/. If so, require --force or error (REQ-014-010).
+2. Check if target name already exists in .ztl/themes/. If so, require --force or error (REQ-014-010).
 3. Clone with clone_theme().
 4. Read theme.toml from cloned files if present; validate manifest (REQ-014-002).
-5. If min_zetl_version is present and current version is older, print warning.
+5. If min_ztl_version is present and current version is older, print warning.
 6. Resolve final name with resolve_theme_name().
 7. If --force and target exists, delete it.
-8. Move/copy files to .zetl/themes/<name>/.
+8. Move/copy files to .ztl/themes/<name>/.
 9. Write provenance with write_provenance().
 10. Output JSON: { installed: { name, version, source, ref, path } }.
 
 Path traversal checks per REQ-014-016: validate name and --path before any filesystem operations.
 
 REQ-014-006 through REQ-014-011, REQ-014-015, REQ-014-016, CON-014-002.")
-  (acceptance "zetl theme install user/repo clones and installs; --force overwrites; --name overrides name; --path extracts subdirectory; JSON output on success; clear errors for: network failure, repo not found, name collision without --force, invalid name, path traversal attempts; provenance file written; min_zetl_version warning shown when applicable"))
+  (acceptance "ztl theme install user/repo clones and installs; --force overwrites; --name overrides name; --path extracts subdirectory; JSON output on success; clear errors for: network failure, repo not found, name collision without --force, invalid name, path traversal attempts; provenance file written; min_ztl_version warning shown when applicable"))
 
 (normally r-ready-theme-install-cmd
   (and task-theme-install-cmd completed-provenance completed-verify-phase1)
@@ -530,12 +530,12 @@ REQ-014-006 through REQ-014-011, REQ-014-015, REQ-014-016, CON-014-002.")
   (and ready-theme-install-cmd agent-claude-available)
   assign-to-theme-install-cmd-claude)
 
-;; ── Task: zetl theme remove command ─────────────────────────────────────
+;; ── Task: ztl theme remove command ─────────────────────────────────────
 
 (given task-theme-remove-cmd)
 
 (meta task-theme-remove-cmd
-  (description "Implement `zetl theme remove <name>` per REQ-014-013.
+  (description "Implement `ztl theme remove <name>` per REQ-014-013.
 
 Add to ThemeCommand enum:
 ```rust
@@ -548,13 +548,13 @@ Remove {
 
 Implementation:
 1. Validate the name (no path traversal).
-2. Check if name is a bundled-only theme (no .zetl/themes/<name>/ on disk). If so, error: 'cannot remove bundled theme'.
+2. Check if name is a bundled-only theme (no .ztl/themes/<name>/ on disk). If so, error: 'cannot remove bundled theme'.
 3. If theme shadows a bundled theme, warn: 'removing installed version; bundled version will become active'.
-4. Delete .zetl/themes/<name>/ recursively.
+4. Delete .ztl/themes/<name>/ recursively.
 5. Output JSON: { removed: { name, was_shadowing: bool } }.
 
 REQ-014-013.")
-  (acceptance "zetl theme remove deletes installed theme; refuses to remove bundled-only themes; warns when removing shadow of bundled theme; JSON output; path traversal rejected"))
+  (acceptance "ztl theme remove deletes installed theme; refuses to remove bundled-only themes; warns when removing shadow of bundled theme; JSON output; path traversal rejected"))
 
 (normally r-ready-theme-remove-cmd
   (and task-theme-remove-cmd completed-verify-phase1)
@@ -571,16 +571,16 @@ REQ-014-013.")
 (meta task-verify-phase2
   (description "End-to-end verification of Phase 2:
 
-1. zetl theme install <github-shorthand> installs theme from GitHub.
-2. zetl theme install <url>#<tag> installs at specific version.
-3. zetl theme install <url> --path <subdir> extracts correct subdirectory.
-4. zetl theme install with --name overrides theme name.
+1. ztl theme install <github-shorthand> installs theme from GitHub.
+2. ztl theme install <url>#<tag> installs at specific version.
+3. ztl theme install <url> --path <subdir> extracts correct subdirectory.
+4. ztl theme install with --name overrides theme name.
 5. Duplicate install without --force fails; with --force succeeds.
-6. .zetl-source.toml written with correct provenance.
-7. zetl theme list shows the installed theme with origin.
-8. zetl serve --theme <installed> renders correctly.
-9. zetl theme remove <installed> deletes theme.
-10. zetl theme remove default fails (bundled).
+6. .ztl-source.toml written with correct provenance.
+7. ztl theme list shows the installed theme with origin.
+8. ztl serve --theme <installed> renders correctly.
+9. ztl theme remove <installed> deletes theme.
+10. ztl theme remove default fails (bundled).
 11. Invalid source strings produce clear errors.
 12. Path traversal attempts rejected.
 13. Missing git on PATH produces helpful error.
@@ -601,20 +601,20 @@ TEST-014-006 through TEST-014-013, TEST-014-015, TEST-014-016.")
 ;; Phase 3 — Export and Polish
 ;; ════════════════════════════════════════════════════════════════════════════
 ;;
-;; Goal: Add zetl theme export, create a docs bundled theme, polish error
+;; Goal: Add ztl theme export, create a docs bundled theme, polish error
 ;; messages and verbose logging for all theme operations.
 ;; ════════════════════════════════════════════════════════════════════════════
 
-;; ── Task: zetl theme export command ─────────────────────────────────────
+;; ── Task: ztl theme export command ─────────────────────────────────────
 
 (given task-theme-export-cmd)
 
 (meta task-theme-export-cmd
-  (description "Implement `zetl theme export <name>` per REQ-014-014.
+  (description "Implement `ztl theme export <name>` per REQ-014-014.
 
 Add to ThemeCommand enum:
 ```rust
-/// Export a bundled theme to .zetl/themes/ for customisation
+/// Export a bundled theme to .ztl/themes/ for customisation
 Export {
     /// Bundled theme name to export
     name: String,
@@ -626,15 +626,15 @@ Export {
 
 Implementation:
 1. Check name is a bundled theme (bundled_theme_names().contains(name)). If not, error: 'only bundled themes can be exported; <name> is not a bundled theme'.
-2. If .zetl/themes/<name>/ exists and no --force, error with hint.
-3. Create .zetl/themes/<name>/.
+2. If .ztl/themes/<name>/ exists and no --force, error with hint.
+3. Create .ztl/themes/<name>/.
 4. Write all files from the embedded theme directory to disk.
 5. Output JSON: { exported: { name, path, files_written: usize } }.
 
 After export, the user's copy takes precedence (Tier 1 > Tier 2), so they can immediately edit and see changes in serve mode.
 
 REQ-014-014.")
-  (acceptance "zetl theme export default writes bundled templates to .zetl/themes/default/; exported files are identical to bundled; --force overwrites; non-bundled name errors; JSON output; exported theme immediately usable with serve"))
+  (acceptance "ztl theme export default writes bundled templates to .ztl/themes/default/; exported files are identical to bundled; --force overwrites; non-bundled name errors; JSON output; exported theme immediately usable with serve"))
 
 (normally r-ready-theme-export-cmd
   (and task-theme-export-cmd completed-verify-phase2)
@@ -664,7 +664,7 @@ Add theme.toml:
 name = \"docs\"
 version = \"0.9.0\"
 description = \"A documentation-oriented theme for technical writing\"
-author = \"zetl contributors\"
+author = \"ztl contributors\"
 license = \"AGPL-3.0\"
 
 [theme.templates]
@@ -697,7 +697,7 @@ Install verbose output (--verbose or -v):
   - Clone duration (ms)
   - Number of files copied
   - Total size of installed theme (bytes)
-  - Min zetl version warning if applicable
+  - Min ztl version warning if applicable
 
 Template resolution verbose output (already partially in place from task-three-tier-resolution):
   - Ensure all three tiers are logged distinctly
@@ -729,13 +729,13 @@ OBS-014-001, OBS-014-002.")
 (meta task-verify-phase3
   (description "Final end-to-end verification of SPEC-014:
 
-1. zetl theme list shows three bundled themes: default, minimal, docs.
-2. zetl theme export default → customise → zetl serve --theme default uses disk copy.
-3. zetl theme export minimal → zetl theme list shows 'installed (shadows bundled)'.
-4. zetl theme install <real-github-repo> → zetl serve --theme <name> → zetl theme remove <name>.
-5. zetl theme install <repo>#<tag> --path <subdir> --name custom-name → verify all flags.
-6. zetl build --theme docs produces valid static site.
-7. zetl build --theme minimal produces CDN-free static site.
+1. ztl theme list shows three bundled themes: default, minimal, docs.
+2. ztl theme export default → customise → ztl serve --theme default uses disk copy.
+3. ztl theme export minimal → ztl theme list shows 'installed (shadows bundled)'.
+4. ztl theme install <real-github-repo> → ztl serve --theme <name> → ztl theme remove <name>.
+5. ztl theme install <repo>#<tag> --path <subdir> --name custom-name → verify all flags.
+6. ztl build --theme docs produces valid static site.
+7. ztl build --theme minimal produces CDN-free static site.
 8. Three-tier resolution verified end-to-end.
 9. All error paths produce clear, actionable messages.
 10. --verbose produces detailed logging for all theme operations.

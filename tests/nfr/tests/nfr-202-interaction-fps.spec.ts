@@ -22,11 +22,11 @@ test.describe("NFR-102 interaction fps", () => {
     }
     expect(res?.status()).toBe(200);
 
-    const canvas = page.locator("#zetl-graph canvas").first();
+    const canvas = page.locator("#ztl-graph canvas").first();
     try {
       await canvas.waitFor({ state: "visible", timeout: 10_000 });
     } catch {
-      test.skip(true, "#zetl-graph canvas not mounted — graph-partial not yet wired");
+      test.skip(true, "#ztl-graph canvas not mounted — graph-partial not yet wired");
     }
 
     // Let ForceAtlas2 settle before measuring: if the layout is still running

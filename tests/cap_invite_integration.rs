@@ -1,4 +1,4 @@
-//! Integration tests for `zetl cap invite` (SPEC-034 REQ-3410 /
+//! Integration tests for `ztl cap invite` (SPEC-034 REQ-3410 /
 //! REQ-3416 / CON-3402 / REQ-3430, TEST-3410).
 //!
 //! These tests drive the real binary against a temp-dir vault seeded
@@ -20,19 +20,19 @@
 use assert_cmd::cargo::cargo_bin_cmd;
 use tempfile::tempdir;
 
-/// Deterministic `ZETL_CAP_SECRET` used in all tests: version byte +
+/// Deterministic `ztl_CAP_SECRET` used in all tests: version byte +
 /// 32 zero bytes + the correct checksum for that body. Built via the
 /// pure-core helper rather than hand-pinned so a future checksum-HMAC
 /// key change doesn't silently corrupt the fixture.
 fn seeded_secret_b64() -> String {
     use base64::engine::general_purpose::STANDARD;
     use base64::Engine as _;
-    let bytes = zetl::cap::genkey::build_secret(zetl::cap::genkey::SECRET_VERSION_V1, &[0u8; 32]);
+    let bytes = ztl::cap::genkey::build_secret(ztl::cap::genkey::SECRET_VERSION_V1, &[0u8; 32]);
     STANDARD.encode(bytes)
 }
 
 /// Seed a vault root with a minimal `recipients.toml`. Returns the
-/// directory to use as `-d` (i.e. `ZETL_DIR`) plus the recipients
+/// directory to use as `-d` (i.e. `ztl_DIR`) plus the recipients
 /// body written, so callers can assert on it post-invite.
 fn seed_vault(mode: &str) -> tempfile::TempDir {
     let dir = tempdir().expect("tempdir");
@@ -53,11 +53,11 @@ pubkeys = []
     dir
 }
 
-/// Write `.zetl/config.toml` carrying an explicit `[access.split_key]`
+/// Write `.ztl/config.toml` carrying an explicit `[access.split_key]`
 /// block. `second_factor` goes through verbatim so a test can assert
 /// the operator-hint branch for each transport.
 fn enable_split_key(dir: &std::path::Path, second_factor: &str) {
-    let config_dir = dir.join(".zetl");
+    let config_dir = dir.join(".ztl");
     std::fs::create_dir_all(&config_dir).unwrap();
     let body = format!(
         r#"[access.split_key]
@@ -71,9 +71,9 @@ second_factor = "{second_factor}"
 #[test]
 fn delegated_mode_emits_banner_url_and_writes_grant() {
     let dir = seed_vault("delegated-url");
-    let out = cargo_bin_cmd!("zetl")
-        .env("ZETL_CAP_SECRET", seeded_secret_b64())
-        .env("ZETL_CAP_SITE_URL", "https://wiki.example")
+    let out = cargo_bin_cmd!("ztl")
+        .env("ztl_CAP_SECRET", seeded_secret_b64())
+        .env("ztl_CAP_SITE_URL", "https://wiki.example")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -132,7 +132,7 @@ fn delegated_mode_emits_banner_url_and_writes_grant() {
     let grants_body =
         std::fs::read_to_string(dir.path().join("grants.toml")).expect("grants.toml written");
     let grants =
-        zetl::cap::grants::validation::GrantsFile::from_toml(&grants_body).expect("valid TOML");
+        ztl::cap::grants::validation::GrantsFile::from_toml(&grants_body).expect("valid TOML");
     assert_eq!(grants.grants.len(), 1);
     let g = &grants.grants[0];
     assert_eq!(g.cohort, "engineering");
@@ -141,7 +141,7 @@ fn delegated_mode_emits_banner_url_and_writes_grant() {
     assert_eq!(g.name.as_deref(), Some("alice"));
     assert!(
         g.recipient
-            .starts_with(zetl::cap::recipients::parsing::AGE_RECIPIENT_V1_PREFIX),
+            .starts_with(ztl::cap::recipients::parsing::AGE_RECIPIENT_V1_PREFIX),
         "grant recipient missing age-recipient-v1 prefix: {:?}",
         g.recipient,
     );
@@ -156,7 +156,7 @@ fn delegated_mode_emits_banner_url_and_writes_grant() {
     let rec_body =
         std::fs::read_to_string(dir.path().join("recipients.toml")).expect("recipients.toml");
     let rec =
-        zetl::cap::recipients::parsing::RecipientsFile::parse(&rec_body).expect("valid recipients");
+        ztl::cap::recipients::parsing::RecipientsFile::parse(&rec_body).expect("valid recipients");
     assert_eq!(rec.cohorts[0].pubkeys.len(), 1);
     assert_eq!(rec.cohorts[0].pubkeys[0], g.recipient);
     // salt_stable must be populated on first invite so subsequent URLs
@@ -176,9 +176,9 @@ fn delegated_mode_emits_banner_url_and_writes_grant() {
 #[test]
 fn two_invites_produce_distinct_priv_a() {
     let dir = seed_vault("delegated-url");
-    let out1 = cargo_bin_cmd!("zetl")
-        .env("ZETL_CAP_SECRET", seeded_secret_b64())
-        .env("ZETL_CAP_SITE_URL", "https://wiki.example")
+    let out1 = cargo_bin_cmd!("ztl")
+        .env("ztl_CAP_SECRET", seeded_secret_b64())
+        .env("ztl_CAP_SITE_URL", "https://wiki.example")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -190,9 +190,9 @@ fn two_invites_produce_distinct_priv_a() {
         ])
         .output()
         .expect("run");
-    let out2 = cargo_bin_cmd!("zetl")
-        .env("ZETL_CAP_SECRET", seeded_secret_b64())
-        .env("ZETL_CAP_SITE_URL", "https://wiki.example")
+    let out2 = cargo_bin_cmd!("ztl")
+        .env("ztl_CAP_SECRET", seeded_secret_b64())
+        .env("ztl_CAP_SITE_URL", "https://wiki.example")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -225,9 +225,9 @@ fn two_invites_produce_distinct_priv_a() {
 fn split_key_mode_prints_half2_separately() {
     let dir = seed_vault("delegated-url");
     enable_split_key(dir.path(), "spoken-phrase");
-    let out = cargo_bin_cmd!("zetl")
-        .env("ZETL_CAP_SECRET", seeded_secret_b64())
-        .env("ZETL_CAP_SITE_URL", "https://wiki.example")
+    let out = cargo_bin_cmd!("ztl")
+        .env("ztl_CAP_SECRET", seeded_secret_b64())
+        .env("ztl_CAP_SITE_URL", "https://wiki.example")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -272,9 +272,9 @@ fn split_key_mode_prints_half2_separately() {
 #[test]
 fn split_key_mode_refused_without_opt_in() {
     let dir = seed_vault("delegated-url");
-    let out = cargo_bin_cmd!("zetl")
-        .env("ZETL_CAP_SECRET", seeded_secret_b64())
-        .env("ZETL_CAP_SITE_URL", "https://wiki.example")
+    let out = cargo_bin_cmd!("ztl")
+        .env("ztl_CAP_SECRET", seeded_secret_b64())
+        .env("ztl_CAP_SITE_URL", "https://wiki.example")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -311,9 +311,9 @@ fn split_key_halves_reconstruct_priv_a_that_matches_recipient() {
 
     let dir = seed_vault("delegated-url");
     enable_split_key(dir.path(), "qr");
-    let out = cargo_bin_cmd!("zetl")
-        .env("ZETL_CAP_SECRET", seeded_secret_b64())
-        .env("ZETL_CAP_SITE_URL", "https://wiki.example")
+    let out = cargo_bin_cmd!("ztl")
+        .env("ztl_CAP_SECRET", seeded_secret_b64())
+        .env("ztl_CAP_SITE_URL", "https://wiki.example")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -367,7 +367,7 @@ fn split_key_halves_reconstruct_priv_a_that_matches_recipient() {
     let pk = PublicKey::from(&sk);
     let expected_recipient = format!(
         "{}{}",
-        zetl::cap::recipients::parsing::AGE_RECIPIENT_V1_PREFIX,
+        ztl::cap::recipients::parsing::AGE_RECIPIENT_V1_PREFIX,
         URL_SAFE_NO_PAD.encode(pk.as_bytes()),
     );
 
@@ -396,11 +396,11 @@ fn hardened_recipient_mode_uses_pre_collected_pubkey() {
     let dir = seed_vault("webauthn-prf");
     let rcpt = format!(
         "{}AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        zetl::cap::recipients::parsing::AGE_RECIPIENT_V1_PREFIX
+        ztl::cap::recipients::parsing::AGE_RECIPIENT_V1_PREFIX
     );
-    let out = cargo_bin_cmd!("zetl")
-        .env("ZETL_CAP_SECRET", seeded_secret_b64())
-        .env("ZETL_CAP_SITE_URL", "https://wiki.example")
+    let out = cargo_bin_cmd!("ztl")
+        .env("ztl_CAP_SECRET", seeded_secret_b64())
+        .env("ztl_CAP_SITE_URL", "https://wiki.example")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -437,8 +437,8 @@ fn hardened_recipient_mode_uses_pre_collected_pubkey() {
 #[test]
 fn via_enrol_page_prints_enrolment_url_and_writes_nothing() {
     let dir = seed_vault("webauthn-prf");
-    let out = cargo_bin_cmd!("zetl")
-        .env("ZETL_CAP_SITE_URL", "https://wiki.example")
+    let out = cargo_bin_cmd!("ztl")
+        .env("ztl_CAP_SITE_URL", "https://wiki.example")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -467,7 +467,7 @@ fn via_enrol_page_prints_enrolment_url_and_writes_nothing() {
         "grants.toml must not be written under --via enrol-page",
     );
     // recipients.toml must not have gained any pubkeys either.
-    let rec = zetl::cap::recipients::parsing::RecipientsFile::parse(
+    let rec = ztl::cap::recipients::parsing::RecipientsFile::parse(
         &std::fs::read_to_string(dir.path().join("recipients.toml")).unwrap(),
     )
     .unwrap();
@@ -477,9 +477,9 @@ fn via_enrol_page_prints_enrolment_url_and_writes_nothing() {
 #[test]
 fn unknown_cohort_errors_with_hint() {
     let dir = seed_vault("delegated-url");
-    let out = cargo_bin_cmd!("zetl")
-        .env("ZETL_CAP_SECRET", seeded_secret_b64())
-        .env("ZETL_CAP_SITE_URL", "https://wiki.example")
+    let out = cargo_bin_cmd!("ztl")
+        .env("ztl_CAP_SECRET", seeded_secret_b64())
+        .env("ztl_CAP_SITE_URL", "https://wiki.example")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -502,9 +502,9 @@ fn unknown_cohort_errors_with_hint() {
 #[test]
 fn missing_secret_env_errors() {
     let dir = seed_vault("delegated-url");
-    let out = cargo_bin_cmd!("zetl")
-        .env_remove("ZETL_CAP_SECRET")
-        .env("ZETL_CAP_SITE_URL", "https://wiki.example")
+    let out = cargo_bin_cmd!("ztl")
+        .env_remove("ztl_CAP_SECRET")
+        .env("ztl_CAP_SITE_URL", "https://wiki.example")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -519,7 +519,7 @@ fn missing_secret_env_errors() {
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains("ZETL_CAP_SECRET"),
+        stderr.contains("ztl_CAP_SECRET"),
         "expected secret-env diagnostic in stderr:\n{stderr}",
     );
 }

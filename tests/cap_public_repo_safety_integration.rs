@@ -19,13 +19,13 @@
 
 use std::path::{Path, PathBuf};
 
-use zetl::cap::public_repo::{
+use ztl::cap::public_repo::{
     build_committed_stub, decide_grants_source, origin_host, parse_committed_stub,
     parse_config_lens, resolve_visibility, serialise_committed_stub, AccessConfig,
     GitHeuristicOpts, GrantsSource, PolicyError, ResolvedVisibility, Visibility, VisibilityDecl,
-    VisibilitySource, ZetlConfigLens,
+    VisibilitySource, ztlConfigLens,
 };
-use zetl::cap::recipients::parsing::{Cohort, CohortMode, RecipientsFile, VaultSection};
+use ztl::cap::recipients::parsing::{Cohort, CohortMode, RecipientsFile, VaultSection};
 
 fn sample_recipients() -> RecipientsFile {
     RecipientsFile {
@@ -78,7 +78,7 @@ fn test_3423_explicit_public_config_refuses_without_external_path() {
         &resolved,
         &AccessConfig::default(),
         Path::new("/tmp/wiki"),
-        Path::new("/tmp/wiki/.zetl/caps/grants.toml"),
+        Path::new("/tmp/wiki/.ztl/caps/grants.toml"),
     )
     .unwrap_err();
     assert_eq!(err, PolicyError::MissingExternalPath);
@@ -86,7 +86,7 @@ fn test_3423_explicit_public_config_refuses_without_external_path() {
 
 #[test]
 fn test_3423_github_origin_flags_as_public_and_refuses() {
-    let lens = ZetlConfigLens::default();
+    let lens = ztlConfigLens::default();
     let resolved = resolve_visibility(
         &lens,
         Some("git@github.com:acme/wiki.git"),
@@ -99,7 +99,7 @@ fn test_3423_github_origin_flags_as_public_and_refuses() {
         &resolved,
         &AccessConfig::default(),
         Path::new("/tmp/wiki"),
-        Path::new("/tmp/wiki/.zetl/caps/grants.toml"),
+        Path::new("/tmp/wiki/.ztl/caps/grants.toml"),
     )
     .unwrap_err();
     assert_eq!(err, PolicyError::MissingExternalPath);
@@ -114,7 +114,7 @@ fn test_3423_gitlab_codeberg_bitbucket_srht_all_flag_public() {
         "https://bitbucket.org/org/repo",
         "git@git.sr.ht:~user/repo",
     ] {
-        let r = resolve_visibility(&ZetlConfigLens::default(), Some(url), &opts);
+        let r = resolve_visibility(&ztlConfigLens::default(), Some(url), &opts);
         assert_eq!(
             r.visibility,
             Visibility::Public,
@@ -125,7 +125,7 @@ fn test_3423_gitlab_codeberg_bitbucket_srht_all_flag_public() {
 
 #[test]
 fn test_3423_self_hosted_origin_does_not_engage_gate() {
-    let lens = ZetlConfigLens::default();
+    let lens = ztlConfigLens::default();
     let resolved = resolve_visibility(
         &lens,
         Some("git@git.acme.internal:team/wiki.git"),
@@ -140,7 +140,7 @@ fn test_3423_self_hosted_origin_does_not_engage_gate() {
         &resolved,
         &AccessConfig::default(),
         Path::new("/tmp/wiki"),
-        Path::new("/tmp/wiki/.zetl/caps/grants.toml"),
+        Path::new("/tmp/wiki/.ztl/caps/grants.toml"),
     )
     .unwrap();
     assert!(matches!(decision, GrantsSource::InRepo { .. }));
@@ -148,7 +148,7 @@ fn test_3423_self_hosted_origin_does_not_engage_gate() {
 
 #[test]
 fn test_3423_private_token_override_flips_github_to_private() {
-    let lens = ZetlConfigLens::default();
+    let lens = ztlConfigLens::default();
     let opts = GitHeuristicOpts {
         private_tokens: vec![("github.com".to_string(), true)],
         ..Default::default()
@@ -174,7 +174,7 @@ fn test_3423_public_with_external_path_inside_repo_refuses() {
         &resolved,
         &access,
         Path::new("/tmp/wiki"),
-        Path::new("/tmp/wiki/.zetl/caps/grants.toml"),
+        Path::new("/tmp/wiki/.ztl/caps/grants.toml"),
     )
     .unwrap_err();
     assert!(matches!(err, PolicyError::ExternalPathInsideRepo { .. }));
@@ -186,7 +186,7 @@ fn test_3423_public_with_external_path_outside_repo_succeeds() {
         visibility: Visibility::Public,
         source: VisibilitySource::ExplicitConfig,
     };
-    let external = "/home/op/.config/zetl/acme-wiki/grants.toml";
+    let external = "/home/op/.config/ztl/acme-wiki/grants.toml";
     let access = AccessConfig {
         grants_file_external: Some(external.to_string()),
         split_key: None,
@@ -195,7 +195,7 @@ fn test_3423_public_with_external_path_outside_repo_succeeds() {
         &resolved,
         &access,
         Path::new("/tmp/wiki"),
-        Path::new("/tmp/wiki/.zetl/caps/grants.toml"),
+        Path::new("/tmp/wiki/.ztl/caps/grants.toml"),
     )
     .unwrap();
     assert_eq!(

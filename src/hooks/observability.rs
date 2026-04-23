@@ -6,7 +6,7 @@
 //! the canonical log line
 //!
 //! ```text
-//!   [zetl] hook: stage=<stage> id=<hook-id> page=<page-slug> duration_ms=<N>
+//!   [ztl] hook: stage=<stage> id=<hook-id> page=<page-slug> duration_ms=<N>
 //! ```
 //!
 //! and failures are tagged with `status=failed reason=<reason>` so a single
@@ -104,7 +104,7 @@ impl HookObserver for StderrObserver {
         match &event.status {
             HookInvocationStatus::Ok if self.verbose => {
                 eprintln!(
-                    "[zetl] hook: stage={} id={} page={} duration_ms={}",
+                    "[ztl] hook: stage={} id={} page={} duration_ms={}",
                     event.stage,
                     event.hook_id,
                     event.page_slug,
@@ -115,7 +115,7 @@ impl HookObserver for StderrObserver {
                 // Failures emit at any verbosity — OBS-3205's "log line per
                 // failure" contract is independent of --verbose.
                 eprintln!(
-                    "[zetl] hook: stage={} id={} page={} duration_ms={} status=failed reason={}",
+                    "[ztl] hook: stage={} id={} page={} duration_ms={} status=failed reason={}",
                     event.stage,
                     event.hook_id,
                     event.page_slug,
@@ -280,11 +280,11 @@ impl HookStats {
     /// One-line OBS-3206 build-summary:
     ///
     /// ```text
-    ///   [zetl] hooks: total_invocations=<N> total_duration_ms=<M> failures=<K>
+    ///   [ztl] hooks: total_invocations=<N> total_duration_ms=<M> failures=<K>
     /// ```
     pub fn format_summary_line(&self) -> String {
         format!(
-            "[zetl] hooks: total_invocations={} total_duration_ms={} failures={}",
+            "[ztl] hooks: total_invocations={} total_duration_ms={} failures={}",
             self.total_invocations,
             self.total_hook_duration().as_millis(),
             self.diagnostics_emitted,
@@ -293,12 +293,12 @@ impl HookStats {
 
     /// Multi-line human-readable stats block (§9 "per-stage time, per-hook
     /// time, pages matched, diagnostics emitted"). Every body line is
-    /// indented under `[zetl] hooks:` so the block stays visually scoped.
+    /// indented under `[ztl] hooks:` so the block stays visually scoped.
     ///
     /// Hook rows are sorted by `(stage, hook_id)` for determinism.
     pub fn format_block(&self) -> String {
         let mut out = String::new();
-        out.push_str("[zetl] hooks:\n");
+        out.push_str("[ztl] hooks:\n");
 
         out.push_str("  stages:\n");
         for stage in Stage::all() {
@@ -518,7 +518,7 @@ mod tests {
         let line = s.format_summary_line();
         assert_eq!(
             line,
-            "[zetl] hooks: total_invocations=2 total_duration_ms=30 failures=1"
+            "[ztl] hooks: total_invocations=2 total_duration_ms=30 failures=1"
         );
     }
 
@@ -544,7 +544,7 @@ mod tests {
 
         let block = s.format_block();
         // Shape: header then three stage rows then the hooks section.
-        assert!(block.starts_with("[zetl] hooks:\n"));
+        assert!(block.starts_with("[ztl] hooks:\n"));
         assert!(block.contains("    pre-parse   duration_ms=2\n"));
         assert!(block.contains("    transform   duration_ms=32\n"));
         assert!(block.contains("    post-render duration_ms=4\n"));

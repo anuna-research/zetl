@@ -12,7 +12,7 @@
 //!
 //! One tagged-union enum, internally tagged on the manifest's own
 //! top-level `ecosystem = "..."` field, with one variant per registered
-//! ecosystem plus `zetl-native` for hooks that don't target an adapter:
+//! ecosystem plus `ztl-native` for hooks that don't target an adapter:
 //!
 //! ```toml
 //! # Pandoc filter
@@ -52,7 +52,7 @@
 //! present, the extracted sub-table is parsed into [`EcosystemSpecific`]
 //! and attached to [`crate::hooks::manifest::Manifest::extra`]. A
 //! manifest without an `ecosystem` key keeps `extra = None` and behaves
-//! exactly as a SPEC-032 zetl-native hook — this module's parser is
+//! exactly as a SPEC-032 ztl-native hook — this module's parser is
 //! strictly additive.
 
 use std::path::PathBuf;
@@ -65,7 +65,7 @@ use toml::value::Table;
 /// Per-ecosystem manifest block (SPEC-033 CON-3312).
 ///
 /// Internally tagged on the `ecosystem = "..."` field. Unknown ids are
-/// a parse error; the `zetl-native` variant accepts no extra fields and
+/// a parse error; the `ztl-native` variant accepts no extra fields and
 /// is the default when a manifest declares the ecosystem explicitly but
 /// doesn't target an adapter.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -77,13 +77,13 @@ pub enum EcosystemSpecific {
     Mdbook(MdbookManifestFields),
     /// remark plugin — `package` + optional `version` + optional `options`.
     Remark(RemarkManifestFields),
-    /// Hook is zetl-native (no adapter). Accepted so authors can
+    /// Hook is ztl-native (no adapter). Accepted so authors can
     /// declare the ecosystem explicitly for documentation without
     /// switching syntaxes. Carries an empty struct body with
     /// `deny_unknown_fields` so an ecosystem-specific field alongside
-    /// `ecosystem = "zetl-native"` still surfaces as a parse error.
-    #[serde(rename = "zetl-native")]
-    ZetlNative(ZetlNativeManifestFields),
+    /// `ecosystem = "ztl-native"` still surfaces as a parse error.
+    #[serde(rename = "ztl-native")]
+    ztlNative(ztlNativeManifestFields),
 }
 
 impl EcosystemSpecific {
@@ -93,19 +93,19 @@ impl EcosystemSpecific {
             EcosystemSpecific::Pandoc(_) => "pandoc",
             EcosystemSpecific::Mdbook(_) => "mdbook",
             EcosystemSpecific::Remark(_) => "remark",
-            EcosystemSpecific::ZetlNative(_) => "zetl-native",
+            EcosystemSpecific::ztlNative(_) => "ztl-native",
         }
     }
 }
 
-/// Empty body for the `zetl-native` ecosystem variant.
+/// Empty body for the `ztl-native` ecosystem variant.
 ///
 /// Exists solely so `#[serde(deny_unknown_fields)]` can reject the
-/// case of a user writing `ecosystem = "zetl-native"` alongside an
+/// case of a user writing `ecosystem = "ztl-native"` alongside an
 /// ecosystem-specific field like `exec` or `package`.
 #[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ZetlNativeManifestFields {}
+pub struct ztlNativeManifestFields {}
 
 /// Pandoc filter fields (SPEC-033 REQ-3312).
 ///
@@ -563,24 +563,24 @@ exec = "pandoc-crossref"
         }
     }
 
-    // ── zetl-native and unknown ───────────────────────────────────────────
+    // ── ztl-native and unknown ───────────────────────────────────────────
 
     #[test]
-    fn zetl_native_with_no_extra_fields() {
-        let t = table(r#"ecosystem = "zetl-native""#);
+    fn ztl_native_with_no_extra_fields() {
+        let t = table(r#"ecosystem = "ztl-native""#);
         let spec = parse(t).unwrap();
         assert_eq!(
             spec,
-            EcosystemSpecific::ZetlNative(ZetlNativeManifestFields::default())
+            EcosystemSpecific::ztlNative(ztlNativeManifestFields::default())
         );
-        assert_eq!(spec.id(), "zetl-native");
+        assert_eq!(spec.id(), "ztl-native");
     }
 
     #[test]
-    fn zetl_native_with_extra_fields_rejected() {
+    fn ztl_native_with_extra_fields_rejected() {
         let t = table(
             r#"
-ecosystem = "zetl-native"
+ecosystem = "ztl-native"
 exec = "pandoc-crossref"
 "#,
         );
@@ -651,8 +651,8 @@ exec = "pandoc-crossref"
             "remark"
         );
         assert_eq!(
-            EcosystemSpecific::ZetlNative(ZetlNativeManifestFields::default()).id(),
-            "zetl-native"
+            EcosystemSpecific::ztlNative(ztlNativeManifestFields::default()).id(),
+            "ztl-native"
         );
     }
 }

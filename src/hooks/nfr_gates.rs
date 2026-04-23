@@ -25,7 +25,7 @@
 //! |--------------------------------------|----------|--------------------------------------|
 //! | [`SELECTOR_P95_BUDGET`]              | NFR-3201 | per-(page × hook) selector P95 ≤ 2 ms |
 //! | [`CANONICAL_OVERHEAD_PCT_BUDGET`]    | NFR-3202 | render overhead vs `--no-hooks` ≤ 15 %|
-//! | (process — byte-equality)            | NFR-3203 | `zetl build` deterministic across runs|
+//! | (process — byte-equality)            | NFR-3203 | `ztl build` deterministic across runs|
 //! | [`HOOK_FAIL_ON_NEVER_EXIT_CODE`]     | NFR-3204 | `--hook-fail-on never` → exit 0      |
 //! | [`ZERO_HOOK_STARTUP_BUDGET`]         | NFR-3205 | startup delta vs no-hooks ≤ 5 ms P95 |
 //! | (process — CHANGELOG)                | NFR-3206 | AST schema additive-only             |
@@ -47,12 +47,12 @@ pub const SELECTOR_P95_BUDGET: Duration = Duration::from_millis(2);
 /// a fraction of the `--no-hooks` baseline (15 %).
 pub const CANONICAL_OVERHEAD_PCT_BUDGET: f64 = 0.15;
 
-/// NFR-3204: exit code zetl SHALL return when `--hook-fail-on never`
+/// NFR-3204: exit code ztl SHALL return when `--hook-fail-on never`
 /// is in effect, regardless of how many hooks failed.
 pub const HOOK_FAIL_ON_NEVER_EXIT_CODE: i32 = 0;
 
 /// NFR-3205: max additional process-startup cost on a vault with no
-/// `.zetl/hooks/` and a theme with no `hooks/`, vs. pre-SPEC-032 zetl,
+/// `.ztl/hooks/` and a theme with no `hooks/`, vs. pre-SPEC-032 ztl,
 /// at P95.
 pub const ZERO_HOOK_STARTUP_BUDGET: Duration = Duration::from_millis(5);
 
@@ -279,7 +279,7 @@ impl PageBudgetReport {
     }
 
     /// One stderr-friendly line per violation. Caller prefixes with
-    /// `[zetl]` to match the OBS-3204 channel.
+    /// `[ztl]` to match the OBS-3204 channel.
     pub fn format_lines(&self) -> Vec<String> {
         self.violations
             .iter()

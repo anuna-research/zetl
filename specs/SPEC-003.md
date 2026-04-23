@@ -1,33 +1,33 @@
 ---
-title: "SPEC-003: zetl — Agent Ergonomics & Robustness"
+title: "SPEC-003: ztl — Agent Ergonomics & Robustness"
 version: 0.1.0
 status: draft
 audience: agent, human
 date: 2026-02-18
 ---
 
-# SPEC-003: zetl — Agent Ergonomics & Robustness
+# SPEC-003: ztl — Agent Ergonomics & Robustness
 
 ## Information Table
 
 | Field          | Value                                              |
 | -------------- | -------------------------------------------------- |
 | Document ID    | SPEC-003                                           |
-| Title          | zetl — Agent Ergonomics & Robustness               |
+| Title          | ztl — Agent Ergonomics & Robustness               |
 | Version        | 0.1.0                                              |
 | Status         | Draft                                              |
 | Author         | Agent (USDD Protocol v1.0.0)                       |
 | Date           | 2026-02-18                                         |
 | Audience       | Agent, Human                                       |
 | Trace          | USDD Agent Protocol v1.0.0                         |
-| Parent         | SPEC-001: zetl — Bi-directional Link Graph CLI     |
-| Related        | SPEC-002: zetl search — Full-Text Content Search   |
+| Parent         | SPEC-001: ztl — Bi-directional Link Graph CLI     |
+| Related        | SPEC-002: ztl search — Full-Text Content Search   |
 
 ---
 
 ## 1. Overview
 
-This specification addresses issues discovered by running zetl as an LLM agent would — exercising every command, piping JSON output for analysis, handling errors, and attempting common multi-step workflows. The issues fall into three categories:
+This specification addresses issues discovered by running ztl as an LLM agent would — exercising every command, piping JSON output for analysis, handling errors, and attempting common multi-step workflows. The issues fall into three categories:
 
 1. **Crash bugs** — inputs that cause panics instead of graceful errors
 2. **Broken agent contract** — errors that violate the JSON output contract, making programmatic parsing impossible
@@ -35,10 +35,10 @@ This specification addresses issues discovered by running zetl as an LLM agent w
 
 ### 1.1 Motivation
 
-An LLM agent using zetl as a tool does:
+An LLM agent using ztl as a tool does:
 
 ```
-output = shell("zetl -f json <command>")
+output = shell("ztl -f json <command>")
 data = json.parse(output)
 # use data to make decisions
 ```
@@ -82,14 +82,14 @@ The existing user profiles from SPEC-001 §2 apply. This specification extends t
 ```
 Role: LLM coding agent (Claude Code)
 Workflow observed:
-  1. `zetl -f json stats` → understand vault shape                    ✓ works
-  2. `zetl -f json check` → find problems                            ✓ works (exit 1 expected)
-  3. `zetl -f json links "Zettelkasten" --depth 1` → explore page    ✗ 14 entries, 9 unique targets, massive duplication
-  4. `zetl -f json links "..." --depth 3` → deep traversal           ✗ 153 entries, agent overwhelmed
-  5. `zetl -f json search "" --limit 1` → edge case                  ✗ PANIC (byte boundary)
-  6. `zetl -f json links "nonexistent"` → error handling              ✗ plain text on stderr, no JSON
-  7. `zetl -f json list` → enumerate all pages                        ✗ command does not exist
-  8. `zetl -f json search "note" --path concepts/` → scoped search   ✗ no --path filter
+  1. `ztl -f json stats` → understand vault shape                    ✓ works
+  2. `ztl -f json check` → find problems                            ✓ works (exit 1 expected)
+  3. `ztl -f json links "Zettelkasten" --depth 1` → explore page    ✗ 14 entries, 9 unique targets, massive duplication
+  4. `ztl -f json links "..." --depth 3` → deep traversal           ✗ 153 entries, agent overwhelmed
+  5. `ztl -f json search "" --limit 1` → edge case                  ✗ PANIC (byte boundary)
+  6. `ztl -f json links "nonexistent"` → error handling              ✗ plain text on stderr, no JSON
+  7. `ztl -f json list` → enumerate all pages                        ✗ command does not exist
+  8. `ztl -f json search "note" --path concepts/` → scoped search   ✗ no --path filter
   9. JSON piped to python3 → parse error data                         ✗ errors not JSON-formatted
 
 Friction points:
@@ -105,17 +105,17 @@ Friction points:
 ```
 Preconditions: Agent has vault path, no prior knowledge of content
 Steps:
-  1. `zetl -f json index -d /path` → index vault
+  1. `ztl -f json index -d /path` → index vault
      Expected: JSON with files_scanned, links_found
-  2. `zetl -f json list -d /path` → get all page names and paths          [NEW]
+  2. `ztl -f json list -d /path` → get all page names and paths          [NEW]
      Expected: JSON array of {page, path} objects
-  3. `zetl -f json stats -d /path` → understand shape
+  3. `ztl -f json stats -d /path` → understand shape
      Expected: JSON with pages, links, orphans, most_linked
-  4. `zetl -f json links "TopPage" --depth 1 --context 30` → explore
+  4. `ztl -f json links "TopPage" --depth 1 --context 30` → explore
      Expected: deduplicated link entries with context                      [FIXED]
-  5. `zetl -f json search "concept" --context 40 --path concepts/` → find content  [NEW]
+  5. `ztl -f json search "concept" --context 40 --path concepts/` → find content  [NEW]
      Expected: only results from concepts/ subdirectory
-  6. `zetl -f json links "nonexistent"` → handle missing page
+  6. `ztl -f json links "nonexistent"` → handle missing page
      Expected: JSON error object with error field                          [FIXED]
 Postconditions: Agent has structured knowledge of vault topology and content
 Failure modes:
@@ -156,7 +156,7 @@ AND stderr reserved for warnings/verbose output only.
 
 Rationale: An agent parsing `json.load(stdout)` currently gets a
 JSONDecodeError when errors produce plain text on stderr and empty
-stdout. This makes every zetl call require try/catch wrapping and
+stdout. This makes every ztl call require try/catch wrapping and
 stderr inspection, which is fragile and non-standard.
 
 Trace:
@@ -174,7 +174,7 @@ each (source, target, line) triple appears at most once in the output,
 FOR all user roles
 WITH the total count reflecting unique entries.
 
-Current behaviour: `zetl links "Zettelkasten" --depth 1` returns 14
+Current behaviour: `ztl links "Zettelkasten" --depth 1` returns 14
 entries for 9 unique targets. "Atomic Notes" appears 4 times,
 "Folder-based Organization" appears twice, "Logseq" appears twice.
 This is because a single line can contain multiple wikilinks and the
@@ -225,7 +225,7 @@ AND output in JSON (default) or table format.
 Rationale: An agent exploring an unknown vault currently has no way
 to enumerate pages. `stats` shows counts and top-linked pages, but
 not a full list. The agent must fall back to `find . -name '*.md'`
-and manually derive page names, losing vault-awareness (.zetlignore
+and manually derive page names, losing vault-awareness (.ztlignore
 patterns, page name resolution logic).
 
 Trace:
@@ -314,11 +314,11 @@ ADR-003: Structured JSON Errors via Output Envelope
 Status: Proposed
 
 Context:
-  Currently, errors in zetl are emitted in two ways:
+  Currently, errors in ztl are emitted in two ways:
   1. `eprintln!("{e}"); std::process::exit(1)` — plain text on stderr
   2. `anyhow::Result` propagated to main — printed by anyhow's handler
 
-  Neither produces JSON. An agent calling `zetl -f json links "bad"`
+  Neither produces JSON. An agent calling `ztl -f json links "bad"`
   gets empty stdout and "Page not found: 'bad'" on stderr. The agent's
   JSON parser fails.
 
@@ -424,7 +424,7 @@ Search (search.rs):
 ```
 CON-009: Structured Error Response (JSON mode)
 
-When -f json is specified and an error occurs, zetl SHALL output
+When -f json is specified and an error occurs, ztl SHALL output
 a JSON object on stdout:
 
 {
@@ -451,7 +451,7 @@ Verified by:
 ```
 CON-010: list
 
-zetl list [OPTIONS]
+ztl list [OPTIONS]
 
 List all pages in the vault.
 
@@ -489,7 +489,7 @@ Verified by:
 ```
 CON-011: export
 
-zetl export [OPTIONS]
+ztl export [OPTIONS]
 
 Export the complete link graph as a JSON adjacency list.
 
@@ -523,14 +523,14 @@ Verified by:
 ```
 CON-008 (extended): search --path filter
 
-zetl search <QUERY> [OPTIONS]
+ztl search <QUERY> [OPTIONS]
 
 Additional option:
   --path <GLOB>   Restrict results to files matching glob
                   (relative to vault root, gitignore syntax)
 
 Example:
-  zetl search "note" --path "concepts/" --context 30
+  ztl search "note" --path "concepts/" --context 30
 
 Only files under concepts/ are searched.
 
@@ -550,14 +550,14 @@ TEST-019: Empty Search Query Rejection
 
 Scenario: Empty string search
 Given: Any vault
-When: `zetl -f json search ""` is run
+When: `ztl -f json search ""` is run
 Then:
   - Exit code 2
   - Output is JSON: {"error": "Empty search query", "code": 2}
   - No panic, no backtrace output
 
 Scenario: Whitespace-only search
-When: `zetl -f json search "   "` is run
+When: `ztl -f json search "   "` is run
 Then:
   - Same as empty string — rejected with exit code 2
 
@@ -569,7 +569,7 @@ TEST-020: Structured JSON Error Responses
 
 Scenario: Page not found in JSON mode
 Given: A vault with pages A, B, C
-When: `zetl -f json links "nonexistent"` is run
+When: `ztl -f json links "nonexistent"` is run
 Then:
   - Exit code 1
   - Stdout contains: {"error": "Page not found: 'nonexistent'", "code": 1}
@@ -577,7 +577,7 @@ Then:
 
 Scenario: Page not found in table mode
 Given: Same vault
-When: `zetl -f table links "nonexistent"` is run
+When: `ztl -f table links "nonexistent"` is run
 Then:
   - Exit code 1
   - Stderr contains: "Page not found: 'nonexistent'"
@@ -586,13 +586,13 @@ Then:
 
 Scenario: No path found in JSON mode
 Given: Two pages in disconnected components
-When: `zetl -f json path "A" "disconnected"` is run
+When: `ztl -f json path "A" "disconnected"` is run
 Then:
   - Exit code 1
   - Stdout contains JSON with "error" key
 
 Scenario: Invalid regex in JSON mode
-When: `zetl -f json search "[bad" --regex` is run
+When: `ztl -f json search "[bad" --regex` is run
 Then:
   - Exit code 2
   - Stdout contains: {"error": "Invalid regex: ...", "code": 2}
@@ -605,14 +605,14 @@ TEST-021: Deduplicated Link Results
 
 Scenario: Forward links are deduplicated
 Given: Page "Zettelkasten" links to "Atomic Notes" from lines 8 and 12
-When: `zetl -f json links "Zettelkasten" --depth 1` is run
+When: `ztl -f json links "Zettelkasten" --depth 1` is run
 Then:
   - Each (source, target, line) triple appears exactly once
   - Total entries ≤ number of unique (source, target, line) triples
 
 Scenario: Depth-3 deduplication
 Given: A vault with interconnected pages
-When: `zetl -f json links "X" --depth 3` is run
+When: `ztl -f json links "X" --depth 3` is run
 Then:
   - No two entries share the same (source, target, line) triple
   - Unique target count is trackable without agent-side dedup
@@ -625,7 +625,7 @@ TEST-022: UTF-8 Safety in Context Extraction
 
 Scenario: Em-dash near wikilink
 Given: A file containing "The method — see [[Page]] for details"
-When: `zetl -f json links "SourcePage" --context 30` is run
+When: `ztl -f json links "SourcePage" --context 30` is run
 Then:
   - Context is extracted without panic
   - Context string is valid UTF-8
@@ -633,7 +633,7 @@ Then:
 
 Scenario: CJK characters in file
 Given: A file containing "知识管理 [[Knowledge Management]] 方法论"
-When: `zetl -f json links "SourcePage" --context 10` is run
+When: `ztl -f json links "SourcePage" --context 10` is run
 Then:
   - No panic
   - Context contains valid UTF-8
@@ -646,7 +646,7 @@ TEST-023: List All Pages
 
 Scenario: List pages in a vault
 Given: A vault with 5 Markdown files
-When: `zetl -f json list` is run
+When: `ztl -f json list` is run
 Then:
   - Returns JSON with "pages" array containing 5 entries
   - Each entry has "page" and "path" fields
@@ -655,14 +655,14 @@ Then:
 
 Scenario: Empty vault
 Given: A directory with no .md files
-When: `zetl -f json list` is run
+When: `ztl -f json list` is run
 Then:
   - Returns {"pages": [], "total": 0}
   - Exit code 0
 
-Scenario: Respects .zetlignore
-Given: A vault with .zetlignore containing "drafts/"
-When: `zetl -f json list` is run
+Scenario: Respects .ztlignore
+Given: A vault with .ztlignore containing "drafts/"
+When: `ztl -f json list` is run
 Then:
   - Files under drafts/ do not appear in the list
 
@@ -675,18 +675,18 @@ TEST-024: Search Path Filter
 Scenario: Filter to subdirectory
 Given: A vault with files in concepts/, tools/, and people/
        All containing the word "note"
-When: `zetl -f json search "note" --path "concepts/"` is run
+When: `ztl -f json search "note" --path "concepts/"` is run
 Then:
   - All results have paths starting with "concepts/"
   - No results from tools/ or people/
 
 Scenario: Glob pattern
-When: `zetl -f json search "method" --path "**/*Practice*"` is run
+When: `ztl -f json search "method" --path "**/*Practice*"` is run
 Then:
   - Only files with "Practice" in their name are searched
 
 Scenario: No --path (default)
-When: `zetl -f json search "note"` is run
+When: `ztl -f json search "note"` is run
 Then:
   - Results from all directories (existing behaviour, unchanged)
 
@@ -698,7 +698,7 @@ TEST-025: Graph Export
 
 Scenario: Export full graph
 Given: A vault with pages A→B, B→C, C→A (triangle)
-When: `zetl -f json export` is run
+When: `ztl -f json export` is run
 Then:
   - "nodes" contains 3 entries with page and path
   - "edges" contains 3 entries (A→B, B→C, C→A)
@@ -707,7 +707,7 @@ Then:
 
 Scenario: Export includes dead link targets
 Given: Page A links to nonexistent page "Ghost"
-When: `zetl -f json export` is run
+When: `ztl -f json export` is run
 Then:
   - "Ghost" appears in nodes (with path: null or empty)
   - Edge A→Ghost appears in edges
@@ -782,7 +782,7 @@ Raw observations from the agent testing session, preserved for traceability.
 **FINDING-001: Empty search query panics on UTF-8 boundary**
 
 ```
-$ zetl -f json search "" --limit 1
+$ ztl -f json search "" --limit 1
 thread 'main' panicked at src/search.rs:182:49:
 byte index 313 is not a char boundary; it is inside '—' (bytes 312..315)
 ```
@@ -796,7 +796,7 @@ Fix: Reject empty queries before entering the match loop. Add `if query.is_empty
 **FINDING-002: Error messages are plain text, not JSON**
 
 ```
-$ zetl -f json links "nonexistent" 2>&1
+$ ztl -f json links "nonexistent" 2>&1
 Page not found: 'nonexistent'
 ```
 
@@ -811,7 +811,7 @@ Agent runs `json.parse(stdout)` → JSONDecodeError. The `find_page()` function 
 **FINDING-004: Links output has duplicate entries**
 
 ```
-$ zetl -f json links "Zettelkasten" --depth 1
+$ ztl -f json links "Zettelkasten" --depth 1
 Total: 14 entries, Unique targets: 9
 Duplicates: {'Logseq': 2, 'Folder-based Organization': 2, 'Atomic Notes': 4}
 ```
@@ -821,7 +821,7 @@ The graph stores one edge per wikilink occurrence on a line. A line like `[[Obsi
 **FINDING-005: Depth-3 traversal explodes**
 
 ```
-$ zetl -f json links "Daily Note Practice" --depth 3
+$ ztl -f json links "Daily Note Practice" --depth 3
 Total: 153 entries
   hop 1: 7 links (6 unique targets)
   hop 2: 58 links (18 unique targets)
@@ -840,7 +840,7 @@ Even with dedup, depth-3 on a well-connected vault returns a lot of data. Dedup 
 
 **FINDING-007: No `list` command**
 
-Agent ran `zetl list` → `error: unrecognized subcommand 'list'`. Agent had to parse `stats` output and use `most_linked` as a partial page list, or fall back to `find . -name '*.md'`.
+Agent ran `ztl list` → `error: unrecognized subcommand 'list'`. Agent had to parse `stats` output and use `most_linked` as a partial page list, or fall back to `find . -name '*.md'`.
 
 **FINDING-008: No search path filter**
 
@@ -852,11 +852,11 @@ Agent wanting to do graph analysis (find clusters, bridges) had to call `links` 
 
 **FINDING-010: `similar` returns very few results**
 
-`zetl similar "zettelkasten"` returns only 1 result (exact match, distance 0). The SimHash fingerprint approach with current threshold=12 is too strict for short queries. This is a known limitation (SimHash works on page names, not content) and is addressed by `search` in SPEC-002.
+`ztl similar "zettelkasten"` returns only 1 result (exact match, distance 0). The SimHash fingerprint approach with current threshold=12 is too strict for short queries. This is a known limitation (SimHash works on page names, not content) and is addressed by `search` in SPEC-002.
 
 **FINDING-011: `cargo run` build output contaminates stdout piping**
 
-When using `cargo run --release -- ...`, cargo's build messages go to stderr but duplicate invocations sometimes mix streams. Not a zetl bug — just a workflow note. Agent should use the binary directly: `./target/release/zetl`.
+When using `cargo run --release -- ...`, cargo's build messages go to stderr but duplicate invocations sometimes mix streams. Not a ztl bug — just a workflow note. Agent should use the binary directly: `./target/release/ztl`.
 
 ---
 

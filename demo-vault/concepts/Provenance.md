@@ -4,7 +4,7 @@ title: Provenance
 
 # Provenance
 
-Provenance is the ability to trace a conclusion back to its origins. In zetl, every fact, rule, and conclusion carries metadata recording the source file, line number, and page name where it was defined.
+Provenance is the ability to trace a conclusion back to its origins. In ztl, every fact, rule, and conclusion carries metadata recording the source file, line number, and page name where it was defined.
 
 ## Why it matters
 
@@ -20,12 +20,12 @@ A reasoning system that says "X is true" is only useful if you can ask "why?" an
 
 ## Commands
 
-- `zetl reason explain <literal>` — proof tree with source locations
-- `zetl reason provenance <literal>` — cross-referenced with the [[Link Graph]]
-- `zetl reason export --format spl` — reconstructed [[Spindle Lisp]] with provenance comments
+- `ztl reason explain <literal>` — proof tree with source locations
+- `ztl reason provenance <literal>` — cross-referenced with the [[Link Graph]]
+- `ztl reason export --format spl` — reconstructed [[Spindle Lisp]] with provenance comments
 
 ## Example
 
-Running `zetl reason provenance "release-candidate"` on this vault traces the conclusion through rules in `theories/release-readiness.spl` back to facts scattered across the architecture and feature pages.
+Running `ztl reason provenance "release-candidate"` on this vault traces the conclusion through rules in `theories/release-readiness.spl` back to facts scattered across the architecture and feature pages.
 
 See also: [[Reasoning Engine]], [[Reason Commands]], [[Defeasible Reasoning]]

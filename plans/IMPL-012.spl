@@ -1,17 +1,17 @@
 ;; ════════════════════════════════════════════════════════════════════════════
-;; IMPL-012: zetl — Named Themes for Serve and Build
+;; IMPL-012: ztl — Named Themes for Serve and Build
 ;; Implementation plan for SPEC-012
 ;; ════════════════════════════════════════════════════════════════════════════
 
 (meta plan
   (id "IMPL-012")
-  (title "zetl — Named Themes for Serve and Build")
+  (title "ztl — Named Themes for Serve and Build")
   (version "0.1.0")
   (status "active")
   (created "2026-03-01")
   (author "agent:claude")
   (spec "SPEC-012")
-  (description "Replace hardcoded format!() HTML generation in serve and build commands with a Minijinja template engine and named theme system. Phase 1: extract current HTML into default templates with serializable context structs — zero visual change. Phase 2: add --theme CLI flag and theme-aware template loader with fallback to built-in defaults. Phase 3: static asset serving from .zetl/static/ (shared) and .zetl/themes/<name>/static/ (per-theme). Phase 4: parse YAML frontmatter into structured template data. Covers REQ-012-001 through REQ-012-010, ADR-012/013/014."))
+  (description "Replace hardcoded format!() HTML generation in serve and build commands with a Minijinja template engine and named theme system. Phase 1: extract current HTML into default templates with serializable context structs — zero visual change. Phase 2: add --theme CLI flag and theme-aware template loader with fallback to built-in defaults. Phase 3: static asset serving from .ztl/static/ (shared) and .ztl/themes/<name>/static/ (per-theme). Phase 4: parse YAML frontmatter into structured template data. Covers REQ-012-001 through REQ-012-010, ADR-012/013/014."))
 
 ;; ════════════════════════════════════════════════════════════════════════════
 ;; Agents
@@ -51,7 +51,7 @@
 (given task-context-structs)
 
 (meta task-context-structs
-  (description "Create src/web/context.rs with Serde-serializable structs for template data: VaultContext, PageEntry, StatsContext, ZetlMeta, BreadcrumbEntry, BacklinkEntry, OutlinkEntry, PageContext, FolderContext, SubfolderEntry. Each struct derives Serialize. PageContext.frontmatter is serde_json::Value (empty object {} for now — actual parsing is Phase 4). Add builder functions that convert VaultData + page-specific data into these context structs. Export the module from src/web/mod.rs. See SPEC-012 §3.5 for exact struct definitions.")
+  (description "Create src/web/context.rs with Serde-serializable structs for template data: VaultContext, PageEntry, StatsContext, ztlMeta, BreadcrumbEntry, BacklinkEntry, OutlinkEntry, PageContext, FolderContext, SubfolderEntry. Each struct derives Serialize. PageContext.frontmatter is serde_json::Value (empty object {} for now — actual parsing is Phase 4). Add builder functions that convert VaultData + page-specific data into these context structs. Export the module from src/web/mod.rs. See SPEC-012 §3.5 for exact struct definitions.")
   (acceptance "cargo check passes; context structs compile with Serialize; builder functions accept VaultData references and return context structs"))
 
 (normally r-ready-context-structs
@@ -67,7 +67,7 @@
 (given task-extract-base)
 
 (meta task-extract-base
-  (description "Create src/web/templates/base.html by extracting the master layout from html.rs::layout(). This template defines the DOCTYPE, <head> with DaisyUI/Tailwind CDN links, all inline CSS, the drawer layout, sidebar, search modal, and inline JS. Define blocks: {% block head %}, {% block styles %}, {% block sidebar %}, {% block content %}, {% block scripts %}. Use Minijinja syntax. Template variables: vault.name, vault.pages (for sidebar), search_index, zetl.version, theme. The sidebar navigation must match the current sidebar_html() output exactly — same nested <ul> structure, same slug links, same collision-aware display names.")
+  (description "Create src/web/templates/base.html by extracting the master layout from html.rs::layout(). This template defines the DOCTYPE, <head> with DaisyUI/Tailwind CDN links, all inline CSS, the drawer layout, sidebar, search modal, and inline JS. Define blocks: {% block head %}, {% block styles %}, {% block sidebar %}, {% block content %}, {% block scripts %}. Use Minijinja syntax. Template variables: vault.name, vault.pages (for sidebar), search_index, ztl.version, theme. The sidebar navigation must match the current sidebar_html() output exactly — same nested <ul> structure, same slug links, same collision-aware display names.")
   (acceptance "base.html is a valid Minijinja template; contains all 5 named blocks; includes full DaisyUI layout, search modal JS, sidebar generation via {% for %} over vault.pages; when rendered with correct context data, produces HTML structurally identical to current layout() output"))
 
 (normally r-ready-extract-base
@@ -148,7 +148,7 @@
 
 (meta task-refactor-routes
   (description "Refactor src/web/routes.rs to use TemplateEngine instead of format!() string concatenation. Store TemplateEngine in WebState (or as a separate shared state). Update index_handler to build VaultContext from VaultData, call engine.render_index(). Update page_handler to build PageContext (including backlinks, outlinks with colors, breadcrumbs, transclusion cards, edit state), call engine.render_page() with mode='serve'. Update render_folder_index to build FolderContext, call engine.render_folder(). Keep save_handler and preview_handler unchanged (they don't render full pages). Remove direct calls to html.rs::layout(), html.rs::sidebar_html(), html.rs::breadcrumb_html(). Keep using html.rs::search_index_json(), html.rs::html_escape(), html.rs::urlencoding().")
-  (acceptance "All serve-mode routes render via TemplateEngine; zetl serve produces pixel-identical HTML to pre-refactor output; save and preview handlers still work; cargo test passes"))
+  (acceptance "All serve-mode routes render via TemplateEngine; ztl serve produces pixel-identical HTML to pre-refactor output; save and preview handlers still work; cargo test passes"))
 
 (normally r-ready-refactor-routes
   (and task-refactor-routes completed-engine)
@@ -164,7 +164,7 @@
 
 (meta task-refactor-build
   (description "Refactor src/web/build.rs to use TemplateEngine instead of format!() string concatenation. Create a TemplateEngine instance at the start of build_static(). Replace render_index(), render_page(), render_folder_index() calls with engine.render_index(), engine.render_page(mode='build'), engine.render_folder(). Remove duplicate sidebar_entries() and slug_for_page() if they can be shared with routes.rs (move to mod.rs or a shared util). Build mode must NOT include edit UI (mode='build' ensures this via template conditional).")
-  (acceptance "zetl build produces pixel-identical HTML to pre-refactor output; no edit UI in build output; build_static uses TemplateEngine exclusively; cargo test passes"))
+  (acceptance "ztl build produces pixel-identical HTML to pre-refactor output; no edit UI in build output; build_static uses TemplateEngine exclusively; cargo test passes"))
 
 (normally r-ready-refactor-build
   (and task-refactor-build completed-engine)
@@ -195,8 +195,8 @@
 (given task-verify-phase1)
 
 (meta task-verify-phase1
-  (description "End-to-end verification that Phase 1 produces identical output. Run zetl build on the demo-vault (or a test vault) and compare the generated HTML against a snapshot of the pre-refactor output. Check: (1) index.html structure matches, (2) page views have same DaisyUI layout, sidebar, search modal, backlinks panel, transclusion cards, (3) folder indices have same subfolder/page cards, (4) zetl serve renders all pages without template errors, (5) edit mode works in serve, (6) all existing tests pass. NFR-012-003.")
-  (acceptance "cargo test passes; zetl build output is structurally identical; zetl serve renders all pages; no template errors; edit/save works in serve mode"))
+  (description "End-to-end verification that Phase 1 produces identical output. Run ztl build on the demo-vault (or a test vault) and compare the generated HTML against a snapshot of the pre-refactor output. Check: (1) index.html structure matches, (2) page views have same DaisyUI layout, sidebar, search modal, backlinks panel, transclusion cards, (3) folder indices have same subfolder/page cards, (4) ztl serve renders all pages without template errors, (5) edit mode works in serve, (6) all existing tests pass. NFR-012-003.")
+  (acceptance "cargo test passes; ztl build output is structurally identical; ztl serve renders all pages; no template errors; edit/save works in serve mode"))
 
 (normally r-ready-verify-phase1
   (and task-verify-phase1 completed-cleanup-html)
@@ -210,7 +210,7 @@
 ;; Phase 2 — Named Themes and --theme Flag
 ;; ════════════════════════════════════════════════════════════════════════════
 ;;
-;; Goal: Support named theme directories under .zetl/themes/ with a --theme
+;; Goal: Support named theme directories under .ztl/themes/ with a --theme
 ;; CLI flag. Templates load from the active theme with fallback to built-in
 ;; defaults. Template inheritance works across both tiers.
 ;; ════════════════════════════════════════════════════════════════════════════
@@ -220,7 +220,7 @@
 (given task-theme-cli)
 
 (meta task-theme-cli
-  (description "Add --theme <name> argument to both Serve and Build subcommands in src/cli.rs. Default value: 'default'. Type: String. Pass the theme name through to WebState (for serve) and build_static (for build). Add theme name validation: reject names containing '/', '\\', or '..'. When theme is not 'default', verify .zetl/themes/<name>/ exists and is a directory — exit with clear error message if not found, including a hint listing available themes (scan .zetl/themes/ for directories). REQ-012-010, CON-012-005.")
+  (description "Add --theme <name> argument to both Serve and Build subcommands in src/cli.rs. Default value: 'default'. Type: String. Pass the theme name through to WebState (for serve) and build_static (for build). Add theme name validation: reject names containing '/', '\\', or '..'. When theme is not 'default', verify .ztl/themes/<name>/ exists and is a directory — exit with clear error message if not found, including a hint listing available themes (scan .ztl/themes/ for directories). REQ-012-010, CON-012-005.")
   (acceptance "--theme flag accepted by both serve and build commands; default is 'default'; invalid names rejected with error; nonexistent themes produce helpful error with available theme list; cargo check passes"))
 
 (normally r-ready-theme-cli
@@ -236,8 +236,8 @@
 (given task-theme-loader)
 
 (meta task-theme-loader
-  (description "Extend TemplateEngine in src/web/engine.rs to accept vault_root and theme name parameters. Use minijinja's Environment::set_loader() with a closure that implements the two-tier resolution: (1) check .zetl/themes/<active-theme>/<name>.html on disk, (2) fall back to built-in include_str!() default. When theme is 'default', skip disk lookup entirely (optimization). Template inheritance must work across tiers — a theme's page.html can {% extends 'base.html' %} where base.html resolves to the built-in default. Add the 'theme' variable to all template contexts. Per Open Question #1 in SPEC-012: reload templates on every request in serve mode (templates are small); cache in build mode. REQ-012-003, CON-012-001.")
-  (acceptance "Theme templates loaded from .zetl/themes/<name>/ with fallback to built-in; cross-tier inheritance works; theme variable available in templates; default theme skips disk; serve mode reloads templates per request"))
+  (description "Extend TemplateEngine in src/web/engine.rs to accept vault_root and theme name parameters. Use minijinja's Environment::set_loader() with a closure that implements the two-tier resolution: (1) check .ztl/themes/<active-theme>/<name>.html on disk, (2) fall back to built-in include_str!() default. When theme is 'default', skip disk lookup entirely (optimization). Template inheritance must work across tiers — a theme's page.html can {% extends 'base.html' %} where base.html resolves to the built-in default. Add the 'theme' variable to all template contexts. Per Open Question #1 in SPEC-012: reload templates on every request in serve mode (templates are small); cache in build mode. REQ-012-003, CON-012-001.")
+  (acceptance "Theme templates loaded from .ztl/themes/<name>/ with fallback to built-in; cross-tier inheritance works; theme variable available in templates; default theme skips disk; serve mode reloads templates per request"))
 
 (normally r-ready-theme-loader
   (and task-theme-loader completed-theme-cli)
@@ -268,7 +268,7 @@
 (given task-verify-phase2)
 
 (meta task-verify-phase2
-  (description "End-to-end verification of the theme system. Create test themes in a test vault: (1) a theme that overrides only page.html with a custom banner, verify the banner appears and base.html layout is inherited; (2) a theme that overrides base.html, verify all pages use it; (3) verify --theme default still works with no .zetl/ directory; (4) verify --theme nonexistent gives a clear error; (5) verify --theme '../escape' is rejected; (6) verify the theme variable is accessible in templates. TEST-012-003, TEST-012-010.")
+  (description "End-to-end verification of the theme system. Create test themes in a test vault: (1) a theme that overrides only page.html with a custom banner, verify the banner appears and base.html layout is inherited; (2) a theme that overrides base.html, verify all pages use it; (3) verify --theme default still works with no .ztl/ directory; (4) verify --theme nonexistent gives a clear error; (5) verify --theme '../escape' is rejected; (6) verify the theme variable is accessible in templates. TEST-012-003, TEST-012-010.")
   (acceptance "All 6 scenarios pass; theme override + fallback works; CLI validation works; theme variable correct in all templates"))
 
 (normally r-ready-verify-phase2
@@ -283,8 +283,8 @@
 ;; Phase 3 — Static Asset Serving (Per-Theme + Shared)
 ;; ════════════════════════════════════════════════════════════════════════════
 ;;
-;; Goal: Serve user files from .zetl/static/ (shared) and
-;; .zetl/themes/<name>/static/ (per-theme) at /_static/, with theme-specific
+;; Goal: Serve user files from .ztl/static/ (shared) and
+;; .ztl/themes/<name>/static/ (per-theme) at /_static/, with theme-specific
 ;; assets taking precedence. Copy assets in build mode.
 ;; ════════════════════════════════════════════════════════════════════════════
 
@@ -293,7 +293,7 @@
 (given task-static-serve)
 
 (meta task-static-serve
-  (description "Add a /_static/{*path} route to the Axum router in src/web/mod.rs. Implement two-tier file lookup: (1) .zetl/themes/<active-theme>/static/<path>, (2) .zetl/static/<path>. Per-theme assets take precedence. Infer MIME types from file extension (.js → application/javascript, .css → text/css, .png → image/png, .jpg → image/jpeg, .svg → image/svg+xml, .woff2 → font/woff2, etc.). Return 404 for missing files. If neither static directory exists, /_static/* returns 404 with no startup error. Prevent path traversal attacks (reject paths with '..', normalize). REQ-012-005, CON-012-002, ADR-013.")
+  (description "Add a /_static/{*path} route to the Axum router in src/web/mod.rs. Implement two-tier file lookup: (1) .ztl/themes/<active-theme>/static/<path>, (2) .ztl/static/<path>. Per-theme assets take precedence. Infer MIME types from file extension (.js → application/javascript, .css → text/css, .png → image/png, .jpg → image/jpeg, .svg → image/svg+xml, .woff2 → font/woff2, etc.). Return 404 for missing files. If neither static directory exists, /_static/* returns 404 with no startup error. Prevent path traversal attacks (reject paths with '..', normalize). REQ-012-005, CON-012-002, ADR-013.")
   (acceptance "GET /_static/foo.js serves file with correct MIME type; theme assets override shared assets at same path; 404 for nonexistent files; no path traversal; works with and without static directories"))
 
 (normally r-ready-static-serve
@@ -309,7 +309,7 @@
 (given task-static-build)
 
 (meta task-static-build
-  (description "Extend build_static() in src/web/build.rs to copy static assets to {out_dir}/_static/ after HTML generation. Copy order: (1) .zetl/static/ contents first (shared), (2) .zetl/themes/<active-theme>/static/ contents second (theme-specific, overwrites shared on conflict). Preserve directory structure within both sources. If neither directory exists, do not create _static/ in output. Use std::fs recursive copy. REQ-012-006, CON-012-003, ADR-013.")
+  (description "Extend build_static() in src/web/build.rs to copy static assets to {out_dir}/_static/ after HTML generation. Copy order: (1) .ztl/static/ contents first (shared), (2) .ztl/themes/<active-theme>/static/ contents second (theme-specific, overwrites shared on conflict). Preserve directory structure within both sources. If neither directory exists, do not create _static/ in output. Use std::fs recursive copy. REQ-012-006, CON-012-003, ADR-013.")
   (acceptance "Build output includes _static/ with merged assets; theme assets overwrite shared on conflict; directory structure preserved; no _static/ when no source dirs exist"))
 
 (normally r-ready-static-build
@@ -325,7 +325,7 @@
 (given task-verify-phase3)
 
 (meta task-verify-phase3
-  (description "End-to-end verification of static asset handling. Serve mode: (1) shared .zetl/static/test.js returns 200 with correct MIME, (2) theme static overrides shared at same path, (3) 404 for nonexistent files, (4) no error when no static dirs exist. Build mode: (1) shared + theme assets merged in dist/_static/, (2) theme overwrites shared on conflict, (3) directory structure preserved, (4) no _static/ when no source dirs. TEST-012-005, TEST-012-006.")
+  (description "End-to-end verification of static asset handling. Serve mode: (1) shared .ztl/static/test.js returns 200 with correct MIME, (2) theme static overrides shared at same path, (3) 404 for nonexistent files, (4) no error when no static dirs exist. Build mode: (1) shared + theme assets merged in dist/_static/, (2) theme overwrites shared on conflict, (3) directory structure preserved, (4) no _static/ when no source dirs. TEST-012-005, TEST-012-006.")
   (acceptance "All serve and build static asset scenarios pass; MIME types correct; precedence correct; no-static-dir graceful"))
 
 (normally r-ready-verify-phase3
@@ -418,7 +418,7 @@
 (given task-integration-test)
 
 (meta task-integration-test
-  (description "Comprehensive integration test covering the full SPEC-012 feature set. Create a test vault with: multiple pages (some with frontmatter, some without), dead links, backlinks, subfolders, a custom theme that overrides page.html with frontmatter-conditional rendering, shared and per-theme static assets. Verify: (1) zetl serve with default theme works, (2) zetl serve --theme custom works with overrides and fallback, (3) zetl build with default theme produces correct output, (4) zetl build --theme custom produces correct output with static assets, (5) edit mode works only in serve, (6) frontmatter accessible in custom theme, (7) static assets served with correct MIME types, (8) template errors produce readable messages. All REQ-012-* and TEST-012-*.")
+  (description "Comprehensive integration test covering the full SPEC-012 feature set. Create a test vault with: multiple pages (some with frontmatter, some without), dead links, backlinks, subfolders, a custom theme that overrides page.html with frontmatter-conditional rendering, shared and per-theme static assets. Verify: (1) ztl serve with default theme works, (2) ztl serve --theme custom works with overrides and fallback, (3) ztl build with default theme produces correct output, (4) ztl build --theme custom produces correct output with static assets, (5) edit mode works only in serve, (6) frontmatter accessible in custom theme, (7) static assets served with correct MIME types, (8) template errors produce readable messages. All REQ-012-* and TEST-012-*.")
   (acceptance "All 8 scenarios pass; no regressions in existing functionality; cargo test passes; the full feature set from SPEC-012 is operational"))
 
 (normally r-ready-integration-test

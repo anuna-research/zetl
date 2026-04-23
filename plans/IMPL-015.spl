@@ -1,17 +1,17 @@
 ;; ════════════════════════════════════════════════════════════════════════════
-;; IMPL-015: zetl fountain — Screenplay Theme and Scene Chaining
+;; IMPL-015: ztl fountain — Screenplay Theme and Scene Chaining
 ;; Implementation plan for SPEC-015 v0.3.0
 ;; ════════════════════════════════════════════════════════════════════════════
 
 (meta plan
   (id "IMPL-015")
-  (title "zetl fountain — Screenplay Theme and Scene Chaining")
+  (title "ztl fountain — Screenplay Theme and Scene Chaining")
   (version "0.1.0")
   (status "active")
   (created "2026-03-02")
   (author "agent:claude")
   (spec "SPEC-015")
-  (description "Implement scene chaining via prev/next frontmatter fields and a bundled fountain theme for screenwriters. Phase 1: parse prev/next frontmatter, add ChainLink and chain metadata to PageContext, implement chain walking and head detection, add chain validation to zetl check, add conditional prev/next navigation to the default theme. Phase 2: create the bundled fountain theme with Courier Prime fonts, screenplay CSS, and enhanced scene navigation. Covers REQ-015-001 through REQ-015-007, NFR-015-001."))
+  (description "Implement scene chaining via prev/next frontmatter fields and a bundled fountain theme for screenwriters. Phase 1: parse prev/next frontmatter, add ChainLink and chain metadata to PageContext, implement chain walking and head detection, add chain validation to ztl check, add conditional prev/next navigation to the default theme. Phase 2: create the bundled fountain theme with Courier Prime fonts, screenplay CSS, and enhanced scene navigation. Covers REQ-015-001 through REQ-015-007, NFR-015-001."))
 
 ;; ════════════════════════════════════════════════════════════════════════════
 ;; Agents
@@ -72,13 +72,13 @@
   (and ready-chain-walking agent-claude-available)
   assign-to-chain-walking-claude)
 
-;; ── Task: Chain validation in zetl check ──────────────────────────────────
+;; ── Task: Chain validation in ztl check ──────────────────────────────────
 
 (given task-chain-validation)
 
 (meta task-chain-validation
   (description "Add scene chain validation diagnostics to cmd_check in src/main.rs per REQ-015-006. Scan all files for prev/next frontmatter. Build forward and backward maps. Emit five diagnostic types: broken forward link as error, asymmetric chain as warning, cycle detection as error with path, fan-in / multiple predecessors as error, orphaned chain nodes as warning. Integrate with existing check output format. When --verbose, log chain summary per OBS-015-001: number of chains found and chain lengths. REQ-015-006, OBS-015-001.")
-  (acceptance "zetl check reports all five diagnostic types correctly. Diagnostics integrate with existing output format. --verbose shows chain summary. cargo test passes."))
+  (acceptance "ztl check reports all five diagnostic types correctly. Diagnostics integrate with existing output format. --verbose shows chain summary. cargo test passes."))
 
 (normally r-ready-chain-validation
   (and task-chain-validation completed-chain-walking)
@@ -109,8 +109,8 @@
 (given task-chain-integration-tests)
 
 (meta task-chain-integration-tests
-  (description "Add integration tests for scene chaining to tests/integration.rs. Test: basic 3-scene chain navigation with correct prev/next links and position in built HTML; chain head has no prev and shows 1 of 3; chain tail has no next; non-chain pages have no nav; wikilink syntax in frontmatter resolves correctly; zetl check reports broken chain errors; zetl check reports cycle errors; multi-chain vault works independently. TEST-015-003 through TEST-015-007.")
-  (acceptance "All seven test scenarios pass. Tests cover happy path and error cases. Tests work with zetl build and zetl check. No regressions in existing integration tests."))
+  (description "Add integration tests for scene chaining to tests/integration.rs. Test: basic 3-scene chain navigation with correct prev/next links and position in built HTML; chain head has no prev and shows 1 of 3; chain tail has no next; non-chain pages have no nav; wikilink syntax in frontmatter resolves correctly; ztl check reports broken chain errors; ztl check reports cycle errors; multi-chain vault works independently. TEST-015-003 through TEST-015-007.")
+  (acceptance "All seven test scenarios pass. Tests cover happy path and error cases. Tests work with ztl build and ztl check. No regressions in existing integration tests."))
 
 (normally r-ready-chain-integration-tests
   (and task-chain-integration-tests completed-chain-validation completed-prevnext-default-theme)
@@ -125,7 +125,7 @@
 (given task-verify-phase1)
 
 (meta task-verify-phase1
-  (description "End-to-end verification of Phase 1. Create 5-scene chain vault. Verify: serve shows prev/next nav with position indicators; build HTML contains correct links; zetl check passes on valid chain; broken chain reported; cycle reported; fan-in reported; non-chain pages have no nav; multi-chain vault works. cargo test passes. TEST-015-003 through TEST-015-007.")
+  (description "End-to-end verification of Phase 1. Create 5-scene chain vault. Verify: serve shows prev/next nav with position indicators; build HTML contains correct links; ztl check passes on valid chain; broken chain reported; cycle reported; fan-in reported; non-chain pages have no nav; multi-chain vault works. cargo test passes. TEST-015-003 through TEST-015-007.")
   (acceptance "All scenarios pass. Chain navigation works in serve and build. Check diagnostics correct. No regressions."))
 
 (normally r-ready-verify-phase1
@@ -209,7 +209,7 @@
 (given task-fountain-integration-tests)
 
 (meta task-fountain-integration-tests
-  (description "Add integration tests for the fountain theme. Verify: zetl build --theme fountain produces HTML with Courier Prime font-face and no CDN URLs; WOFF2 fonts copied to _static/ in build output; 3-scene chain vault has prev/next navigation with correct links and positions; non-chain pages have no scene nav; zetl theme list shows fountain as bundled. TEST-015-001, TEST-015-002, TEST-015-003.")
+  (description "Add integration tests for the fountain theme. Verify: ztl build --theme fountain produces HTML with Courier Prime font-face and no CDN URLs; WOFF2 fonts copied to _static/ in build output; 3-scene chain vault has prev/next navigation with correct links and positions; non-chain pages have no scene nav; ztl theme list shows fountain as bundled. TEST-015-001, TEST-015-002, TEST-015-003.")
   (acceptance "All five test scenarios pass. Fountain theme produces valid self-contained HTML. Fonts bundled correctly. Scene navigation present for chained pages."))
 
 (normally r-ready-fountain-integration-tests
@@ -225,7 +225,7 @@
 (given task-verify-phase2)
 
 (meta task-verify-phase2
-  (description "Final end-to-end verification. Verify: zetl serve --theme fountain renders screenplay pages with Courier Prime and grey background; scene headings uppercase bold, character names centered, dialogue narrower; prev/next nav with Scene N of M; sidebar collapsed by default, shows chain order when opened; dark mode works; zetl build --theme fountain produces self-contained static site with fonts in _static/ and no CDN refs; zetl theme list shows fountain; chaining works with both default and fountain themes; zetl check validates chains; non-chain pages normal; multi-chain vault works; cargo test passes. TEST-015-001 through TEST-015-007, NFR-015-001.")
+  (description "Final end-to-end verification. Verify: ztl serve --theme fountain renders screenplay pages with Courier Prime and grey background; scene headings uppercase bold, character names centered, dialogue narrower; prev/next nav with Scene N of M; sidebar collapsed by default, shows chain order when opened; dark mode works; ztl build --theme fountain produces self-contained static site with fonts in _static/ and no CDN refs; ztl theme list shows fountain; chaining works with both default and fountain themes; ztl check validates chains; non-chain pages normal; multi-chain vault works; cargo test passes. TEST-015-001 through TEST-015-007, NFR-015-001.")
   (acceptance "All 12 scenarios pass. Full SPEC-015 Phase 1 and Phase 2 compliance verified. No regressions."))
 
 (normally r-ready-verify-phase2

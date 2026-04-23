@@ -4,8 +4,8 @@
 //! by an `ecosystem = "mdbook"` hook's selector MUST produce a
 //! diagnostic that cites both parsers and names the resolution.
 //!
-//! Build-time: `zetl build` warns by default; `zetl build
-//! --strict-parsers` refuses. Config-time: `zetl ecosystem check`
+//! Build-time: `ztl build` warns by default; `ztl build
+//! --strict-parsers` refuses. Config-time: `ztl ecosystem check`
 //! surfaces the same diagnostic so authors catch it pre-flight.
 
 #![cfg(unix)]
@@ -32,7 +32,7 @@ fn write(path: &Path, contents: &str) {
 /// composition layer classifies it as enabled. It is never invoked
 /// during the detection path (pure selector evaluation).
 fn scaffold_mixed_vault(vault: &Path) {
-    let hook_dir = vault.join(".zetl/hooks/pre-parse.d");
+    let hook_dir = vault.join(".ztl/hooks/pre-parse.d");
     fs::create_dir_all(&hook_dir).unwrap();
 
     write(
@@ -64,18 +64,18 @@ include = ["**/*.md"]
 }
 
 fn run_build(vault: &Path, args: &[&str]) -> std::process::Output {
-    let mut cmd = cargo_bin_cmd!("zetl");
+    let mut cmd = cargo_bin_cmd!("ztl");
     cmd.args(["--dir", vault.to_str().unwrap(), "build"])
         .args(args)
         .env("RUST_BACKTRACE", "0");
-    cmd.output().expect("run zetl build")
+    cmd.output().expect("run ztl build")
 }
 
 fn run_ecosystem_check(vault: &Path) -> std::process::Output {
-    let mut cmd = cargo_bin_cmd!("zetl");
+    let mut cmd = cargo_bin_cmd!("ztl");
     cmd.args(["--dir", vault.to_str().unwrap(), "ecosystem", "check"])
         .env("RUST_BACKTRACE", "0");
-    cmd.output().expect("run zetl ecosystem check")
+    cmd.output().expect("run ztl ecosystem check")
 }
 
 // ── TEST-3315 acceptance ────────────────────────────────────────────
@@ -113,8 +113,8 @@ fn build_warns_on_mixed_parser_and_cites_both() {
     );
     // Five-part shape: summary, context, observed, Likely cause, Hint.
     assert!(
-        stderr.contains("[zetl] mixed-parser configuration"),
-        "expected `[zetl] mixed-parser configuration` summary; got:\n{stderr}"
+        stderr.contains("[ztl] mixed-parser configuration"),
+        "expected `[ztl] mixed-parser configuration` summary; got:\n{stderr}"
     );
     assert!(
         stderr.contains("Likely cause:"),
@@ -174,7 +174,7 @@ fn clean_vault_produces_no_mixed_parser_warning() {
     // Same ecosystem / same parser — no violation.
     let tmp = TempDir::new().unwrap();
     let vault = tmp.path();
-    let hook_dir = vault.join(".zetl/hooks/pre-parse.d");
+    let hook_dir = vault.join(".ztl/hooks/pre-parse.d");
     fs::create_dir_all(&hook_dir).unwrap();
 
     write(
@@ -221,7 +221,7 @@ include = ["**/*.md"]
 
 #[test]
 fn ecosystem_check_surfaces_mixed_parser_config_time() {
-    // Config-time check: `zetl ecosystem check` should also surface
+    // Config-time check: `ztl ecosystem check` should also surface
     // the mixed-parser diagnostic so CI catches it pre-flight.
     let tmp = TempDir::new().unwrap();
     let vault = tmp.path();

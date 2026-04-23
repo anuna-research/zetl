@@ -2,7 +2,7 @@
 //! (SPEC-033 REQ-3306 / CON-3306).
 //!
 //! Different pages in a vault can be parsed by different Markdown parsers
-//! — typically `"commonmark"` (pulldown-cmark, zetl's default) or
+//! — typically `"commonmark"` (pulldown-cmark, ztl's default) or
 //! `"pandoc"` (pandoc-types via the Pandoc adapter). A page can opt into
 //! a specific parser via YAML frontmatter; a whole directory can default
 //! to a parser via vault config globs; a whole vault can default via a
@@ -14,7 +14,7 @@
 //!   parser_name = frontmatter.parser                 # priority 1 (highest)
 //!             ?? first_matching(config.parse.rule)   # priority 2
 //!             ?? config.parse.default                # priority 3
-//!             ?? "commonmark"                        # priority 4 (zetl default)
+//!             ?? "commonmark"                        # priority 4 (ztl default)
 //! ```
 //!
 //! Resolution is pure — no I/O, no allocation on the hot path beyond the
@@ -25,7 +25,7 @@
 //!
 //! ## Why this lives outside `hooks::ast::parse`
 //!
-//! `hooks::ast::parse` is zetl's commonmark implementation. The parser
+//! `hooks::ast::parse` is ztl's commonmark implementation. The parser
 //! registry is the *dispatch* layer that sits in front of it. Additional
 //! parsers (Pandoc today, Djot / asciidoc / … tomorrow) live alongside
 //! `hooks::ast::parse` as siblings, all returning the same canonical
@@ -55,7 +55,7 @@ use crate::hooks::ast::{parse_markdown, Document, Frontmatter};
 
 // ── Parser trait + built-ins ────────────────────────────────────────────────
 
-/// A Markdown parser that produces the canonical zetl-ext [`Document`].
+/// A Markdown parser that produces the canonical ztl-ext [`Document`].
 ///
 /// Implementations are pure: no I/O beyond what the registered parser
 /// inherently needs (the commonmark parser has none; the pandoc parser
@@ -66,7 +66,7 @@ pub trait Parser: Send + Sync {
     fn id(&self) -> &str;
 
     /// Parse Markdown (with or without frontmatter) into a canonical
-    /// zetl-ext [`Document`].
+    /// ztl-ext [`Document`].
     ///
     /// Returns [`ParseError::RuntimeUnavailable`] when the parser exists
     /// in the registry but its runtime dependency isn't met (Pandoc
@@ -75,8 +75,8 @@ pub trait Parser: Send + Sync {
     fn parse(&self, content: &str) -> Result<Document, ParseError>;
 }
 
-/// Zetl's default parser (priority 4): pulldown-cmark via
-/// [`crate::hooks::ast::parse_markdown`] with zetl extensions for
+/// ztl's default parser (priority 4): pulldown-cmark via
+/// [`crate::hooks::ast::parse_markdown`] with ztl extensions for
 /// wikilinks, embeds, and SPL blocks.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CommonmarkParser;
@@ -97,7 +97,7 @@ impl Parser for CommonmarkParser {
 /// validation stays honest, but [`Parser::parse`] returns
 /// [`ParseError::RuntimeUnavailable`] until `task-pandoc-adapter` wires
 /// real `pandoc --from markdown --to json` invocation. The hint points
-/// at `zetl ecosystem check`, which already knows how to diagnose the
+/// at `ztl ecosystem check`, which already knows how to diagnose the
 /// pandoc runtime (REQ-3313).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PandocParser;
@@ -110,8 +110,8 @@ impl Parser for PandocParser {
     fn parse(&self, _content: &str) -> Result<Document, ParseError> {
         Err(ParseError::RuntimeUnavailable {
             parser: "pandoc".to_string(),
-            hint: "the Pandoc parser adapter has not landed in this zetl build; \
-                   run `zetl ecosystem check` for runtime status, or set \
+            hint: "the Pandoc parser adapter has not landed in this ztl build; \
+                   run `ztl ecosystem check` for runtime status, or set \
                    `parser: commonmark` to parse this page with the default parser"
                 .to_string(),
         })
@@ -138,7 +138,7 @@ impl ParserRegistry {
 
     /// v1 defaults: commonmark (always) + pandoc (stub).
     ///
-    /// `commonmark` is the zetl-default parser (priority 4); `pandoc`
+    /// `commonmark` is the ztl-default parser (priority 4); `pandoc`
     /// occupies the registry slot so selection resolves, returning
     /// [`ParseError::RuntimeUnavailable`] from [`Parser::parse`] until
     /// `task-pandoc-adapter` wires real invocation.
@@ -200,7 +200,7 @@ impl std::fmt::Debug for ParserRegistry {
 // ── Config (`[parse]` table) ────────────────────────────────────────────────
 
 /// Vault-level parse configuration — the `[parse]` table from
-/// `.zetl/config.toml`.
+/// `.ztl/config.toml`.
 ///
 /// ```toml
 /// [parse]
@@ -231,7 +231,7 @@ pub struct ParseConfig {
     pub rule: Vec<ParserRule>,
 }
 
-/// Zetl's intrinsic fallback (CON-3306 priority 4) — used when no
+/// ztl's intrinsic fallback (CON-3306 priority 4) — used when no
 /// frontmatter, no matching rule, and no `[parse] default` apply.
 pub const DEFAULT_PARSER: &str = "commonmark";
 
@@ -277,11 +277,11 @@ impl ParseConfig {
         Ok(wrapper.parse.unwrap_or_default())
     }
 
-    /// Load `.zetl/config.toml` from the vault and extract its
+    /// Load `.ztl/config.toml` from the vault and extract its
     /// `[parse]` block. Missing file → default `ParseConfig`; malformed
     /// → [`ParseConfigError`].
     pub fn load_from_vault(vault_root: &Path) -> Result<Self, ParseConfigError> {
-        let path = vault_root.join(".zetl").join("config.toml");
+        let path = vault_root.join(".ztl").join("config.toml");
         match std::fs::read_to_string(&path) {
             Ok(s) => Self::from_toml_str(&s),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
@@ -337,7 +337,7 @@ impl CompiledParseConfig {
 /// Failure surface for loading / compiling a [`ParseConfig`].
 #[derive(Debug, Clone)]
 pub enum ParseConfigError {
-    /// `.zetl/config.toml` couldn't be read for a reason other than
+    /// `.ztl/config.toml` couldn't be read for a reason other than
     /// `NotFound` (permission denied, I/O, …).
     Io(String),
     /// TOML wasn't syntactically valid or didn't match the schema.
@@ -349,9 +349,9 @@ pub enum ParseConfigError {
 impl std::fmt::Display for ParseConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ParseConfigError::Io(e) => write!(f, "could not read .zetl/config.toml: {e}"),
+            ParseConfigError::Io(e) => write!(f, "could not read .ztl/config.toml: {e}"),
             ParseConfigError::Malformed(e) => {
-                write!(f, "malformed [parse] config in .zetl/config.toml: {e}")
+                write!(f, "malformed [parse] config in .ztl/config.toml: {e}")
             }
             ParseConfigError::BadPattern { pattern, detail } => {
                 write!(f, "invalid [[parse.rule]] pattern '{pattern}': {detail}")
@@ -420,7 +420,7 @@ pub enum ParseError {
     /// The selected parser is registered but its runtime dependency
     /// isn't met (e.g. Pandoc binary missing). Same user-visible
     /// behaviour as `UnknownParser` — skip the page, diagnose — but
-    /// the hint points at `zetl ecosystem check` rather than the
+    /// the hint points at `ztl ecosystem check` rather than the
     /// registry listing.
     RuntimeUnavailable { parser: String, hint: String },
     /// The parser accepted the content but failed mid-parse (malformed
@@ -515,7 +515,7 @@ mod tests {
         match err {
             ParseError::RuntimeUnavailable { parser, hint } => {
                 assert_eq!(parser, "pandoc");
-                assert!(hint.contains("zetl ecosystem check"));
+                assert!(hint.contains("ztl ecosystem check"));
             }
             other => panic!("expected RuntimeUnavailable, got {other:?}"),
         }
@@ -588,7 +588,7 @@ parser = "pandoc"
 
     // Row 1: No frontmatter, no rule, no default → commonmark
     #[test]
-    fn resolves_to_zetl_default_commonmark_when_nothing_configured() {
+    fn resolves_to_ztl_default_commonmark_when_nothing_configured() {
         let config = CompiledParseConfig::empty();
         let name = select_parser_name(None, Path::new("index.md"), &config);
         assert_eq!(name, "commonmark");
@@ -739,7 +739,7 @@ parser = "pandoc"
     #[test]
     fn load_from_vault_reads_parse_block() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let cfg_dir = tmp.path().join(".zetl");
+        let cfg_dir = tmp.path().join(".ztl");
         std::fs::create_dir_all(&cfg_dir).unwrap();
         std::fs::write(
             cfg_dir.join("config.toml"),

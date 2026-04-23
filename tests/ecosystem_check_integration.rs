@@ -1,4 +1,4 @@
-//! SPEC-033 TEST-3310 — integration coverage for `zetl ecosystem check`.
+//! SPEC-033 TEST-3310 — integration coverage for `ztl ecosystem check`.
 //!
 //! Pins the CON-3310 output contract at the CLI boundary:
 //!
@@ -35,17 +35,17 @@ fn write_runnable(vault: &Path, rel: &str, body: &str) {
 }
 
 fn run_check(vault: &Path, extra: &[&str]) -> std::process::Output {
-    cargo_bin_cmd!("zetl")
+    cargo_bin_cmd!("ztl")
         .args(["--dir", vault.to_str().unwrap(), "ecosystem", "check"])
         .args(extra)
         .output()
-        .expect("run zetl ecosystem check")
+        .expect("run ztl ecosystem check")
 }
 
 /// Force table output: tests run non-TTY, where the global format resolves
 /// to JSON by default. Passing `--format=table` re-selects the table.
 fn run_check_table(vault: &Path) -> std::process::Output {
-    cargo_bin_cmd!("zetl")
+    cargo_bin_cmd!("ztl")
         .args([
             "--dir",
             vault.to_str().unwrap(),
@@ -55,14 +55,14 @@ fn run_check_table(vault: &Path) -> std::process::Output {
             "check",
         ])
         .output()
-        .expect("run zetl ecosystem check")
+        .expect("run ztl ecosystem check")
 }
 
 // ── TEST-3310: zero-configured state ─────────────────────────────────────
 
 #[test]
 fn zero_configured_vault_exits_zero_and_shows_informational_footer() {
-    // A fresh vault with no `.zetl/hooks/` → every ecosystem has
+    // A fresh vault with no `.ztl/hooks/` → every ecosystem has
     // `configured = 0`. CON-3310 says this MUST exit 0 regardless of
     // whether runtimes are installed on the CI host.
     let tmp = TempDir::new().unwrap();
@@ -96,11 +96,11 @@ fn json_output_matches_con_3310_shape() {
     // `configured` — this pins the field's presence even when > 0.
     write_runnable(
         tmp.path(),
-        ".zetl/hooks/transform.d/crossref.py",
+        ".ztl/hooks/transform.d/crossref.py",
         "#!/bin/sh\ntrue\n",
     );
     write(
-        &tmp.path().join(".zetl/hooks/transform.d/crossref.py.toml"),
+        &tmp.path().join(".ztl/hooks/transform.d/crossref.py.toml"),
         r#"ecosystem = "pandoc"
 extension_id = "crossref"
 "#,
@@ -171,11 +171,11 @@ fn configured_missing_runtime_fails_with_actionable_stderr() {
     let tmp = TempDir::new().unwrap();
     write_runnable(
         tmp.path(),
-        ".zetl/hooks/transform.d/crossref.py",
+        ".ztl/hooks/transform.d/crossref.py",
         "#!/bin/sh\ntrue\n",
     );
     write(
-        &tmp.path().join(".zetl/hooks/transform.d/crossref.py.toml"),
+        &tmp.path().join(".ztl/hooks/transform.d/crossref.py.toml"),
         r#"ecosystem = "pandoc"
 extension_id = "crossref"
 "#,
@@ -186,7 +186,7 @@ extension_id = "crossref"
     let stderr = String::from_utf8_lossy(&out.stderr);
 
     // Either pandoc is installed (exit 0, no hint on stderr) or it is
-    // missing (exit 1, `[zetl] ecosystem pandoc:` line on stderr). Both
+    // missing (exit 1, `[ztl] ecosystem pandoc:` line on stderr). Both
     // are valid — what we lock in is the conditional wiring.
     if out.status.success() {
         // Host has pandoc; the table must still reflect the
@@ -203,7 +203,7 @@ extension_id = "crossref"
             out.status.code()
         );
         assert!(
-            stderr.contains("[zetl] ecosystem pandoc:"),
+            stderr.contains("[ztl] ecosystem pandoc:"),
             "stderr must carry actionable line for configured-but-missing runtime; \
              stderr={stderr}"
         );

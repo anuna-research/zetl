@@ -1,6 +1,6 @@
 # mdBook ecosystem guide
 
-The mdBook adapter lets zetl run
+The mdBook adapter lets ztl run
 [mdBook](https://rust-lang.github.io/mdBook/) preprocessors
 (the `mdbook-<name>` binary convention) over vault pages as part of
 the pre-parse stage. Preprocessors are one-shot subprocesses that
@@ -22,15 +22,15 @@ in sync with the shipped `ecosystem-mdbook` feature flag.
 - [Scope (`page` vs `vault`)](#scope-page-vs-vault)
 - [Translation boundary](#translation-boundary)
 - [Known-working preprocessors](#known-working-preprocessors)
-- [`zetl ecosystem check` walkthrough](#zetl-ecosystem-check-walkthrough)
+- [`ztl ecosystem check` walkthrough](#ztl-ecosystem-check-walkthrough)
 - [Troubleshooting](#troubleshooting)
 
 ## Install
 
 The mdBook adapter does **not** require the `mdbook` binary itself
-on `$PATH` to function — preprocessors run independently and zetl
+on `$PATH` to function — preprocessors run independently and ztl
 builds their stdin envelope synthetically (REQ-3309). Presence of
-the `mdbook` binary is still *probed* so `zetl ecosystem check` can
+the `mdbook` binary is still *probed* so `ztl ecosystem check` can
 report a version; its absence downgrades the status line to
 advisory, not error.
 
@@ -43,7 +43,7 @@ cargo install mdbook-katex
 cargo install mdbook-admonish
 ```
 
-zetl does not install preprocessors for you — it defers to `cargo`
+ztl does not install preprocessors for you — it defers to `cargo`
 and only reports at build time when a configured preprocessor
 cannot be resolved (SPEC-033 §13 Q4).
 
@@ -59,8 +59,8 @@ cargo install mdbook
 apt install mdbook           # if packaged on your distro
 ```
 
-The mdBook adapter is compiled into default zetl builds via the
-`ecosystem-mdbook` cargo feature. To build zetl without it:
+The mdBook adapter is compiled into default ztl builds via the
+`ecosystem-mdbook` cargo feature. To build ztl without it:
 
 ```sh
 cargo build --no-default-features --features "<your-other-flags>"
@@ -72,23 +72,23 @@ at the matrix entry (SPEC-032 CON-3225).
 
 ## Configuration
 
-mdBook preprocessors live under `.zetl/hooks/pre-parse.d/` — the
+mdBook preprocessors live under `.ztl/hooks/pre-parse.d/` — the
 mdBook adapter runs at the `pre-parse` stage only. Preprocessors
 operate on raw Markdown text inside an mdBook `Chapter`, which
-predates zetl's parse step. One TOML manifest per hook, named by
+predates ztl's parse step. One TOML manifest per hook, named by
 the default-extension-id convention (see SPEC-032 REQ-3217).
 
 ### Basic manifest
 
 ```toml
-# .zetl/hooks/pre-parse.d/mermaid.toml
+# .ztl/hooks/pre-parse.d/mermaid.toml
 stage     = "pre-parse"
 ecosystem = "mdbook"
 exec      = "mdbook-mermaid"
 ```
 
 With `exec = "mdbook-mermaid"` and the binary resolvable on
-`$PATH`, zetl invokes it once per vault page at build time: first
+`$PATH`, ztl invokes it once per vault page at build time: first
 `mdbook-mermaid supports html` as a probe, then a real run with the
 synthetic envelope piped over stdin.
 
@@ -118,7 +118,7 @@ SPEC-033 REQ-3312:
 |-------------|--------------------|-------------------------------------------------------------------------------|
 | `exec`      | string             | Preprocessor binary name (conventionally `mdbook-<name>`). Required.          |
 | `scope`     | `"page"` \| `"vault"` | Invocation cardinality. Defaults to `"page"`.                              |
-| `ast_type`  | `"zetl-ext"`       | Fixed; pre-parse hooks operate on raw Markdown before AST construction.       |
+| `ast_type`  | `"ztl-ext"`       | Fixed; pre-parse hooks operate on raw Markdown before AST construction.       |
 
 Non-mdBook fields (e.g. `package` from the remark adapter, `mode`
 from the Pandoc adapter) on an mdBook manifest are rejected at
@@ -144,7 +144,7 @@ affects the real run's envelope.
 
 ## Envelope shape (REQ-3309)
 
-On every invocation, zetl writes a two-element JSON array to the
+On every invocation, ztl writes a two-element JSON array to the
 preprocessor's stdin:
 
 ```json
@@ -176,12 +176,12 @@ preprocessor's stdin:
 ```
 
 The canonical schema lives at
-[`tools/zetl-mdbook-envelope-schema-v1.json`](../../tools/zetl-mdbook-envelope-schema-v1.json)
+[`tools/ztl-mdbook-envelope-schema-v1.json`](../../tools/ztl-mdbook-envelope-schema-v1.json)
 and is asserted against every constructed envelope in the test suite
 (`test_3309_every_fixture_page_envelope_passes_schema_validation`).
 
 The preprocessor writes the transformed `Book` (the second element,
-without the surrounding context) to stdout. zetl reads the first
+without the surrounding context) to stdout. ztl reads the first
 chapter's `content` field back out and feeds it into the pipeline's
 next stage as transformed Markdown.
 
@@ -190,7 +190,7 @@ next stage as transformed Markdown.
 - Envelope construction is a pure function
   ([`build_envelope_for_page`](../../src/ecosystems/mdbook.rs)); the
   input body is copied verbatim into `Chapter.content`.
-- Extraction (`extract_chapter_content`) on the zetl-built envelope
+- Extraction (`extract_chapter_content`) on the ztl-built envelope
   returns the input body byte-for-byte; this round-trip property is
   enforced by
   `test_3309_envelope_content_round_trip_is_byte_identical`.
@@ -206,7 +206,7 @@ next stage as transformed Markdown.
   responses, because preprocessors in non-Rust languages (Node,
   Python) typically don't reproduce the marker.
 - `PartTitle` and `Separator` items in `book.sections` are accepted
-  when present — zetl never emits them but preprocessors that
+  when present — ztl never emits them but preprocessors that
   restructure the book may.
 
 ## Invocation contract
@@ -225,13 +225,13 @@ argv (probe):    [<exec>, "supports", "html"]
 argv (run):      [<exec>]
 stdin (run):     envelope JSON (see above), UTF-8
 stdout (run):    transformed Book JSON, UTF-8
-stderr:          free-form; zetl forwards under --verbose
+stderr:          free-form; ztl forwards under --verbose
 ```
 
 This is byte-identical to mdBook's own preprocessor contract (see
 <https://rust-lang.github.io/mdBook/for_developers/preprocessors.html>).
-Preprocessors that work under `mdbook build` work under zetl
-without modification, and cannot distinguish zetl-run from
+Preprocessors that work under `mdbook build` work under ztl
+without modification, and cannot distinguish ztl-run from
 mdbook-run invocations.
 
 The adapter bounds the probe to 5 seconds and the real run to the
@@ -258,10 +258,10 @@ The mdBook adapter operates at the pre-parse stage on raw Markdown
 text — there is no AST translation at the adapter boundary (REQ-3307
 applies to transform-stage AST adapters, not pre-parse text
 adapters). The envelope's `Chapter.content` is the page's raw
-Markdown, and the preprocessor returns raw Markdown; zetl's own
+Markdown, and the preprocessor returns raw Markdown; ztl's own
 parser runs afterward on whatever text the preprocessor emitted.
 
-**What this means for zetl-ext features:**
+**What this means for ztl-ext features:**
 
 - **Wikilinks** (`[[target]]`), **embeds** (`![[target]]`), and
   **SPL blocks** are raw text at the preprocessor boundary. A
@@ -271,10 +271,10 @@ parser runs afterward on whatever text the preprocessor emitted.
   math delimiters) leaves unrelated syntax alone.
 - The preservation check for pre-parse hooks operates on the
   parsed AST *after* the pre-parse pipeline, comparing against the
-  AST zetl would have built without the hook. Strip of a
+  AST ztl would have built without the hook. Strip of a
   `[[wikilink]]` by an mdBook preprocessor surfaces as a
   `contract_violation` naming `Wikilink` in the diagnostic.
-- Frontmatter is stripped by zetl before the envelope is built —
+- Frontmatter is stripped by ztl before the envelope is built —
   preprocessors never see the YAML block and cannot read
   frontmatter for conditional behaviour. Mirror any frontmatter
   you want the preprocessor to see into page body or use the hook
@@ -283,7 +283,7 @@ parser runs afterward on whatever text the preprocessor emitted.
 ## Known-working preprocessors
 
 The v1 compatibility matrix ships four seed entries in
-`tools/zetl-ecosystem-matrix.toml`. All land at
+`tools/ztl-ecosystem-matrix.toml`. All land at
 `tier = "experimental"` — documenting the shape of a canonical
 render without a live golden-HTML CI assertion yet. Promotion to
 `partial` requires wiring the fixtures into a green golden-HTML
@@ -304,7 +304,7 @@ Rewrites ```` ```mermaid ```` fenced code blocks into
 + book-init CSS/JS assets via the HTML renderer.
 
 ```toml
-# .zetl/hooks/pre-parse.d/mermaid.toml
+# .ztl/hooks/pre-parse.d/mermaid.toml
 stage     = "pre-parse"
 ecosystem = "mdbook"
 exec      = "mdbook-mermaid"
@@ -314,7 +314,7 @@ Known limitations at experimental tier:
 
 1. Rendering is client-side — the preprocessor only swaps the fence; the actual SVG is produced by mermaid.js in the browser at page load. The golden-HTML gate can assert the shell shape, not the diagram.
 2. The asset-injection path relies on mdBook's `renderer = ["html"]` output backend. Users running an alternative renderer see the shell markup but no runtime, which is cosmetically broken by design; the adapter surfaces this via `mdbook-mermaid install` guidance at probe time.
-3. Round-trip preservation of zetl `Wikilink` / `Embed` / `SplBlock` markers inside a mermaid fence is undefined — the preprocessor treats fence bodies opaquely and zetl's SPL classifier fires first on ```` ```spl ````, so collisions are unlikely but untested.
+3. Round-trip preservation of ztl `Wikilink` / `Embed` / `SplBlock` markers inside a mermaid fence is undefined — the preprocessor treats fence bodies opaquely and ztl's SPL classifier fires first on ```` ```spl ````, so collisions are unlikely but untested.
 
 ### `mdbook-toc`
 
@@ -326,7 +326,7 @@ Replaces the literal `<!-- toc -->` marker (or a configurable
 alternate) with a generated `<ul>` list of in-chapter headings.
 
 ```toml
-# .zetl/hooks/pre-parse.d/toc.toml
+# .ztl/hooks/pre-parse.d/toc.toml
 stage     = "pre-parse"
 ecosystem = "mdbook"
 exec      = "mdbook-toc"
@@ -334,9 +334,9 @@ exec      = "mdbook-toc"
 
 Known limitations at experimental tier:
 
-1. The marker is HTML-comment-based. zetl's frontmatter stripper runs first and the marker survives unmolested, but a user who wraps the marker inside a fenced code block sees it preserved literally — expected behaviour per upstream.
+1. The marker is HTML-comment-based. ztl's frontmatter stripper runs first and the marker survives unmolested, but a user who wraps the marker inside a fenced code block sees it preserved literally — expected behaviour per upstream.
 2. Heading-depth range is configurable via `[preprocessor.toc]` in `book.toml` (defaults `max-level = 4`); the canary fixture exercises only depths 1–2 to stay terse and version-stable.
-3. Anchor slugs are computed by mdbook's own GitHub-style slugifier, not zetl's; a page carrying an Obsidian `^block-id` that mirrors an mdbook-generated anchor will collide silently. Promotion to `partial` requires a fixture exercising unicode heading slugs.
+3. Anchor slugs are computed by mdbook's own GitHub-style slugifier, not ztl's; a page carrying an Obsidian `^block-id` that mirrors an mdbook-generated anchor will collide silently. Promotion to `partial` requires a fixture exercising unicode heading slugs.
 
 ### `mdbook-katex`
 
@@ -349,7 +349,7 @@ pre-rendered KaTeX HTML at preprocess time, avoiding a client-side
 JS runtime.
 
 ```toml
-# .zetl/hooks/pre-parse.d/katex.toml
+# .ztl/hooks/pre-parse.d/katex.toml
 stage     = "pre-parse"
 ecosystem = "mdbook"
 exec      = "mdbook-katex"
@@ -378,7 +378,7 @@ and this matrix row points at the real plugin mdBook-backed builds
 would wire up.
 
 ```toml
-# .zetl/hooks/pre-parse.d/admonish.toml
+# .ztl/hooks/pre-parse.d/admonish.toml
 stage     = "pre-parse"
 ecosystem = "mdbook"
 exec      = "mdbook-admonish"
@@ -392,12 +392,12 @@ Known limitations at experimental tier:
 
 ### Other preprocessors
 
-Preprocessors not in the matrix run too — zetl does not reject
+Preprocessors not in the matrix run too — ztl does not reject
 unknown `mdbook-*` binaries — but emit a one-shot warning at first
 use:
 
 ```
-[zetl] ecosystem mdbook: <exec> not in matrix; behavioural
+[ztl] ecosystem mdbook: <exec> not in matrix; behavioural
        contract unknown, no preservation checks active
 ```
 
@@ -417,14 +417,14 @@ idempotent = true
 Or contribute a matrix entry; see the tier-promotion checklist in
 SPEC-033 REQ-3311.
 
-## `zetl ecosystem check` walkthrough
+## `ztl ecosystem check` walkthrough
 
-`zetl ecosystem check` probes every compiled-in adapter and reports
+`ztl ecosystem check` probes every compiled-in adapter and reports
 detection state, detected version, and plugin availability
 (REQ-3310, CON-3310).
 
 ```
-$ zetl ecosystem check
+$ ztl ecosystem check
 ECOSYSTEM  STATUS        VERSION              PLUGINS CONFIGURED   PLUGINS AVAILABLE
 pandoc     detected      3.1.12.1             0                    0
 mdbook     detected      0.4.37               2                    2
@@ -435,7 +435,7 @@ For mdbook, per-row fields report:
 
 - **STATUS** — `detected` (mdbook CLI ≥ 0.4.0 on `$PATH`), `missing` (mdbook CLI absent — advisory only; preprocessors still run), or `wrong-version` (mdbook CLI below 0.4.0).
 - **VERSION** — detected `mdbook --version` output.
-- **PLUGINS CONFIGURED** — count of `.zetl/hooks/pre-parse.d/` manifests declaring `ecosystem = "mdbook"`.
+- **PLUGINS CONFIGURED** — count of `.ztl/hooks/pre-parse.d/` manifests declaring `ecosystem = "mdbook"`.
 - **PLUGINS AVAILABLE** — count of those configured `exec` binaries actually resolvable on `$PATH`. The detection pass also scans `$PATH` for any `mdbook-*` binaries and lists them under the entry's plugin-discovery hint, independent of what the vault declares.
 
 ### Zero-configured state
@@ -443,13 +443,13 @@ For mdbook, per-row fields report:
 Fresh vault with mdbook installed but no mdBook hooks:
 
 ```
-$ zetl ecosystem check
+$ ztl ecosystem check
 ECOSYSTEM  STATUS        VERSION              PLUGINS CONFIGURED   PLUGINS AVAILABLE
 mdbook     detected      0.4.37               0                    0
 
 No ecosystem hooks configured in this vault.
-To enable an ecosystem, add a manifest under .zetl/hooks/:
-  https://zetl.codeberg.page/docs/ecosystems/
+To enable an ecosystem, add a manifest under .ztl/hooks/:
+  https://ztl.codeberg.page/docs/ecosystems/
 ```
 
 Exit code is 0 in the zero-configured state regardless of which
@@ -464,7 +464,7 @@ For mdbook, "missing runtime" means a configured `exec` binary is
 absent from `$PATH`. The absence of the top-level `mdbook` binary
 is not itself a failure — preprocessors run without it.
 
-Under `zetl build`, a missing preprocessor disables the affected
+Under `ztl build`, a missing preprocessor disables the affected
 hook and continues the build with a `RuntimeAbsence` diagnostic; it
 is not a hard failure unless `--ecosystem-required=mdbook` is
 passed (REQ-3313), which is the CI gate mode.
@@ -473,10 +473,10 @@ passed (REQ-3313), which is the CI gate mode.
 
 At probe time the adapter invokes each configured preprocessor's
 `--version` and compares against the `version_range` in
-`tools/zetl-ecosystem-matrix.toml` (REQ-3314):
+`tools/ztl-ecosystem-matrix.toml` (REQ-3314):
 
 - **Exact match** — silent.
-- **Minor drift** (same major, observed minor ≥ tested) — log `[zetl] ecosystem mdbook: mdbook-mermaid v0.14.1 is newer than last-tested v0.14.0; proceeding` once per session. The hook still runs.
+- **Minor drift** (same major, observed minor ≥ tested) — log `[ztl] ecosystem mdbook: mdbook-mermaid v0.14.1 is newer than last-tested v0.14.0; proceeding` once per session. The hook still runs.
 - **Incompatible** (different major, or below the tested range) — hook disabled with a `plugin_version_incompatible` diagnostic pointing at the matrix entry.
 
 ## Troubleshooting
@@ -486,9 +486,9 @@ At probe time the adapter invokes each configured preprocessor's
 The adapter reports the `exec` it tried and an install hint:
 
 ```
-[zetl] hook pre-parse/mermaid: preprocessor "mdbook-mermaid" not found on $PATH
+[ztl] hook pre-parse/mermaid: preprocessor "mdbook-mermaid" not found on $PATH
        Install via: cargo install mdbook-mermaid
-       (matrix entry: tools/zetl-ecosystem-matrix.toml)
+       (matrix entry: tools/ztl-ecosystem-matrix.toml)
 ```
 
 The build continues with the hook disabled. Pass
@@ -499,7 +499,7 @@ The build continues with the hook disabled. Pass
 The `<exec> supports html` probe exited non-zero:
 
 ```
-[zetl] hook pre-parse/<name>: preprocessor refused renderer "html"
+[ztl] hook pre-parse/<name>: preprocessor refused renderer "html"
        The preprocessor does not declare support for this renderer.
        Override with [options] renderer = "<other>" if the
        preprocessor supports an alternate backend.
@@ -516,7 +516,7 @@ The probe is bounded to 5 seconds, independent of the manifest's
 `timeout_ms`:
 
 ```
-[zetl] hook pre-parse/<name>: preprocessor probe "supports html" timed out
+[ztl] hook pre-parse/<name>: preprocessor probe "supports html" timed out
        after 5s; disabling hook for this run.
 ```
 
@@ -531,7 +531,7 @@ The preprocessor exited 0 but emitted something that doesn't
 round-trip through the envelope validator:
 
 ```
-[zetl] hook pre-parse/<name>: malformed output
+[ztl] hook pre-parse/<name>: malformed output
        expected top-level book.sections[0].Chapter.content to be a string,
        got null on page notes/idea-7.md
 ```
@@ -542,20 +542,20 @@ preprocessor wrote log text to stdout instead of stderr. Inspect
 the raw output by running the preprocessor manually:
 
 ```sh
-mdbook-<name> < /tmp/zetl-envelope.json
+mdbook-<name> < /tmp/ztl-envelope.json
 ```
 
-zetl logs the envelope bytes to a per-hook temp file under
+ztl logs the envelope bytes to a per-hook temp file under
 `--verbose`.
 
 ### Wikilinks / embeds missing from rendered output
 
 A preprocessor is rewriting Markdown link syntax in a way that
-eats zetl's double-bracket markers. zetl catches this via
+eats ztl's double-bracket markers. ztl catches this via
 preservation checks and emits:
 
 ```
-[zetl] contract violation: mdbook-<name> dropped 4 Wikilink nodes
+[ztl] contract violation: mdbook-<name> dropped 4 Wikilink nodes
        on projects/q2-review.md
        Hint: add `preserves = ["Wikilink", "Embed", "SplBlock"]`
              to the hook's [contract] table, or file an issue with
@@ -567,12 +567,12 @@ syntaxes (mermaid, admonish, math delimiters) and leave unrelated
 Markdown alone. A preprocessor that rewrites general link syntax
 is the typical offender; narrow its selector with `select.path` to
 confine it to pages that don't carry wikilinks, or opt out
-page-by-page via frontmatter (`zetl: { hooks: { disable: ["..."] } }`).
+page-by-page via frontmatter (`ztl: { hooks: { disable: ["..."] } }`).
 
 ### Transient preprocessor crashes
 
 mdBook preprocessor crashes mid-build revert the page fragment per
-SPEC-032 REQ-3207 and record a `hook_failure` diagnostic. zetl
+SPEC-032 REQ-3207 and record a `hook_failure` diagnostic. ztl
 does not retry in v1 — if crashes look transient (GC pauses,
 transient OOM), that is noted as SPEC-033 §13 Q10 and deferred
 pending field data.
@@ -582,6 +582,6 @@ pending field data.
 - [`docs/ecosystems/pandoc.md`](./pandoc.md) — companion guide for Pandoc filters.
 - [`docs/ecosystems/remark.md`](./remark.md) — companion guide for remark plugins.
 - [`docs/hook-security.md`](../hook-security.md) — env allowlist and message-size caps that apply to every subprocess, including mdBook preprocessors.
-- [`tools/zetl-mdbook-envelope-schema-v1.json`](../../tools/zetl-mdbook-envelope-schema-v1.json) — canonical envelope schema.
+- [`tools/ztl-mdbook-envelope-schema-v1.json`](../../tools/ztl-mdbook-envelope-schema-v1.json) — canonical envelope schema.
 - [SPEC-033](../../specs/SPEC-033.md) — normative ecosystem-bridges specification.
 - [SPEC-032](../../specs/SPEC-032.md) — normative hook-contract specification (contracts, selectors, preservation checks).

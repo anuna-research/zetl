@@ -5,17 +5,17 @@ tags: [reasoning, cli, queries]
 
 # Running Queries
 
-Once your vault contains [[Writing SPL|some SPL]], `zetl reason` is how you ask questions of it. This page walks the everyday command surface: status, conflicts, export, and provenance.
+Once your vault contains [[Writing SPL|some SPL]], `ztl reason` is how you ask questions of it. This page walks the everyday command surface: status, conflicts, export, and provenance.
 
 > **Requires `--features reason` at install.** See [[Installation]].
 
 ## `reason status` — the default view
 
-`zetl reason status` prints every conclusion the combined theory produces, tagged with `+D`, `-D`, `+d`, or `-d` (see [[What is Defeasible Reasoning]] for what those mean).
+`ztl reason status` prints every conclusion the combined theory produces, tagged with `+D`, `-D`, `+d`, or `-d` (see [[What is Defeasible Reasoning]] for what those mean).
 
 ```bash
 cd ~/notes
-zetl reason status
+ztl reason status
 ```
 
 In a TTY you get a table. Piped or redirected, you get JSON — same data, machine-readable.
@@ -35,15 +35,15 @@ Status output gets long fast. A few flags keep it manageable:
 Combine them. "What are all the things my Acme project is currently defeasibly committed to?" becomes:
 
 ```bash
-zetl reason status --positive --defeasible --literal "acme*"
+ztl reason status --positive --defeasible --literal "acme*"
 ```
 
 ## `reason conflicts` — the contradictions report
 
-When two rules conclude opposite things about the same literal — and no `(prefer ...)` picks a winner — zetl calls that an **unresolved conflict**. `reason conflicts` lists them:
+When two rules conclude opposite things about the same literal — and no `(prefer ...)` picks a winner — ztl calls that an **unresolved conflict**. `reason conflicts` lists them:
 
 ```bash
-zetl reason conflicts
+ztl reason conflicts
 ```
 
 Useful flags:
@@ -53,7 +53,7 @@ Useful flags:
 
 ```bash
 # In CI
-zetl reason conflicts --fail-on-conflicts
+ztl reason conflicts --fail-on-conflicts
 ```
 
 A fresh vault almost always has one or two conflicts — someone wrote a defeater but forgot the preference. The report points at both competing rules by file and line.
@@ -63,9 +63,9 @@ A fresh vault almost always has one or two conflicts — someone wrote a defeate
 `reason export` dumps the combined theory (every fact, every rule, every preference). Two shapes:
 
 ```bash
-zetl reason export                      # JSON (structured, default)
-zetl reason export --as spl             # reconstructed SPL with provenance comments
-zetl reason export --with-conclusions   # include current reasoning results
+ztl reason export                      # JSON (structured, default)
+ztl reason export --as spl             # reconstructed SPL with provenance comments
+ztl reason export --with-conclusions   # include current reasoning results
 ```
 
 The SPL form is handy for debugging "where is this rule actually coming from?" — each rule is prefixed with a comment naming its source file and line. The JSON form is what you pipe to an agent or a downstream tool.
@@ -75,7 +75,7 @@ The SPL form is handy for debugging "where is this rule actually coming from?" �
 `reason provenance` answers *which files and line numbers contributed to this conclusion?* It cross-references the proof sources with the link graph so you can see the pages involved alongside the raw file paths.
 
 ```bash
-zetl reason provenance "acme-ready-to-start"
+ztl reason provenance "acme-ready-to-start"
 ```
 
 Output includes:
@@ -91,7 +91,7 @@ This is the command to run when you want to say in a team meeting, "here's exact
 Reasoning is not separate from your wikilink graph — the same pages power both. Two graph commands take a `--with-conclusions` flag that overlays reasoning state onto their output:
 
 ```bash
-zetl backlinks "Acme Website" --with-conclusions
+ztl backlinks "Acme Website" --with-conclusions
 ```
 
 This prints every page that links into `Acme Website` alongside the SPL conclusions each of those pages contributes. Answer: *which notes are actually asserting things that feed this project's readiness?*
@@ -100,7 +100,7 @@ See [[Backlinks]] for the base command.
 
 ## Output formatting rules
 
-All `reason` subcommands follow the same two rules as the rest of zetl:
+All `reason` subcommands follow the same two rules as the rest of ztl:
 
 1. **In a terminal**, you get a table.
 2. **Piped or redirected**, you get JSON.
@@ -112,8 +112,8 @@ Force one with the global `--json` flag or `-f table` — they work before or af
 Every `reason` subcommand accepts `--at`. With `--features history` installed, you can ask what the theory concluded at any past point:
 
 ```bash
-zetl reason status --at "last monday"
-zetl reason conflicts --at "2026-03-01"
+ztl reason status --at "last monday"
+ztl reason conflicts --at "2026-03-01"
 ```
 
 Useful for post-mortems and decision audits. See [[Time Travel]].

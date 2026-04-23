@@ -1,12 +1,12 @@
-//! `zetl cap genkey` core — generate + parse the two secrets that power
+//! `ztl cap genkey` core — generate + parse the two secrets that power
 //! capability-mode builds (SPEC-034 REQ-3419).
 //!
 //! This module emits BOTH:
-//!   * `ZETL_CAP_SECRET` — 48 bytes total, base64-encoded:
+//!   * `ztl_CAP_SECRET` — 48 bytes total, base64-encoded:
 //!     `[version:1][random:32][checksum:15]`
 //!     The checksum is a truncated HMAC-SHA256 over the version byte and
 //!     the 32 random bytes, keyed with a fixed domain-separation string.
-//!   * `ZETL_CAP_SIGNING_KEY` — 32-byte Ed25519 private scalar, base64.
+//!   * `ztl_CAP_SIGNING_KEY` — 32-byte Ed25519 private scalar, base64.
 //!
 //! # Security framing (BUG-017)
 //!
@@ -15,7 +15,7 @@
 //! operator's env var can also derive a matching checksum — the HMAC
 //! key is fixed and public. Its only purpose is to detect
 //! paste-corruption and copy-truncation at build time and emit a
-//! remediation message pointing at `zetl cap genkey`. The secret's
+//! remediation message pointing at `ztl cap genkey`. The secret's
 //! real security rests on the 256 bits of OS-CSPRNG randomness in the
 //! 32-byte body.
 //!
@@ -37,14 +37,14 @@ use zeroize::Zeroize;
 
 type HmacSha256 = Hmac<Sha256>;
 
-/// Version byte pinning the wire format of `ZETL_CAP_SECRET`. Any
+/// Version byte pinning the wire format of `ztl_CAP_SECRET`. Any
 /// future change to the layout (e.g. different checksum length or a
 /// post-quantum checksum construction) SHALL bump this byte so older
 /// builds reject the new format with a clear diagnostic rather than
 /// misinterpreting the bytes.
 pub const SECRET_VERSION_V1: u8 = 0x01;
 
-/// Length of the OS-CSPRNG random body embedded in a `ZETL_CAP_SECRET`.
+/// Length of the OS-CSPRNG random body embedded in a `ztl_CAP_SECRET`.
 /// 32 bytes ≈ 256 bits — the cohort-secret strength SPEC-034 §8 assumes
 /// as IKM for every HKDF derivation.
 pub const SECRET_RANDOM_LEN: usize = 32;
@@ -54,7 +54,7 @@ pub const SECRET_RANDOM_LEN: usize = 32;
 /// HMAC-SHA256 to any prefix is well-defined (RFC 2104 §5).
 pub const SECRET_CHECKSUM_LEN: usize = 15;
 
-/// Total on-the-wire length of the decoded `ZETL_CAP_SECRET` — 1 + 32 + 15 = 48.
+/// Total on-the-wire length of the decoded `ztl_CAP_SECRET` — 1 + 32 + 15 = 48.
 pub const SECRET_TOTAL_LEN: usize = 1 + SECRET_RANDOM_LEN + SECRET_CHECKSUM_LEN;
 
 /// Length of an Ed25519 private scalar. Public constant so callers can
@@ -63,17 +63,17 @@ pub const SIGNING_KEY_LEN: usize = 32;
 
 /// Domain-separation key for the UX safeguard checksum. The operator
 /// does NOT need to protect this — the checksum is not a security
-/// control; see module docs. Pinned so every zetl binary computes the
+/// control; see module docs. Pinned so every ztl binary computes the
 /// same checksum for the same random body, letting a build reject a
 /// paste-mangled secret with a targeted hint.
-const CHECKSUM_HMAC_KEY: &[u8] = b"zetl/cap-secret-checksum/v1";
+const CHECKSUM_HMAC_KEY: &[u8] = b"ztl/cap-secret-checksum/v1";
 
 /// Env-var name for the encryption secret. Exported as a constant so
-/// tests, docs, and `zetl cap genkey` output stay in lock-step.
-pub const ZETL_CAP_SECRET_ENV: &str = "ZETL_CAP_SECRET";
+/// tests, docs, and `ztl cap genkey` output stay in lock-step.
+pub const ztl_CAP_SECRET_ENV: &str = "ztl_CAP_SECRET";
 
 /// Env-var name for the Ed25519 signing private key.
-pub const ZETL_CAP_SIGNING_KEY_ENV: &str = "ZETL_CAP_SIGNING_KEY";
+pub const ztl_CAP_SIGNING_KEY_ENV: &str = "ztl_CAP_SIGNING_KEY";
 
 /// Result of generating both capability-mode secrets. Consumers should
 /// treat this struct as transient: encode it, print it, and drop it.
@@ -85,7 +85,7 @@ pub struct GenkeyOutput {
     /// Decoded 48-byte layout. Exposed so callers can re-verify before
     /// printing.
     pub secret_bytes: [u8; SECRET_TOTAL_LEN],
-    /// Base64-encoded `ZETL_CAP_SECRET` — exactly what the operator
+    /// Base64-encoded `ztl_CAP_SECRET` — exactly what the operator
     /// pastes into their password manager.
     pub secret_b64: String,
     /// Base64-encoded Ed25519 private scalar.
@@ -114,12 +114,12 @@ impl Drop for GenkeyOutput {
 pub enum SecretParseError {
     /// Base64 decode failed (bad character, bad padding, etc).
     #[error(
-        "{env} does not parse as base64 ({detail}) — re-run `zetl cap genkey` and paste the output verbatim"
+        "{env} does not parse as base64 ({detail}) — re-run `ztl cap genkey` and paste the output verbatim"
     )]
     Base64 { env: &'static str, detail: String },
     /// Decoded length mismatch — likely copy-truncation.
     #[error(
-        "{env} decodes to {got} bytes but {expected} are required ({layout}) — re-run `zetl cap genkey`"
+        "{env} decodes to {got} bytes but {expected} are required ({layout}) — re-run `ztl cap genkey`"
     )]
     Length {
         env: &'static str,
@@ -129,7 +129,7 @@ pub enum SecretParseError {
     },
     /// Version byte is not one this binary understands.
     #[error(
-        "{env} has version byte 0x{got:02x}; this binary only understands 0x{supported:02x} — upgrade zetl or re-run `zetl cap genkey`"
+        "{env} has version byte 0x{got:02x}; this binary only understands 0x{supported:02x} — upgrade ztl or re-run `ztl cap genkey`"
     )]
     Version {
         env: &'static str,
@@ -138,12 +138,12 @@ pub enum SecretParseError {
     },
     /// Checksum mismatch — the secret was mangled between `genkey` and here.
     #[error(
-        "{env} checksum mismatch — the secret appears corrupted (paste truncation, extra whitespace, or substitution); re-run `zetl cap genkey` and paste the output verbatim. See SPEC-034 REQ-3419 for the expected layout"
+        "{env} checksum mismatch — the secret appears corrupted (paste truncation, extra whitespace, or substitution); re-run `ztl cap genkey` and paste the output verbatim. See SPEC-034 REQ-3419 for the expected layout"
     )]
     Checksum { env: &'static str },
 }
 
-/// Decoded + checksum-verified view of `ZETL_CAP_SECRET`.
+/// Decoded + checksum-verified view of `ztl_CAP_SECRET`.
 #[derive(Clone)]
 pub struct ParsedSecret {
     /// Raw 48-byte layout.
@@ -231,7 +231,7 @@ pub fn encode_secret(bytes: &[u8; SECRET_TOTAL_LEN]) -> String {
     STANDARD.encode(bytes)
 }
 
-/// Parse + checksum-verify an encoded `ZETL_CAP_SECRET`. Whitespace
+/// Parse + checksum-verify an encoded `ztl_CAP_SECRET`. Whitespace
 /// around the input is trimmed so callers can pass the raw env-var
 /// value without an extra `.trim()` call. This is the single entry
 /// point the build-time secret parser should use.
@@ -240,12 +240,12 @@ pub fn decode_secret(encoded: &str) -> Result<ParsedSecret, SecretParseError> {
     let raw = STANDARD
         .decode(trimmed)
         .map_err(|e| SecretParseError::Base64 {
-            env: ZETL_CAP_SECRET_ENV,
+            env: ztl_CAP_SECRET_ENV,
             detail: e.to_string(),
         })?;
     if raw.len() != SECRET_TOTAL_LEN {
         return Err(SecretParseError::Length {
-            env: ZETL_CAP_SECRET_ENV,
+            env: ztl_CAP_SECRET_ENV,
             got: raw.len(),
             expected: SECRET_TOTAL_LEN,
             layout: "1-byte version || 32-byte random || 15-byte checksum",
@@ -253,7 +253,7 @@ pub fn decode_secret(encoded: &str) -> Result<ParsedSecret, SecretParseError> {
     }
     if raw[0] != SECRET_VERSION_V1 {
         return Err(SecretParseError::Version {
-            env: ZETL_CAP_SECRET_ENV,
+            env: ztl_CAP_SECRET_ENV,
             got: raw[0],
             supported: SECRET_VERSION_V1,
         });
@@ -273,7 +273,7 @@ pub fn decode_secret(encoded: &str) -> Result<ParsedSecret, SecretParseError> {
     }
     if diff != 0 {
         return Err(SecretParseError::Checksum {
-            env: ZETL_CAP_SECRET_ENV,
+            env: ztl_CAP_SECRET_ENV,
         });
     }
 
@@ -307,14 +307,14 @@ pub fn generate_with_rng<R: RngCore + CryptoRng>(rng: &mut R) -> GenkeyOutput {
 }
 
 /// Convenience wrapper that pulls from [`rand_core::OsRng`]. This is
-/// the effectful-shell entry point — `zetl cap genkey` calls this once
+/// the effectful-shell entry point — `ztl cap genkey` calls this once
 /// per invocation.
 pub fn generate() -> GenkeyOutput {
     generate_with_rng(&mut OsRng)
 }
 
 /// Render the full operator-facing banner. Emitted exactly once to
-/// stdout by `zetl cap genkey`. Output is deterministic given the
+/// stdout by `ztl cap genkey`. Output is deterministic given the
 /// inputs (no timestamps, no hostnames) so tests can pin it with a
 /// byte-stable snapshot.
 ///
@@ -323,26 +323,26 @@ pub fn generate() -> GenkeyOutput {
 /// fingerprint and a storage-guidance footer that points at SPEC-034.
 pub fn render_human(out: &GenkeyOutput) -> String {
     let mut s = String::new();
-    s.push_str("# zetl cap genkey — capability-mode secrets (SPEC-034 REQ-3419)\n");
+    s.push_str("# ztl cap genkey — capability-mode secrets (SPEC-034 REQ-3419)\n");
     s.push_str("#\n");
     s.push_str("# Store BOTH values in a password manager (1Password, Bitwarden,\n");
     s.push_str("# macOS Keychain, pass, etc). They are printed to this terminal\n");
-    s.push_str("# exactly once; zetl does not write them to any file and does not\n");
+    s.push_str("# exactly once; ztl does not write them to any file and does not\n");
     s.push_str("# log them. If you lose them, you will need to rotate the cohort\n");
     s.push_str("# (see SPEC-034 §9 rotation workflow).\n");
     s.push_str("#\n");
-    s.push_str("# The 15-byte checksum embedded in ZETL_CAP_SECRET is a UX safeguard\n");
+    s.push_str("# The 15-byte checksum embedded in ztl_CAP_SECRET is a UX safeguard\n");
     s.push_str("# against paste-corruption — NOT a security control. An attacker who\n");
     s.push_str("# compromises the env var can produce a valid checksum. Protect the\n");
     s.push_str("# secret itself, not the checksum.\n");
     s.push('\n');
     s.push_str(&format!(
         "export {}='{}'\n",
-        ZETL_CAP_SECRET_ENV, out.secret_b64
+        ztl_CAP_SECRET_ENV, out.secret_b64
     ));
     s.push_str(&format!(
         "export {}='{}'\n",
-        ZETL_CAP_SIGNING_KEY_ENV, out.signing_key_b64
+        ztl_CAP_SIGNING_KEY_ENV, out.signing_key_b64
     ));
     s.push('\n');
     s.push_str("# Vault-signing PUBLIC key (not a secret — embed in recipients.toml\n");
@@ -359,23 +359,23 @@ pub fn render_human(out: &GenkeyOutput) -> String {
 /// deploy can `jq -r .secret` without reinventing a parser.
 pub fn render_json(out: &GenkeyOutput) -> serde_json::Value {
     serde_json::json!({
-        "command": "zetl cap genkey",
+        "command": "ztl cap genkey",
         "spec": "SPEC-034 REQ-3419",
         "secret": {
-            "env": ZETL_CAP_SECRET_ENV,
+            "env": ztl_CAP_SECRET_ENV,
             "value": out.secret_b64,
             "version": SECRET_VERSION_V1,
             "layout": "version:1 || random:32 || checksum:15 (HMAC-SHA256, truncated)",
             "checksum_framing": "UX safeguard (paste-corruption detection), not a security control",
         },
         "signing_key": {
-            "env": ZETL_CAP_SIGNING_KEY_ENV,
+            "env": ztl_CAP_SIGNING_KEY_ENV,
             "value": out.signing_key_b64,
             "algorithm": "Ed25519 (RFC 8032)",
             "public_key": out.signing_pubkey_b64,
         },
         "storage": {
-            "instructions": "Store both values in a password manager; zetl prints them once and never writes them to disk.",
+            "instructions": "Store both values in a password manager; ztl prints them once and never writes them to disk.",
             "rotation_workflow": "SPEC-034 §9",
         }
     })
@@ -435,7 +435,7 @@ mod tests {
         );
         let rendered = format!("{err}").to_lowercase();
         assert!(
-            rendered.contains("re-run `zetl cap genkey`"),
+            rendered.contains("re-run `ztl cap genkey`"),
             "remediation text missing from error: {rendered}",
         );
     }
@@ -479,7 +479,7 @@ mod tests {
         let err = decode_secret("!!!not-base64!!!").expect_err("non-base64 must not parse");
         assert!(matches!(err, SecretParseError::Base64 { .. }));
         let rendered = format!("{err}");
-        assert!(rendered.contains("re-run `zetl cap genkey`"));
+        assert!(rendered.contains("re-run `ztl cap genkey`"));
     }
 
     #[test]
@@ -506,8 +506,8 @@ mod tests {
     fn render_human_includes_both_env_vars_and_safeguard_framing() {
         let out = generate_with_rng(&mut seeded_rng());
         let text = render_human(&out);
-        assert!(text.contains(&format!("export {ZETL_CAP_SECRET_ENV}=")));
-        assert!(text.contains(&format!("export {ZETL_CAP_SIGNING_KEY_ENV}=")));
+        assert!(text.contains(&format!("export {ztl_CAP_SECRET_ENV}=")));
+        assert!(text.contains(&format!("export {ztl_CAP_SIGNING_KEY_ENV}=")));
         assert!(text.contains(&out.secret_b64));
         assert!(text.contains(&out.signing_key_b64));
         assert!(text.contains(&out.signing_pubkey_b64));
@@ -528,10 +528,10 @@ mod tests {
     fn render_json_is_parseable_and_mirrors_fields() {
         let out = generate_with_rng(&mut seeded_rng());
         let j = render_json(&out);
-        assert_eq!(j["command"], "zetl cap genkey");
-        assert_eq!(j["secret"]["env"], ZETL_CAP_SECRET_ENV);
+        assert_eq!(j["command"], "ztl cap genkey");
+        assert_eq!(j["secret"]["env"], ztl_CAP_SECRET_ENV);
         assert_eq!(j["secret"]["value"], out.secret_b64);
-        assert_eq!(j["signing_key"]["env"], ZETL_CAP_SIGNING_KEY_ENV);
+        assert_eq!(j["signing_key"]["env"], ztl_CAP_SIGNING_KEY_ENV);
         assert_eq!(j["signing_key"]["value"], out.signing_key_b64);
         assert_eq!(j["signing_key"]["public_key"], out.signing_pubkey_b64);
     }
@@ -539,7 +539,7 @@ mod tests {
     #[test]
     fn parsed_secret_random_body_is_ikm_length() {
         // The downstream HKDF derivation in `cap::derivation` consumes
-        // `ZETL_CAP_SECRET` as IKM. Pin the slice length so a refactor
+        // `ztl_CAP_SECRET` as IKM. Pin the slice length so a refactor
         // that accidentally narrows the random body breaks this test.
         let out = generate_with_rng(&mut seeded_rng());
         let parsed = decode_secret(&out.secret_b64).unwrap();

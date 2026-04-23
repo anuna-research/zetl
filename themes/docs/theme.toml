@@ -2,7 +2,7 @@
 name = "docs"
 version = "0.9.0"
 description = "A documentation-oriented theme for technical writing"
-author = "zetl contributors"
+author = "ztl contributors"
 license = "AGPL-3.0"
 
 [theme.templates]

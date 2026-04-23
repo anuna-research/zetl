@@ -5,7 +5,7 @@ tags: [reasoning, spl, syntax]
 
 # Writing SPL
 
-Spindle Lisp (SPL) is the small language zetl reads when you ask it to reason over your vault. This page walks through the syntax by example — no formal grammar, just enough to start writing useful theories.
+Spindle Lisp (SPL) is the small language ztl reads when you ask it to reason over your vault. This page walks through the syntax by example — no formal grammar, just enough to start writing useful theories.
 
 > **Requires `--features reason` at install.** See [[Installation]].
 
@@ -27,7 +27,7 @@ We're tracking the release of the next minor version here.
 ```
 ````
 
-zetl merges every `spl` block and every `.spl` file across the vault into **one combined theory** before reasoning. A fact stated on one page can feed a rule defined on another. This is the point — rules and facts can live next to the prose that motivated them.
+ztl merges every `spl` block and every `.spl` file across the vault into **one combined theory** before reasoning. A fact stated on one page can feed a rule defined on another. This is the point — rules and facts can live next to the prose that motivated them.
 
 ## Facts
 
@@ -39,7 +39,7 @@ A fact is something you assert to be true. Use `(given ...)`:
 (given budget-signed-off)
 ```
 
-One fact per line is conventional. The thing you are asserting (`project-approved`) is called a **literal**. Literals are lower-case identifiers with dashes — zetl does not care about the particular word you pick, only that you spell it the same way everywhere.
+One fact per line is conventional. The thing you are asserting (`project-approved`) is called a **literal**. Literals are lower-case identifiers with dashes — ztl does not care about the particular word you pick, only that you spell it the same way everywhere.
 
 To state the absence of something, prefix with `~` or write `(not ...)`:
 
@@ -93,7 +93,7 @@ If `open-critical-bug` is true, any defeasible rule concluding `ready-to-ship` i
 
 ## Preferences
 
-When two rules compete — one says `ready`, another says `not ready` — zetl flags the conflict. To resolve it, declare which rule wins:
+When two rules compete — one says `ready`, another says `not ready` — ztl flags the conflict. To resolve it, declare which rule wins:
 
 ```spl
 (prefer d-critical-bug r-ready-to-start)
@@ -178,7 +178,7 @@ Legal flagged a concern about the privacy policy wording.
 ```
 ````
 
-Run `zetl reason status --literal "acme*"` and you'll see `acme-ready-to-start` go from `+d` to `-d` the moment the meeting note is saved. Remove the `given` once legal clears it, and the conclusion flips back. The rules never moved — only the facts.
+Run `ztl reason status --literal "acme*"` and you'll see `acme-ready-to-start` go from `+d` to `-d` the moment the meeting note is saved. Remove the `given` once legal clears it, and the conclusion flips back. The rules never moved — only the facts.
 
 ## A few habits that pay off
 

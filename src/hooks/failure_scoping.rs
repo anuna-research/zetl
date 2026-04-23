@@ -1,7 +1,7 @@
 //! Failure scoping and pipeline continuation (SPEC-032 REQ-3207 / CON-3207).
 //!
 //! When a hook `H_k` in the ordered stage pipeline fails — non-zero exit,
-//! timeout, memory overrun, malformed output — zetl:
+//! timeout, memory overrun, malformed output — ztl:
 //!
 //! - Discards `H_k`'s output.
 //! - Records a [`FailureRecord`] with `plugin_id`, `stage`, `page_slug`,
@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::hooks::pipeline::{HookError, Stage};
 
-/// `zetl build --hook-fail-on` policy knob (REQ-3207).
+/// `ztl build --hook-fail-on` policy knob (REQ-3207).
 ///
 /// Default is [`HookFailOn::Never`] — hook failures are recorded to
 /// `hook-diagnostics.json` but the build exits zero. [`HookFailOn::Error`]
@@ -67,7 +67,7 @@ impl std::fmt::Display for HookFailOn {
 /// OBS-3205).
 ///
 /// Matches the `reason` dimension of OBS-3205's
-/// `zetl_hook_failure_total{reason, ...}` counter — machine-filterable in
+/// `ztl_hook_failure_total{reason, ...}` counter — machine-filterable in
 /// logs without pulling the free-form `detail` string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FailureReason {
@@ -222,7 +222,7 @@ pub fn exit_code_for(records: &[FailureRecord], policy: HookFailOn) -> i32 {
 /// Write `hook-diagnostics.json` to `<out_dir>/hook-diagnostics.json`.
 ///
 /// The file is replaced, not merged (REQ-3208 persistence semantics):
-/// each `zetl build` records only its own pass. Empty input still writes
+/// each `ztl build` records only its own pass. Empty input still writes
 /// `[]` so CI can check the presence of the artefact.
 pub fn write_diagnostics_json(
     out_dir: &Path,
@@ -235,7 +235,7 @@ pub fn write_diagnostics_json(
     Ok(path)
 }
 
-/// Human-readable summary emitted to stderr by `zetl build` when any hook
+/// Human-readable summary emitted to stderr by `ztl build` when any hook
 /// failed. Lines are grouped by `(stage, hook)` and ordered by stage ID.
 ///
 /// Under `--hook-fail-on error` this summary is followed by exit(1); under
@@ -246,7 +246,7 @@ pub fn format_summary(records: &[FailureRecord]) -> String {
     }
     let mut out = String::new();
     out.push_str(&format!(
-        "[zetl] hook failures: {} record{} across {} page{}\n",
+        "[ztl] hook failures: {} record{} across {} page{}\n",
         records.len(),
         if records.len() == 1 { "" } else { "s" },
         unique_pages(records),

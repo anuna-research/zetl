@@ -1,7 +1,7 @@
-//! Rust representation of the zetl-ext AST (SPEC-032 REQ-3202 / CON-3202).
+//! Rust representation of the ztl-ext AST (SPEC-032 REQ-3202 / CON-3202).
 //!
 //! This module provides typed, serde-compatible Rust structs mirroring the
-//! JSON Schema published at `tools/zetl-ast-schema-v1.json` (v1.0). The
+//! JSON Schema published at `tools/ztl-ast-schema-v1.json` (v1.0). The
 //! pre-parse → parse → transform → render → post-render pipeline consumes
 //! these types on the `transform` stage.
 //!
@@ -23,7 +23,7 @@
 //! ## Scope
 //!
 //! - All CommonMark block + inline node types.
-//! - zetl extensions: `Wikilink`, `Embed`, `SplBlock`, `FrontMatter` (as
+//! - ztl extensions: `Wikilink`, `Embed`, `SplBlock`, `FrontMatter` (as
 //!   `Document.frontmatter`).
 //! - Source positions (1-indexed, inclusive).
 //! - Schema version carried at `Document.ast_version`.
@@ -92,7 +92,7 @@ pub enum DocumentKind {
     Document,
 }
 
-/// Root of a zetl-ext AST document.
+/// Root of a ztl-ext AST document.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Document {

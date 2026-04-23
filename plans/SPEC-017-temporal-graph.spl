@@ -1,13 +1,13 @@
 ;; Plan metadata
 (meta plan
   (id "IMPL-017")
-  (title "zetl history — Invisible Temporal Graph Navigation via jj-lib")
+  (title "ztl history — Invisible Temporal Graph Navigation via jj-lib")
   (version "0.2.0")
   (status "active")
   (created "2026-03-04")
   (author "agent:architect")
   (spec "SPEC-017")
-  (description "Embed jj-lib as zetl's temporal engine; automatic snapshotting; point-in-time queries; history CLI; TUI timeline; theme context; serve API; build export"))
+  (description "Embed jj-lib as ztl's temporal engine; automatic snapshotting; point-in-time queries; history CLI; TUI timeline; theme context; serve API; build export"))
 
 ;; Agents
 (given agent-coder-available)
@@ -53,28 +53,28 @@
   (evaluate-checks "test:cargo build" "test:cargo build --features history" "lint:cargo clippy"))
 
 (meta task-jj-backend
-  (description "Implement JjBackend wrapper around jj-lib; open/init jj repo at .zetl/jj/; snapshot creation; MergedTree file reading; change-id resolution; revset traversal")
+  (description "Implement JjBackend wrapper around jj-lib; open/init jj repo at .ztl/jj/; snapshot creation; MergedTree file reading; change-id resolution; revset traversal")
   (acceptance "JjBackend can init a new repo, create snapshots, list changes, read file contents at a given change; unit tests pass; VcsBackend trait implemented")
   (context-files "src/history/jj_backend.rs" "src/history/mod.rs")
   (token-budget "12000")
-  (evaluate-checks "test:cargo test --features history -p zetl history::jj_backend" "lint:cargo clippy --features history"))
+  (evaluate-checks "test:cargo test --features history -p ztl history::jj_backend" "lint:cargo clippy --features history"))
 
 (meta task-vcs-init
-  (description "Implement silent VCS initialisation: detect .git/, create .zetl/jj/, configure jj workspace with vault root as working copy; idempotent; no user-visible output (REQ-075, ADR-044, ADR-045)")
-  (acceptance "First zetl index creates .zetl/jj/; no .jj/ at vault root; stdout unchanged; idempotent on subsequent runs; TEST-080 passes")
+  (description "Implement silent VCS initialisation: detect .git/, create .ztl/jj/, configure jj workspace with vault root as working copy; idempotent; no user-visible output (REQ-075, ADR-044, ADR-045)")
+  (acceptance "First ztl index creates .ztl/jj/; no .jj/ at vault root; stdout unchanged; idempotent on subsequent runs; TEST-080 passes")
   (context-files "src/history/jj_backend.rs" "src/index.rs")
   (token-budget "6000")
   (evaluate-checks "test:cargo test --features history vcs_init" "lint:cargo clippy --features history"))
 
 (meta task-auto-snapshot
-  (description "Hook into zetl index completion to create a jj snapshot; include vault_root_hash in commit description; deduplicate when vault_root_hash unchanged (REQ-076, ADR-048)")
+  (description "Hook into ztl index completion to create a jj snapshot; include vault_root_hash in commit description; deduplicate when vault_root_hash unchanged (REQ-076, ADR-048)")
   (acceptance "Each distinct vault state produces exactly one snapshot; re-running index with no changes creates no new snapshot; --verbose emits snapshot line; TEST-081 passes; snapshot overhead ≤ 50ms p95 (NFR-026)")
   (context-files "src/index.rs" "src/history/jj_backend.rs")
   (token-budget "5000")
   (evaluate-checks "test:cargo test --features history auto_snapshot" "lint:cargo clippy --features history"))
 
 (meta task-historical-index-cache
-  (description "Implement HistoricalIndexCache: read/write .zetl/history/<vault_root_hash>.json; bounded LRU eviction (default 100 entries); same serialisation format as index.json (REQ-079, ADR-047)")
+  (description "Implement HistoricalIndexCache: read/write .ztl/history/<vault_root_hash>.json; bounded LRU eviction (default 100 entries); same serialisation format as index.json (REQ-079, ADR-047)")
   (acceptance "Cache hit returns identical data to fresh scan; eviction removes oldest-accessed entry; LRU limit configurable; cache entries ≤ 1.5× index.json size; TEST-086 passes")
   (context-files "src/history/cache.rs" "src/history/mod.rs")
   (token-budget "6000")
@@ -95,36 +95,36 @@
   (evaluate-checks "test:cargo test --features history point_in_time" "lint:cargo clippy --features history"))
 
 (meta task-history-cli
-  (description "Implement 'zetl history' subcommand with --since, --limit, --format json|table; reverse-chronological timeline of graph-level deltas; collapse identical vault_root_hash entries; pure core functions: compute_graph_delta, collapse_timeline, build_vault_history (REQ-080, CON-025)")
+  (description "Implement 'ztl history' subcommand with --since, --limit, --format json|table; reverse-chronological timeline of graph-level deltas; collapse identical vault_root_hash entries; pure core functions: compute_graph_delta, collapse_timeline, build_vault_history (REQ-080, CON-025)")
   (acceptance "JSON output matches CON-025 timeline schema; table output correctly formatted; delta fields accurate; collapsed entries show time ranges; --since and --limit filter correctly; TEST-087 and TEST-088 pass")
   (context-files "src/commands/history.rs" "src/history/core.rs" "src/cli.rs")
   (token-budget "8000")
   (evaluate-checks "test:cargo test --features history history_cli" "lint:cargo clippy --features history"))
 
 (meta task-history-page-cli
-  (description "Implement 'zetl history page <name>' subcommand; per-page evolution timeline; only snapshots where page neighborhood changed; pure core: extract_page_history (REQ-081, CON-025)")
+  (description "Implement 'ztl history page <name>' subcommand; per-page evolution timeline; only snapshots where page neighborhood changed; pure core: extract_page_history (REQ-081, CON-025)")
   (acceptance "JSON output matches CON-025 page timeline schema; only changed-neighborhood snapshots shown; delta fields accurate; PAGE_NOT_FOUND error for unknown pages; TEST-089 passes")
   (context-files "src/commands/history.rs" "src/history/core.rs")
   (token-budget "6000")
   (evaluate-checks "test:cargo test --features history history_page_cli" "lint:cargo clippy --features history"))
 
 (meta task-diff-jj-backend
-  (description "Replace SPEC-007 git-subprocess VCS backend in 'zetl diff' with jj-lib; preserve CON-021 output schema; support --from git-ref resolution via jj git backend; default baseline = previous distinct snapshot (@-); NO_PREVIOUS_SNAPSHOT error when only one snapshot (REQ-083, ADR-046)")
-  (acceptance "zetl diff output is schema-identical to CON-021; git refs resolve correctly; default ref field is '@-' for non-git vaults; TEST-091, TEST-092, TEST-112, TEST-113 pass; SPEC-007 fallback retained when history feature disabled")
+  (description "Replace SPEC-007 git-subprocess VCS backend in 'ztl diff' with jj-lib; preserve CON-021 output schema; support --from git-ref resolution via jj git backend; default baseline = previous distinct snapshot (@-); NO_PREVIOUS_SNAPSHOT error when only one snapshot (REQ-083, ADR-046)")
+  (acceptance "ztl diff output is schema-identical to CON-021; git refs resolve correctly; default ref field is '@-' for non-git vaults; TEST-091, TEST-092, TEST-112, TEST-113 pass; SPEC-007 fallback retained when history feature disabled")
   (context-files "src/commands/diff.rs" "src/history/jj_backend.rs")
   (token-budget "8000")
   (evaluate-checks "test:cargo test --features history diff_backend" "lint:cargo clippy --features history"))
 
 (meta task-watch-mode-snapshot
-  (description "Integrate snapshotting into zetl watch (SPEC-008) post-re-index cycle; asynchronous snapshot creation (non-blocking); same deduplication as auto-snapshot (REQ-082, ADR-048)")
+  (description "Integrate snapshotting into ztl watch (SPEC-008) post-re-index cycle; asynchronous snapshot creation (non-blocking); same deduplication as auto-snapshot (REQ-082, ADR-048)")
   (acceptance "File change triggers re-index then async snapshot; duplicate file state produces no new snapshot; watch event stream not blocked; TEST-090 passes")
   (context-files "src/commands/watch.rs" "src/history/jj_backend.rs")
   (token-budget "4000")
   (evaluate-checks "test:cargo test --features history watch_snapshot" "lint:cargo clippy --features history"))
 
 (meta task-graceful-degradation
-  (description "Implement graceful degradation: non-temporal commands unaffected when .zetl/jj/ missing; NO_HISTORY error for temporal commands; silent re-init on next zetl index; --at and zetl history absent from CLI when feature not compiled; zetl diff falls back to SPEC-007 (REQ-084, NFR-031)")
-  (acceptance "All non-temporal commands work normally without history; --at returns NO_HISTORY when repo missing; zetl index silently re-creates .zetl/jj/; feature-absent build has no temporal CLI flags; TEST-093 passes")
+  (description "Implement graceful degradation: non-temporal commands unaffected when .ztl/jj/ missing; NO_HISTORY error for temporal commands; silent re-init on next ztl index; --at and ztl history absent from CLI when feature not compiled; ztl diff falls back to SPEC-007 (REQ-084, NFR-031)")
+  (acceptance "All non-temporal commands work normally without history; --at returns NO_HISTORY when repo missing; ztl index silently re-creates .ztl/jj/; feature-absent build has no temporal CLI flags; TEST-093 passes")
   (context-files "src/cli.rs" "src/history/mod.rs" "src/commands/diff.rs")
   (token-budget "5000")
   (evaluate-checks "test:cargo test graceful_degradation" "test:cargo test --features history graceful_degradation" "lint:cargo clippy"))
@@ -158,7 +158,7 @@
   (evaluate-checks "test:cargo test --features history serve_history_api" "lint:cargo clippy --features history"))
 
 (meta task-build-history-export
-  (description "Write history-index.json to output directory during zetl build; vault trend (≤30), page link_trend (≤10 per page); history_index template variable; skip when history unavailable; pure core: serialize_history_index (REQ-088, CON-026, ADR-049, ADR-050)")
+  (description "Write history-index.json to output directory during ztl build; vault trend (≤30), page link_trend (≤10 per page); history_index template variable; skip when history unavailable; pure core: serialize_history_index (REQ-088, CON-026, ADR-049, ADR-050)")
   (acceptance "history-index.json written with correct schema; ≤ 500 KB for 2000-page vault (NFR-032); history_index template var contains serialised content; empty string when history unavailable; TEST-105 and TEST-106 pass")
   (context-files "src/commands/build.rs" "src/history/core.rs")
   (token-budget "6000")
@@ -179,8 +179,8 @@
   (evaluate-checks "test:cargo test --features history tui_timeline" "lint:cargo clippy --features history"))
 
 (meta task-observability
-  (description "Add OBS-011/OBS-012/OBS-013 verbose timing output: snapshot creation, --at resolution, cache hit/miss, history load; zetl graph stats history section; serve/build context timing lines")
-  (acceptance "--verbose emits correct timing lines for all temporal operations; zetl graph stats shows history section with snapshot_count, unique_states, cache size; build verbose shows history-index.json write stats")
+  (description "Add OBS-011/OBS-012/OBS-013 verbose timing output: snapshot creation, --at resolution, cache hit/miss, history load; ztl graph stats history section; serve/build context timing lines")
+  (acceptance "--verbose emits correct timing lines for all temporal operations; ztl graph stats shows history section with snapshot_count, unique_states, cache size; build verbose shows history-index.json write stats")
   (context-files "src/history/jj_backend.rs" "src/history/cache.rs" "src/commands/graph.rs" "src/commands/build.rs" "src/commands/serve.rs")
   (token-budget "4000")
   (evaluate-checks "test:cargo test --features history observability" "lint:cargo clippy --features history"))

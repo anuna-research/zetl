@@ -7,26 +7,26 @@ tags: [history, pages, ui]
 
 > **Requires `--features history` at install.** See [[Installation]].
 
-Every page in your vault has a life story: when you wrote it, how often you've edited it, when each backlink appeared, how stable it's become. `zetl history page` and the history UI surface that story.
+Every page in your vault has a life story: when you wrote it, how often you've edited it, when each backlink appeared, how stable it's become. `ztl history page` and the history UI surface that story.
 
 ## The command
 
 ```bash
-zetl history page "Zettelkasten Method"
+ztl history page "Zettelkasten Method"
 ```
 
 Prints a reverse-chronological list of snapshots that touched the page, with timestamp, change-ID, and a short description of what changed (links added, links removed, content modified). Defaults to 20 entries; `--limit` goes higher.
 
 ```bash
-zetl history page "Zettelkasten Method" --limit 100
-zetl history page "Draft Essay" --json | jq
+ztl history page "Zettelkasten Method" --limit 100
+ztl history page "Draft Essay" --json | jq
 ```
 
 Case-insensitive on the page name; aliases resolve too.
 
 ## What's available in the web UI
 
-When you run `zetl serve` (or publish with `zetl build`) against a history-enabled binary, every rendered page gains a visually-light metadata strip under the title:
+When you run `ztl serve` (or publish with `ztl build`) against a history-enabled binary, every rendered page gains a visually-light metadata strip under the title:
 
 ```
 Last changed 2026-03-18 · stable 28d · history
@@ -61,7 +61,7 @@ If you're customising the look ([[Customising the Look]]), the page context expo
 | `page.history.recent_changes` | array | Most-recent snapshots with timestamp and short delta description |
 | `page.backlinks[].since` | string \| null | RFC 3339 timestamp of when each backlink appeared |
 
-`page.history` is `null` when zetl was built without history, so templates that read it should use `{% if page.history %}` guards. The default theme's `page-history-meta` block is the reference implementation — copy it or strip it as you like.
+`page.history` is `null` when ztl was built without history, so templates that read it should use `{% if page.history %}` guards. The default theme's `page-history-meta` block is the reference implementation — copy it or strip it as you like.
 
 ## Why page history matters for writers
 

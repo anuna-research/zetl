@@ -13,7 +13,7 @@
 //     decryptability
 //   * a non-intrusive banner is appended to the capability host,
 //     linking to the reader-docs `#fallback-prf-unavailable` anchor
-//   * `performance.mark("zetl:cap:fallback-prf-unavailable")` fires
+//   * `performance.mark("ztl:cap:fallback-prf-unavailable")` fires
 //     so RUM-capable operators can alert on spikes (OBS-3412)
 //
 // Detection uses `PublicKeyCredential.getClientCapabilities()`
@@ -26,10 +26,10 @@
 
 /// Performance-API mark name for OBS-3412. Kept as a const so
 /// operator RUM dashboards pivot on a stable string.
-export const FALLBACK_PERF_MARK = "zetl:cap:fallback-prf-unavailable";
+export const FALLBACK_PERF_MARK = "ztl:cap:fallback-prf-unavailable";
 
 /// Section anchor in `/reader.html` (mirrored in
-/// `docs/reader-troubleshooting.md`) that `[data-zetl-fallback]`
+/// `docs/reader-troubleshooting.md`) that `[data-ztl-fallback]`
 /// banner deep-links to.
 export const FALLBACK_DOC_ANCHOR = "fallback-prf-unavailable";
 
@@ -121,7 +121,7 @@ export function emitFallbackMark(reason?: PrfReason): void {
 /// Append the non-intrusive banner as the first child of the
 /// capability host, above the decrypted content. The banner is
 /// plain text + one anchor — no styling hook beyond the
-/// `[data-zetl-fallback]` attribute, so operators can CSS it
+/// `[data-ztl-fallback]` attribute, so operators can CSS it
 /// however they want from the enclosing shell. Idempotent: a second
 /// call replaces the existing banner rather than stacking copies.
 /// Returns the banner element for downstream assertions.
@@ -133,30 +133,30 @@ export function renderFallbackNotice(host: Element, reason?: PrfReason): Element
     );
   }
   // Only deduplicate banners that are *direct* children of the host —
-  // a decrypted page that happens to include a `[data-zetl-fallback]`
+  // a decrypted page that happens to include a `[data-ztl-fallback]`
   // attribute in its own content (unlikely, but sanitiser allows any
   // data-* attr) must not be stripped. Walking children keeps the
   // check selector-free so happy-dom's partial `:scope` support
   // doesn't trip it up in the unit suite.
   for (const child of Array.from(host.children)) {
-    if (child.hasAttribute("data-zetl-fallback")) child.remove();
+    if (child.hasAttribute("data-ztl-fallback")) child.remove();
   }
 
   const banner = doc.createElement("aside");
-  banner.setAttribute("data-zetl-fallback", "");
-  if (reason) banner.setAttribute("data-zetl-fallback-reason", reason);
+  banner.setAttribute("data-ztl-fallback", "");
+  if (reason) banner.setAttribute("data-ztl-fallback-reason", reason);
   // `role="status"` lets assistive tech announce the degraded mode
   // without stealing focus — matches the "non-intrusive" wording in
   // REQ-3412.
   banner.setAttribute("role", "status");
 
   const summary = doc.createElement("p");
-  summary.setAttribute("data-zetl-fallback-summary", "");
+  summary.setAttribute("data-ztl-fallback-summary", "");
   summary.textContent = FALLBACK_COPY;
   banner.appendChild(summary);
 
   const help = doc.createElement("p");
-  help.setAttribute("data-zetl-fallback-help", "");
+  help.setAttribute("data-ztl-fallback-help", "");
   const a = doc.createElement("a");
   a.setAttribute("href", `/reader.html#${FALLBACK_DOC_ANCHOR}`);
   a.setAttribute("rel", "noopener noreferrer");

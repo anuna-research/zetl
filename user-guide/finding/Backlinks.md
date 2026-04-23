@@ -5,10 +5,10 @@ tags: [finding, backlinks, graph]
 
 # Backlinks
 
-`zetl backlinks "Page"` lists every page that links **to** `Page`. It is the quiet workhorse of a wikilink system — more useful, over time, than the links you write yourself.
+`ztl backlinks "Page"` lists every page that links **to** `Page`. It is the quiet workhorse of a wikilink system — more useful, over time, than the links you write yourself.
 
 ```bash
-zetl backlinks "Zettelkasten Method"
+ztl backlinks "Zettelkasten Method"
 ```
 
 Output: the file path, the line of the match, and (with `--context N`) a snippet of the surrounding prose.
@@ -24,14 +24,14 @@ Forward links (see [[Following Links]]) answer *what does this page talk about?*
 
 ## Multi-hop with `--depth`
 
-By default `zetl backlinks` returns direct, one-hop references. `--depth N` walks the reverse graph:
+By default `ztl backlinks` returns direct, one-hop references. `--depth N` walks the reverse graph:
 
 ```bash
 # Direct backlinks only
-zetl backlinks "Zettelkasten Method"
+ztl backlinks "Zettelkasten Method"
 
 # Every page that reaches "Zettelkasten Method" in up to 3 reverse hops
-zetl backlinks "Zettelkasten Method" --depth 3
+ztl backlinks "Zettelkasten Method" --depth 3
 ```
 
 Depth 2–3 is where the transitive structure gets interesting: you find the notes that cite notes that cite this concept. Depth 5+ tends to return most of your vault — the graph is small-world.
@@ -42,10 +42,10 @@ You have a page called `CRDT`. You want to see every context in which you once t
 
 ```bash
 # Everyone who pointed at CRDT directly
-zetl backlinks "CRDT" --context 80
+ztl backlinks "CRDT" --context 80
 
 # The second-order neighbourhood: cites that cite
-zetl backlinks "CRDT" --depth 2
+ztl backlinks "CRDT" --depth 2
 ```
 
 Read the backlinks in the order printed (depth-first, then alphabetical). For each one, ask: *did I mean the same thing by CRDT here as I do now?* You will almost always find one or two notes where you used the term loosely, and one or two where you made a stronger claim than you remembered.
@@ -66,7 +66,7 @@ See [[CLI Overview]] for the rest.
 Piped output auto-switches to JSON. Useful for feeding backlink lists to an AI agent, or building "related reading" sections programmatically:
 
 ```bash
-zetl backlinks "2026 Research Plan" --json \
+ztl backlinks "2026 Research Plan" --json \
   | jq -r '.backlinks[].page'
 ```
 

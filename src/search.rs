@@ -115,7 +115,7 @@ pub struct SearchConfig<'a> {
 
 /// Search all Markdown files in `vault_root` for matches via Tantivy.
 ///
-/// Opens the Tantivy index at `.zetl/search/`, building it lazily if absent.
+/// Opens the Tantivy index at `.ztl/search/`, building it lazily if absent.
 /// Queries the index against the body field, then re-scans each matched document
 /// for precise line/column positions and heading context.
 ///
@@ -134,7 +134,7 @@ pub fn search_vault(
         Some(idx) => idx,
         None => {
             eprintln!(
-                "Building search index (run `zetl index` to avoid this delay on future queries)"
+                "Building search index (run `ztl index` to avoid this delay on future queries)"
             );
             let files = scan_vault(vault_root, scan_options)?;
             SearchIndex::build(vault_root, &files)?

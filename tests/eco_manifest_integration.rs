@@ -1,6 +1,6 @@
 //! TEST-3312 — ecosystem-specific manifest parsing.
 //!
-//! Exercises [`zetl::hooks::manifest::parse_manifest`] against the
+//! Exercises [`ztl::hooks::manifest::parse_manifest`] against the
 //! TEST-3312 parse-error matrix (SPEC-033 §7):
 //!
 //! - `package = "..."` on `ecosystem = "pandoc"` manifest (remark-only field).
@@ -11,12 +11,12 @@
 //! Plus the happy paths that TEST-3312 gestures at by calling out the
 //! valid examples alongside the invalid ones.
 
-use zetl::ecosystems::{
+use ztl::ecosystems::{
     EcosystemSpecific, MdbookManifestFields, MdbookScope, PandocManifestFields,
     RemarkManifestFields,
 };
-use zetl::hooks::manifest::{parse_manifest, ManifestError};
-use zetl::hooks::pipeline::Stage;
+use ztl::hooks::manifest::{parse_manifest, ManifestError};
+use ztl::hooks::pipeline::Stage;
 
 /// Assert the parse fails with `ManifestError::Parse` whose message
 /// contains every substring in `needles`.
@@ -161,7 +161,7 @@ firstLineBlank = true
 
 #[test]
 fn manifest_without_ecosystem_key_has_no_extra_block() {
-    // SPEC-032 zetl-native path: no `ecosystem` key at all, no `extra`.
+    // SPEC-032 ztl-native path: no `ecosystem` key at all, no `extra`.
     let text = r#"
 stage = "transform"
 timeout_ms = 75
@@ -289,28 +289,28 @@ fn remark_without_package_rejected() {
     assert_parse_error_contains(parse_manifest(text, None), &["package"]);
 }
 
-// ── zetl-native explicit tag ───────────────────────────────────────────────
+// ── ztl-native explicit tag ───────────────────────────────────────────────
 
 #[test]
-fn zetl_native_explicit_tag_composes_with_base_fields() {
+fn ztl_native_explicit_tag_composes_with_base_fields() {
     let text = r#"
-ecosystem = "zetl-native"
+ecosystem = "ztl-native"
 stage = "transform"
 timeout_ms = 120
 "#;
-    let m = parse_manifest(text, None).expect("zetl-native manifest parses");
+    let m = parse_manifest(text, None).expect("ztl-native manifest parses");
     assert_eq!(m.stage, Some(Stage::Transform));
     assert_eq!(m.timeout_ms, 120);
-    assert!(matches!(m.extra, Some(EcosystemSpecific::ZetlNative(_))));
+    assert!(matches!(m.extra, Some(EcosystemSpecific::ztlNative(_))));
 }
 
 #[test]
-fn zetl_native_rejects_ecosystem_specific_fields() {
-    // A manifest declaring `ecosystem = "zetl-native"` must NOT also
+fn ztl_native_rejects_ecosystem_specific_fields() {
+    // A manifest declaring `ecosystem = "ztl-native"` must NOT also
     // carry pandoc/mdbook/remark fields — the explicit tag means no
     // adapter, so those fields would be meaningless.
     let text = r#"
-ecosystem = "zetl-native"
+ecosystem = "ztl-native"
 exec = "pandoc-crossref"
 "#;
     assert_parse_error_contains(parse_manifest(text, None), &["exec"]);

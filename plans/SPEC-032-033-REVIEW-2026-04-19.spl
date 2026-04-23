@@ -44,7 +44,7 @@
 (meta task-release-roadmap
   (priority "P1")
   (cluster "cross-cutting")
-  (description "Add explicit release-version targets to the Rollout Plan in both specs. Currently Phases A–E (SPEC-032) and A–F (SPEC-033) have no mapping to zetl release numbers.")
+  (description "Add explicit release-version targets to the Rollout Plan in both specs. Currently Phases A–E (SPEC-032) and A–F (SPEC-033) have no mapping to ztl release numbers.")
   (acceptance "Table added at the top of each Rollout Plan mapping Phase → target release (0.6.x / 0.7.0 / etc) and dependency-on relationships (SPEC-033 Phase A blocks on SPEC-032 Phase A+B; SPEC-033 Phase B can land in the same release as SPEC-032 Phase C, etc.)."))
 
 (given task-mdbook-preparse-caveat)
@@ -52,7 +52,7 @@
   (priority "P1")
   (cluster "cross-cutting")
   (description "Reconcile SPEC-032 REQ-3201's pre-parse warning paragraph with SPEC-033 ADR-3303's placement of mdBook preprocessors at pre-parse. The stage warns against regex-over-Markdown; the foreign ecosystem that lands there does exactly that.")
-  (acceptance "SPEC-032 REQ-3201 gets an addendum: pre-parse is the zetl stage hosting mdBook preprocessors (REQ-3304, SPEC-033); those preprocessors are authored under mdBook's own contract and may regex-rewrite Markdown; zetl inherits mdBook's safety posture at that stage, explicitly. SPEC-033 ADR-3303 cross-links."))
+  (acceptance "SPEC-032 REQ-3201 gets an addendum: pre-parse is the ztl stage hosting mdBook preprocessors (REQ-3304, SPEC-033); those preprocessors are authored under mdBook's own contract and may regex-rewrite Markdown; ztl inherits mdBook's safety posture at that stage, explicitly. SPEC-033 ADR-3303 cross-links."))
 
 ;; ==== Cluster B: SPEC-032 specific ========================================
 
@@ -67,7 +67,7 @@
 (meta task-build-data-cross-page
   (priority "P1")
   (cluster "spec-032")
-  (description "REQ-3219 + CON-3219 are silent on cross-page build_data concurrency. If zetl renders pages in parallel, multiple hooks see stale snapshots and their writes race.")
+  (description "REQ-3219 + CON-3219 are silent on cross-page build_data concurrency. If ztl renders pages in parallel, multiple hooks see stale snapshots and their writes race.")
   (acceptance "CON-3219 specifies: build_data is page-serial (hooks within a page run in sequence; pages may render in parallel but each page sees only the snapshot as of its render-start). Cross-page aggregation is documented as explicit-finalise in §13 Q9's 'vault.ext' territory, not build_data."))
 
 (given task-empty-file-rule)
@@ -82,28 +82,28 @@
   (priority "P2")
   (cluster "spec-032")
   (description "REQ-3202 example shows `ast_version: '1.0'`; REQ-3215 shows `ast_version = '>=1.0 <2'`. Readers can't tell if the canonical form is major.minor or a semver range.")
-  (acceptance "REQ-3202 explicitly: the schema root's `ast_version` is an exact major.minor string emitted by zetl. REQ-3215 explicitly: the manifest's `ast_version` is an npm-style semver range interpreted against the schema's major.minor. One inline note cross-links them."))
+  (acceptance "REQ-3202 explicitly: the schema root's `ast_version` is an exact major.minor string emitted by ztl. REQ-3215 explicitly: the manifest's `ast_version` is an npm-style semver range interpreted against the schema's major.minor. One inline note cross-links them."))
 
 (given task-coverage-json-persistence)
 (meta task-coverage-json-persistence
   (priority "P2")
   (cluster "spec-032")
   (description "REQ-3208 'Data persists between runs' is ambiguous — replace vs merge. Matters for CI.")
-  (acceptance "REQ-3208 specifies: `hook-coverage.json` is replaced (not merged) on each `zetl build` invocation. CI builds see only the current run. A separate `--coverage-append` flag is deferred to §13 Open Questions."))
+  (acceptance "REQ-3208 specifies: `hook-coverage.json` is replaced (not merged) on each `ztl build` invocation. CI builds see only the current run. A separate `--coverage-append` flag is deferred to §13 Open Questions."))
 
 (given task-python-dep-tradeoff)
 (meta task-python-dep-tradeoff
   (priority "P2")
   (cluster "spec-032")
-  (description "ADR-3204 introduces Python as a default-theme dependency without flagging that `zetl build` in Alpine/minimal Docker now needs `python3` installed. Either flag loudly or route through SPEC-033's ecosystem story.")
-  (acceptance "If task-spec-scope-sequencing resolves to (a) delete canonical extensions, this task collapses. Otherwise ADR-3204's trade-offs section gains an explicit 'Zetl now depends on Python 3.9+ being installed for the default theme to produce expected HTML' bullet and a --no-hooks workaround reference."))
+  (description "ADR-3204 introduces Python as a default-theme dependency without flagging that `ztl build` in Alpine/minimal Docker now needs `python3` installed. Either flag loudly or route through SPEC-033's ecosystem story.")
+  (acceptance "If task-spec-scope-sequencing resolves to (a) delete canonical extensions, this task collapses. Otherwise ADR-3204's trade-offs section gains an explicit 'ztl now depends on Python 3.9+ being installed for the default theme to produce expected HTML' bullet and a --no-hooks workaround reference."))
 
 (given task-preparse-safe-mode)
 (meta task-preparse-safe-mode
   (priority "P2")
   (cluster "spec-032")
   (description "REQ-3201 warns about pre-parse regex edits but has no enforcement. A 'post-hook parse-structure compare' would detect most accidental breakages.")
-  (acceptance "New optional REQ-3222 'pre-parse structural safety check' — when manifest declares `may_restructure = false` (default), zetl compares pre-hook and post-hook block-tree shapes and warns on divergence. Deferred-until-v1.1 marker so it doesn't block v1."))
+  (acceptance "New optional REQ-3222 'pre-parse structural safety check' — when manifest declares `may_restructure = false` (default), ztl compares pre-hook and post-hook block-tree shapes and warns on divergence. Deferred-until-v1.1 marker so it doesn't block v1."))
 
 (given task-dispatch-key-naming)
 (meta task-dispatch-key-naming
@@ -117,7 +117,7 @@
   (priority "P1")
   (cluster "spec-032")
   (description "14+ metric families across the two specs with Prometheus-style names but no declared emission surface. Pick a story.")
-  (acceptance "§9 of SPEC-032 (shared with SPEC-033) gains a 'Metric emission surface' sub-section: (a) `zetl hook coverage [--json]` is the primary user-facing surface, (b) `--verbose` emits structured log lines on stderr, (c) an optional `/metrics` Prometheus endpoint is deferred to a separate spec since it requires the serve process to expose HTTP metrics infrastructure not in scope here."))
+  (acceptance "§9 of SPEC-032 (shared with SPEC-033) gains a 'Metric emission surface' sub-section: (a) `ztl hook coverage [--json]` is the primary user-facing surface, (b) `--verbose` emits structured log lines on stderr, (c) an optional `/metrics` Prometheus endpoint is deferred to a separate spec since it requires the serve process to expose HTTP metrics infrastructure not in scope here."))
 
 ;; ==== Cluster C: SPEC-033 specific ========================================
 
@@ -125,7 +125,7 @@
 (meta task-roundtrip-fidelity-claim
   (priority "P0")
   (cluster "spec-033")
-  (description "NFR-3305 claims '0 byte-level differences across 10,000 diverse ASTs per release' for zetl-ext ↔ pandoc-types round-trip. Pandoc has semantically-equivalent representations (Span wrapping, inline sequences); strict byte-identity across a pure round-trip is unachievable.")
+  (description "NFR-3305 claims '0 byte-level differences across 10,000 diverse ASTs per release' for ztl-ext ↔ pandoc-types round-trip. Pandoc has semantically-equivalent representations (Span wrapping, inline sequences); strict byte-identity across a pure round-trip is unachievable.")
   (acceptance "NFR-3305 weakens to one of: (a) 'canonical-form equivalence' — define a canonicalise() function and require A == canonicalise(translate_from(translate_to(A))); or (b) 'semantic equivalence' — render both to HTML and require byte-identical HTML. Whichever, explicitly spell out which representation-level invariants hold and which don't."))
 
 (given task-plugin-version-verification)
@@ -133,14 +133,14 @@
   (priority "P1")
   (cluster "spec-033")
   (description "REQ-3311's matrix pins tested plugin versions but nothing at invocation-time verifies the user's installed version matches. A breaking upgrade in pandoc-crossref silently fails downstream.")
-  (acceptance "New REQ-3314 'plugin-version-drift detection' — zetl records each plugin's --version output at probe time; compares against matrix; emits one of (exact-match silent / minor-drift warn / incompatible disabled) per CON-3201-style policy. Matrix gains a `version_range` column."))
+  (acceptance "New REQ-3314 'plugin-version-drift detection' — ztl records each plugin's --version output at probe time; compares against matrix; emits one of (exact-match silent / minor-drift warn / incompatible disabled) per CON-3201-style policy. Matrix gains a `version_range` column."))
 
 (given task-mixed-ecosystem-determinism)
 (meta task-mixed-ecosystem-determinism
   (priority "P1")
   (cluster "spec-033")
-  (description "NFR-3306's 'byte-identical HTML across runs and platforms' under mixed ecosystems commits zetl to guarantee what third-party plugins control. Each ecosystem has its own non-determinism sources (citation ordering, Set iteration, mermaid SVG IDs).")
-  (acceptance "NFR-3306 relaxes to: 'zetl's adapter and translation layers introduce no non-determinism. Plugin-internal non-determinism (list of known sources: …) is outside zetl's scope; users needing strict determinism SHOULD pin plugin versions in the matrix and audit each for determinism properties.'"))
+  (description "NFR-3306's 'byte-identical HTML across runs and platforms' under mixed ecosystems commits ztl to guarantee what third-party plugins control. Each ecosystem has its own non-determinism sources (citation ordering, Set iteration, mermaid SVG IDs).")
+  (acceptance "NFR-3306 relaxes to: 'ztl's adapter and translation layers introduce no non-determinism. Plugin-internal non-determinism (list of known sources: …) is outside ztl's scope; users needing strict determinism SHOULD pin plugin versions in the matrix and audit each for determinism properties.'"))
 
 (given task-ecosystem-check-zero-state)
 (meta task-ecosystem-check-zero-state
@@ -161,7 +161,7 @@
   (priority "P1")
   (cluster "spec-033")
   (description "REQ-3306 lets one page be CommonMark and another Pandoc-dialect. Two pages with the same-looking syntax (`{.class}` attributes, extended tables) render differently silently — a footgun.")
-  (acceptance "New REQ-3315 'mixed-parser diagnostic': on build, zetl scans all pages for syntax that is valid under one parser and differently-meaningful under the other (attribute syntax, fenced-div, table dialects). Emits a warning listing affected pages. Under `--strict-parsers`, becomes an error."))
+  (acceptance "New REQ-3315 'mixed-parser diagnostic': on build, ztl scans all pages for syntax that is valid under one parser and differently-meaningful under the other (attribute syntax, fenced-div, table dialects). Emits a warning listing affected pages. Under `--strict-parsers`, becomes an error."))
 
 (given task-remark-harness-isolation)
 (meta task-remark-harness-isolation
@@ -191,7 +191,7 @@
   (priority "P1")
   (cluster "security")
   (description "SPEC-032 §10 and SPEC-033 §10 both say 'user consent to the theme is consent to its hooks' — legally accurate but a footgun as product surface. Themes today don't execute code; post-SPEC-032/033 they do.")
-  (acceptance "Shared new REQ-3223 in SPEC-032 'safe-mode build' — `zetl build --no-hooks` (already in SPEC-032) promoted from flag-mention to REQ with explicit semantics: disables ALL hooks including theme-bundled, emits warning on stderr listing which hooks were suppressed, completes successfully with plain output. Plus a REQ 'theme hook declaration' — themes with `hooks/` directory MUST list their hooks in `theme.toml` [[theme.hooks]] entries; zetl warns on first use of a theme with undeclared hooks."))
+  (acceptance "Shared new REQ-3223 in SPEC-032 'safe-mode build' — `ztl build --no-hooks` (already in SPEC-032) promoted from flag-mention to REQ with explicit semantics: disables ALL hooks including theme-bundled, emits warning on stderr listing which hooks were suppressed, completes successfully with plain output. Plus a REQ 'theme hook declaration' — themes with `hooks/` directory MUST list their hooks in `theme.toml` [[theme.hooks]] entries; ztl warns on first use of a theme with undeclared hooks."))
 
 ;; ----------------------------------------------------------------------------
 ;; Readiness rules — all tasks ready once the review exists

@@ -20,7 +20,7 @@ parent: SPEC-017
 | Date         | 2026-03-06                                                     |
 | Audience     | Agent, Human                                                   |
 | Trace        | USDD Agent Protocol v1.3.0                                     |
-| Parent       | SPEC-017: zetl history — Invisible Temporal Graph Navigation   |
+| Parent       | SPEC-017: ztl history — Invisible Temporal Graph Navigation   |
 | Related      | SPEC-006: Merkle Tree; SPEC-008: Watch Mode                    |
 | Dependencies | SPEC-017 (jj-lib history); `vcs.rs` (git metadata reader)     |
 
@@ -28,13 +28,13 @@ parent: SPEC-017
 
 ## 1. Overview
 
-SPEC-017 gives zetl fine-grained temporal navigation: every vault state is captured as a jj snapshot, and any past state can be queried with `--at`. Each snapshot carries a `vault_root_hash` (SPEC-006) that identifies the vault's content at that moment.
+SPEC-017 gives ztl fine-grained temporal navigation: every vault state is captured as a jj snapshot, and any past state can be queried with `--at`. Each snapshot carries a `vault_root_hash` (SPEC-006) that identifies the vault's content at that moment.
 
 What snapshots do *not* carry is a reference to the **git commit** that was current when the snapshot was taken. This means the history system can tell you *when* a note last changed and *what* the vault looked like, but it cannot tell you *where in the project's git history* that change sits.
 
-This matters because zetl vaults often document codebases. A note about `src/cli.rs` was last changed on March 1st, but the user's real question is: "What git commits landed in the codebase since I last updated this note?" Without a git commit anchor, answering that question requires fuzzy timestamp matching against `git log` — unreliable when clocks differ, commits are rebased, or the vault and repo live on different machines.
+This matters because ztl vaults often document codebases. A note about `src/cli.rs` was last changed on March 1st, but the user's real question is: "What git commits landed in the codebase since I last updated this note?" Without a git commit anchor, answering that question requires fuzzy timestamp matching against `git log` — unreliable when clocks differ, commits are rebased, or the vault and repo live on different machines.
 
-This specification adds a single, small piece of data: the git HEAD commit hash at snapshot time. This anchors each zetl snapshot to a precise point in git history, enabling exact `git log <anchor>..HEAD` queries without timestamp guesswork.
+This specification adds a single, small piece of data: the git HEAD commit hash at snapshot time. This anchors each ztl snapshot to a precise point in git history, enabling exact `git log <anchor>..HEAD` queries without timestamp guesswork.
 
 ### 1.1 Design Principle: Supplementary, Not Required
 
@@ -54,11 +54,11 @@ Consistent with `vcs.rs`'s existing contract (NFR-017 §1.6): git metadata enric
 
 **Out of scope:**
 
-- Running `git log` or `git diff` from within zetl (that is a hook/agent concern)
+- Running `git log` or `git diff` from within ztl (that is a hook/agent concern)
 - Tracking per-file git blame or authorship
 - Any git write operations
 - Frontmatter extraction or "sync source" declarations
-- Staleness detection logic (belongs in hooks/agents, not zetl core)
+- Staleness detection logic (belongs in hooks/agents, not ztl core)
 
 ---
 
@@ -71,9 +71,9 @@ Name:        Priya
 Role:        Staff engineer; maintains a 500-note vault documenting a large Rust codebase
 Goals:       Know which notes are stale relative to the code they document;
              produce a staleness report for sprint planning
-Constraints: Uses git daily; runs zetl build to publish internal docs;
+Constraints: Uses git daily; runs ztl build to publish internal docs;
              comfortable writing shell hooks
-Workflow:    Edits vault notes when code changes significantly; runs zetl build
+Workflow:    Edits vault notes when code changes significantly; runs ztl build
              weekly; wants a hook that flags notes not updated since relevant code changed
 Pain point:  "I know my CLI Architecture note is outdated because the code changed,
              but I can't prove it without manually checking git log dates."
@@ -105,14 +105,14 @@ Pain point:  "Without a commit anchor, I have to parse timestamps and hope they 
 Preconditions:
   - Vault is inside a git repository
   - History feature is enabled (--features history)
-  - zetl index has been run at least twice (creating snapshots with git anchors)
+  - ztl index has been run at least twice (creating snapshots with git anchors)
 
 Steps:
-  1. Priya edits "CLI Architecture.md" and runs `zetl index`
+  1. Priya edits "CLI Architecture.md" and runs `ztl index`
      -> Snapshot created with vault_root_hash and git_commit=abc123
   2. Three days later, a teammate merges PRs touching src/cli.rs
      -> git HEAD advances to def456; vault is unchanged
-  3. Priya runs `zetl build`
+  3. Priya runs `ztl build`
      -> history-index.json includes:
         "CLI Architecture": { "last_changed_git_commit": "abc123", ... }
   4. A hook reads history-index.json and runs:
@@ -134,7 +134,7 @@ Failure modes:
 
 ```
 Preconditions:
-  - zetl build has been run, producing history-index.json
+  - ztl build has been run, producing history-index.json
   - CI has access to the git repository
 
 Steps:
@@ -159,13 +159,13 @@ Postconditions:
 The `auto_snapshot` function (SPEC-017 REQ-076) SHALL read the git HEAD commit hash via `vcs::get_git_metadata()` at snapshot creation time and embed it in the jj commit description using the format:
 
 ```
-zetl-snapshot vault_root_hash=<64-hex> git_commit=<40-hex>
+ztl-snapshot vault_root_hash=<64-hex> git_commit=<40-hex>
 ```
 
 When the vault is not inside a git repository, or the git commit cannot be resolved, the `git_commit=` field SHALL be omitted. The snapshot description format degrades to the existing format:
 
 ```
-zetl-snapshot vault_root_hash=<64-hex>
+ztl-snapshot vault_root_hash=<64-hex>
 ```
 
 The `git_dirty` flag SHALL NOT be embedded in the description. Rationale: dirtiness is transient state at snapshot time with no clear consumer value, and would complicate description parsing for marginal benefit.
@@ -252,7 +252,7 @@ Trace:
 
 ### REQ-109: Git Commit in Hook History Context
 
-The `HookContext.history` object SHALL include `newest_git_commit: Option<String>` (from the most recent snapshot at hook execution time). Hooks that fire after `zetl index` or `zetl build` receive the git commit that was current when the snapshot was created.
+The `HookContext.history` object SHALL include `newest_git_commit: Option<String>` (from the most recent snapshot at hook execution time). Hooks that fire after `ztl index` or `ztl build` receive the git commit that was current when the snapshot was created.
 
 Trace:
 - TEST-132
@@ -267,24 +267,24 @@ Trace:
 **Format (with git):**
 
 ```
-zetl-snapshot vault_root_hash=<64-hex-lowercase> git_commit=<40-hex-lowercase>
+ztl-snapshot vault_root_hash=<64-hex-lowercase> git_commit=<40-hex-lowercase>
 ```
 
 **Format (without git):**
 
 ```
-zetl-snapshot vault_root_hash=<64-hex-lowercase>
+ztl-snapshot vault_root_hash=<64-hex-lowercase>
 ```
 
 **Format (minimal, legacy):**
 
 ```
-zetl-snapshot
+ztl-snapshot
 ```
 
 **Parsing rules:**
 
-- Fields are whitespace-separated key=value pairs after the `zetl-snapshot` prefix
+- Fields are whitespace-separated key=value pairs after the `ztl-snapshot` prefix
 - `vault_root_hash` is exactly 64 lowercase hex characters
 - `git_commit` is exactly 40 lowercase hex characters (SHA-1)
 - Unknown fields SHALL be ignored (forward compatibility)
@@ -355,8 +355,8 @@ Verified by:
 
 **Context:** We need to associate a git commit hash with each jj snapshot. Options considered:
 
-1. **Embed in jj commit description** (chosen) — append `git_commit=<hash>` to the existing `zetl-snapshot vault_root_hash=<hash>` description string
-2. **Separate metadata file** — write `.zetl/history/git-anchors.json` mapping jj change IDs to git commits
+1. **Embed in jj commit description** (chosen) — append `git_commit=<hash>` to the existing `ztl-snapshot vault_root_hash=<hash>` description string
+2. **Separate metadata file** — write `.ztl/history/git-anchors.json` mapping jj change IDs to git commits
 3. **jj commit metadata/tags** — use jj's native metadata features
 
 **Decision:** Option 1.
@@ -436,7 +436,7 @@ Shell -> Core. Core MUST NOT import from shell. The only new I/O call is `vcs::g
 3. Run `auto_snapshot(vault_root, Some(vault_root_hash))`
 4. Read the most recent jj snapshot's description
 
-**Expected:** Description matches `zetl-snapshot vault_root_hash=<64-hex> git_commit=<40-hex>` where the git_commit matches the git HEAD at step 3.
+**Expected:** Description matches `ztl-snapshot vault_root_hash=<64-hex> git_commit=<40-hex>` where the git_commit matches the git HEAD at step 3.
 
 ### TEST-125: Git Commit Extraction — Valid Description
 
@@ -445,7 +445,7 @@ Shell -> Core. Core MUST NOT import from shell. The only new I/O call is `vcs::g
 **Scenario:** Extract git commit from a well-formed description.
 
 **Steps:**
-1. Call `extract_git_commit_from_description("zetl-snapshot vault_root_hash=aaa...aaa git_commit=bbb...bbb")` (64 a's, 40 b's)
+1. Call `extract_git_commit_from_description("ztl-snapshot vault_root_hash=aaa...aaa git_commit=bbb...bbb")` (64 a's, 40 b's)
 
 **Expected:** Returns `Some("bbb...bbb")`.
 
@@ -459,11 +459,11 @@ Shell -> Core. Core MUST NOT import from shell. The only new I/O call is `vcs::g
 
 | Input | Expected |
 |-------|----------|
-| `"zetl-snapshot vault_root_hash=aaa...aaa"` | `None` |
-| `"zetl-snapshot"` | `None` |
-| `"zetl-snapshot git_commit=short"` | `None` |
-| `"zetl-snapshot git_commit=XXXX...XXXX"` (40 non-hex chars) | `None` |
-| `"zetl-snapshot vault_root_hash=aaa...aaa git_commit=bbb...bbb extra_field=ccc"` | `Some("bbb...bbb")` (unknown fields ignored) |
+| `"ztl-snapshot vault_root_hash=aaa...aaa"` | `None` |
+| `"ztl-snapshot"` | `None` |
+| `"ztl-snapshot git_commit=short"` | `None` |
+| `"ztl-snapshot git_commit=XXXX...XXXX"` (40 non-hex chars) | `None` |
+| `"ztl-snapshot vault_root_hash=aaa...aaa git_commit=bbb...bbb extra_field=ccc"` | `Some("bbb...bbb")` (unknown fields ignored) |
 
 ### TEST-127: PageHistoryEntry Includes Git Commit
 
@@ -538,7 +538,7 @@ Shell -> Core. Core MUST NOT import from shell. The only new I/O call is `vcs::g
 **Scenario:** Fire an on-index hook and inspect the history context.
 
 **Steps:**
-1. Run `zetl index` in a git-tracked vault with history enabled
+1. Run `ztl index` in a git-tracked vault with history enabled
 2. Inspect the hook context JSON passed to the hook
 
 **Expected:** `history.newest_git_commit` contains the git HEAD hash at index time.
@@ -552,7 +552,7 @@ Shell -> Core. Core MUST NOT import from shell. The only new I/O call is `vcs::g
 The `auto_snapshot` function SHALL emit a verbose log line when git metadata is captured:
 
 ```
-[zetl] snapshot: git_commit=<40-hex> git_dirty=<true|false> duration_ms=<N>
+[ztl] snapshot: git_commit=<40-hex> git_dirty=<true|false> duration_ms=<N>
 ```
 
 This line is emitted only when `--verbose` is active and git metadata was successfully read. The `duration_ms` covers the `vcs::get_git_metadata()` call only (not the full snapshot operation, which is already timed by OBS-011).
@@ -600,8 +600,8 @@ pub fn auto_snapshot(
     let (git_commit, _git_dirty) = crate::vcs::get_git_metadata(vault_root);
 
     let mut description = match vault_root_hash {
-        Some(hash) => format!("zetl-snapshot vault_root_hash={hash}"),
-        None => "zetl-snapshot".to_owned(),
+        Some(hash) => format!("ztl-snapshot vault_root_hash={hash}"),
+        None => "ztl-snapshot".to_owned(),
     };
     if let Some(ref commit) = git_commit {
         description.push_str(&format!(" git_commit={commit}"));

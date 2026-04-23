@@ -1,5 +1,5 @@
 {
-  "name": "zetl-default-theme-css",
+  "name": "ztl-default-theme-css",
   "version": "0.0.1",
   "private": true,
   "description": "Tailwind + daisyUI build pipeline for the bundled default theme. Run `npm run build` to regenerate static/theme.css when templates change.",

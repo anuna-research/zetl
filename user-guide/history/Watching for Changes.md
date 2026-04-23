@@ -7,25 +7,25 @@ tags: [history, watch, snapshots]
 
 > **Requires `--features history` at install.** See [[Installation]].
 
-`zetl watch` runs continuously, listens for filesystem events in your vault, and takes a silent snapshot on every meaningful change. If you want *every* edit captured — not just the ones you thought to commit — this is the command.
+`ztl watch` runs continuously, listens for filesystem events in your vault, and takes a silent snapshot on every meaningful change. If you want *every* edit captured — not just the ones you thought to commit — this is the command.
 
 ## The idea
 
 When you're writing, you don't want to stop and version your thoughts. You want to keep typing. But later, you'll want to know what you wrote at 3 AM last Tuesday, or recover the paragraph you deleted in a moment of over-zealous editing.
 
-`zetl watch` solves this by hooking into the same filesystem events your editor emits on save, debouncing them, and committing a snapshot under `.zetl/jj/`. No dialog, no prompt, no commit message. Just a quiet paper trail.
+`ztl watch` solves this by hooking into the same filesystem events your editor emits on save, debouncing them, and committing a snapshot under `.ztl/jj/`. No dialog, no prompt, no commit message. Just a quiet paper trail.
 
 ## Running it
 
 ```bash
-zetl -d ~/notes watch
+ztl -d ~/notes watch
 ```
 
 Leave it in a terminal tab (or under `tmux`, `systemd`, `launchd`, whatever you use). It prints a one-line NDJSON event per change by default; pipe to `jq` or `--quiet` it if you don't care.
 
 ```bash
-zetl watch --quiet
-zetl watch | jq -r '.event'
+ztl watch --quiet
+ztl watch | jq -r '.event'
 ```
 
 ### Useful flags
@@ -34,8 +34,8 @@ zetl watch | jq -r '.event'
 |------|---------|---------|
 | `--debounce <MS>` | `150` | Coalesce rapid saves (your editor's autosave) into one snapshot. Min 10, max 5000. |
 | `--exec <CMD>` | — | Run a shell command for each event; event JSON arrives on stdin. |
-| `--exclude <PATTERN>` | — | Gitignore-syntax pattern, repeatable. Combines with `.zetlignore`. |
-| `--include-hidden` | off | Also watch `.obsidian/`, `.claude/`, etc. `.git/`, `.zetl/`, `node_modules/` stay excluded. |
+| `--exclude <PATTERN>` | — | Gitignore-syntax pattern, repeatable. Combines with `.ztlignore`. |
+| `--include-hidden` | off | Also watch `.obsidian/`, `.claude/`, etc. `.git/`, `.ztl/`, `node_modules/` stay excluded. |
 
 The `--exec` flag makes `watch` a general-purpose trigger: rebuild a preview, push notifications to another tool, fire a webhook. See [[Lifecycle Hooks]] for structured pre/post-build hooks — `watch --exec` is the lightweight sibling.
 
@@ -55,13 +55,13 @@ The `--exec` flag makes `watch` a general-purpose trigger: rebuild a preview, pu
 
 ## What actually happens on a snapshot
 
-Each coalesced event triggers a silent [jj](https://jj-vcs.github.io/jj/) snapshot inside `.zetl/jj/` — separate from any `.git/` directory you keep alongside. Your `git log` stays clean; your zetl history fills up. See [[Snapshots Under the Hood]] for the full picture.
+Each coalesced event triggers a silent [jj](https://jj-vcs.github.io/jj/) snapshot inside `.ztl/jj/` — separate from any `.git/` directory you keep alongside. Your `git log` stays clean; your ztl history fills up. See [[Snapshots Under the Hood]] for the full picture.
 
 No commit messages, no author prompts, no staging area. The whole thing is designed to stay out of your way while still giving `--at` something to query.
 
-## Interaction with `zetl index`
+## Interaction with `ztl index`
 
-If you already run `zetl index` as part of a build pipeline, indexing *also* writes a snapshot when history is enabled. `watch` and `index` snapshots coexist: you'll see them interleaved in `zetl history timeline`. Running both is fine — duplicate states are collapsed.
+If you already run `ztl index` as part of a build pipeline, indexing *also* writes a snapshot when history is enabled. `watch` and `index` snapshots coexist: you'll see them interleaved in `ztl history timeline`. Running both is fine — duplicate states are collapsed.
 
 ## Stopping watch
 

@@ -59,7 +59,7 @@ before(() => {
   g.document = win.document;
   g.DOMParser = win.DOMParser;
   document.body.innerHTML =
-    `<main data-zetl-capability></main>`;
+    `<main data-ztl-capability></main>`;
 });
 
 // ── Fixture builders ───────────────────────────────────────────────────
@@ -115,12 +115,12 @@ async function buildFixture(opts: {
   const sigB64 = b64urlEncode(signature);
 
   const headerText =
-    "Zetl-Schema: v4\n" +
-    "Zetl-Cohort-Id: engineering\n" +
-    "Zetl-Cohort-Mode: delegated-url\n" +
-    "Zetl-Slug: onboarding\n" +
-    "Zetl-Build-Epoch: 2026-04-20T10:15:00Z\n" +
-    `Zetl-Signature: ${sigB64}\n`;
+    "ztl-Schema: v4\n" +
+    "ztl-Cohort-Id: engineering\n" +
+    "ztl-Cohort-Mode: delegated-url\n" +
+    "ztl-Slug: onboarding\n" +
+    "ztl-Build-Epoch: 2026-04-20T10:15:00Z\n" +
+    `ztl-Signature: ${sigB64}\n`;
   const headerBytes = new TextEncoder().encode(headerText);
   const envelope = new Uint8Array(headerBytes.length + 1 + ciphertext.length);
   envelope.set(headerBytes, 0);
@@ -211,12 +211,12 @@ test("TEST-3427 positive: valid signature → decrypt + render", async () => {
   assert.ok(trace.phases.includes(Phase.Rendered),
     "positive path renders through to Phase.Rendered");
 
-  const host = document.querySelector("main[data-zetl-capability]");
+  const host = document.querySelector("main[data-ztl-capability]");
   assert.ok(host, "capability host element present");
   const html = host!.innerHTML;
   assert.match(html, /hello from the signed envelope/);
   // No error sentinel should be stamped on the success path.
-  assert.equal(host!.getAttribute("data-zetl-error"), null);
+  assert.equal(host!.getAttribute("data-ztl-error"), null);
 });
 
 // ── TEST-3427 negative (a): invalid signature ──────────────────────────
@@ -237,14 +237,14 @@ test("TEST-3427 negative (a): invalid signature → error page, no decrypt", asy
   assert.ok(trace.phases.at(-1) === Phase.Errored,
     "terminal phase is Errored");
 
-  const host = document.querySelector("main[data-zetl-capability]");
-  const summary = host!.querySelector("[data-zetl-error-summary]");
+  const host = document.querySelector("main[data-ztl-capability]");
+  const summary = host!.querySelector("[data-ztl-error-summary]");
   // Copy pinned by SPEC-034 REQ-3427 — byte-stable, no trailing period.
   assert.equal(
     summary!.textContent,
     "This page's signature did not verify — possible tampering; contact your wiki operator",
   );
-  assert.equal(host!.getAttribute("data-zetl-error"), "signature-failed");
+  assert.equal(host!.getAttribute("data-ztl-error"), "signature-failed");
 });
 
 // ── TEST-3427 negative (b): mismatched embedded pubkey ────────────────

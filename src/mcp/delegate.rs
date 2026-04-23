@@ -1,4 +1,4 @@
-//! zetl delegate command implementation — JWT signing with ed25519.
+//! ztl delegate command implementation — JWT signing with ed25519.
 
 use anyhow::{anyhow, Result};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -71,7 +71,7 @@ mod tests {
 
         let claims = DelegateClaims {
             iss: "test-user".into(),
-            sub: "zetl-mcp".into(),
+            sub: "ztl-mcp".into(),
             aud: "test-vault".into(),
             iat: 1_000_000,
             exp: 0, // no expiry
@@ -88,7 +88,7 @@ mod tests {
 
         let verified = verify_jwt(&jwt, &allowed_issuers).expect("verification should succeed");
         assert_eq!(verified.iss, "test-user");
-        assert_eq!(verified.sub, "zetl-mcp");
+        assert_eq!(verified.sub, "ztl-mcp");
         assert_eq!(
             verified.tools,
             vec!["search".to_string(), "get_page".to_string()]
@@ -103,7 +103,7 @@ mod tests {
 
         let claims = DelegateClaims {
             iss: "alice".into(),
-            sub: "zetl-mcp".into(),
+            sub: "ztl-mcp".into(),
             aud: "vault".into(),
             iat: 500,
             exp: 0,

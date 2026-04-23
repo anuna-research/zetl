@@ -4,7 +4,7 @@ This document tracks the first-party canonical extensions the default theme
 ships (SPEC-032 REQ-3212). Per the REQ-3212 resolution of SPEC-033 §13 Q1,
 each canonical extension is a **thin stub** — the default theme owns CSS
 and template partials; the transformation itself is delegated to an
-ecosystem plugin declared in the theme's `.zetl/hooks/` manifests.
+ecosystem plugin declared in the theme's `.ztl/hooks/` manifests.
 
 Sections below are per-extension. Extensions not yet landed are listed
 under their plan-task name for forward reference; this file grows as each
@@ -53,7 +53,7 @@ Canonical extension recognising two admonition syntaxes:
 A realistic default-theme selector matches any page whose body contains
 either `` ```ad- `` or `!!! ` (space-terminated). The selector is gated
 by the extension's manifest (not yet landed) and observed per page via
-`zetl hook coverage --vault .`.
+`ztl hook coverage --vault .`.
 
 Per-page opt-out works the same as every canonical extension: frontmatter
 key `extensions.admonition: false`.
@@ -149,7 +149,7 @@ reading `page.ext.tasks.due`.
 A realistic default-theme selector matches any page whose body contains
 a line matching `^- \[[ xX]\] ` (the three accepted checkbox forms). The
 selector is gated by the extension's manifest (not yet landed) and
-observed per page via `zetl hook coverage --vault .`.
+observed per page via `ztl hook coverage --vault .`.
 
 Per-page opt-out works the same as every canonical extension: frontmatter
 key `extensions.tasks: false`. Per-list filtering (`filter: "not done"`)
@@ -256,7 +256,7 @@ plugin rewriting the source in place.
 A realistic default-theme selector matches any page whose body contains
 a line matching `^> \[!` (the callout blockquote marker). The selector
 is gated by the extension's manifest (not yet landed) and observed per
-page via `zetl hook coverage --vault .`.
+page via `ztl hook coverage --vault .`.
 
 Per-page opt-out works the same as every canonical extension:
 frontmatter key `extensions.callouts: false`.

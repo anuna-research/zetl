@@ -6,7 +6,7 @@ date: 2026-04-15
 audience: agent, human
 parent: SPEC-017
 related:
-  - SPEC-017  # zetl history (temporal graph)
+  - SPEC-017  # ztl history (temporal graph)
   - SPEC-019  # Git commit anchoring in snapshots
   - SPEC-020  # Multi-user collaborative editing
 ---
@@ -25,7 +25,7 @@ related:
 | Date           | 2026-04-15                                                                  |
 | Audience       | Agent, Human                                                                |
 | Trace          | USDD Agent Protocol v1.3.0                                                  |
-| Parent         | SPEC-017: zetl history — Invisible Temporal Graph                           |
+| Parent         | SPEC-017: ztl history — Invisible Temporal Graph                           |
 | Related        | SPEC-019 Git Commit Anchoring, SPEC-020 Multi-User Editing                  |
 | Dependencies   | `history` feature (jj-lib backed snapshots); minijinja templates            |
 
@@ -33,27 +33,27 @@ related:
 
 ## 1. Overview
 
-`zetl` has invested substantial infrastructure in temporal history (SPEC-017, SPEC-019): snapshotting, per-page timelines, backlink `since` attribution, vault trend sampling, a `history-index.json` export, and a serve-only `/pages/<slug>/_history` route backed by `render_page_history` and a 325-line default `page_history.html` template. The data pipeline runs on every serve and every build.
+`ztl` has invested substantial infrastructure in temporal history (SPEC-017, SPEC-019): snapshotting, per-page timelines, backlink `since` attribution, vault trend sampling, a `history-index.json` export, and a serve-only `/pages/<slug>/_history` route backed by `render_page_history` and a 325-line default `page_history.html` template. The data pipeline runs on every serve and every build.
 
-**The user-facing surface is not wired up.** The default `page.html` (`themes/default/page.html`) contains no reference to `page.history`, no link to the per-page history route, and no metadata strip. There is no per-vault "recent changes" template. Build mode emits `history-index.json` but no static HTML for either surface. A user running stock zetl cannot discover that history exists unless they type the URL by hand.
+**The user-facing surface is not wired up.** The default `page.html` (`themes/default/page.html`) contains no reference to `page.history`, no link to the per-page history route, and no metadata strip. There is no per-vault "recent changes" template. Build mode emits `history-index.json` but no static HTML for either surface. A user running stock ztl cannot discover that history exists unless they type the URL by hand.
 
-**Note on URL scheme.** The existing per-page route is `/{slug}/_history` — the `_` prefix avoids collision with a user page literally named "history" (src/web/routes.rs:374–377). This spec preserves that convention and extends it to the vault-wide page: `/_history` at vault root, and `_history.html` under `zetl build`.
+**Note on URL scheme.** The existing per-page route is `/{slug}/_history` — the `_` prefix avoids collision with a user page literally named "history" (src/web/routes.rs:374–377). This spec preserves that convention and extends it to the vault-wide page: `/_history` at vault root, and `_history.html` under `ztl build`.
 
 This spec closes that gap by specifying two discoverable UI surfaces on the default theme, with parity between `serve` (dynamic) and `build` (static) modes.
 
 ### 1.1 Motivation
 
-- **Discoverability.** History is a zetl differentiator vs. flat static-site wiki tools. Without surface affordances, the feature is invisible.
-- **Karpathy's LLM-wiki pattern.** A wiki whose state is visible as a trend (growing / decaying / stable) is meaningfully more useful to both humans and agents than a point-in-time snapshot. zetl already computes the data — we just need to render it.
+- **Discoverability.** History is a ztl differentiator vs. flat static-site wiki tools. Without surface affordances, the feature is invisible.
+- **Karpathy's LLM-wiki pattern.** A wiki whose state is visible as a trend (growing / decaying / stable) is meaningfully more useful to both humans and agents than a point-in-time snapshot. ztl already computes the data — we just need to render it.
 - **Stale-content signal.** `page.history.stable_days` is already populated. Surfacing it in the page UI turns it from latent data into a decision signal ("this note hasn't changed in 9 months — still accurate?").
-- **Static parity.** Users deploying to a CDN via `zetl build` currently lose all history UI. The data is there (`history-index.json`); the rendering is not.
+- **Static parity.** Users deploying to a CDN via `ztl build` currently lose all history UI. The data is there (`history-index.json`); the rendering is not.
 
 ### 1.2 Design Principles
 
 1. **Data already exists — render, don't recompute.** `page.history`, `vault.history`, and `history-index.json` are the sole sources of truth for this UI.
 2. **Serve and build reach parity.** Every history surface that renders under `serve` MUST also be emitted as static HTML under `build`. Mutating surfaces (restore, diff-interactive) remain serve-only and are explicitly gated.
 3. **Metadata on the page is minimal by default.** The inline metadata strip on `page.html` is a single visually-light line; a graph view lives on the dedicated history page, not the page itself.
-4. **Themeable.** Every new template MUST live under `themes/default/` and be overridable via `.zetl/themes/<theme>/`.
+4. **Themeable.** Every new template MUST live under `themes/default/` and be overridable via `.ztl/themes/<theme>/`.
 5. **Graceful absence.** When `page.history` or `vault.history` is `null` (history feature disabled, no snapshots yet), the UI degrades silently — no metadata strip, no history link rendered, no error.
 6. **No new data pipelines.** If a proposed UI element cannot be rendered from existing `page.history` / `vault.history` / `history-index.json` fields, it is out of scope for this spec.
 
@@ -62,7 +62,7 @@ This spec closes that gap by specifying two discoverable UI surfaces on the defa
 **In scope:**
 
 - Inline metadata strip on `themes/default/page.html` rendering `page.history.last_changed`, `stable_days`, and a link to the per-page history page.
-- Static emission of `/pages/<slug>/_history.html` under `zetl build` for every page (mirrors existing serve route).
+- Static emission of `/pages/<slug>/_history.html` under `ztl build` for every page (mirrors existing serve route).
 - A new per-vault history page (`vault_history.html` template) showing recent changes, vault trend sparkline, snapshot count, and links to affected pages. Served at `/_history` and emitted as static `_history.html`.
 - Sidebar / footer link from default theme to `/_history`.
 - Graceful absence handling (null/empty history).
@@ -83,15 +83,15 @@ This spec closes that gap by specifying two discoverable UI surfaces on the defa
 
 ### 2.1 Agent-Using Knowledge Worker (carries from SPEC-001)
 
-Browses their vault via `zetl serve` on localhost and occasionally publishes via `zetl build` to a static host. Has accumulated 3–18 months of snapshots. Wants to answer "when did I last touch this?" and "what did I change this week?" without leaving the browser.
+Browses their vault via `ztl serve` on localhost and occasionally publishes via `ztl build` to a static host. Has accumulated 3–18 months of snapshots. Wants to answer "when did I last touch this?" and "what did I change this week?" without leaving the browser.
 
 ### 2.2 Reader of a Published Vault
 
-Lands on a statically-hosted zetl vault via a public URL. Has no shell access. Expects the published site to expose the same temporal affordances they see when browsing locally — "last updated" dates, recent-changes feed, trend indicators. Currently gets none of these.
+Lands on a statically-hosted ztl vault via a public URL. Has no shell access. Expects the published site to expose the same temporal affordances they see when browsing locally — "last updated" dates, recent-changes feed, trend indicators. Currently gets none of these.
 
 ### 2.3 Agent (LLM) Reading via Static Export
 
-Fetches HTML pages from a deployed zetl build. Uses visible metadata (last-changed dates, stability signals) to judge how much to trust a page's claims. Currently must parse `history-index.json` out-of-band; the HTML carries no signal.
+Fetches HTML pages from a deployed ztl build. Uses visible metadata (last-changed dates, stability signals) to judge how much to trust a page's claims. Currently must parse `history-index.json` out-of-band; the HTML carries no signal.
 
 ---
 
@@ -99,7 +99,7 @@ Fetches HTML pages from a deployed zetl build. Uses visible metadata (last-chang
 
 ### 3.1 Happy Path: Discoverable Page History
 
-**Preconditions:** User runs `zetl serve` on a vault with ≥2 snapshots of the page `Note A`.
+**Preconditions:** User runs `ztl serve` on a vault with ≥2 snapshots of the page `Note A`.
 
 **Steps:**
 
@@ -118,7 +118,7 @@ Fetches HTML pages from a deployed zetl build. Uses visible metadata (last-chang
 
 ### 3.2 Happy Path: Vault Recent Changes
 
-**Preconditions:** User runs `zetl serve`. Vault has ≥5 snapshots spanning recent days.
+**Preconditions:** User runs `ztl serve`. Vault has ≥5 snapshots spanning recent days.
 
 **Steps:**
 
@@ -131,11 +131,11 @@ Fetches HTML pages from a deployed zetl build. Uses visible metadata (last-chang
 
 **Failure modes:**
 
-- Snapshot count is zero → page renders a single line: "No history yet. Run `zetl index` or edit a page to take the first snapshot." Never 500s.
+- Snapshot count is zero → page renders a single line: "No history yet. Run `ztl index` or edit a page to take the first snapshot." Never 500s.
 
 ### 3.3 Happy Path: Static Deploy Parity
 
-**Preconditions:** User runs `zetl build --out dist/`. Vault has history.
+**Preconditions:** User runs `ztl build --out dist/`. Vault has history.
 
 **Steps:**
 
@@ -159,14 +159,14 @@ Trace:
 
 ### REQ-301: Per-Page History Link Parity
 
-The per-page history link rendered by REQ-300 SHALL resolve to `/pages/<slug>/_history` under `zetl serve` AND to `/pages/<slug>/_history.html` under `zetl build`, using the active theme's URL scheme. The link SHALL be derived from the existing `page_slug` context, not recomputed.
+The per-page history link rendered by REQ-300 SHALL resolve to `/pages/<slug>/_history` under `ztl serve` AND to `/pages/<slug>/_history.html` under `ztl build`, using the active theme's URL scheme. The link SHALL be derived from the existing `page_slug` context, not recomputed.
 
 Trace:
 - TEST-301
 
 ### REQ-302: Static Emission of Per-Page History
 
-Under `zetl build`, the system SHALL emit `pages/<slug>/_history.html` for every page for which `history::build_template_page_history_context` returns a non-null result. Each emitted file SHALL be rendered via the existing `render_page_history` engine method, with the same template (`page_history.html`) used in serve mode.
+Under `ztl build`, the system SHALL emit `pages/<slug>/_history.html` for every page for which `history::build_template_page_history_context` returns a non-null result. Each emitted file SHALL be rendered via the existing `render_page_history` engine method, with the same template (`page_history.html`) used in serve mode.
 
 Trace:
 - TEST-302
@@ -210,7 +210,7 @@ Trace:
 
 ### REQ-307: Theme Override Compatibility
 
-Every new or modified template introduced by this spec SHALL remain overridable via `.zetl/themes/<theme>/<template>.html` per the three-tier resolution in `build_env` (src/web/engine.rs:234). A theme that overrides `page.html` but not `vault_history.html` SHALL still receive the bundled `default/vault_history.html`.
+Every new or modified template introduced by this spec SHALL remain overridable via `.ztl/themes/<theme>/<template>.html` per the three-tier resolution in `build_env` (src/web/engine.rs:234). A theme that overrides `page.html` but not `vault_history.html` SHALL still receive the bundled `default/vault_history.html`.
 
 Trace:
 - TEST-307
@@ -355,7 +355,7 @@ Verified by: TEST-303
 ### TEST-300: Metadata Strip Rendered When History Present
 
 - **Given** a vault with ≥2 snapshots of `Note A` and `history` feature enabled
-- **When** a GET to `/pages/note-a/` is issued under `zetl serve`
+- **When** a GET to `/pages/note-a/` is issued under `ztl serve`
 - **Then** the response body contains the strip: a `last_changed` date, a `stable_days` humanised label, and an anchor whose `href` resolves to the per-page history URL.
 - **And** when `page.history` is `null` (feature disabled or no snapshots), the strip is absent from the response body (no empty element, no placeholder text).
 
@@ -369,7 +369,7 @@ Verified by: TEST-303
 ### TEST-302: Static Emission of Per-Page History
 
 - **Given** a vault with history and 3 pages (`A`, `B`, `C`)
-- **When** `zetl build --out dist/` runs
+- **When** `ztl build --out dist/` runs
 - **Then** `dist/pages/a/_history.html`, `dist/pages/b/_history.html`, `dist/pages/c/_history.html` exist, each is non-empty, and each contains the page title in its output.
 - **And** for a vault where `build_template_page_history_context` returns `None` for `page B`, `dist/pages/b/_history.html` is NOT created (graceful absence per REQ-305).
 
@@ -431,10 +431,10 @@ Automated A11y check (axe-core or equivalent) on rendered `page.html` and `vault
 When `--verbose` is set, build mode emits one line per page whose per-page history HTML is written:
 
 ```
-[zetl] history-static: page "Note A" slug="note-a" bytes=12345 duration_ms=4
+[ztl] history-static: page "Note A" slug="note-a" bytes=12345 duration_ms=4
 ```
 
-Reuses the existing `[zetl] history-context:` convention (see memory — OBS-013). No hot-path cost without `--verbose`.
+Reuses the existing `[ztl] history-context:` convention (see memory — OBS-013). No hot-path cost without `--verbose`.
 
 Trace: NFR-300.
 
@@ -443,7 +443,7 @@ Trace: NFR-300.
 Under `serve`, the `/_history` handler SHALL emit an existing-convention log line on each request when `--verbose`:
 
 ```
-[zetl] history-route: path=/_history entries=50 duration_ms=8
+[ztl] history-route: path=/_history entries=50 duration_ms=8
 ```
 
 Trace: NFR-300.

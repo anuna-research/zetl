@@ -1,7 +1,7 @@
-//! robots.txt emission for `zetl build` (SPEC-034 REQ-3418 / CON-3406).
+//! robots.txt emission for `ztl build` (SPEC-034 REQ-3418 / CON-3406).
 //!
 //! The capability build ships two directories whose contents should never
-//! be crawled: `/c/` (encrypted per-cohort envelopes) and `/_zetl/` (deploy
+//! be crawled: `/c/` (encrypted per-cohort envelopes) and `/_ztl/` (deploy
 //! recipes, tombstones, helper artifacts). [`merge_robots_txt`] guarantees
 //! both appear as `Disallow` rules in the emitted `robots.txt` while
 //! preserving any operator-supplied `public/robots.txt` verbatim —
@@ -12,7 +12,7 @@
 //! - Input `operator` is `Some(content)` of the operator's `public/robots.txt`
 //!   or `None` when no public overlay is in play.
 //! - The returned string always contains the literal bytes `Disallow: /c/`
-//!   and `Disallow: /_zetl/` (each on its own line) so TEST-3414 can grep
+//!   and `Disallow: /_ztl/` (each on its own line) so TEST-3414 can grep
 //!   the output deterministically.
 //! - Existing operator lines are never removed, reordered, or rewritten —
 //!   the operator's file stays the leading section and any missing
@@ -20,8 +20,8 @@
 //! - Matching is case-insensitive so `disallow: /c/` in the operator file
 //!   suffices to prevent a duplicate line being emitted.
 
-/// Paths the zetl build must declare off-limits to crawlers.
-pub const REQUIRED_DISALLOWS: &[&str] = &["/c/", "/_zetl/"];
+/// Paths the ztl build must declare off-limits to crawlers.
+pub const REQUIRED_DISALLOWS: &[&str] = &["/c/", "/_ztl/"];
 
 /// Produce the merged robots.txt contents.
 ///
@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn no_operator_emits_minimal_block() {
         let out = merge_robots_txt(None);
-        assert_eq!(out, "User-agent: *\nDisallow: /c/\nDisallow: /_zetl/\n");
+        assert_eq!(out, "User-agent: *\nDisallow: /c/\nDisallow: /_ztl/\n");
     }
 
     #[test]
@@ -120,8 +120,8 @@ mod tests {
                 "missing Disallow: /c/ in: {out:?}"
             );
             assert!(
-                out.contains("Disallow: /_zetl/\n"),
-                "missing Disallow: /_zetl/ in: {out:?}"
+                out.contains("Disallow: /_ztl/\n"),
+                "missing Disallow: /_ztl/ in: {out:?}"
             );
         }
     }
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn stricter_disallow_preserved() {
-        // `Disallow: /` blocks every path including /c/ and /_zetl/. We
+        // `Disallow: /` blocks every path including /c/ and /_ztl/. We
         // still append the explicit rules so TEST-3414 / operator audit
         // tooling can grep for them, but the operator's broader rule is
         // never removed or shadowed.
@@ -149,7 +149,7 @@ mod tests {
         let out = merge_robots_txt(Some(op));
         assert!(out.contains("Disallow: /\n"));
         assert!(out.contains("Disallow: /c/\n"));
-        assert!(out.contains("Disallow: /_zetl/\n"));
+        assert!(out.contains("Disallow: /_ztl/\n"));
     }
 
     #[test]
@@ -157,17 +157,17 @@ mod tests {
         let op = "User-agent: *\nDisallow: /c/\n";
         let out = merge_robots_txt(Some(op));
         assert_eq!(out.matches("Disallow: /c/").count(), 1);
-        assert!(out.contains("Disallow: /_zetl/\n"));
+        assert!(out.contains("Disallow: /_ztl/\n"));
     }
 
     #[test]
     fn case_insensitive_directive_match() {
-        let op = "user-agent: *\ndisallow: /c/\ndisallow: /_zetl/\n";
+        let op = "user-agent: *\ndisallow: /c/\ndisallow: /_ztl/\n";
         let out = merge_robots_txt(Some(op));
         // Operator already covers both requirements in different casing.
         // Output should be the operator file verbatim (with a trailing
         // newline) and no duplicate `Disallow:` appended.
-        assert_eq!(out, "user-agent: *\ndisallow: /c/\ndisallow: /_zetl/\n");
+        assert_eq!(out, "user-agent: *\ndisallow: /c/\ndisallow: /_ztl/\n");
     }
 
     #[test]
@@ -175,7 +175,7 @@ mod tests {
         let op = "User-agent: *\nDisallow: /c/ # path-cap tree\n";
         let out = merge_robots_txt(Some(op));
         assert_eq!(out.matches("Disallow: /c/").count(), 1);
-        assert!(out.contains("Disallow: /_zetl/\n"));
+        assert!(out.contains("Disallow: /_ztl/\n"));
     }
 
     #[test]

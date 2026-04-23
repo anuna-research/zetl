@@ -1,7 +1,7 @@
 //! Persistent-mode wire protocol for render-pipeline hooks
 //! (SPEC-032 CON-3201 / NFR-3207 / REQ-3201).
 //!
-//! Persistent-mode hooks are long-running child processes that zetl reuses
+//! Persistent-mode hooks are long-running child processes that ztl reuses
 //! across every page rather than re-spawning per invocation. Communication
 //! is line-delimited JSON on stdin/stdout. Stderr is free-form and captured
 //! into a diagnostic buffer for surfacing on verbose / failure paths.
@@ -12,19 +12,19 @@
 //!   spawn → handshake → init → run (N pages) → finalise → shutdown
 //! ```
 //!
-//! 1. **Handshake** — zetl reads one line from stdout:
-//!    `{"zetl_ast": 1, "hook": "callouts", "version": "1.0.3", "ready": true}`
-//!    Incompatible `zetl_ast` major → [`ProtocolError::Handshake`]; the
+//! 1. **Handshake** — ztl reads one line from stdout:
+//!    `{"ztl_ast": 1, "hook": "callouts", "version": "1.0.3", "ready": true}`
+//!    Incompatible `ztl_ast` major → [`ProtocolError::Handshake`]; the
 //!    caller disables the hook and logs `ast_version_mismatch`.
-//! 2. **Init** — zetl writes one line: `{"type":"init", ...}`. Hook
+//! 2. **Init** — ztl writes one line: `{"type":"init", ...}`. Hook
 //!    responds with a `result`/`error` line. Per-build context
 //!    (REQ-3220) is embedded here.
-//! 3. **Run** — per page, zetl writes `{"type":"run", ...}` and reads a
+//! 3. **Run** — per page, ztl writes `{"type":"run", ...}` and reads a
 //!    single response line. Enforces `deadline_ms` — on timeout the
 //!    child is hard-killed and [`ProtocolError::Timeout`] is returned.
-//! 4. **Finalise** — at end of build, zetl writes `{"type":"finalise"}`
+//! 4. **Finalise** — at end of build, ztl writes `{"type":"finalise"}`
 //!    so the hook can emit final `build_data` / diagnostics.
-//! 5. **Shutdown** — zetl writes `{"type":"shutdown"}` and closes stdin.
+//! 5. **Shutdown** — ztl writes `{"type":"shutdown"}` and closes stdin.
 //!    Hook SHOULD exit within [`DEFAULT_SHUTDOWN_GRACE`]; hard-killed
 //!    after. [`PersistentHook::drop`] guarantees zero orphans.
 //!
@@ -48,7 +48,7 @@
 //!
 //! ## Budget
 //!
-//! NFR-3207 caps the zetl-side protocol overhead (serialise → write →
+//! NFR-3207 caps the ztl-side protocol overhead (serialise → write →
 //! read → deserialise) at 10 ms P95 per page; this task's internal target
 //! is < 1.5 ms for typical payloads (≤ 500 AST nodes). The implementation
 //! avoids per-call thread spawns and uses [`BufWriter`] + [`BufReader`]
@@ -69,11 +69,11 @@ use serde_json::Value;
 use crate::hooks::ast::AST_VERSION;
 use crate::hooks::pipeline::Stage;
 
-/// AST major version zetl currently speaks. Must match the leading digit
+/// AST major version ztl currently speaks. Must match the leading digit
 /// of [`AST_VERSION`].
-pub const ZETL_AST_MAJOR: u32 = 1;
+pub const ztl_AST_MAJOR: u32 = 1;
 
-/// How long zetl waits for the hook's startup handshake line. Beyond this
+/// How long ztl waits for the hook's startup handshake line. Beyond this
 /// the hook is considered dead and the child is killed.
 pub const DEFAULT_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -105,7 +105,7 @@ pub const STDERR_TRUNCATED_MARKER: &[u8] = b"\n[stderr truncated]\n";
 /// to a hook child after the parent's full environment is cleared
 /// (SPEC-032 §10 redact-env-by-default). Anything outside this list
 /// (and outside the explicit `cmd.env(...)` calls the spawning code
-/// makes for `ZETL_*`) is invisible to the hook.
+/// makes for `ztl_*`) is invisible to the hook.
 ///
 /// The list is deliberately conservative: enough for an interpreter
 /// shebang to find `python3` / `node` (`PATH`), for Python's user
@@ -203,18 +203,18 @@ impl SecurityPolicy {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HookHandshake {
     /// AST major version the hook targets. If this disagrees with
-    /// [`ZETL_AST_MAJOR`], zetl disables the hook (REQ-3215).
-    pub zetl_ast: u32,
+    /// [`ztl_AST_MAJOR`], ztl disables the hook (REQ-3215).
+    pub ztl_ast: u32,
     /// Hook id (usually matches the manifest `extension_id`).
     pub hook: String,
     /// Hook version string — free-form, used for `OBS-3201` logs and
-    /// the `zetl hook coverage` report.
+    /// the `ztl hook coverage` report.
     pub version: String,
-    /// Must be `true` for zetl to proceed past the handshake.
+    /// Must be `true` for ztl to proceed past the handshake.
     pub ready: bool,
 }
 
-/// Request zetl sends to a hook. Self-describing via the `type` tag so
+/// Request ztl sends to a hook. Self-describing via the `type` tag so
 /// JSON-lines parsing doesn't need per-call state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
@@ -232,13 +232,13 @@ pub enum HostMessage {
     /// End-of-build signal — hook may emit final `build_data` /
     /// diagnostics via a `result` response.
     Finalise(FinaliseMessage),
-    /// Graceful teardown. Zetl closes stdin immediately after sending.
+    /// Graceful teardown. ztl closes stdin immediately after sending.
     Shutdown(ShutdownMessage),
 }
 
 /// Probe-mode request body (SPEC-032 REQ-3216). Carries the active
 /// build mode so hooks can decline via `applies_when.modes` when the
-/// mode doesn't match (e.g. a build-only hook under `zetl serve`).
+/// mode doesn't match (e.g. a build-only hook under `ztl serve`).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProbeMessage {
     /// `"build"` or `"serve"` — hooks pattern-match against this to
@@ -255,9 +255,9 @@ pub struct InitMessage {
     /// Stage this hook is wired to (`"pre-parse"` / `"transform"` /
     /// `"post-render"`).
     pub stage: String,
-    /// zetl binary version string (REQ-3215 / REQ-3220 `ZETL_VERSION`).
-    pub zetl_version: String,
-    /// AST schema version zetl is emitting (REQ-3215 — carries the minor
+    /// ztl binary version string (REQ-3215 / REQ-3220 `ztl_VERSION`).
+    pub ztl_version: String,
+    /// AST schema version ztl is emitting (REQ-3215 — carries the minor
     /// so hooks declaring a semver range can warn on mismatch).
     pub ast_schema_version: String,
     /// Full REQ-3220 ctx payload. Shape owned by
@@ -276,7 +276,7 @@ pub struct RunMessage {
     pub frontmatter: Value,
     pub payload: Value,
     /// Advisory deadline — the hook should return within this many
-    /// milliseconds; zetl enforces a hard kill on its side if not.
+    /// milliseconds; ztl enforces a hard kill on its side if not.
     pub deadline_ms: u64,
 }
 
@@ -290,7 +290,7 @@ pub struct FinaliseMessage {}
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ShutdownMessage {}
 
-/// Reply zetl reads from the hook after a [`HostMessage`].
+/// Reply ztl reads from the hook after a [`HostMessage`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum HookMessage {
@@ -324,11 +324,11 @@ pub enum HookMessage {
 /// ```json
 /// {
 ///   "type": "probe_result",
-///   "zetl_ast": "1.0",
+///   "ztl_ast": "1.0",
 ///   "hook": "callouts",
 ///   "version": "1.0.3",
 ///   "stages": ["transform"],
-///   "ast_types": ["zetl-ext"],
+///   "ast_types": ["ztl-ext"],
 ///   "applies_when": {"modes": ["build","serve"], "themes": null, "formats": ["html"]},
 ///   "ready": true
 /// }
@@ -342,7 +342,7 @@ pub struct ProbeResult {
     /// AST schema version the hook targets. Free-form string; the
     /// caller does a semver-compatible comparison against
     /// `crate::hooks::ast::AST_VERSION`.
-    pub zetl_ast: String,
+    pub ztl_ast: String,
     /// Hook id — usually the manifest `extension_id`.
     pub hook: String,
     /// Hook version string.
@@ -351,7 +351,7 @@ pub struct ProbeResult {
     /// mismatch and disables the hook.
     #[serde(default)]
     pub stages: Vec<String>,
-    /// AST ecosystems this hook can read/emit. Absent → `["zetl-ext"]`
+    /// AST ecosystems this hook can read/emit. Absent → `["ztl-ext"]`
     /// fallback (the historical default before task-capability-probe).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ast_types: Option<Vec<String>>,
@@ -562,7 +562,7 @@ impl PersistentHook {
     /// policy's `env_allowlist` is forwarded from `std::env`; the
     /// command's explicitly-set environment (added via `cmd.env(...)`
     /// before spawn) is preserved on top, so callers can pass in
-    /// `ZETL_*` vars that aren't in the parent's environment.
+    /// `ztl_*` vars that aren't in the parent's environment.
     pub fn spawn_with_policy(
         mut command: Command,
         hook_id: impl Into<String>,
@@ -635,7 +635,7 @@ impl PersistentHook {
         let (tx, stdout_rx) = mpsc::sync_channel::<std::io::Result<String>>(32);
         let max_message_bytes = policy.max_message_bytes;
         let reader_handle = thread::Builder::new()
-            .name(format!("zetl-hook-{hook_id}-stdout"))
+            .name(format!("ztl-hook-{hook_id}-stdout"))
             .spawn(move || pump_stdout(stdout, tx, max_message_bytes))
             .expect("spawn stdout pump");
 
@@ -643,7 +643,7 @@ impl PersistentHook {
         let stderr_buf2 = Arc::clone(&stderr_buf);
         let max_stderr_bytes = policy.max_stderr_bytes;
         let stderr_handle = thread::Builder::new()
-            .name(format!("zetl-hook-{hook_id}-stderr"))
+            .name(format!("ztl-hook-{hook_id}-stderr"))
             .spawn(move || pump_stderr(stderr, stderr_buf2, max_stderr_bytes))
             .expect("spawn stderr pump");
 
@@ -677,12 +677,12 @@ impl PersistentHook {
             }
         };
 
-        if handshake.zetl_ast != ZETL_AST_MAJOR {
+        if handshake.ztl_ast != ztl_AST_MAJOR {
             let _ = child.kill();
             let _ = child.wait();
             return Err(ProtocolError::Handshake(format!(
-                "ast_version_mismatch: hook declared zetl_ast={}, zetl speaks {}",
-                handshake.zetl_ast, ZETL_AST_MAJOR
+                "ast_version_mismatch: hook declared ztl_ast={}, ztl speaks {}",
+                handshake.ztl_ast, ztl_AST_MAJOR
             )));
         }
         if !handshake.ready {
@@ -736,7 +736,7 @@ impl PersistentHook {
     ///
     /// `mode` is `"build"` / `"serve"` and is echoed into the probe body
     /// so hooks can branch on `applies_when.modes`. Pass `None` when the
-    /// probe is run outside a build (e.g. `zetl hook capabilities`).
+    /// probe is run outside a build (e.g. `ztl hook capabilities`).
     pub fn probe(
         &mut self,
         mode: Option<&str>,
@@ -764,7 +764,7 @@ impl PersistentHook {
     pub fn init(&mut self, ctx: Value, deadline_ms: u64) -> Result<HookMessage, ProtocolError> {
         let msg = HostMessage::Init(InitMessage {
             stage: self.stage.as_str().into(),
-            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+            ztl_version: env!("CARGO_PKG_VERSION").to_string(),
             ast_schema_version: AST_VERSION.to_string(),
             ctx,
         });
@@ -774,7 +774,7 @@ impl PersistentHook {
     /// Send a `run` message for a single page and await the result.
     ///
     /// `deadline_ms` is both advertised to the hook (inside the request)
-    /// and enforced by zetl — on timeout the child is killed and the
+    /// and enforced by ztl — on timeout the child is killed and the
     /// instance is marked dead.
     pub fn run(
         &mut self,
@@ -923,12 +923,12 @@ impl PersistentHook {
             Ok(Ok(line)) => Ok(serde_json::from_str(&line)?),
             Ok(Err(e)) => {
                 // The stdout pump tags an oversized line by wrapping the
-                // size in an InvalidData error with a `zetl:msg-too-large:`
+                // size in an InvalidData error with a `ztl:msg-too-large:`
                 // prefix; promote it to the typed protocol variant so
                 // callers can branch on policy violation vs. plain I/O.
                 if e.kind() == std::io::ErrorKind::InvalidData {
                     let msg = e.to_string();
-                    if let Some(rest) = msg.strip_prefix("zetl:msg-too-large:") {
+                    if let Some(rest) = msg.strip_prefix("ztl:msg-too-large:") {
                         if let Some((size, limit)) = rest.split_once(':') {
                             if let (Ok(size), Ok(limit)) =
                                 (size.parse::<usize>(), limit.parse::<usize>())
@@ -1022,7 +1022,7 @@ fn pump_stdout(
 /// Read up to and including the next `\n`, capping the total bytes
 /// consumed at `limit`. Returns `Ok(0)` on clean EOF, `Ok(n)` with the
 /// line in `buf` (newline retained) on success, or `Err(InvalidData)`
-/// tagged with a `zetl:msg-too-large:<size>:<limit>` payload when the
+/// tagged with a `ztl:msg-too-large:<size>:<limit>` payload when the
 /// line exceeds `limit`. Unlike [`BufRead::read_until`] this never
 /// allocates more than `limit + buffer-fill` bytes, so an unbounded
 /// hook output can't OOM the host.
@@ -1049,7 +1049,7 @@ fn read_line_capped<R: BufRead>(
                 reader.consume(consumed);
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
-                    format!("zetl:msg-too-large:{new_total}:{limit}"),
+                    format!("ztl:msg-too-large:{new_total}:{limit}"),
                 ));
             }
             buf.extend_from_slice(&chunk[..take]);
@@ -1062,7 +1062,7 @@ fn read_line_capped<R: BufRead>(
             reader.consume(len);
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("zetl:msg-too-large:{new_total}:{limit}"),
+                format!("ztl:msg-too-large:{new_total}:{limit}"),
             ));
         }
         buf.extend_from_slice(chunk);
@@ -1180,7 +1180,7 @@ mod tests {
     /// the payload back in a `result`. Responds to shutdown by exiting.
     const ECHO_BODY: &str = r#"
 import json, sys
-sys.stdout.write('{"zetl_ast":1,"hook":"echo","version":"0.1.0","ready":true}\n')
+sys.stdout.write('{"ztl_ast":1,"hook":"echo","version":"0.1.0","ready":true}\n')
 sys.stdout.flush()
 for line in sys.stdin:
     try:
@@ -1204,7 +1204,7 @@ for line in sys.stdin:
 
         let h =
             spawn_or_retry(|| PersistentHook::spawn(Command::new(&hook), "echo", Stage::Transform));
-        assert_eq!(h.handshake().zetl_ast, 1);
+        assert_eq!(h.handshake().ztl_ast, 1);
         assert_eq!(h.handshake().hook, "echo");
         assert_eq!(h.handshake().version, "0.1.0");
         assert!(h.handshake().ready);
@@ -1315,7 +1315,7 @@ while True:
             "v2.py",
             r#"
 import sys
-sys.stdout.write('{"zetl_ast":2,"hook":"future","version":"1.0","ready":true}\n')
+sys.stdout.write('{"ztl_ast":2,"hook":"future","version":"1.0","ready":true}\n')
 sys.stdout.flush()
 import time
 time.sleep(5)
@@ -1343,7 +1343,7 @@ time.sleep(5)
             "notready.py",
             r#"
 import sys
-sys.stdout.write('{"zetl_ast":1,"hook":"x","version":"0","ready":false}\n')
+sys.stdout.write('{"ztl_ast":1,"hook":"x","version":"0","ready":false}\n')
 sys.stdout.flush()
 import time
 time.sleep(5)
@@ -1372,7 +1372,7 @@ time.sleep(5)
             "hang.py",
             r#"
 import json, sys, time
-sys.stdout.write('{"zetl_ast":1,"hook":"hang","version":"0","ready":true}\n')
+sys.stdout.write('{"ztl_ast":1,"hook":"hang","version":"0","ready":true}\n')
 sys.stdout.flush()
 for line in sys.stdin:
     time.sleep(60)
@@ -1409,7 +1409,7 @@ for line in sys.stdin:
             "err.py",
             r#"
 import json, sys
-sys.stdout.write('{"zetl_ast":1,"hook":"err","version":"0","ready":true}\n')
+sys.stdout.write('{"ztl_ast":1,"hook":"err","version":"0","ready":true}\n')
 sys.stdout.flush()
 for line in sys.stdin:
     msg = json.loads(line)
@@ -1444,7 +1444,7 @@ for line in sys.stdin:
             "stderr.py",
             r#"
 import json, sys
-sys.stdout.write('{"zetl_ast":1,"hook":"stderr","version":"0","ready":true}\n')
+sys.stdout.write('{"ztl_ast":1,"hook":"stderr","version":"0","ready":true}\n')
 sys.stdout.flush()
 for line in sys.stdin:
     msg = json.loads(line)
@@ -1482,7 +1482,7 @@ for line in sys.stdin:
             "ignore_close.py",
             r#"
 import sys, signal, time
-sys.stdout.write('{"zetl_ast":1,"hook":"ignore","version":"0","ready":true}\n')
+sys.stdout.write('{"ztl_ast":1,"hook":"ignore","version":"0","ready":true}\n')
 sys.stdout.flush()
 # Ignore EOF by spinning on a no-op loop.
 signal.signal(signal.SIGPIPE, signal.SIG_IGN)
@@ -1547,7 +1547,7 @@ while True:
             .next()
             .and_then(|s| s.parse().ok())
             .expect("AST_VERSION has a major component");
-        assert_eq!(major, ZETL_AST_MAJOR);
+        assert_eq!(major, ztl_AST_MAJOR);
     }
 
     #[test]
@@ -1570,7 +1570,7 @@ while True:
                 "init",
                 HostMessage::Init(InitMessage {
                     stage: Stage::Transform.as_str().into(),
-                    zetl_version: "0.5.0".into(),
+                    ztl_version: "0.5.0".into(),
                     ast_schema_version: AST_VERSION.into(),
                     ctx: json!({}),
                 }),
@@ -1623,7 +1623,7 @@ while True:
     /// to a freshly-spawned hook. Acceptance criterion for task
     /// security-hooks: `echo $SECRET` from a hook reveals nothing.
     ///
-    /// The hook here echoes back `os.environ.get("ZETL_TEST_SECRET", "<unset>")`
+    /// The hook here echoes back `os.environ.get("ztl_TEST_SECRET", "<unset>")`
     /// in the run-response payload so we can assert against it without
     /// touching the parent process's actual environment from the test
     /// matrix runner's POV.
@@ -1636,14 +1636,14 @@ while True:
             "envprobe.py",
             r#"
 import json, os, sys
-sys.stdout.write('{"zetl_ast":1,"hook":"envprobe","version":"0","ready":true}\n')
+sys.stdout.write('{"ztl_ast":1,"hook":"envprobe","version":"0","ready":true}\n')
 sys.stdout.flush()
 for line in sys.stdin:
     msg = json.loads(line)
     t = msg.get("type")
     if t == "shutdown":
         break
-    secret = os.environ.get("ZETL_TEST_SECRET", "<unset>")
+    secret = os.environ.get("ztl_TEST_SECRET", "<unset>")
     resp = {"type":"result","payload":{"secret": secret}}
     sys.stdout.write(json.dumps(resp) + "\n")
     sys.stdout.flush()
@@ -1653,19 +1653,19 @@ for line in sys.stdin:
         // Set the secret in the parent so the leak path *would* be live
         // were it not for env_clear. Using std::env::set_var is the
         // standard way to surface this to Command::spawn's inheritance.
-        std::env::set_var("ZETL_TEST_SECRET", "leaked-via-inherit");
+        std::env::set_var("ztl_TEST_SECRET", "leaked-via-inherit");
 
         let mut h = spawn_or_retry(|| {
             PersistentHook::spawn(Command::new(&hook), "envprobe", Stage::Transform)
         });
         let resp = h.run("p", json!({}), json!({}), 1000).unwrap();
-        std::env::remove_var("ZETL_TEST_SECRET");
+        std::env::remove_var("ztl_TEST_SECRET");
 
         match resp {
             HookMessage::Result { payload, .. } => {
                 assert_eq!(
                     payload["secret"], "<unset>",
-                    "env leak: hook saw ZETL_TEST_SECRET despite redact-env-by-default"
+                    "env leak: hook saw ztl_TEST_SECRET despite redact-env-by-default"
                 );
             }
             other => panic!("unexpected response: {other:?}"),
@@ -1695,7 +1695,7 @@ for line in sys.stdin:
 
     /// Caller-supplied `cmd.env(...)` overrides survive `env_clear`. The
     /// security policy redacts the *inherited* environment but must not
-    /// trample explicit ZETL_* vars that the spawn site set up before
+    /// trample explicit ztl_* vars that the spawn site set up before
     /// handing over the [`Command`].
     #[test]
     fn explicit_command_env_survives_redaction() {
@@ -1706,15 +1706,15 @@ for line in sys.stdin:
             "explicit.py",
             r#"
 import json, os, sys
-sys.stdout.write('{"zetl_ast":1,"hook":"explicit","version":"0","ready":true}\n')
+sys.stdout.write('{"ztl_ast":1,"hook":"explicit","version":"0","ready":true}\n')
 sys.stdout.flush()
 for line in sys.stdin:
     msg = json.loads(line)
     if msg.get("type") == "shutdown":
         break
     resp = {"type":"result","payload":{
-        "zetl_extension_id": os.environ.get("ZETL_EXTENSION_ID", "<unset>"),
-        "zetl_random": os.environ.get("ZETL_TEST_OVERRIDE", "<unset>"),
+        "ztl_extension_id": os.environ.get("ztl_EXTENSION_ID", "<unset>"),
+        "ztl_random": os.environ.get("ztl_TEST_OVERRIDE", "<unset>"),
     }}
     sys.stdout.write(json.dumps(resp) + "\n")
     sys.stdout.flush()
@@ -1723,15 +1723,15 @@ for line in sys.stdin:
 
         let mut h = spawn_or_retry(|| {
             let mut cmd = Command::new(&hook);
-            cmd.env("ZETL_EXTENSION_ID", "explicit-id")
-                .env("ZETL_TEST_OVERRIDE", "explicit-value");
+            cmd.env("ztl_EXTENSION_ID", "explicit-id")
+                .env("ztl_TEST_OVERRIDE", "explicit-value");
             PersistentHook::spawn(cmd, "explicit", Stage::Transform)
         });
         let resp = h.run("p", json!({}), json!({}), 1000).unwrap();
         match resp {
             HookMessage::Result { payload, .. } => {
-                assert_eq!(payload["zetl_extension_id"], "explicit-id");
-                assert_eq!(payload["zetl_random"], "explicit-value");
+                assert_eq!(payload["ztl_extension_id"], "explicit-id");
+                assert_eq!(payload["ztl_random"], "explicit-value");
             }
             other => panic!("unexpected response: {other:?}"),
         }
@@ -1750,25 +1750,25 @@ for line in sys.stdin:
             "extra.py",
             r#"
 import json, os, sys
-sys.stdout.write('{"zetl_ast":1,"hook":"extra","version":"0","ready":true}\n')
+sys.stdout.write('{"ztl_ast":1,"hook":"extra","version":"0","ready":true}\n')
 sys.stdout.flush()
 for line in sys.stdin:
     msg = json.loads(line)
     if msg.get("type") == "shutdown":
         break
     resp = {"type":"result","payload":{
-        "opted_in": os.environ.get("ZETL_TEST_OPT_IN", "<unset>"),
-        "still_redacted": os.environ.get("ZETL_TEST_STILL_HIDDEN", "<unset>"),
+        "opted_in": os.environ.get("ztl_TEST_OPT_IN", "<unset>"),
+        "still_redacted": os.environ.get("ztl_TEST_STILL_HIDDEN", "<unset>"),
     }}
     sys.stdout.write(json.dumps(resp) + "\n")
     sys.stdout.flush()
 "#,
         );
 
-        std::env::set_var("ZETL_TEST_OPT_IN", "visible");
-        std::env::set_var("ZETL_TEST_STILL_HIDDEN", "must-not-leak");
+        std::env::set_var("ztl_TEST_OPT_IN", "visible");
+        std::env::set_var("ztl_TEST_STILL_HIDDEN", "must-not-leak");
 
-        let policy = SecurityPolicy::default().with_extra_env(["ZETL_TEST_OPT_IN"]);
+        let policy = SecurityPolicy::default().with_extra_env(["ztl_TEST_OPT_IN"]);
         let mut h = spawn_or_retry(|| {
             PersistentHook::spawn_with_policy(
                 Command::new(&hook),
@@ -1780,8 +1780,8 @@ for line in sys.stdin:
             )
         });
         let resp = h.run("p", json!({}), json!({}), 1000).unwrap();
-        std::env::remove_var("ZETL_TEST_OPT_IN");
-        std::env::remove_var("ZETL_TEST_STILL_HIDDEN");
+        std::env::remove_var("ztl_TEST_OPT_IN");
+        std::env::remove_var("ztl_TEST_STILL_HIDDEN");
 
         match resp {
             HookMessage::Result { payload, .. } => {
@@ -1806,7 +1806,7 @@ for line in sys.stdin:
             "loud.py",
             r#"
 import json, sys
-sys.stdout.write('{"zetl_ast":1,"hook":"loud","version":"0","ready":true}\n')
+sys.stdout.write('{"ztl_ast":1,"hook":"loud","version":"0","ready":true}\n')
 sys.stdout.flush()
 # Spam well past the cap (4 KiB cap × ~16 chunks).
 chunk = "X" * 4096
@@ -1868,7 +1868,7 @@ for line in sys.stdin:
             "huge.py",
             r#"
 import json, sys
-sys.stdout.write('{"zetl_ast":1,"hook":"huge","version":"0","ready":true}\n')
+sys.stdout.write('{"ztl_ast":1,"hook":"huge","version":"0","ready":true}\n')
 sys.stdout.flush()
 for line in sys.stdin:
     msg = json.loads(line)

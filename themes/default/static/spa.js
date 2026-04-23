@@ -1,12 +1,12 @@
-/* zetl SPA navigation shell — SPEC-028 REQ-113 / REQ-115 / OBS-113.
+/* ztl SPA navigation shell — SPEC-028 REQ-113 / REQ-115 / OBS-113.
    Intercepts same-origin <a> clicks, fetches the next document, and swaps the
-   element carrying [data-zetl-volatile] (or <main> fallback) so the persistent
+   element carrying [data-ztl-volatile] (or <main> fallback) so the persistent
    shell — sidebar, graph widget, scripts — is never unmounted. */
 (function () {
-  if (window.__zetlSpaMounted) return;
-  window.__zetlSpaMounted = true;
+  if (window.__ztlSpaMounted) return;
+  window.__ztlSpaMounted = true;
 
-  var VOLATILE = '[data-zetl-volatile]';
+  var VOLATILE = '[data-ztl-volatile]';
   function volatile(doc) { return doc.querySelector(VOLATILE) || doc.querySelector('main'); }
   function slugOf(url) {
     try { return new URL(url, location.href).pathname; }
@@ -19,7 +19,7 @@
   /* The full-page graph route (/_graph or /_graph.html) suppresses the
      persistent mini-widget from the shell via `{% if active_slug != "_graph" %}`.
      SPA nav doesn't re-render the shell, so swapping into /_graph leaves two
-     #zetl-graph in the DOM (mini + full, boot-guard blocks the full one), and
+     #ztl-graph in the DOM (mini + full, boot-guard blocks the full one), and
      swapping back out leaves the shell widgetless. Force a full reload on any
      transition that crosses /_graph in either direction. */
   function isGraphRoute(url) {
@@ -54,14 +54,14 @@
     var oldRoot = volatile(document), newRoot = volatile(doc);
     if (!oldRoot || !newRoot) { location.href = url; return; }
     var fromSlug = slugOf(location.href), toSlug = slugOf(url);
-    var before = new CustomEvent('zetl:before-navigate', {
+    var before = new CustomEvent('ztl:before-navigate', {
       cancelable: true, detail: { fromSlug: fromSlug, toSlug: toSlug, url: url }
     });
     if (!window.dispatchEvent(before)) { location.href = url; return; }
     if (doc.title) document.title = doc.title;
     oldRoot.replaceWith(newRoot);
     runScripts(newRoot);
-    if (push) history.pushState({ zetl: true, url: url }, '', url);
+    if (push) history.pushState({ ztl: true, url: url }, '', url);
     /* Forward nav matches browser default: scroll to top, or to #hash if
        one is present. popstate (back/forward) skips this so the browser's
        built-in scroll restoration can place the reader where they were.
@@ -90,11 +90,11 @@
         window.scrollTo(0, 0);
       }
     }
-    window.dispatchEvent(new CustomEvent('zetl:after-navigate', {
+    window.dispatchEvent(new CustomEvent('ztl:after-navigate', {
       detail: { slug: toSlug, contentRoot: newRoot }
     }));
     /* OBS-113: measure spans link-click interception → after-navigate dispatch. */
-    try { performance.measure('zetl:navigate', 'zetl:navigate:start'); } catch (e) {}
+    try { performance.measure('ztl:navigate', 'ztl:navigate:start'); } catch (e) {}
   }
 
   function navigate(url, push) {
@@ -111,7 +111,7 @@
     if (!a) return;
     var href = a.getAttribute('href');
     if (!href || href[0] === '#' || a.target === '_blank' || a.hasAttribute('download')) return;
-    if (a.dataset.zetlSpa === 'off') return;
+    if (a.dataset.ztlSpa === 'off') return;
     if (!sameOrigin(a.href)) return;
     if (a.href.replace(/#.*$/, '') === location.href.replace(/#.*$/, '')) return;
     if (isGraphRoute(location.href) || isGraphRoute(a.href)) return;
@@ -119,12 +119,12 @@
     e.preventDefault();
     /* OBS-113: mark click interception — the measure on after-navigate dispatch
        reports total navigation-to-paint latency for NFR assertions. */
-    try { performance.mark('zetl:navigate:start'); } catch (e2) {}
+    try { performance.mark('ztl:navigate:start'); } catch (e2) {}
     navigate(a.href, true);
   });
 
   window.addEventListener('popstate', function () {
-    try { performance.mark('zetl:navigate:start'); } catch (e) {}
+    try { performance.mark('ztl:navigate:start'); } catch (e) {}
     navigate(location.href, false);
   });
 })();

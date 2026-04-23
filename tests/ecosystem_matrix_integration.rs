@@ -1,7 +1,7 @@
 //! SPEC-033 REQ-3311 / TEST-3311 ecosystem-matrix gate.
 //!
 //! This file is the structural / evidence gate for every plugin row in
-//! `tools/zetl-ecosystem-matrix.toml`. The per-ecosystem matrix-seed
+//! `tools/ztl-ecosystem-matrix.toml`. The per-ecosystem matrix-seed
 //! tasks (pandoc / mdbook / remark) wrote the rows; the `task-eco-matrix`
 //! integration binds them together by asserting:
 //!
@@ -33,7 +33,7 @@ use std::path::PathBuf;
 // ── fixture-table loaders ─────────────────────────────────────────────
 
 fn matrix_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tools/zetl-ecosystem-matrix.toml")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tools/ztl-ecosystem-matrix.toml")
 }
 
 fn crate_root() -> PathBuf {

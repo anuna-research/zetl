@@ -34,6 +34,6 @@ The engine produces four types of conclusion — see [[Defeasible Reasoning]] fo
 
 ## Feature gate
 
-The reasoning engine is compiled only when `--features reason` is enabled — see [[Feature Gates]]. Without it, `zetl reason` prints a clear error rather than failing silently.
+The reasoning engine is compiled only when `--features reason` is enabled — see [[Feature Gates]]. Without it, `ztl reason` prints a clear error rather than failing silently.
 
 See also: [[Reason Commands]], [[Provenance]], [[Spindle Lisp]]

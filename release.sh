@@ -4,7 +4,7 @@
 
 set -e
 
-# zetl release script
+# ztl release script
 # Usage: ./release.sh [version]
 # Example: ./release.sh 0.1.1
 
@@ -72,5 +72,5 @@ info "Release $TAG published!"
 echo ""
 echo "Woodpecker release pipeline triggered."
 echo "Release will be available at:"
-echo "  https://files.anuna.io/zetl/$TAG/"
-echo "  https://files.anuna.io/zetl/latest/"
+echo "  https://files.anuna.io/ztl/$TAG/"
+echo "  https://files.anuna.io/ztl/latest/"

@@ -1,6 +1,6 @@
 //! CRDT Write-Ahead Log for crash recovery (REQ-020-044).
 //!
-//! Each CRDT operation is appended to `.zetl/crdt/<slug>.wal` as a JSON line.
+//! Each CRDT operation is appended to `.ztl/crdt/<slug>.wal` as a JSON line.
 //! On successful flush the WAL is truncated. On startup, any non-empty WAL
 //! files are replayed to recover edits that were not yet flushed.
 //!
@@ -16,18 +16,18 @@ use crate::web::ws::OpEntry;
 /// Maximum WAL size per document before a force-flush is triggered (10 MB).
 pub const MAX_WAL_SIZE: u64 = 10 * 1024 * 1024;
 
-/// Manages WAL files under `.zetl/crdt/`.
+/// Manages WAL files under `.ztl/crdt/`.
 #[derive(Clone, Debug)]
 pub struct WalStore {
-    /// Path to the `.zetl/crdt/` directory.
+    /// Path to the `.ztl/crdt/` directory.
     crdt_dir: PathBuf,
 }
 
 impl WalStore {
-    /// Create a new `WalStore` rooted at `vault_root/.zetl/crdt/`.
+    /// Create a new `WalStore` rooted at `vault_root/.ztl/crdt/`.
     pub fn new(vault_root: &Path) -> Self {
         Self {
-            crdt_dir: vault_root.join(".zetl").join("crdt"),
+            crdt_dir: vault_root.join(".ztl").join("crdt"),
         }
     }
 
@@ -41,7 +41,7 @@ impl WalStore {
         self.crdt_dir.join(format!("{safe_name}.wal"))
     }
 
-    /// Ensure the `.zetl/crdt/` directory exists.
+    /// Ensure the `.ztl/crdt/` directory exists.
     fn ensure_dir(&self) -> std::io::Result<()> {
         fs::create_dir_all(&self.crdt_dir)
     }
@@ -147,7 +147,7 @@ pub fn replay_pending_wals(state: &super::WebState) {
     if slugs.is_empty() {
         return;
     }
-    eprintln!("[zetl] WAL recovery: found {} pending WAL(s)", slugs.len());
+    eprintln!("[ztl] WAL recovery: found {} pending WAL(s)", slugs.len());
 
     for slug in &slugs {
         // Register the real file path for this slug before loading.
@@ -166,7 +166,7 @@ pub fn replay_pending_wals(state: &super::WebState) {
 
         // Step 1: Load page markdown into CRDT store
         if let Err(e) = state.crdt_store.load_or_get(slug) {
-            eprintln!("[zetl] WAL recovery: failed to load {slug}: {e}");
+            eprintln!("[ztl] WAL recovery: failed to load {slug}: {e}");
             continue;
         }
 
@@ -180,12 +180,12 @@ pub fn replay_pending_wals(state: &super::WebState) {
         let mut op_count = 0;
         for ops in &batches {
             if let Err(e) = state.crdt_store.apply_ops(slug, "", ops) {
-                eprintln!("[zetl] WAL recovery: op apply failed for {slug}: {e}");
+                eprintln!("[ztl] WAL recovery: op apply failed for {slug}: {e}");
             }
             op_count += ops.len();
         }
         eprintln!(
-            "[zetl] WAL recovery: replayed {op_count} ops ({} batches) for {slug}",
+            "[ztl] WAL recovery: replayed {op_count} ops ({} batches) for {slug}",
             batches.len()
         );
 
@@ -193,15 +193,15 @@ pub fn replay_pending_wals(state: &super::WebState) {
         match super::flush::flush_pipeline(state, slug) {
             Some(r) => {
                 for w in &r.warnings {
-                    eprintln!("[zetl] WAL recovery flush warning ({slug}): {w}");
+                    eprintln!("[ztl] WAL recovery flush warning ({slug}): {w}");
                 }
-                eprintln!("[zetl] WAL recovery: flushed {slug}");
+                eprintln!("[ztl] WAL recovery: flushed {slug}");
             }
             None => {
                 // Flush returned None — doc may not be dirty if WAL ops were no-ops.
                 // Clean up the WAL anyway.
                 if let Err(e) = state.wal_store.truncate(slug) {
-                    eprintln!("[zetl] WAL recovery: truncate failed for {slug}: {e}");
+                    eprintln!("[ztl] WAL recovery: truncate failed for {slug}: {e}");
                 }
             }
         }

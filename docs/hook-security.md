@@ -1,16 +1,16 @@
 # Hook Security Model
 
 This document describes the trust posture, isolation guarantees, and
-operational limits zetl applies to render-pipeline hooks (SPEC-032 §10).
+operational limits ztl applies to render-pipeline hooks (SPEC-032 §10).
 It is the reference for theme authors writing hooks, vault operators
-auditing third-party themes, and anyone running zetl in a CI or
+auditing third-party themes, and anyone running ztl in a CI or
 multi-tenant context.
 
 ## Threat Model
 
-Zetl treats every hook — vault, theme, or ecosystem-bundled — as
+ztl treats every hook — vault, theme, or ecosystem-bundled — as
 **untrusted code**. The user authoring or installing the hook has
-already consented to running it as their own user; zetl's job is to
+already consented to running it as their own user; ztl's job is to
 narrow the blast radius of bugs and misbehaviour, not to defend against
 a vault author who deliberately pwns their own machine.
 
@@ -28,13 +28,13 @@ Out of scope (v1):
   reach. Same posture as Obsidian plugins and VS Code extensions:
   **installing the theme is consent to its hooks.**
 - Per-hook capability gating (filesystem allowlists, syscall filters).
-  Operators wanting harder isolation should run zetl under
+  Operators wanting harder isolation should run ztl under
   `bwrap`, `firejail`, Docker, or equivalent.
 - Cryptographic verification of hook provenance.
 
 ## Process Isolation
 
-Hooks run **out-of-process**. The host (zetl) and the hook talk over
+Hooks run **out-of-process**. The host (ztl) and the hook talk over
 line-delimited JSON on the child's stdin/stdout. There is no shared
 memory, no shared file descriptor table beyond the three stdio pipes,
 and no in-process plugin loader.
@@ -42,7 +42,7 @@ and no in-process plugin loader.
 - Each persistent-mode hook owns its own subprocess, its own pump
   threads, and its own captured stderr buffer.
 - The child inherits the parent user's UID/GID and filesystem
-  permissions. Zetl does **not** sandbox or chroot the child in v1.
+  permissions. ztl does **not** sandbox or chroot the child in v1.
 - A hook crash, panic, or segfault is contained: the host's pump
   threads observe `EOF`, the typed [`ProtocolError::UnexpectedEof`] is
   surfaced, and REQ-3207 owns the recovery decision (continue with the
@@ -59,7 +59,7 @@ Every hook invocation is bounded by a wall-clock deadline:
 | Per-page `run`   | 100 ms  | manifest `timeout_ms`, also passed in JSON `deadline_ms` |
 | Shutdown grace   | 1 s     | `PersistentHook::spawn_with_config`              |
 
-When a deadline lapses zetl **hard-kills the child** (SIGKILL on Unix)
+When a deadline lapses ztl **hard-kills the child** (SIGKILL on Unix)
 and marks the hook instance dead so subsequent calls short-circuit. The
 child reaper runs in `Drop`, so a panicking host can't leak orphan
 processes — verified by `drop_does_not_leak_children` in
@@ -103,7 +103,7 @@ The single largest accidental-leak surface in any subprocess plugin
 system is environment-variable inheritance. By default the parent's
 secrets (`AWS_SECRET_ACCESS_KEY`, `OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, ad infinitum) are passed straight
-through to every child. **Zetl reverses that default.**
+through to every child. **ztl reverses that default.**
 
 When a [`PersistentHook`] is spawned, the child's environment is
 **cleared** and only the variables in the
@@ -146,13 +146,13 @@ PersistentHook::spawn_with_policy(cmd, "id", stage,
 
 Explicit `cmd.env(...)` calls made on the [`Command`] **before** spawn
 always survive redaction — they are the documented mechanism for
-zetl to surface its own `ZETL_*` context vars (REQ-3220). Caller
+ztl to surface its own `ztl_*` context vars (REQ-3220). Caller
 intent always wins over the parent-env passthrough. Verified by
 `explicit_command_env_survives_redaction`.
 
 ## Untrusted JSON Deserialisation
 
-Hooks send JSON back; zetl deserialises it. SPEC-032 §10's mitigations
+Hooks send JSON back; ztl deserialises it. SPEC-032 §10's mitigations
 apply:
 
 - **`max_message_bytes` cap** (10 MiB default) — bounds memory
@@ -162,15 +162,15 @@ apply:
   cap of 256 is enforced at the AST-validation layer (REQ-3202),
   so deeply-nested user content can't reach the deserialiser unbounded.
 - **Schema validation** — typed AST documents are validated against
-  `tools/zetl-ast-schema-v1.json` at the transform-stage boundary
+  `tools/ztl-ast-schema-v1.json` at the transform-stage boundary
   (REQ-3221).
 
 ## Operational Hardening
 
 For environments where the v1 isolation defaults aren't enough:
 
-- **Run zetl under `bwrap` / `firejail` / Docker.** All three honour
-  the read-only-FS, no-network, and namespace-isolation knobs zetl
+- **Run ztl under `bwrap` / `firejail` / Docker.** All three honour
+  the read-only-FS, no-network, and namespace-isolation knobs ztl
   intentionally doesn't replicate.
 - **Disable theme hooks via `--safe-mode`** (REQ-3223). Suppresses
   every theme-supplied hook for the build; only vault hooks run.
@@ -206,7 +206,7 @@ Every claim above is exercised by a test in
 - SPEC-032 §10 — normative security requirements.
 - SPEC-032 REQ-3207 — failure-scoping (how a security trip-wire turns
   into a quarantined hook rather than a broken build).
-- SPEC-032 REQ-3220 — `ZETL_*` env vars passed to every hook.
+- SPEC-032 REQ-3220 — `ztl_*` env vars passed to every hook.
 - SPEC-032 REQ-3223 — `--safe-mode` and `[[theme.hooks]]` declaration.
 - `src/hooks/persistent.rs` — the [`SecurityPolicy`] implementation
   and the test matrix above.

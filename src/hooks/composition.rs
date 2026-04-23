@@ -4,7 +4,7 @@
 //! For each of the three [`Stage`]s the system discovers hook executables
 //! from two locations and resolves them into a single ordered pipeline:
 //!
-//! 1. `<vault>/.zetl/hooks/<stage>.d/*` — vault hooks (highest precedence).
+//! 1. `<vault>/.ztl/hooks/<stage>.d/*` — vault hooks (highest precedence).
 //! 2. `<theme-dir>/hooks/<stage>.d/*` — theme-bundled hooks.
 //!
 //! **Precedence rule (REQ-3206).** A vault hook whose filename collides
@@ -55,7 +55,7 @@ use crate::hooks::translators::AstType;
 pub enum CompositionSource {
     /// Hook from the active theme's `hooks/<stage>.d/` directory.
     Theme,
-    /// Hook from the vault's `.zetl/hooks/<stage>.d/` directory.
+    /// Hook from the vault's `.ztl/hooks/<stage>.d/` directory.
     Vault,
 }
 
@@ -117,7 +117,7 @@ pub struct ComposedHook {
     /// non-optional reference is a [`CompositionError::MissingRequiredRef`].
     pub optional: bool,
     /// AST ecosystem the hook wants to operate against (SPEC-032 REQ-3221).
-    /// Defaults to [`AstType::ZetlExt`] when the manifest doesn't declare
+    /// Defaults to [`AstType::ztlExt`] when the manifest doesn't declare
     /// one. `transform`-stage hooks branch on this to choose the
     /// translator; `pre-parse` / `post-render` hooks ignore it (the
     /// boundary is raw bytes, not AST).
@@ -134,11 +134,11 @@ pub struct ComposedHook {
     /// names pre/post and warns on any net decrease. If the manifest
     /// omits the field, the default list for the hook's [`AstType`]
     /// is used (`["Wikilink","Embed","SplBlock"]` for foreign-ext
-    /// adapters, empty for zetl-ext).
+    /// adapters, empty for ztl-ext).
     pub preserves: Vec<String>,
     /// Ecosystem id declared on the manifest's top-level `ecosystem = "..."`
     /// field (SPEC-033 REQ-3301 / CON-3312). `None` means the hook is a
-    /// zetl-native hook (no ecosystem adapter involved); a `Some(id)`
+    /// ztl-native hook (no ecosystem adapter involved); a `Some(id)`
     /// value is the manifest's verbatim string — not validated here so
     /// unknown ids surface at dispatch time, not composition time.
     pub ecosystem: Option<String>,
@@ -258,7 +258,7 @@ pub fn compose_stage(
         Some(dir) => scan_stage_dir(dir, stage, CompositionSource::Theme)?,
         None => Vec::new(),
     };
-    let vault_stage_root = vault_root.join(".zetl").join("hooks");
+    let vault_stage_root = vault_root.join(".ztl").join("hooks");
     let vault_entries = scan_stage_dir(&vault_stage_root, stage, CompositionSource::Vault)?;
 
     // Apply REQ-3206 precedence: a vault filename shadows the theme entry
@@ -368,7 +368,7 @@ struct CompositionManifest {
     /// `"mdbook"`, `"remark"`). Preserved verbatim; validation against
     /// the ecosystem registry happens at dispatch time, not composition,
     /// so an unknown id still composes but its hook is diagnosed when
-    /// actually invoked. `None` means the hook is zetl-native.
+    /// actually invoked. `None` means the hook is ztl-native.
     ecosystem: Option<String>,
 }
 
@@ -873,7 +873,7 @@ mod tests {
     fn make_stage_dirs(tmp: &Path) -> (PathBuf, PathBuf) {
         let vault = tmp.join("vault");
         let theme = tmp.join("theme");
-        let vault_tx = vault.join(".zetl").join("hooks").join("transform.d");
+        let vault_tx = vault.join(".ztl").join("hooks").join("transform.d");
         let theme_tx = theme.join("transform.d");
         fs::create_dir_all(&vault_tx).unwrap();
         fs::create_dir_all(&theme_tx).unwrap();
@@ -1089,11 +1089,11 @@ optional = true
 
     #[test]
     fn single_file_hook_without_d_directory_works() {
-        // REQ-3206: single-file hooks at `.zetl/hooks/<stage>` are treated
+        // REQ-3206: single-file hooks at `.ztl/hooks/<stage>` are treated
         // as a one-entry `.d/`.
         let tmp = TempDir::new().unwrap();
         let vault_root = tmp.path().join("vault");
-        let hooks_dir = vault_root.join(".zetl").join("hooks");
+        let hooks_dir = vault_root.join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         let p = hooks_dir.join("transform");
@@ -1138,9 +1138,9 @@ optional = true
     fn compose_all_stages_covers_every_stage() {
         let tmp = TempDir::new().unwrap();
         let vault_root = tmp.path().join("vault");
-        let pp = vault_root.join(".zetl").join("hooks").join("pre-parse.d");
-        let tx = vault_root.join(".zetl").join("hooks").join("transform.d");
-        let pr = vault_root.join(".zetl").join("hooks").join("post-render.d");
+        let pp = vault_root.join(".ztl").join("hooks").join("pre-parse.d");
+        let tx = vault_root.join(".ztl").join("hooks").join("transform.d");
+        let pr = vault_root.join(".ztl").join("hooks").join("post-render.d");
         fs::create_dir_all(&pp).unwrap();
         fs::create_dir_all(&tx).unwrap();
         fs::create_dir_all(&pr).unwrap();
@@ -1474,7 +1474,7 @@ after = ["callouts"]
     // ── REQ-3221: ast_type / ast_version / preserves ─────────────────────
 
     #[test]
-    fn ast_type_defaults_to_zetl_ext_when_manifest_absent() {
+    fn ast_type_defaults_to_ztl_ext_when_manifest_absent() {
         let tmp = TempDir::new().unwrap();
         let (vault_tx, _) = make_stage_dirs(tmp.path());
         let vault_root = tmp.path().join("vault");
@@ -1483,9 +1483,9 @@ after = ["callouts"]
 
         let pipe = compose_stage(&vault_root, None, Stage::Transform).unwrap();
         assert_eq!(pipe.hooks.len(), 1);
-        assert_eq!(pipe.hooks[0].ast_type, AstType::ZetlExt);
+        assert_eq!(pipe.hooks[0].ast_type, AstType::ztlExt);
         assert!(pipe.hooks[0].ast_version.is_none());
-        // zetl-ext default preserves is empty per REQ-3221.
+        // ztl-ext default preserves is empty per REQ-3221.
         assert!(pipe.hooks[0].preserves.is_empty());
     }
 
@@ -1629,7 +1629,7 @@ after = ["ghost"]
     #[test]
     fn ecosystem_field_is_preserved_verbatim_from_manifest() {
         // SPEC-033 CON-3312 — the top-level `ecosystem = "..."` value
-        // feeds `zetl ecosystem check`'s per-ecosystem count; composition
+        // feeds `ztl ecosystem check`'s per-ecosystem count; composition
         // keeps it as an opaque string so unknown ids still compose and
         // surface a diagnostic at dispatch time, not here.
         let tmp = TempDir::new().unwrap();

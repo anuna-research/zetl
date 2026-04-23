@@ -9,7 +9,7 @@ exists because the filter is still in use by legacy Makefile
 pipelines and by users pinned to pandoc <2.11. New deployments
 SHOULD declare `citeproc = true` on their pandoc manifest instead
 — the matrix entry's `notes` field calls this out and the tier is
-capped at `experimental` for the lifetime of zetl v1.
+capped at `experimental` for the lifetime of ztl v1.
 
 ## Contents
 
@@ -41,5 +41,5 @@ pandoc --citeproc --from markdown --to html5 \
 
 Not scheduled for promotion above `experimental` — the canonical
 replacement is pandoc's built-in citation processing, surfaced in
-zetl via the adapter's native-mode resolution path (SPEC-033
+ztl via the adapter's native-mode resolution path (SPEC-033
 ADR-3302).

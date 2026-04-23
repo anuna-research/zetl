@@ -2,22 +2,22 @@
 
 THEME   = quickstart
 OUT     = site
-CF_PROJECT = zetl-docs
+CF_PROJECT = ztl-docs
 
 help:
-	@echo "make serve   # zetl serve with / → quickstart redirect (port 3000)"
-	@echo "make build   # zetl build into ./$(OUT)/"
-	@echo "make check   # zetl check (dead links, orphans, SPL diagnostics)"
+	@echo "make serve   # ztl serve with / → quickstart redirect (port 3000)"
+	@echo "make build   # ztl build into ./$(OUT)/"
+	@echo "make check   # ztl check (dead links, orphans, SPL diagnostics)"
 	@echo "make deploy  # build + deploy to Cloudflare Pages ($(CF_PROJECT))"
 
 serve:
-	zetl -d . serve --theme $(THEME)
+	ztl -d . serve --theme $(THEME)
 
 build:
-	zetl -d . build --theme $(THEME) --out-dir $(OUT)
+	ztl -d . build --theme $(THEME) --out-dir $(OUT)
 
 check:
-	zetl -d . check
+	ztl -d . check
 
 deploy: build
 	wrangler pages deploy $(OUT) --project-name $(CF_PROJECT) --branch main --commit-dirty=true

@@ -17,7 +17,7 @@ dependencies:
   - bip39 (mnemonic recovery keys)
   - ed25519-dalek (key derivation for agent tokens)
   - git2 (libgit2 bindings for auto-commit)
-  - diamond-types (text CRDT backend for collaborative editing; Peritext-style marks layered by zetl)
+  - diamond-types (text CRDT backend for collaborative editing; Peritext-style marks layered by ztl)
 ---
 
 | Field        | Value                                        |
@@ -40,11 +40,11 @@ dependencies:
 
 ### 1.1 Problem
 
-zetl serve currently operates as a single-user local wiki. There is no authentication, no access control, and no attribution of edits. To support teams collaborating on a shared vault — or LLM agents acting on behalf of users — the system needs identity, authorization, edit attribution, and agent delegation.
+ztl serve currently operates as a single-user local wiki. There is no authentication, no access control, and no attribution of edits. To support teams collaborating on a shared vault — or LLM agents acting on behalf of users — the system needs identity, authorization, edit attribution, and agent delegation.
 
 ### 1.2 Core Insight
 
-Access control policy belongs *in the wiki itself*, expressed as defeasible logic (SPL). This makes permissions versionable, composable, auditable, and debuggable using the same reasoning engine that already powers `zetl reason`. A page can locally strengthen or weaken its own access without modifying the global policy, and `zetl reason --query` can explain any authorization decision with a full proof chain.
+Access control policy belongs *in the wiki itself*, expressed as defeasible logic (SPL). This makes permissions versionable, composable, auditable, and debuggable using the same reasoning engine that already powers `ztl reason`. A page can locally strengthen or weaken its own access without modifying the global policy, and `ztl reason --query` can explain any authorization decision with a full proof chain.
 
 ### 1.3 Design Philosophy
 
@@ -79,13 +79,13 @@ Access control policy belongs *in the wiki itself*, expressed as defeasible logi
 
 **Goals:** Initialize the collaborative vault, invite the first collaborators, define the base access policy in SPL.
 
-**Constraints:** Must have physical access to the machine running `zetl serve`. First user is created via CLI, not the web UI.
+**Constraints:** Must have physical access to the machine running `ztl serve`. First user is created via CLI, not the web UI.
 
 **Happy path:**
-1. `zetl serve --collab --init-owner "Alice"` → generates passkey challenge + BIP39 mnemonic
+1. `ztl serve --collab --init-owner "Alice"` → generates passkey challenge + BIP39 mnemonic
 2. Alice registers passkey in browser, writes down 12-word mnemonic
 3. Alice creates `access.spl` with base SPL policy
-4. Alice invites Bob via `zetl invite --as alice --role editor`
+4. Alice invites Bob via `ztl invite --as alice --role editor`
 
 ### UP-020-002: Invited Collaborator
 
@@ -106,9 +106,9 @@ Access control policy belongs *in the wiki itself*, expressed as defeasible logi
 **Constraints:** Headless (no browser). Authenticates via derived token from user's BIP39 mnemonic. Subject to the same ACL as the delegating user, with optional additional restrictions expressed in SPL.
 
 **Happy path:**
-1. User exports agent token: `zetl agent-token --mnemonic "twelve words ..."`
-2. Agent sets `ZETL_USER_TOKEN=<token>` or uses `Authorization: Bearer <token>` header
-3. Agent calls HTTP API or zetl CLI commands — all attributed to the delegating user
+1. User exports agent token: `ztl agent-token --mnemonic "twelve words ..."`
+2. Agent sets `ztl_USER_TOKEN=<token>` or uses `Authorization: Bearer <token>` header
+3. Agent calls HTTP API or ztl CLI commands — all attributed to the delegating user
 4. Agent's scope can be narrowed via SPL `(except ...)` rules targeting `(is-agent ?user)`
 
 ### UP-020-004: Hook-Triggered Agent
@@ -118,7 +118,7 @@ Access control policy belongs *in the wiki itself*, expressed as defeasible logi
 **Constraints:** Invoked by the hook system (SPEC-016). Must not trigger infinite loops. Operates under the identity of the user who triggered the originating event.
 
 **Happy path:**
-1. `.zetl/hooks/on-save` script receives hook context with `saved.user`
+1. `.ztl/hooks/on-save` script receives hook context with `saved.user`
 2. Script invokes LLM agent with vault context
 3. Agent edits pages via API using the triggering user's delegated token
 4. Hooks on agent's edits are suppressed (depth limit) or filtered by `saved.user.is_agent`
@@ -135,7 +135,7 @@ The system SHALL support WebAuthn/FIDO2 passkey registration and authentication 
 
 - Registration: server generates challenge → browser creates credential → server stores public key
 - Authentication: server generates challenge → browser signs with credential → server verifies
-- Credential storage: `.zetl/users/<user-id>/credential.json`
+- Credential storage: `.ztl/users/<user-id>/credential.json`
 - Multiple passkeys per user SHALL be supported (e.g., phone + laptop)
 
 Trace: TEST-020-001, CON-020-001
@@ -145,7 +145,7 @@ Trace: TEST-020-001, CON-020-001
 On account creation, the system SHALL generate a 12-word BIP39 mnemonic (128-bit entropy) and display it exactly once to the user.
 
 - The mnemonic derives an ed25519 keypair via SLIP-0010 at path `m/44'/0'/0'`
-- The server stores only the public key in `.zetl/users/<user-id>/recovery.json`
+- The server stores only the public key in `.ztl/users/<user-id>/recovery.json`
 - The mnemonic is never stored server-side
 - Recovery flow: user presents mnemonic → server verifies signature against stored pubkey → user registers a new passkey
 
@@ -163,7 +163,7 @@ Upon successful passkey authentication, the server SHALL issue an opaque session
 | Max lifetime   | Configurable, default 30 days             |
 | Server store   | In-memory `HashMap<Token, Session>`       |
 
-Sessions SHALL survive server restarts by persisting to `.zetl/sessions/` (optional, MAY be in-memory only for simplicity).
+Sessions SHALL survive server restarts by persisting to `.ztl/sessions/` (optional, MAY be in-memory only for simplicity).
 
 Trace: TEST-020-003
 
@@ -171,8 +171,8 @@ Trace: TEST-020-003
 
 The system SHALL accept API tokens derived from a user's BIP39 mnemonic for headless authentication.
 
-- Token derivation: `base64url(user_id || generation_byte || ed25519_sign(private_key, "zetl-agent-v1-" || user_id || generation))`
-- Presented via `Authorization: Bearer <token>` header or `ZETL_USER_TOKEN` env var (CLI mode)
+- Token derivation: `base64url(user_id || generation_byte || ed25519_sign(private_key, "ztl-agent-v1-" || user_id || generation))`
+- Presented via `Authorization: Bearer <token>` header or `ztl_USER_TOKEN` env var (CLI mode)
 - Resolves to the same user identity as the passkey — same ACL, same git attribution
 - Agent tokens do not expire (revocation via user account deletion or key rotation)
 - Generation counter enables token rotation without changing the recovery key (REQ-020-055)
@@ -184,12 +184,12 @@ Trace: TEST-020-004, CON-020-003
 The first user (vault owner) SHALL be created via CLI:
 
 ```
-zetl serve --collab --init-owner "<display-name>"
+ztl serve --collab --init-owner "<display-name>"
 ```
 
 - Generates passkey registration challenge served at `/auth/bootstrap`
 - Generates and displays BIP39 mnemonic on the terminal (stderr, once)
-- Creates `.zetl/users/<user-id>/` directory with profile, credential, and recovery key
+- Creates `.ztl/users/<user-id>/` directory with profile, credential, and recovery key
 - Sets `owner: true` flag in the user profile
 - The owner is automatically granted the `admin` role in SPL (injected as runtime fact)
 - Bootstrap is a one-time operation; subsequent `--init-owner` invocations SHALL fail if an owner already exists
@@ -203,7 +203,7 @@ Trace: TEST-020-005
 Existing users with the `can_invite` permission SHALL generate invitation tokens:
 
 ```
-zetl invite --as <username> --role <role> [--expires <duration>] [--pages <glob>]
+ztl invite --as <username> --role <role> [--expires <duration>] [--pages <glob>]
 ```
 
 The invitation token is a signed JWT containing:
@@ -218,12 +218,12 @@ The invitation token is a signed JWT containing:
 }
 ```
 
-- Signed with the server's ed25519 signing key (generated on first `--collab` init, stored in `.zetl/collab/server.key`)
+- Signed with the server's ed25519 signing key (generated on first `--collab` init, stored in `.ztl/collab/server.key`)
 - Default expiry: 72 hours
 - `--pages` constrains the invitee's initial scope (optional; omitted means vault-wide per role)
 - The CLI outputs a full invitation URL: `https://<host>/auth/accept?token=<jwt>`
-- Invitation tokens are single-use; the nonce is recorded in `.zetl/collab/used-nonces.json` upon acceptance
-- Used nonces SHALL be pruned from `.zetl/collab/used-nonces.json` when their corresponding JWT `exp` timestamp is more than 24 hours in the past
+- Invitation tokens are single-use; the nonce is recorded in `.ztl/collab/used-nonces.json` upon acceptance
+- Used nonces SHALL be pruned from `.ztl/collab/used-nonces.json` when their corresponding JWT `exp` timestamp is more than 24 hours in the past
 
 Trace: TEST-020-006, CON-020-004
 
@@ -235,7 +235,7 @@ When a user visits the invitation URL:
 2. Server presents a registration page: display name field + passkey registration prompt
 3. User enters display name and registers a passkey
 4. Server generates and displays BIP39 mnemonic (in browser, with "write this down" warning)
-5. Server creates `.zetl/users/<new-user-id>/` with profile, credential, recovery key
+5. Server creates `.ztl/users/<new-user-id>/` with profile, credential, recovery key
 6. Server injects SPL facts for the new user's role and scope (appended to `access.spl`)
 7. Server issues session cookie → redirect to vault homepage
 
@@ -528,7 +528,7 @@ Content here.
 - If the page does not exist and `X-Create` is absent → 404
 - New page creation follows the same git commit flow as edits (REQ-020-015)
 - ACL check: `(can-edit ?user ?page)` must hold (page-name derived from slug)
-- `DELETE /{slug}` with `can-edit` ACL check → deletes file, git commits `delete: <Page Name>`, evicts active CRDT session, notifies editors via WebSocket `deleted` message. Links to the deleted page become dead links (standard zetl behavior). The deletion is reversible via `git revert`.
+- `DELETE /{slug}` with `can-edit` ACL check → deletes file, git commits `delete: <Page Name>`, evicts active CRDT session, notifies editors via WebSocket `deleted` message. Links to the deleted page become dead links (standard ztl behavior). The deletion is reversible via `git revert`.
 
 Trace: TEST-020-017
 
@@ -559,11 +559,11 @@ Trace: TEST-020-018, CON-020-007
 The system SHALL provide a CLI command to derive an agent token:
 
 ```
-zetl agent-token --mnemonic "<twelve words>"
+ztl agent-token --mnemonic "<twelve words>"
 ```
 
 - Derives the ed25519 private key from the mnemonic (SLIP-0010)
-- Computes `base64url(user_id || generation_byte || ed25519_sign(private_key, "zetl-agent-v1-" || user_id || generation))`
+- Computes `base64url(user_id || generation_byte || ed25519_sign(private_key, "ztl-agent-v1-" || user_id || generation))`
 - Outputs the base64url-encoded token to stdout
 - The token is a long-lived bearer credential; the user is responsible for securing it
 
@@ -575,7 +575,7 @@ The system SHALL prevent infinite loops when agents trigger hooks that invoke ag
 
 **Three mechanisms:**
 
-1. **Hook depth counter:** The environment variable `ZETL_HOOK_DEPTH` SHALL be set to `0` on the initial event and incremented on each hook invocation. Hooks SHOULD refuse to invoke agents when depth ≥ 1.
+1. **Hook depth counter:** The environment variable `ztl_HOOK_DEPTH` SHALL be set to `0` on the initial event and incremented on each hook invocation. Hooks SHOULD refuse to invoke agents when depth ≥ 1.
 
 2. **User identity in hook context:** The `saved.user` field (REQ-020-022) includes `is_agent: true` when the save was performed by an agent token. Hooks can filter on this.
 
@@ -657,7 +657,7 @@ The system SHALL support an `on-agent` hook lifecycle point:
 
 | Property    | Value                                              |
 |-------------|----------------------------------------------------|
-| Trigger     | Manual (`zetl agent run <name>`), scheduled, chained|
+| Trigger     | Manual (`ztl agent run <name>`), scheduled, chained|
 | Context     | `{ task, target_pages, user, budget_tokens }`      |
 | Exit 0      | Agent action accepted; output logged               |
 | Exit non-0  | Agent action rejected; stderr logged as warning    |
@@ -665,7 +665,7 @@ The system SHALL support an `on-agent` hook lifecycle point:
 This enables orchestration patterns:
 - "After `post-build`, run the link-checker agent"
 - "When a page is tagged `#needs-review`, notify the reviewer agent"
-- Scheduled via external cron invoking `zetl agent run <name>`
+- Scheduled via external cron invoking `ztl agent run <name>`
 
 Trace: TEST-020-023
 
@@ -721,7 +721,7 @@ Trace: TEST-020-024, CON-020-008
 
 #### Marks Layer Architecture
 
-Peritext was first published with a TypeScript implementation riding on automerge's `RichText`. zetl implements the same algorithm natively in Rust on top of `diamond-types = "1.0"`. The backend is split into two co-operating CRDT oplogs inside a single document (`DiamondCrdtDocument`):
+Peritext was first published with a TypeScript implementation riding on automerge's `RichText`. ztl implements the same algorithm natively in Rust on top of `diamond-types = "1.0"`. The backend is split into two co-operating CRDT oplogs inside a single document (`DiamondCrdtDocument`):
 
 - **Text oplog** (`diamond_types::list::OpLog`): owns the character sequence and merges concurrent splices. Every character carries a DT op-id (agent + seq) — the equivalent of Peritext's `opId` anchor, stable under concurrent insert and delete.
 - **Marks oplog** (project-owned `MarksDoc`, wrapping a *sibling* `diamond_types::list::OpLog`): carries span-level edits as newline-delimited JSON entries appended at the oplog tail. Three op kinds:
@@ -730,7 +730,7 @@ Peritext was first published with a TypeScript implementation riding on automerg
   - `Shift { pos, delta }` — emitted automatically by every text splice so open spans track the text-oplog's char positions under concurrent edits.
 - **Atomic writes.** `DiamondCrdtDocument` brackets each splice so the text and marks oplogs advance together. The two oplogs share agent ids and are serialised side-by-side in the WAL blob.
 - **Materialisation.** To read the current mark set, replay the marks oplog in DT's canonical merge order and fold the ops into a `Vec<Mark>`. `Shift` ops are applied with per-span growth awareness at each boundary — this is where Peritext's inclusive vs non-growing distinction is enforced (REQ-020-025). Exclusive marks (`wikilink`, `link`) are last-write-wins per overlapping range; DT's canonical order is Lamport-total, matching the "Lamport timestamp ordering of the opId" contract in REQ-020-025.
-- **No extra CRDT dependency.** The marks layer rides the same `diamond-types` crate as the text layer. zetl does not depend on `diamond-types-extended`, `automerge-rs` `RichText`, or a hand-rolled Lamport store. The `MarkType` surface (mark name, `ExpandMark`, nesting order, conflict mode) is unchanged from the earlier automerge-based design, so `CrdtBackend::{mark, unmark, marks}` callers are byte-identical on the wire.
+- **No extra CRDT dependency.** The marks layer rides the same `diamond-types` crate as the text layer. ztl does not depend on `diamond-types-extended`, `automerge-rs` `RichText`, or a hand-rolled Lamport store. The `MarkType` surface (mark name, `ExpandMark`, nesting order, conflict mode) is unchanged from the earlier automerge-based design, so `CrdtBackend::{mark, unmark, marks}` callers are byte-identical on the wire.
 
 Rationale for the split-oplog shape: storing mark ops inline in the text oplog would corrupt char offsets for text splices and complicate markdown serialisation. Two parallel DT documents lets DT do all RLE packing, agent-ordering, and merge bookkeeping for free on both sides.
 
@@ -854,13 +854,13 @@ The server SHALL persist CRDT operations to a write-ahead log (WAL) for crash re
 
 | Property     | Value                                        |
 |--------------|----------------------------------------------|
-| Location     | `.zetl/crdt/<slug>.wal`                      |
+| Location     | `.ztl/crdt/<slug>.wal`                      |
 | Write        | Append each CRDT operation as it arrives     |
 | Truncate     | After successful flush to markdown           |
 | Recovery     | On startup, replay WAL for any non-empty files|
 | Max WAL size | 10MB per document (force-flush if exceeded)  |
 
-On server restart, if `.zetl/crdt/` contains non-empty WAL files:
+On server restart, if `.ztl/crdt/` contains non-empty WAL files:
 1. Load the on-disk markdown for each page
 2. Parse into CRDT state
 3. Replay WAL operations
@@ -914,7 +914,7 @@ Trace: TEST-020-035
 Historical queries (`--at`, `page.history`, `vault.history`) SHALL reflect the **last flushed state**, not in-flight CRDT edits.
 
 - The CRDT is a live draft; flushed markdown committed to git is the canonical record
-- `zetl links Foo --at now` returns the state as of the last flush, not the current CRDT state
+- `ztl links Foo --at now` returns the state as of the last flush, not the current CRDT state
 - If a user requests the current state of a page with an active CRDT session via the API (`GET /api/pages/{slug}`), the response SHALL include a `X-CRDT-Dirty: true` header if the CRDT has unflushed edits, and a `X-CRDT-Last-Flush` header with the ISO 8601 timestamp of the last flush
 - Template variables `page.history.last_changed` reflect the last git commit (flush), not the last CRDT keystroke
 
@@ -955,12 +955,12 @@ When running in `--collab` mode, the server SHALL watch the vault directory for 
 
 **Detection:**
 
-The server maintains a `pending_writes: HashSet<PathBuf>` of files it is currently writing. When a filesystem event fires for a file NOT in this set, it is an **external edit** — someone or something modified the file outside of zetl serve.
+The server maintains a `pending_writes: HashSet<PathBuf>` of files it is currently writing. When a filesystem event fires for a file NOT in this set, it is an **external edit** — someone or something modified the file outside of ztl serve.
 
 Sources of external edits:
 - An agent editing `.md` files directly on disk
 - A `git pull` or `git merge` bringing in remote changes
-- A user editing files with a text editor while zetl serve is running
+- A user editing files with a text editor while ztl serve is running
 - A CI job or cron script modifying vault files
 
 **Reconciliation pipeline (on external edit detected):**
@@ -996,7 +996,7 @@ When an external edit modifies a file that has an **active CRDT session**, the s
 **Case 3 — External edit deletes the file:**
 - Notify connected editors via WebSocket: `{"type": "deleted", "page": "..."}`
 - Evict the CRDT session
-- If the CRDT had unflushed edits, write them to a recovery file at `.zetl/recovery/<slug>.md` and log a warning
+- If the CRDT had unflushed edits, write them to a recovery file at `.ztl/recovery/<slug>.md` and log a warning
 
 Trace: TEST-020-040
 
@@ -1011,7 +1011,7 @@ In addition to filesystem watching, the server SHALL periodically check the git 
 
 This catches cases where filesystem events are missed (e.g., NFS mounts, Docker volume sync) and provides a reliable fallback.
 
-The poll interval is configurable: `zetl serve --collab --git-poll-interval 30s`
+The poll interval is configurable: `ztl serve --collab --git-poll-interval 30s`
 
 Trace: TEST-020-041
 
@@ -1021,14 +1021,14 @@ When an external edit is detected via filesystem watch or git poll:
 
 - If the edit arrived as a git commit, the commit author is used for audit/hook context: `{"user": {"name": "Agent Bot", "id": "external:agent-bot@example.com", "is_external": true}}`
 - If the edit is an uncommitted file change (no git commit), the user is `{"user": {"name": "(external)", "id": "external:filesystem", "is_external": true}}`
-- External edits are NOT re-committed by zetl (they are already committed, or they are uncommitted working directory changes that the external actor is responsible for)
-- `on-save` hooks fire with the `is_external: true` flag so hooks can distinguish zetl-originated saves from external edits
+- External edits are NOT re-committed by ztl (they are already committed, or they are uncommitted working directory changes that the external actor is responsible for)
+- `on-save` hooks fire with the `is_external: true` flag so hooks can distinguish ztl-originated saves from external edits
 
 Trace: TEST-020-042
 
 #### REQ-020-043: ACL Enforcement on External Edits
 
-External edits bypass zetl's ACL (they happen at the filesystem/git level, not through the HTTP API). The server SHALL:
+External edits bypass ztl's ACL (they happen at the filesystem/git level, not through the HTTP API). The server SHALL:
 
 1. After reconciling an external edit, evaluate the resulting vault state against the ACL policy
 2. If an external edit modified `access.spl` → immediately recompute ACL; log a WARN: `"access policy modified externally — ACL recomputed"`
@@ -1071,7 +1071,7 @@ Trace: TEST-020-046
 When a user encounters a page they cannot access (403 response, REQ-020-033), the system SHALL provide a built-in access request mechanism:
 
 - The 403 page includes a "Request access" button (visible in `mixed` and `transparent` modes)
-- Clicking the button creates an access request record in `.zetl/collab/access-requests.json`:
+- Clicking the button creates an access request record in `.ztl/collab/access-requests.json`:
   ```json
   {"user": "bob-d4e5f6", "page": "secret-project", "requested_at": "2026-03-18T14:00:00Z", "status": "pending"}
   ```
@@ -1127,11 +1127,11 @@ The system SHALL provide a web-based invitation flow for users with `can_invite`
 
 **Features:**
 - Form with fields: display name (optional hint), role (dropdown: reader/editor/admin), scope (optional glob pattern), expiry (dropdown: 24h/72h/7d/30d)
-- "Generate invitation link" button → creates JWT (same as `zetl invite` CLI) and displays the URL
+- "Generate invitation link" button → creates JWT (same as `ztl invite` CLI) and displays the URL
 - "Copy link" button for easy sharing
 - List of pending (unexpired, unused) invitations with ability to revoke (marks nonce as used)
 
-The CLI `zetl invite` command remains for automation. The web UI is the primary flow for non-technical inviters.
+The CLI `ztl invite` command remains for automation. The web UI is the primary flow for non-technical inviters.
 
 Trace: TEST-020-050
 
@@ -1139,7 +1139,7 @@ Trace: TEST-020-050
 
 The system SHALL support page-level comments for lightweight coordination:
 
-**Storage:** Comments are stored in a sidecar file `.zetl/comments/<slug>.json`:
+**Storage:** Comments are stored in a sidecar file `.ztl/comments/<slug>.json`:
 ```json
 [
   {"user": "alice-abc123", "text": "I'm rewriting the intro section", "at": "2026-03-18T14:00:00Z"},
@@ -1211,10 +1211,10 @@ Trace: TEST-020-054
 
 Agent tokens SHALL be revocable independently of the recovery key.
 
-- Each agent token includes a `generation` counter in the signed payload: `base64url(user_id || generation_byte || ed25519_sign(private_key, "zetl-agent-v1-" || user_id || generation))`
+- Each agent token includes a `generation` counter in the signed payload: `base64url(user_id || generation_byte || ed25519_sign(private_key, "ztl-agent-v1-" || user_id || generation))`
 - The user profile stores `agent_token_generation: u8` (default 0)
 - Server verification checks that the token's generation matches the stored generation
-- `zetl agent-token --rotate --mnemonic "<words>"` bumps the generation counter in the profile and outputs a new token
+- `ztl agent-token --rotate --mnemonic "<words>"` bumps the generation counter in the profile and outputs a new token
 - Old tokens immediately become invalid
 - The recovery key (BIP39 mnemonic) remains unchanged across rotations
 - Admin UI (REQ-020-048) includes a "Revoke agent token" button per user that bumps their generation counter
@@ -1237,13 +1237,13 @@ Trace: TEST-020-056
 
 #### REQ-020-057: Server Signing Key Protection
 
-The server's ed25519 signing key (`.zetl/collab/server.key`) SHALL be protected:
+The server's ed25519 signing key (`.ztl/collab/server.key`) SHALL be protected:
 
 - File permissions: `0600` (owner read/write only), enforced on creation
-- `.zetl/collab/server.key` SHALL be added to `.gitignore` automatically on `--collab` init
-- `.zetl/users/` SHALL be added to `.gitignore` automatically on `--collab` init
-- `.zetl/sessions/` SHALL be added to `.gitignore` automatically on `--collab` init
-- `.zetl/collab/` SHALL be added to `.gitignore` automatically on `--collab` init
+- `.ztl/collab/server.key` SHALL be added to `.gitignore` automatically on `--collab` init
+- `.ztl/users/` SHALL be added to `.gitignore` automatically on `--collab` init
+- `.ztl/sessions/` SHALL be added to `.gitignore` automatically on `--collab` init
+- `.ztl/collab/` SHALL be added to `.gitignore` automatically on `--collab` init
 - On startup, the server SHALL verify file permissions on `server.key` and WARN if they are more permissive than `0600`
 - The key is never exposed via any API endpoint or template variable
 
@@ -1251,7 +1251,7 @@ Trace: TEST-020-057
 
 #### REQ-020-058: Owner Fact Injection Hardening
 
-The `(owner ?user)` fact SHALL be injected exclusively as a runtime fact from the user profile (`owner: true` flag in `.zetl/users/<id>/profile.json`), NOT from `access.spl` or page-level SPL.
+The `(owner ?user)` fact SHALL be injected exclusively as a runtime fact from the user profile (`owner: true` flag in `.ztl/users/<id>/profile.json`), NOT from `access.spl` or page-level SPL.
 
 - During ACL evaluation, the system SHALL strip any `(given (owner ...))` facts from user-editable SPL sources (`access.spl` and page code fences) before combining the theory
 - Only the built-in defaults layer may contain owner-related strict rules
@@ -1370,7 +1370,7 @@ Page comments (REQ-020-051) SHALL be written only through authenticated API endp
 
 - `POST /{slug}/_comments` — add a comment (requires `can-edit` for the page)
 - `GET /{slug}/_comments` — list comments (requires `can-read` for the page)
-- Comments are stored in `.zetl/comments/<slug>.json` with integrity metadata:
+- Comments are stored in `.ztl/comments/<slug>.json` with integrity metadata:
   ```json
   {
     "user_id": "alice-abc123",
@@ -1380,7 +1380,7 @@ Page comments (REQ-020-051) SHALL be written only through authenticated API endp
   }
   ```
 - The HMAC prevents tampering with comment attribution if an attacker gains filesystem access
-- External processes writing directly to `.zetl/comments/` will produce comments with invalid HMACs — these are displayed with a "(unverified)" badge
+- External processes writing directly to `.ztl/comments/` will produce comments with invalid HMACs — these are displayed with a "(unverified)" badge
 
 Trace: TEST-020-066
 
@@ -1389,7 +1389,7 @@ Trace: TEST-020-066
 When `--collab` mode is active and the server binds to a non-loopback address:
 
 - Emit a WARN at startup: "Collab mode without TLS: passkeys require HTTPS. Configure a reverse proxy with TLS, or bind to localhost."
-- If the `ZETL_INSECURE_COLLAB=1` environment variable is not set, refuse to start and exit with an error message explaining the requirement
+- If the `ztl_INSECURE_COLLAB=1` environment variable is not set, refuse to start and exit with an error message explaining the requirement
 - When bound to `127.0.0.1` or `::1`, no warning is emitted (localhost is a secure context for WebAuthn)
 
 Trace: TEST-020-067
@@ -1523,12 +1523,12 @@ Trace: TEST-020-033
 
 ### ADR-020-002: SPL as ACL Language
 
-**Context:** The system needs access control that is auditable, composable, and fits the existing zetl philosophy.
+**Context:** The system needs access control that is auditable, composable, and fits the existing ztl philosophy.
 
 **Decision:** Express all access control policy as SPL (Spindle defeasible logic), evaluated by the existing `spindle-core` reasoning engine.
 
 **Rationale:**
-- zetl already integrates SPL for reasoning (SPEC-005) — zero new language to learn
+- ztl already integrates SPL for reasoning (SPEC-005) — zero new language to learn
 - Defeasible rules naturally model permission overrides (page-level rules defeat vault-level defaults)
 - Superiority relations make conflict resolution explicit and traceable
 - `why_not()` query operator provides built-in explainability for denied access
@@ -1561,7 +1561,7 @@ Trace: TEST-020-033
 - Compatible with existing jj snapshot system (SPEC-017) — jj can track the git repo
 
 **Trade-offs:**
-- One commit per save can produce noisy history → mitigated by squash workflows outside zetl
+- One commit per save can produce noisy history → mitigated by squash workflows outside ztl
 - libgit2 does not support all git features (e.g., partial clone) → not needed for local vaults
 - Concurrent saves must serialize git commits → use a write lock on the repo
 - jj uses colocated git mode when `.git/` exists (SPEC-017). After each git2 commit, the system MUST call `jj git import` (via jj-lib) to synchronize jj's understanding of the git state. Without this step, jj's internal view of branches and commits diverges from the git repository, causing snapshot and history operations to fail or produce incorrect results.
@@ -1602,7 +1602,7 @@ Trace: TEST-020-033
 
 **Rationale:**
 - Peritext is specifically designed for rich text CRDT merging — it solves the interleaving problems that make plain-text CRDTs break markdown formatting across concurrent edits
-- Async-first: designed for independent copies that merge, not real-time OT. Aligns with zetl's local-first philosophy
+- Async-first: designed for independent copies that merge, not real-time OT. Aligns with ztl's local-first philosophy
 - `addMark`/`removeMark` operations map directly to markdown inline formatting (`**`, `*`, `` ` ``, `[[...]]`)
 - `opId`-based anchoring means cursor positions and formatting spans are stable under concurrent insertions and deletions
 - Growth behavior (inclusive vs non-growing) correctly models the difference between "typing at the end of bold text stays bold" and "typing after a wikilink is plain text"
@@ -1612,11 +1612,11 @@ Trace: TEST-020-033
 - Peritext handles inline formatting only; block-level structure (headings, lists, code fences) requires separate handling (REQ-020-026 treats blocks as atomic tokens)
 - CRDT state is larger than plain text — memory overhead per loaded document. Mitigated by eviction TTL and max concurrent document limit (REQ-020-029)
 - Canonical markdown serialization must be carefully defined to ensure clean git diffs (REQ-020-027)
-- The reference implementation is TypeScript (Automerge-based). zetl implements Peritext's semantics natively in Rust over `diamond-types = "1.0"`: diamond-types provides the text oplog, and a project-owned sibling marks oplog (`MarksDoc`) carries `Mark`/`Unmark`/`Shift` span ops with per-span `ExpandMark` — see "Marks Layer Architecture" under §3.7. This replaces the earlier plan to lean on `automerge-rs` `RichText`, whose rich-text API churned across 0.5/0.6 and did not give us stable Peritext boundary-growth semantics
+- The reference implementation is TypeScript (Automerge-based). ztl implements Peritext's semantics natively in Rust over `diamond-types = "1.0"`: diamond-types provides the text oplog, and a project-owned sibling marks oplog (`MarksDoc`) carries `Mark`/`Unmark`/`Shift` span ops with per-span `ExpandMark` — see "Marks Layer Architecture" under §3.7. This replaces the earlier plan to lean on `automerge-rs` `RichText`, whose rich-text API churned across 0.5/0.6 and did not give us stable Peritext boundary-growth semantics
 
 **Alternatives rejected:**
 - Soft page locks (one writer at a time): creates contention on the most valuable pages — exactly the wrong trade-off for a team wiki
-- Plain-text CRDT on markdown source (Yjs `Text`, automerge `Text`, or diamond-types with no marks layer): concurrent formatting edits produce broken markdown — the exact problem Peritext was designed to solve, and the reason zetl layers an explicit marks oplog over diamond-types rather than treating markdown source as flat text
+- Plain-text CRDT on markdown source (Yjs `Text`, automerge `Text`, or diamond-types with no marks layer): concurrent formatting edits produce broken markdown — the exact problem Peritext was designed to solve, and the reason ztl layers an explicit marks oplog over diamond-types rather than treating markdown source as flat text
 - OT (Operational Transform): requires a central server for total ordering; more complex to implement correctly; does not support offline/async editing
 
 ---
@@ -1625,7 +1625,7 @@ Trace: TEST-020-033
 
 ### CON-020-001: User Profile Schema
 
-Stored at `.zetl/users/<user-id>/profile.json`:
+Stored at `.ztl/users/<user-id>/profile.json`:
 
 ```json
 {
@@ -1678,16 +1678,16 @@ Implements: REQ-020-002
 ### CON-020-003: Agent Token Format
 
 ```
-Token = base64url(user_id_bytes || generation_byte || ed25519_sign(private_key, "zetl-agent-v1-" || user_id || generation))
+Token = base64url(user_id_bytes || generation_byte || ed25519_sign(private_key, "ztl-agent-v1-" || user_id || generation))
 ```
 
 - Total: 16 bytes (user_id) + 1 byte (generation) + 64 bytes (signature) = 81 bytes → 108 base64url characters
-- Presented via `Authorization: Bearer <token>` header or `ZETL_USER_TOKEN` env var
+- Presented via `Authorization: Bearer <token>` header or `ztl_USER_TOKEN` env var
 
 Server verification:
 1. Decode token → extract user_id (first 16 bytes), generation (byte 17), and signature (remaining 64 bytes)
-2. Load `recovery_pubkey` from `.zetl/users/<user_id>/profile.json`
-3. Verify `ed25519_verify(pubkey, "zetl-agent-v1-" || user_id || generation, signature)`
+2. Load `recovery_pubkey` from `.ztl/users/<user_id>/profile.json`
+3. Verify `ed25519_verify(pubkey, "ztl-agent-v1-" || user_id || generation, signature)`
 3a. Verify that generation matches `agent_token_generation` in the user profile
 4. On success → resolve to user identity
 
@@ -1700,7 +1700,7 @@ Implements: REQ-020-004, REQ-020-019
   "header": {"alg": "EdDSA", "typ": "JWT"},
   "payload": {
     "iss": "alice-a1b2c3d4",
-    "sub": "zetl-invite",
+    "sub": "ztl-invite",
     "role": "editor",
     "pages": "projects/*",
     "exp": 1742515200,
@@ -1709,10 +1709,10 @@ Implements: REQ-020-004, REQ-020-019
 }
 ```
 
-- Signed with server's ed25519 key (`.zetl/collab/server.key`)
+- Signed with server's ed25519 key (`.ztl/collab/server.key`)
 - `role`: one of `reader`, `editor`, `admin`
 - `pages`: optional glob pattern constraining initial scope
-- `nonce`: 128-bit random, tracked in `.zetl/collab/used-nonces.json` to enforce single-use
+- `nonce`: 128-bit random, tracked in `.ztl/collab/used-nonces.json` to enforce single-use
 
 Implements: REQ-020-006, REQ-020-007
 
@@ -1889,7 +1889,7 @@ Implements: REQ-020-024, REQ-020-025, REQ-020-026, REQ-020-027
 
 **Scenario:** Agent authenticates with derived token.
 **Steps:**
-1. Derive token from user's mnemonic via `zetl agent-token`
+1. Derive token from user's mnemonic via `ztl agent-token`
 2. GET `/api/pages` with `Authorization: Bearer <token>` → 200
 3. Verify response attributes actions to the correct user
 4. Use an invalid token → 401
@@ -1898,15 +1898,15 @@ Implements: REQ-020-024, REQ-020-025, REQ-020-026, REQ-020-027
 
 **Scenario:** First user creation via CLI.
 **Steps:**
-1. `zetl serve --collab --init-owner "Alice"` → BIP39 mnemonic printed to stderr
-2. Verify `.zetl/users/` contains exactly one user with `owner: true`
+1. `ztl serve --collab --init-owner "Alice"` → BIP39 mnemonic printed to stderr
+2. Verify `.ztl/users/` contains exactly one user with `owner: true`
 3. Attempt `--init-owner` again → error ("owner already exists")
 
 ### TEST-020-006: Invitation Generation
 
 **Scenario:** Admin generates an invitation.
 **Steps:**
-1. `zetl invite --as alice --role editor --pages "projects/*"` → invitation URL
+1. `ztl invite --as alice --role editor --pages "projects/*"` → invitation URL
 2. Decode JWT → verify `iss`, `role`, `pages`, `exp`, `nonce`
 3. Verify JWT is signed with server key
 
@@ -1924,7 +1924,7 @@ Implements: REQ-020-024, REQ-020-025, REQ-020-026, REQ-020-027
 
 **Scenario:** Non-admin cannot invite admin-level users.
 **Steps:**
-1. Editor user attempts `zetl invite --as bob --role admin` → denied by SPL
+1. Editor user attempts `ztl invite --as bob --role admin` → denied by SPL
 2. Owner user attempts same → succeeds
 
 ### TEST-020-009: SPL Authorization — Basic
@@ -2021,7 +2021,7 @@ Implements: REQ-020-024, REQ-020-025, REQ-020-026, REQ-020-027
 
 **Scenario:** CLI generates valid agent token.
 **Steps:**
-1. `zetl agent-token --mnemonic "<words>"` → token on stdout
+1. `ztl agent-token --mnemonic "<words>"` → token on stdout
 2. Use token to authenticate → resolves to correct user
 
 ### TEST-020-020: Agent Loop Prevention
@@ -2029,7 +2029,7 @@ Implements: REQ-020-024, REQ-020-025, REQ-020-026, REQ-020-027
 **Scenario:** Agent save does not trigger infinite hook chain.
 **Steps:**
 1. Configure `on-save` hook that invokes an agent
-2. Agent saves a page → hook fires with `ZETL_HOOK_DEPTH=1`
+2. Agent saves a page → hook fires with `ztl_HOOK_DEPTH=1`
 3. Hook checks depth, does not invoke agent again
 4. Alternatively: agent saves with `X-No-Hooks: true` → no hook fires
 
@@ -2052,7 +2052,7 @@ Implements: REQ-020-024, REQ-020-025, REQ-020-026, REQ-020-027
 
 **Scenario:** `on-agent` hook is triggered.
 **Steps:**
-1. `zetl agent run curator` → `on-agent` hook fires
+1. `ztl agent run curator` → `on-agent` hook fires
 2. Hook receives context with `task: "curator"`, `user` identity
 3. Hook exits 0 → success logged
 
@@ -2241,7 +2241,7 @@ Implements: REQ-020-024, REQ-020-025, REQ-020-026, REQ-020-027
 **Steps:**
 1. "Roadmap" last flushed at T1 with content "v1"
 2. Alice is actively editing in CRDT — current CRDT content is "v2" (unflushed)
-3. Bob runs `zetl links Roadmap --at now` → sees "v1" state
+3. Bob runs `ztl links Roadmap --at now` → sees "v1" state
 4. GET `/api/pages/roadmap` → returns "v1" markdown with header `X-CRDT-Dirty: true`
 5. Alice stops typing → quiescence flush at T2 writes "v2"
 6. Bob runs query again → sees "v2" state
@@ -2276,11 +2276,11 @@ Implements: REQ-020-024, REQ-020-025, REQ-020-026, REQ-020-027
 
 ### TEST-020-039: Filesystem Watch for External Edits
 
-**Scenario:** Agent edits a file directly on disk while zetl serve is running.
+**Scenario:** Agent edits a file directly on disk while ztl serve is running.
 **Steps:**
-1. zetl serve is running with "Roadmap" page indexed
+1. ztl serve is running with "Roadmap" page indexed
 2. External process writes new content to `Roadmap.md` on disk
-3. Within 1 second → zetl detects filesystem change
+3. Within 1 second → ztl detects filesystem change
 4. Verify: vault re-scanned, merkle tree recomputed
 5. Verify: search index updated with new content
 6. Verify: link graph updated if wikilinks changed
@@ -2310,16 +2310,16 @@ Implements: REQ-020-024, REQ-020-025, REQ-020-026, REQ-020-027
 1. Alice is editing "Temp Notes" in CRDT with unflushed edits
 2. External process deletes `Temp Notes.md`
 3. Alice receives `{"type": "deleted", "page": "Temp Notes"}`
-4. Verify: `.zetl/recovery/temp-notes.md` contains Alice's unflushed edits
+4. Verify: `.ztl/recovery/temp-notes.md` contains Alice's unflushed edits
 5. Verify: CRDT session evicted
 
 ### TEST-020-041: Git-Based External Change Detection
 
 **Scenario:** Agent pushes commits to the repo.
 **Steps:**
-1. zetl serve is running, HEAD is at commit A
+1. ztl serve is running, HEAD is at commit A
 2. Agent runs `git pull` → HEAD advances to commit B (adds new page, modifies existing)
-3. Within 30 seconds (git poll interval) → zetl detects HEAD change
+3. Within 30 seconds (git poll interval) → ztl detects HEAD change
 4. Verify: new page appears in sidebar and search
 5. Verify: modified page content updated
 
@@ -2334,7 +2334,7 @@ Implements: REQ-020-024, REQ-020-025, REQ-020-026, REQ-020-027
 **Scenario:** External git commit attributed to correct author.
 **Steps:**
 1. Agent commits as "Bot <bot@ci>" and pushes
-2. zetl detects external commit
+2. ztl detects external commit
 3. `on-save` hook fires with `{"user": {"name": "Bot", "id": "external:bot@ci", "is_external": true}}`
 
 **Scenario:** Uncommitted external file edit.
@@ -2347,7 +2347,7 @@ Implements: REQ-020-024, REQ-020-025, REQ-020-026, REQ-020-027
 **Scenario:** External edit modifies access policy.
 **Steps:**
 1. Agent modifies `access.spl` directly on disk
-2. zetl detects change → ACL recomputed immediately
+2. ztl detects change → ACL recomputed immediately
 3. Log contains WARN: "access policy modified externally"
 4. New policy takes effect
 
@@ -2355,7 +2355,7 @@ Implements: REQ-020-024, REQ-020-025, REQ-020-026, REQ-020-027
 **Steps:**
 1. "Secret Project" page has ACL restricting edits to admins
 2. External agent (non-admin) writes to `Secret Project.md` on disk
-3. zetl detects change → evaluates ACL → violation detected
+3. ztl detects change → evaluates ACL → violation detected
 4. Log contains WARN with violation details
 5. `on-acl-violation` hook fires (if configured)
 6. Admin sees violation banner in UI
@@ -2459,9 +2459,9 @@ Implements: REQ-020-024, REQ-020-025, REQ-020-026, REQ-020-027
 ### TEST-020-057: Server Key Protection
 **Scenario:** Server key has correct permissions.
 **Steps:**
-1. `zetl serve --collab --init-owner "Alice"` → server.key created
+1. `ztl serve --collab --init-owner "Alice"` → server.key created
 2. Verify: file permissions are 0600
-3. Verify: `.gitignore` includes `.zetl/collab/`, `.zetl/users/`, `.zetl/sessions/`
+3. Verify: `.gitignore` includes `.ztl/collab/`, `.ztl/users/`, `.ztl/sessions/`
 
 ### TEST-020-058: Owner Fact Injection Hardening
 **Scenario:** access.spl cannot assert owner.
@@ -2532,9 +2532,9 @@ Implements: REQ-020-024, REQ-020-025, REQ-020-026, REQ-020-027
 ### TEST-020-067: TLS Enforcement
 **Scenario:** Collab mode warns without TLS.
 **Steps:**
-1. `zetl serve --collab --port 3000` (not localhost) → exits with TLS warning
-2. `ZETL_INSECURE_COLLAB=1 zetl serve --collab` → starts with WARN
-3. `zetl serve --collab` binding to 127.0.0.1 → no warning
+1. `ztl serve --collab --port 3000` (not localhost) → exits with TLS warning
+2. `ztl_INSECURE_COLLAB=1 ztl serve --collab` → starts with WARN
+3. `ztl serve --collab` binding to 127.0.0.1 → no warning
 
 ---
 
@@ -2556,7 +2556,7 @@ Auto-commit SHALL complete in < 100ms per save (excluding hooks). Concurrent sav
 
 ### NFR-020-004: User Data Isolation
 
-User credentials and session tokens SHALL be stored in `.zetl/users/` with filesystem permissions `0700`. The server process SHALL be the only reader.
+User credentials and session tokens SHALL be stored in `.ztl/users/` with filesystem permissions `0700`. The server process SHALL be the only reader.
 
 ### NFR-020-005: No External Network Dependencies
 
@@ -2583,10 +2583,10 @@ Initial `sync` message payload SHALL be < 1MB for documents up to 100KB of markd
 The system SHALL log authentication events:
 
 ```
-[zetl] auth: login user=alice method=passkey duration_ms=45
-[zetl] auth: login-failed user=alice reason=invalid_credential
-[zetl] auth: recovery user=alice duration_ms=120
-[zetl] auth: agent-auth user=alice duration_ms=2
+[ztl] auth: login user=alice method=passkey duration_ms=45
+[ztl] auth: login-failed user=alice reason=invalid_credential
+[ztl] auth: recovery user=alice duration_ms=120
+[ztl] auth: agent-auth user=alice duration_ms=2
 ```
 
 ### OBS-020-002: Authorization Decisions
@@ -2594,22 +2594,22 @@ The system SHALL log authentication events:
 The system SHALL log authorization decisions when verbose:
 
 ```
-[zetl] acl: allowed user=alice page=roadmap action=edit source=cache duration_ms=0
-[zetl] acl: denied user=bob page=secret action=read rule=r-restrict-read duration_ms=32
+[ztl] acl: allowed user=alice page=roadmap action=edit source=cache duration_ms=0
+[ztl] acl: denied user=bob page=secret action=read rule=r-restrict-read duration_ms=32
 ```
 
 ### OBS-020-003: Git Commit Events
 
 ```
-[zetl] commit: user=alice page="Meeting Notes" sha=abc1234 duration_ms=18
+[ztl] commit: user=alice page="Meeting Notes" sha=abc1234 duration_ms=18
 ```
 
 ### OBS-020-004: Invitation Events
 
 ```
-[zetl] invite: created by=alice role=editor pages=projects/* expires=2026-03-21T10:00:00Z
-[zetl] invite: accepted by=bob-d4e5f6 invited_by=alice role=editor
-[zetl] invite: rejected reason=expired nonce=a1b2c3d4
+[ztl] invite: created by=alice role=editor pages=projects/* expires=2026-03-21T10:00:00Z
+[ztl] invite: accepted by=bob-d4e5f6 invited_by=alice role=editor
+[ztl] invite: rejected reason=expired nonce=a1b2c3d4
 ```
 
 ---
@@ -2622,7 +2622,7 @@ The system SHALL log authorization decisions when verbose:
 
 **Changes:**
 - Add `webauthn-rs`, `bip39`, `ed25519-dalek` dependencies (feature-gated)
-- Implement user profile storage (`.zetl/users/`)
+- Implement user profile storage (`.ztl/users/`)
 - Implement passkey registration/authentication routes
 - Implement BIP39 generation and recovery flow
 - Implement session middleware for Axum
@@ -2637,7 +2637,7 @@ The system SHALL log authorization decisions when verbose:
 **Goal:** Invitation flow, auto-commit, conflict detection.
 
 **Changes:**
-- Implement invitation token generation (`zetl invite`)
+- Implement invitation token generation (`ztl invite`)
 - Implement invitation acceptance flow (registration page)
 - Implement `git2`-based auto-commit in save handler
 - Implement `If-Match` conflict detection
@@ -2669,7 +2669,7 @@ The system SHALL log authorization decisions when verbose:
 - Implement agent token derivation CLI
 - Implement `Authorization: Bearer` middleware
 - Implement `/api/*` agent endpoints
-- Implement `ZETL_HOOK_DEPTH` and `X-No-Hooks` mechanisms
+- Implement `ztl_HOOK_DEPTH` and `X-No-Hooks` mechanisms
 - Implement `on-agent` hook lifecycle point
 - Implement `(is-agent ...)` fact injection
 
@@ -2791,7 +2791,7 @@ The system SHALL log authorization decisions when verbose:
    A: The CRDT merge is conflict-free by definition — external content is parsed into CRDT operations and merged. The result contains both the external edits and the in-flight edits. On flush, the merged state is committed as a new git commit. No manual merge needed. However, the semantic result may be surprising (e.g., an agent rewrites a paragraph while a human is editing it — both versions appear). Users should be aware that git-based agents operate outside the presence system and their edits arrive as surprise merges.
 
 9. **Q: Should external edits bypass ACL or be subject to it?**
-   A: External edits bypass ACL because they happen at the filesystem/git level — zetl cannot prevent them. The system detects and reports violations after the fact (REQ-020-043). This is a conscious design choice: zetl is not a security boundary for the filesystem. It's an application-level access control layer for the web interface and API. Filesystem permissions and git access control (SSH keys, deploy keys) are the appropriate mechanisms for restricting who can push to the repo.
+   A: External edits bypass ACL because they happen at the filesystem/git level — ztl cannot prevent them. The system detects and reports violations after the fact (REQ-020-043). This is a conscious design choice: ztl is not a security boundary for the filesystem. It's an application-level access control layer for the web interface and API. Filesystem permissions and git access control (SSH keys, deploy keys) are the appropriate mechanisms for restricting who can push to the repo.
 
 ---
 
@@ -2804,7 +2804,7 @@ The system SHALL log authorization decisions when verbose:
 | `ed25519-dalek`  | 2       | Ed25519 key derivation and signing     | `collab`     |
 | `git2`           | 0.19    | libgit2 bindings for auto-commit       | `collab`     |
 | `jsonwebtoken`   | 9       | JWT creation/validation for invitations| `collab`     |
-| `diamond-types`  | 1.0     | Text CRDT oplog (zetl adds a Peritext-style marks layer on top) | `collab`     |
+| `diamond-types`  | 1.0     | Text CRDT oplog (ztl adds a Peritext-style marks layer on top) | `collab`     |
 | `spindle-core`   | (git)   | Defeasible reasoning for ACL           | `reason`     |
 | `spindle-parser` | (git)   | SPL parsing for policy documents       | `reason`     |
 | `rand`           | 0.8     | Nonce and token generation             | `collab`     |

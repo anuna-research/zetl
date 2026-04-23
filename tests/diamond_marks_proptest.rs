@@ -11,9 +11,9 @@
 //! Phase 7, so these tests run on every build.
 
 use proptest::prelude::*;
-use zetl::crdt::backend::CrdtBackend;
-use zetl::crdt::diamond::DiamondCrdtDocument;
-use zetl::crdt::marks::{Mark, MarkType};
+use ztl::crdt::backend::CrdtBackend;
+use ztl::crdt::diamond::DiamondCrdtDocument;
+use ztl::crdt::marks::{Mark, MarkType};
 
 fn sort_marks(mut ms: Vec<Mark>) -> Vec<(String, usize, usize)> {
     ms.sort_by(|a, b| {

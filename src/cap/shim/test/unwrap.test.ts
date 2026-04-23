@@ -233,7 +233,7 @@ test("performUnwrap allowCredentials carries the stored credentialId", async () 
   );
 });
 
-test("performUnwrap reconstructs K_wrap via HKDF(prf, 'zetl/tofu-wrap/v1')", async () => {
+test("performUnwrap reconstructs K_wrap via HKDF(prf, 'ztl/tofu-wrap/v1')", async () => {
   const privA = new Uint8Array(32).fill(0x55);
   const prfByte = 0xee;
   const { auth, binding } = await seedBinding(privA, prfByte);

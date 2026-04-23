@@ -1,6 +1,6 @@
 //! Startup-time ecosystem runtime detection (SPEC-033 REQ-3313).
 //!
-//! REQ-3313 mandates: at zetl startup, before any hook pipeline construction,
+//! REQ-3313 mandates: at ztl startup, before any hook pipeline construction,
 //! the system probes every compiled-in ecosystem adapter's runtime dependency
 //! (`pandoc --version`, `mdbook --version`, `node --version`), logs detection
 //! results, and disables adapters whose runtimes are missing rather than
@@ -22,14 +22,14 @@
 //!
 //! Default: a missing runtime is logged + the adapter is disabled for the
 //! session. Build keeps going. This is the SPEC-033 §1.4(4) graceful-absence
-//! contract: zetl never fails the build because an *optional* runtime is
+//! contract: ztl never fails the build because an *optional* runtime is
 //! missing.
 //!
 //! CI gate: callers pass a list of required ecosystem ids to
 //! [`enforce_required`]. If any of them isn't [`RuntimeStatus::Available`],
 //! the function returns a [`HookDiagnostic`] the caller turns into a
 //! non-zero exit. This is the `--ecosystem-required=<name>` surface
-//! REQ-3313 mandates for `zetl build` / `zetl serve`.
+//! REQ-3313 mandates for `ztl build` / `ztl serve`.
 //!
 //! ## Version parsing
 //!
@@ -69,7 +69,7 @@ pub const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 /// - [`RuntimeStatus::Available`] — binary on `PATH`, parsed version
 ///   ≥ `dep.min_version`. The raw version string from the binary's own
 ///   output is preserved so callers can render the user's exact runtime
-///   in `zetl ecosystem check`.
+///   in `ztl ecosystem check`.
 /// - [`RuntimeStatus::OutdatedVersion`] — binary on `PATH` but parsed
 ///   version below `dep.min_version`. Carries an actionable install hint.
 /// - [`RuntimeStatus::Missing`] — `which`-style lookup failed (the OS
@@ -189,7 +189,7 @@ pub fn detect_all_ecosystems() -> EcosystemDetectionReport {
 }
 
 /// Aggregate result of [`detect_all_ecosystems`]. Exposes lookup,
-/// availability filtering, and rendering to a stream of `[zetl] ecosystem
+/// availability filtering, and rendering to a stream of `[ztl] ecosystem
 /// <id>: ...` log lines suitable for stderr at session start.
 #[derive(Debug, Clone)]
 pub struct EcosystemDetectionReport {
@@ -224,7 +224,7 @@ impl EcosystemDetectionReport {
             .collect()
     }
 
-    /// Render every entry as a single `[zetl] ecosystem <id>: ...` log
+    /// Render every entry as a single `[ztl] ecosystem <id>: ...` log
     /// line in canonical registry order, suitable for stderr at session
     /// start. Lines are joined by `\n` with no trailing newline.
     pub fn format_log_lines(&self) -> String {
@@ -239,32 +239,32 @@ impl EcosystemDetectionReport {
 }
 
 /// Canonical detection log line. The format intentionally mirrors the
-/// example in SPEC-033 REQ-3313 (`[zetl] ecosystem pandoc: detected
+/// example in SPEC-033 REQ-3313 (`[ztl] ecosystem pandoc: detected
 /// v3.1.12.1`) so log-grep tooling stays simple.
 pub fn format_log_line(entry: &EcosystemEntry, status: &RuntimeStatus) -> String {
     match status {
         RuntimeStatus::Available { version, .. } => {
-            format!("[zetl] ecosystem {}: detected {}", entry.id, version)
+            format!("[ztl] ecosystem {}: detected {}", entry.id, version)
         }
         RuntimeStatus::OutdatedVersion {
             found, required, ..
         } => format!(
-            "[zetl] ecosystem {}: outdated (found {}, requires ≥ {}); adapter disabled",
+            "[ztl] ecosystem {}: outdated (found {}, requires ≥ {}); adapter disabled",
             entry.id, found, required
         ),
         RuntimeStatus::Missing { binary, .. } => format!(
-            "[zetl] ecosystem {}: missing (binary `{}` not on PATH); adapter disabled",
+            "[ztl] ecosystem {}: missing (binary `{}` not on PATH); adapter disabled",
             entry.id, binary
         ),
         RuntimeStatus::ProbeFailed { detail } => format!(
-            "[zetl] ecosystem {}: probe failed ({detail}); adapter disabled",
+            "[ztl] ecosystem {}: probe failed ({detail}); adapter disabled",
             entry.id
         ),
     }
 }
 
 /// Build a five-part [`HookDiagnostic`] for a non-available ecosystem so
-/// downstream callers (composition disabling a hook, `zetl ecosystem check`,
+/// downstream callers (composition disabling a hook, `ztl ecosystem check`,
 /// CI-gate enforcement) all surface the same wording. Returns `None` for
 /// [`RuntimeStatus::Available`] — the absence diagnostic only makes sense
 /// when something is missing.
@@ -332,7 +332,7 @@ pub fn diagnostic_for(entry: &EcosystemEntry, status: &RuntimeStatus) -> Option<
 /// describing the first missing required ecosystem otherwise.
 ///
 /// Unknown ids in `required` are treated as fatal — the caller asked for
-/// an ecosystem zetl doesn't know about, which is almost certainly a typo
+/// an ecosystem ztl doesn't know about, which is almost certainly a typo
 /// in CI config and not something to silently skip.
 #[allow(clippy::result_large_err)] // HookDiagnostic carries diagnostic-context strings; boxing the error adds a dereference on every `?` with no runtime benefit on this cold path.
 pub fn enforce_required(
@@ -352,7 +352,7 @@ pub fn enforce_required(
                 .with_observed(format!("known ecosystems: [{}]", known.join(", ")))
                 .with_cause("the registry does not contain an ecosystem with that id")
                 .with_hint(
-                    "spell-check the value or run `zetl ecosystem check` to list known ids",
+                    "spell-check the value or run `ztl ecosystem check` to list known ids",
                 ));
             }
         };
@@ -372,7 +372,7 @@ pub fn enforce_required(
         };
         if !status.is_available() {
             // Reuse the canonical absence diagnostic so the gate's
-            // wording matches what `zetl ecosystem check` shows.
+            // wording matches what `ztl ecosystem check` shows.
             let diag = diagnostic_for(entry, status).expect("non-available status returns Some");
             return Err(diag);
         }
@@ -512,13 +512,13 @@ mod tests {
     #[test]
     fn probe_returns_missing_for_nonexistent_binary() {
         let dep = RuntimeDep {
-            binary: "definitely-not-a-real-binary-zetl-test",
+            binary: "definitely-not-a-real-binary-ztl-test",
             min_version: "0.0.0",
         };
         let status = probe_runtime_dep(&dep);
         match status {
             RuntimeStatus::Missing { binary, hint } => {
-                assert_eq!(binary, "definitely-not-a-real-binary-zetl-test");
+                assert_eq!(binary, "definitely-not-a-real-binary-ztl-test");
                 assert!(!hint.is_empty(), "missing hint should be non-empty");
             }
             other => panic!("expected Missing, got {other:?}"),
@@ -587,7 +587,7 @@ mod tests {
         };
         assert_eq!(
             format_log_line(entry, &status),
-            "[zetl] ecosystem pandoc: detected pandoc 3.1.12.1"
+            "[ztl] ecosystem pandoc: detected pandoc 3.1.12.1"
         );
     }
 
@@ -599,7 +599,7 @@ mod tests {
             hint: "install mdbook".into(),
         };
         let line = format_log_line(entry, &status);
-        assert!(line.starts_with("[zetl] ecosystem mdbook: missing"));
+        assert!(line.starts_with("[ztl] ecosystem mdbook: missing"));
         assert!(line.contains("mdbook"));
         assert!(line.contains("adapter disabled"));
     }
@@ -657,7 +657,7 @@ mod tests {
         // Five-part shape: rendering at Default verbosity must include
         // every required label.
         let rendered = diag.to_string();
-        assert!(rendered.starts_with("[zetl] "));
+        assert!(rendered.starts_with("[ztl] "));
         assert!(rendered.contains("Likely cause: "));
         assert!(rendered.contains("Hint: "));
     }
@@ -731,9 +731,9 @@ mod tests {
         let text = report.format_log_lines();
         let lines: Vec<&str> = text.lines().collect();
         assert_eq!(lines.len(), 3);
-        assert!(lines[0].starts_with("[zetl] ecosystem pandoc:"));
-        assert!(lines[1].starts_with("[zetl] ecosystem mdbook:"));
-        assert!(lines[2].starts_with("[zetl] ecosystem remark:"));
+        assert!(lines[0].starts_with("[ztl] ecosystem pandoc:"));
+        assert!(lines[1].starts_with("[ztl] ecosystem mdbook:"));
+        assert!(lines[2].starts_with("[ztl] ecosystem remark:"));
     }
 
     // ── enforce_required ────────────────────────────────────────────

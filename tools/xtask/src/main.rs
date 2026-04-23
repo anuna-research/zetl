@@ -39,7 +39,7 @@ fn main() -> Result<()> {
 fn update_golden(only: Option<&str>) -> Result<()> {
     let root = repo_root()?;
     let fixtures_dir = root.join("tests/extension-fixtures");
-    let fixtures = zetl::extensions::golden::load_fixtures(&fixtures_dir)
+    let fixtures = ztl::extensions::golden::load_fixtures(&fixtures_dir)
         .with_context(|| format!("loading fixtures under {}", fixtures_dir.display()))?;
 
     if fixtures.is_empty() {

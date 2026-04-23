@@ -1,10 +1,10 @@
-//! Lifecycle hooks for zetl vault operations (SPEC-016).
+//! Lifecycle hooks for ztl vault operations (SPEC-016).
 //!
 //! This module provides:
-//! - **Discovery** (REQ-016-001): Scan `.zetl/hooks/` and theme `hooks/`
+//! - **Discovery** (REQ-016-001): Scan `.ztl/hooks/` and theme `hooks/`
 //!   directories for executable hook files matching recognised lifecycle points.
 //! - **Execution** (REQ-016-003): Spawn hooks as child processes, write JSON
-//!   context to stdin, set ZETL_* environment variables, capture output, and
+//!   context to stdin, set ztl_* environment variables, capture output, and
 //!   report exit codes.
 //! - **Context** (CON-016-001): Serialise vault data to the JSON schema
 //!   written to hook stdin.
@@ -59,7 +59,7 @@ pub const HOOK_NAMES: &[&str] = &[
 pub enum HookSource {
     /// Hook from the active theme's `hooks/` directory.
     Theme,
-    /// Hook from `.zetl/hooks/`.
+    /// Hook from `.ztl/hooks/`.
     Vault,
 }
 
@@ -98,7 +98,7 @@ pub struct HookManifest {
 ///
 /// Scans two locations in order (REQ-016-001):
 /// 1. **Theme hooks:** `<theme_hooks_dir>/<hook-name>` (if provided)
-/// 2. **Vault hooks:** `<vault_root>/.zetl/hooks/<hook-name>`
+/// 2. **Vault hooks:** `<vault_root>/.ztl/hooks/<hook-name>`
 ///
 /// Only files whose name matches a recognised lifecycle point are considered.
 /// Unrecognised names are silently ignored (REQ-016-002).
@@ -132,7 +132,7 @@ pub fn discover_hooks_verbose(
     }
 
     // 2. Vault hooks
-    let vault_hooks_dir = vault_root.join(".zetl").join("hooks");
+    let vault_hooks_dir = vault_root.join(".ztl").join("hooks");
     if verbose {
         eprintln!(
             "[hooks] checking vault hooks dir: {}",
@@ -179,11 +179,11 @@ impl ThemeHooksDir {
 /// then falling back to bundled themes.
 ///
 /// Resolution order:
-/// 1. **Disk-installed:** `.zetl/themes/<name>/hooks/` — if this directory
+/// 1. **Disk-installed:** `.ztl/themes/<name>/hooks/` — if this directory
 ///    exists on disk, it is used directly.
 /// 2. **Bundled (cached):** If the theme is compiled into the binary and has
-///    hook files, they are extracted to `.zetl/cache/hooks/<theme>/` with
-///    executable permissions. The cache is refreshed when the zetl binary
+///    hook files, they are extracted to `.ztl/cache/hooks/<theme>/` with
+///    executable permissions. The cache is refreshed when the ztl binary
 ///    version changes.
 /// 3. **Bundled (temp fallback):** If the persistent cache cannot be written,
 ///    hooks are extracted to a temporary directory instead.
@@ -199,7 +199,7 @@ pub fn resolve_theme_hooks(vault_root: &Path, theme: &str) -> ThemeHooksDir {
 fn resolve_theme_hooks_versioned(
     vault_root: &Path,
     theme: &str,
-    zetl_version: &str,
+    ztl_version: &str,
 ) -> ThemeHooksDir {
     // 1. Disk-installed theme hooks
     if let Some(dir) = resolve_theme_hooks_dir(vault_root, theme) {
@@ -219,7 +219,7 @@ fn resolve_theme_hooks_versioned(
     }
 
     // Try persistent cache first
-    match extract_bundled_hooks_cached(vault_root, theme, &bundled_hooks, zetl_version) {
+    match extract_bundled_hooks_cached(vault_root, theme, &bundled_hooks, ztl_version) {
         Ok(path) => ThemeHooksDir {
             path: Some(path),
             _temp: None,
@@ -240,13 +240,13 @@ fn resolve_theme_hooks_versioned(
 
 /// Resolve the theme hooks directory path, if it exists on disk.
 ///
-/// For disk-installed themes: `.zetl/themes/<name>/hooks/`
+/// For disk-installed themes: `.ztl/themes/<name>/hooks/`
 /// Returns `None` if the directory does not exist.
 ///
 /// Prefer [`resolve_theme_hooks`] which also handles bundled themes.
 pub fn resolve_theme_hooks_dir(vault_root: &Path, theme: &str) -> Option<PathBuf> {
     let dir = vault_root
-        .join(".zetl")
+        .join(".ztl")
         .join("themes")
         .join(theme)
         .join("hooks");
@@ -273,16 +273,16 @@ pub fn hooks_for<'a>(manifest: &'a HookManifest, hook_name: &str) -> Vec<&'a Dis
 
 /// Environment context passed to hook processes.
 ///
-/// The executor sets `ZETL_HOOK` automatically from the hook's name.
+/// The executor sets `ztl_HOOK` automatically from the hook's name.
 /// Callers provide vault-level variables and any hook-specific extras
-/// (e.g. `ZETL_OUT_DIR` for build hooks, `ZETL_SAVED_FILE` for on-save).
+/// (e.g. `ztl_OUT_DIR` for build hooks, `ztl_SAVED_FILE` for on-save).
 pub struct HookEnv {
-    /// Absolute path to the vault root (working directory + `ZETL_VAULT_ROOT`).
+    /// Absolute path to the vault root (working directory + `ztl_VAULT_ROOT`).
     pub vault_root: PathBuf,
-    /// Active theme name (`ZETL_THEME`). Empty string if no theme.
+    /// Active theme name (`ztl_THEME`). Empty string if no theme.
     pub theme: String,
-    /// zetl version string (`ZETL_VERSION`).
-    pub zetl_version: String,
+    /// ztl version string (`ztl_VERSION`).
+    pub ztl_version: String,
     /// Additional hook-specific environment variables.
     pub extra_vars: Vec<(String, String)>,
 }
@@ -319,8 +319,8 @@ impl HookOutput {
 ///
 /// Spawns the hook as a child process with:
 /// - Working directory set to `env.vault_root`
-/// - `ZETL_HOOK` set to the hook's name
-/// - `ZETL_VAULT_ROOT`, `ZETL_THEME`, `ZETL_VERSION` from `env`
+/// - `ztl_HOOK` set to the hook's name
+/// - `ztl_VAULT_ROOT`, `ztl_THEME`, `ztl_VERSION` from `env`
 /// - Any additional variables from `env.extra_vars`
 /// - `context_json` written to stdin (then stdin closed)
 ///
@@ -376,14 +376,14 @@ fn execute_hook_with_timeout(
     let start = Instant::now();
     let timeout_secs = timeout.as_secs();
 
-    // Compute hook depth: read current ZETL_HOOK_DEPTH from env (or extra_vars),
+    // Compute hook depth: read current ztl_HOOK_DEPTH from env (or extra_vars),
     // default to 0, then increment for the child process (REQ-020-020).
     let current_depth: u32 = env
         .extra_vars
         .iter()
-        .find(|(k, _)| k == "ZETL_HOOK_DEPTH")
+        .find(|(k, _)| k == "ztl_HOOK_DEPTH")
         .and_then(|(_, v)| v.parse().ok())
-        .or_else(|| std::env::var("ZETL_HOOK_DEPTH").ok()?.parse().ok())
+        .or_else(|| std::env::var("ztl_HOOK_DEPTH").ok()?.parse().ok())
         .unwrap_or(0);
     let child_depth = current_depth.saturating_add(1);
 
@@ -392,14 +392,14 @@ fn execute_hook_with_timeout(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .env("ZETL_HOOK", &hook.name)
-        .env("ZETL_VAULT_ROOT", &env.vault_root)
-        .env("ZETL_THEME", &env.theme)
-        .env("ZETL_VERSION", &env.zetl_version)
-        .env("ZETL_HOOK_DEPTH", child_depth.to_string());
+        .env("ztl_HOOK", &hook.name)
+        .env("ztl_VAULT_ROOT", &env.vault_root)
+        .env("ztl_THEME", &env.theme)
+        .env("ztl_VERSION", &env.ztl_version)
+        .env("ztl_HOOK_DEPTH", child_depth.to_string());
 
     for (key, val) in &env.extra_vars {
-        if key == "ZETL_HOOK_DEPTH" {
+        if key == "ztl_HOOK_DEPTH" {
             continue; // Already set above with incremented value
         }
         cmd.env(key, val);
@@ -617,10 +617,10 @@ fn extract_bundled_hooks(
 
 /// Extract bundled hook files to a persistent cache directory with version tracking.
 ///
-/// Cache location: `<vault_root>/.zetl/cache/hooks/<theme>/`
-/// Version stamp: `<cache_dir>/.zetl_version`
+/// Cache location: `<vault_root>/.ztl/cache/hooks/<theme>/`
+/// Version stamp: `<cache_dir>/.ztl_version`
 ///
-/// If the cache directory exists and its version stamp matches `zetl_version`,
+/// If the cache directory exists and its version stamp matches `ztl_version`,
 /// the existing cache is reused without re-extraction. Otherwise the cache is
 /// cleared, hooks are re-written with executable permissions (`0o755`), and a
 /// fresh version stamp is written.
@@ -628,19 +628,19 @@ fn extract_bundled_hooks_cached(
     vault_root: &Path,
     theme: &str,
     hook_files: &[(String, Vec<u8>)],
-    zetl_version: &str,
+    ztl_version: &str,
 ) -> Result<PathBuf, std::io::Error> {
     let cache_dir = vault_root
-        .join(".zetl")
+        .join(".ztl")
         .join("cache")
         .join("hooks")
         .join(theme);
-    let version_file = cache_dir.join(".zetl_version");
+    let version_file = cache_dir.join(".ztl_version");
 
     // Check if cache is fresh
     if cache_dir.is_dir() {
         if let Ok(cached_version) = std::fs::read_to_string(&version_file) {
-            if cached_version.trim() == zetl_version {
+            if cached_version.trim() == ztl_version {
                 return Ok(cache_dir);
             }
         }
@@ -664,7 +664,7 @@ fn extract_bundled_hooks_cached(
     }
 
     // Write version stamp
-    std::fs::write(&version_file, zetl_version)?;
+    std::fs::write(&version_file, ztl_version)?;
 
     Ok(cache_dir)
 }
@@ -799,7 +799,7 @@ mod tests {
     #[test]
     fn discover_vault_hooks() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_hook(&hooks_dir, "post-build", true);
@@ -817,7 +817,7 @@ mod tests {
     #[test]
     fn warn_non_executable() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_hook(&hooks_dir, "post-build", false);
@@ -833,7 +833,7 @@ mod tests {
     #[test]
     fn ignore_unrecognised_names() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_hook(&hooks_dir, "post-build", true);
@@ -858,14 +858,14 @@ mod tests {
         let tmp = TempDir::new().unwrap();
 
         // Set up vault hooks
-        let vault_hooks = tmp.path().join(".zetl").join("hooks");
+        let vault_hooks = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&vault_hooks).unwrap();
         create_hook(&vault_hooks, "post-build", true);
 
         // Set up theme hooks
         let theme_hooks = tmp
             .path()
-            .join(".zetl")
+            .join(".ztl")
             .join("themes")
             .join("fountain")
             .join("hooks");
@@ -882,7 +882,7 @@ mod tests {
     #[test]
     fn hooks_for_filters_by_name() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_hook(&hooks_dir, "post-build", true);
@@ -904,7 +904,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let theme_hooks = tmp
             .path()
-            .join(".zetl")
+            .join(".ztl")
             .join("themes")
             .join("fountain")
             .join("hooks");
@@ -924,7 +924,7 @@ mod tests {
     #[test]
     fn all_hook_names_discovered() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         for name in HOOK_NAMES {
@@ -945,7 +945,7 @@ mod tests {
     #[test]
     fn skip_directories_in_hooks_dir() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         // Create a subdirectory named like a hook
@@ -973,7 +973,7 @@ mod tests {
         HookEnv {
             vault_root: vault_root.to_path_buf(),
             theme: "test-theme".to_string(),
-            zetl_version: "0.1.0-test".to_string(),
+            ztl_version: "0.1.0-test".to_string(),
             extra_vars: vec![],
         }
     }
@@ -981,7 +981,7 @@ mod tests {
     #[test]
     fn executor_receives_json_on_stdin() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         // Hook that reads stdin and writes it to a file
@@ -1006,7 +1006,7 @@ mod tests {
     #[test]
     fn executor_sets_working_directory() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         // Hook that prints pwd
@@ -1026,15 +1026,15 @@ mod tests {
     }
 
     #[test]
-    fn executor_sets_zetl_env_vars() {
+    fn executor_sets_ztl_env_vars() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_script(
             &hooks_dir,
             "post-build",
-            "#!/bin/sh\necho \"HOOK=$ZETL_HOOK\"\necho \"THEME=$ZETL_THEME\"\necho \"VERSION=$ZETL_VERSION\"\n",
+            "#!/bin/sh\necho \"HOOK=$ztl_HOOK\"\necho \"THEME=$ztl_THEME\"\necho \"VERSION=$ztl_VERSION\"\n",
         );
 
         let manifest = discover_hooks(tmp.path(), None);
@@ -1050,13 +1050,13 @@ mod tests {
     #[test]
     fn executor_sets_vault_root_env() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_script(
             &hooks_dir,
             "post-build",
-            "#!/bin/sh\necho \"$ZETL_VAULT_ROOT\"\n",
+            "#!/bin/sh\necho \"$ztl_VAULT_ROOT\"\n",
         );
 
         let manifest = discover_hooks(tmp.path(), None);
@@ -1074,13 +1074,13 @@ mod tests {
     #[test]
     fn executor_sets_extra_env_vars() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_script(
             &hooks_dir,
             "post-build",
-            "#!/bin/sh\necho \"OUTDIR=$ZETL_OUT_DIR\"\n",
+            "#!/bin/sh\necho \"OUTDIR=$ztl_OUT_DIR\"\n",
         );
 
         let manifest = discover_hooks(tmp.path(), None);
@@ -1088,7 +1088,7 @@ mod tests {
 
         let mut env = test_env(tmp.path());
         env.extra_vars
-            .push(("ZETL_OUT_DIR".to_string(), "/tmp/dist".to_string()));
+            .push(("ztl_OUT_DIR".to_string(), "/tmp/dist".to_string()));
 
         let result = execute_hook(hook, b"{}", &env).unwrap();
         assert!(result.success());
@@ -1098,7 +1098,7 @@ mod tests {
     #[test]
     fn executor_captures_exit_code_zero() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_script(&hooks_dir, "post-build", "#!/bin/sh\nexit 0\n");
@@ -1114,7 +1114,7 @@ mod tests {
     #[test]
     fn executor_captures_nonzero_exit() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_script(
@@ -1135,7 +1135,7 @@ mod tests {
     #[test]
     fn executor_captures_stdout_and_stderr() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_script(
@@ -1156,7 +1156,7 @@ mod tests {
     #[test]
     fn executor_reports_duration() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_script(&hooks_dir, "post-build", "#!/bin/sh\ntrue\n");
@@ -1172,7 +1172,7 @@ mod tests {
     #[test]
     fn executor_preserves_hook_metadata() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_script(&hooks_dir, "on-save", "#!/bin/sh\ntrue\n");
@@ -1189,7 +1189,7 @@ mod tests {
     #[test]
     fn run_hooks_executes_matching_hooks() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_script(
@@ -1211,7 +1211,7 @@ mod tests {
     #[test]
     fn run_hooks_returns_empty_for_no_match() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_script(&hooks_dir, "post-build", "#!/bin/sh\ntrue\n");
@@ -1226,7 +1226,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
 
         // Vault hook
-        let vault_hooks = tmp.path().join(".zetl").join("hooks");
+        let vault_hooks = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&vault_hooks).unwrap();
         create_script(&vault_hooks, "post-build", "#!/bin/sh\necho 'vault'\n");
 
@@ -1252,7 +1252,7 @@ mod tests {
     #[test]
     fn discover_hooks_verbose_returns_same_results() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_hook(&hooks_dir, "post-build", true);
@@ -1282,7 +1282,7 @@ mod tests {
     #[test]
     fn execute_hook_verbose_returns_same_results() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_script(
@@ -1303,7 +1303,7 @@ mod tests {
     #[test]
     fn run_hooks_verbose_returns_same_results() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_script(&hooks_dir, "post-build", "#!/bin/sh\necho 'ran'\n");
@@ -1323,7 +1323,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let theme_hooks = tmp
             .path()
-            .join(".zetl")
+            .join(".ztl")
             .join("themes")
             .join("my-theme")
             .join("hooks");
@@ -1348,7 +1348,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let theme_hooks = tmp
             .path()
-            .join(".zetl")
+            .join(".ztl")
             .join("themes")
             .join("default")
             .join("hooks");
@@ -1426,7 +1426,7 @@ mod tests {
     #[test]
     fn extract_cached_creates_hooks_and_version_stamp() {
         let tmp = TempDir::new().unwrap();
-        fs::create_dir_all(tmp.path().join(".zetl")).unwrap();
+        fs::create_dir_all(tmp.path().join(".ztl")).unwrap();
 
         let hook_files = vec![
             ("post-build".to_string(), b"#!/bin/sh\necho ok\n".to_vec()),
@@ -1437,12 +1437,12 @@ mod tests {
         assert!(result.is_ok());
 
         let cache_dir = result.unwrap();
-        assert_eq!(cache_dir, tmp.path().join(".zetl/cache/hooks/my-theme"));
+        assert_eq!(cache_dir, tmp.path().join(".ztl/cache/hooks/my-theme"));
         assert!(cache_dir.join("post-build").is_file());
         assert!(cache_dir.join("on-save").is_file());
-        assert!(cache_dir.join(".zetl_version").is_file());
+        assert!(cache_dir.join(".ztl_version").is_file());
 
-        let stamp = fs::read_to_string(cache_dir.join(".zetl_version")).unwrap();
+        let stamp = fs::read_to_string(cache_dir.join(".ztl_version")).unwrap();
         assert_eq!(stamp, "1.0.0");
 
         let content = fs::read_to_string(cache_dir.join("post-build")).unwrap();
@@ -1452,7 +1452,7 @@ mod tests {
     #[test]
     fn extract_cached_hooks_are_executable() {
         let tmp = TempDir::new().unwrap();
-        fs::create_dir_all(tmp.path().join(".zetl")).unwrap();
+        fs::create_dir_all(tmp.path().join(".ztl")).unwrap();
 
         let hook_files = vec![("post-build".to_string(), b"#!/bin/sh\necho ok\n".to_vec())];
 
@@ -1470,7 +1470,7 @@ mod tests {
     #[test]
     fn extract_cached_reuses_on_same_version() {
         let tmp = TempDir::new().unwrap();
-        fs::create_dir_all(tmp.path().join(".zetl")).unwrap();
+        fs::create_dir_all(tmp.path().join(".ztl")).unwrap();
 
         let hook_files = vec![("post-build".to_string(), b"#!/bin/sh\necho v1\n".to_vec())];
 
@@ -1493,7 +1493,7 @@ mod tests {
     #[test]
     fn extract_cached_refreshes_on_version_change() {
         let tmp = TempDir::new().unwrap();
-        fs::create_dir_all(tmp.path().join(".zetl")).unwrap();
+        fs::create_dir_all(tmp.path().join(".ztl")).unwrap();
 
         let hook_files = vec![("post-build".to_string(), b"#!/bin/sh\necho v1\n".to_vec())];
 
@@ -1511,14 +1511,14 @@ mod tests {
         let content = fs::read_to_string(dir2.join("post-build")).unwrap();
         assert_eq!(content, "#!/bin/sh\necho v2\n");
 
-        let stamp = fs::read_to_string(dir2.join(".zetl_version")).unwrap();
+        let stamp = fs::read_to_string(dir2.join(".ztl_version")).unwrap();
         assert_eq!(stamp, "2.0.0");
     }
 
     #[test]
     fn extract_cached_discoverable_by_hook_discovery() {
         let tmp = TempDir::new().unwrap();
-        fs::create_dir_all(tmp.path().join(".zetl")).unwrap();
+        fs::create_dir_all(tmp.path().join(".ztl")).unwrap();
 
         let hook_files = vec![("post-build".to_string(), b"#!/bin/sh\necho ok\n".to_vec())];
 
@@ -1535,7 +1535,7 @@ mod tests {
     #[test]
     fn resolve_theme_hooks_versioned_uses_cache() {
         let tmp = TempDir::new().unwrap();
-        fs::create_dir_all(tmp.path().join(".zetl")).unwrap();
+        fs::create_dir_all(tmp.path().join(".ztl")).unwrap();
 
         // "default" bundled theme has no hooks, so use a nonexistent theme
         // that won't have bundled hooks either. We test the flow via
@@ -1544,7 +1544,7 @@ mod tests {
         // disk-installed hooks.
         let theme_hooks = tmp
             .path()
-            .join(".zetl")
+            .join(".ztl")
             .join("themes")
             .join("test-theme")
             .join("hooks");
@@ -1561,7 +1561,7 @@ mod tests {
     #[test]
     fn hook_killed_on_timeout() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         // Hook that sleeps forever
@@ -1589,7 +1589,7 @@ mod tests {
     #[test]
     fn fast_hook_not_timed_out() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_script(&hooks_dir, "post-build", "#!/bin/sh\necho ok\n");
@@ -1620,22 +1620,22 @@ mod tests {
     // ── Hook depth (REQ-020-020) tests ───────────────────────────────────
 
     #[test]
-    fn hook_receives_zetl_hook_depth_env_var() {
+    fn hook_receives_ztl_hook_depth_env_var() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
-        // Script that prints the ZETL_HOOK_DEPTH env var
+        // Script that prints the ztl_HOOK_DEPTH env var
         create_script(
             &hooks_dir,
             "post-build",
-            "#!/bin/sh\necho \"depth=$ZETL_HOOK_DEPTH\"\n",
+            "#!/bin/sh\necho \"depth=$ztl_HOOK_DEPTH\"\n",
         );
 
         let manifest = discover_hooks(tmp.path(), None);
         let hook = &manifest.hooks[0];
 
-        // No ZETL_HOOK_DEPTH in extra_vars → inherits from process env (default 0),
+        // No ztl_HOOK_DEPTH in extra_vars → inherits from process env (default 0),
         // child gets depth 1
         let result = execute_hook(hook, b"{}", &test_env(tmp.path())).unwrap();
         assert!(result.success());
@@ -1649,24 +1649,24 @@ mod tests {
     #[test]
     fn hook_depth_increments_from_extra_vars() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_script(
             &hooks_dir,
             "on-save",
-            "#!/bin/sh\necho \"depth=$ZETL_HOOK_DEPTH\"\n",
+            "#!/bin/sh\necho \"depth=$ztl_HOOK_DEPTH\"\n",
         );
 
         let manifest = discover_hooks(tmp.path(), None);
         let hook = &manifest.hooks[0];
 
-        // Pass ZETL_HOOK_DEPTH=2 in extra_vars → child should get 3
+        // Pass ztl_HOOK_DEPTH=2 in extra_vars → child should get 3
         let env = HookEnv {
             vault_root: tmp.path().to_path_buf(),
             theme: "test".to_string(),
-            zetl_version: "0.1.0".to_string(),
-            extra_vars: vec![("ZETL_HOOK_DEPTH".into(), "2".into())],
+            ztl_version: "0.1.0".to_string(),
+            extra_vars: vec![("ztl_HOOK_DEPTH".into(), "2".into())],
         };
 
         let result = execute_hook(hook, b"{}", &env).unwrap();
@@ -1681,24 +1681,24 @@ mod tests {
     #[test]
     fn hook_depth_starts_at_one_from_zero_extra_var() {
         let tmp = TempDir::new().unwrap();
-        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        let hooks_dir = tmp.path().join(".ztl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
         create_script(
             &hooks_dir,
             "on-save",
-            "#!/bin/sh\necho \"depth=$ZETL_HOOK_DEPTH\"\n",
+            "#!/bin/sh\necho \"depth=$ztl_HOOK_DEPTH\"\n",
         );
 
         let manifest = discover_hooks(tmp.path(), None);
         let hook = &manifest.hooks[0];
 
-        // Pass ZETL_HOOK_DEPTH=0 (initial event) → child gets 1
+        // Pass ztl_HOOK_DEPTH=0 (initial event) → child gets 1
         let env = HookEnv {
             vault_root: tmp.path().to_path_buf(),
             theme: "test".to_string(),
-            zetl_version: "0.1.0".to_string(),
-            extra_vars: vec![("ZETL_HOOK_DEPTH".into(), "0".into())],
+            ztl_version: "0.1.0".to_string(),
+            extra_vars: vec![("ztl_HOOK_DEPTH".into(), "0".into())],
         };
 
         let result = execute_hook(hook, b"{}", &env).unwrap();

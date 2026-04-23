@@ -10,7 +10,7 @@ use std::fs;
 use std::path::Path;
 
 use tempfile::TempDir;
-use zetl::scanner::{scan_vault, ScanOptions};
+use ztl::scanner::{scan_vault, ScanOptions};
 
 fn write(root: &Path, rel: &str, body: &str) {
     let path = root.join(rel);
@@ -68,22 +68,22 @@ fn test_201_root_dotfile_is_scanned() {
     );
 }
 
-/// TEST-202: a `.zetlignore` containing `!.archive/` re-includes the
+/// TEST-202: a `.ztlignore` containing `!.archive/` re-includes the
 /// `.archive/` dir even though dotdirs are excluded by default.
 #[test]
-fn test_202_zetlignore_negation_overrides_default() {
+fn test_202_ztlignore_negation_overrides_default() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();
     write(root, "notes/a.md", "# A\n");
     write(root, ".archive/old.md", "# Old\n");
-    write(root, ".zetlignore", "!.archive/\n");
+    write(root, ".ztlignore", "!.archive/\n");
 
     let result = pages(root, &ScanOptions::default());
 
     assert!(result.contains("a"));
     assert!(
         result.contains("old"),
-        ".zetlignore !pattern should re-include .archive/: {result:?}"
+        ".ztlignore !pattern should re-include .archive/: {result:?}"
     );
 }
 
@@ -114,14 +114,14 @@ fn test_203_exclude_pattern_honoured() {
 }
 
 /// TEST-204: --include-hidden re-enables dotdir traversal, but the level-1
-/// hardcoded `.zetl/` force-ignore is still applied.
+/// hardcoded `.ztl/` force-ignore is still applied.
 #[test]
-fn test_204_include_hidden_restores_walk_but_keeps_zetl_force_ignore() {
+fn test_204_include_hidden_restores_walk_but_keeps_ztl_force_ignore() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();
     write(root, "notes/a.md", "# A\n");
     write(root, ".claude/x.md", "# X\n");
-    write(root, ".zetl/cache/y.md", "# Should never appear\n");
+    write(root, ".ztl/cache/y.md", "# Should never appear\n");
 
     let result = pages(root, &ScanOptions::default().with_include_hidden(true));
 
@@ -131,23 +131,23 @@ fn test_204_include_hidden_restores_walk_but_keeps_zetl_force_ignore() {
     );
     assert!(
         !result.contains("y"),
-        ".zetl/ must be force-ignored even with --include-hidden: {result:?}"
+        ".ztl/ must be force-ignored even with --include-hidden: {result:?}"
     );
 }
 
-/// TEST-205: precedence — CLI --exclude overrides .zetlignore negation.
+/// TEST-205: precedence — CLI --exclude overrides .ztlignore negation.
 #[test]
-fn test_205_cli_exclude_overrides_zetlignore_negation() {
+fn test_205_cli_exclude_overrides_ztlignore_negation() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();
     write(root, ".foo/a.md", "# A\n");
-    write(root, ".zetlignore", "!.foo/\n");
+    write(root, ".ztlignore", "!.foo/\n");
 
-    // .zetlignore alone re-includes .foo/.
-    let with_zetlignore_only = pages(root, &ScanOptions::default());
+    // .ztlignore alone re-includes .foo/.
+    let with_ztlignore_only = pages(root, &ScanOptions::default());
     assert!(
-        with_zetlignore_only.contains("a"),
-        ".zetlignore negation should re-include .foo/: {with_zetlignore_only:?}"
+        with_ztlignore_only.contains("a"),
+        ".ztlignore negation should re-include .foo/: {with_ztlignore_only:?}"
     );
 
     // Adding CLI --exclude '.foo/' wins.
@@ -157,7 +157,7 @@ fn test_205_cli_exclude_overrides_zetlignore_negation() {
     );
     assert!(
         !with_cli_exclude.contains("a"),
-        "CLI --exclude should beat .zetlignore re-include: {with_cli_exclude:?}"
+        "CLI --exclude should beat .ztlignore re-include: {with_cli_exclude:?}"
     );
 }
 
@@ -173,13 +173,13 @@ fn test_cli_exclude_negation_is_rejected() {
     let err = scan_vault(root, &opts).unwrap_err();
     let msg = err.to_string();
     assert!(
-        msg.contains("--exclude") && msg.contains("!.archive/") && msg.contains(".zetlignore"),
-        "expected diagnostic naming the offending pattern and pointing at .zetlignore: {msg}"
+        msg.contains("--exclude") && msg.contains("!.archive/") && msg.contains(".ztlignore"),
+        "expected diagnostic naming the offending pattern and pointing at .ztlignore: {msg}"
     );
 }
 
 /// Defect 3 (review) / REQ-205 level 3: a `.gitignore` with `!.archive/`
-/// must re-include the dotdir even with no `.zetlignore`.
+/// must re-include the dotdir even with no `.ztlignore`.
 #[test]
 fn test_gitignore_negation_overrides_dotdir_default() {
     let tmp = TempDir::new().unwrap();
@@ -197,7 +197,7 @@ fn test_gitignore_negation_overrides_dotdir_default() {
 }
 
 /// Defect 4 (review) / REQ-205 level 1: `--exclude` patterns that touch
-/// `.git/`, `.zetl/`, or `node_modules/` must not let the walker descend
+/// `.git/`, `.ztl/`, or `node_modules/` must not let the walker descend
 /// into those directories. The hardcoded force-ignores are added to the
 /// Override AFTER user patterns precisely so they win last-match-wins.
 #[test]
@@ -206,13 +206,13 @@ fn test_user_exclude_cannot_unlock_force_ignored_dirs() {
     let root = tmp.path();
     write(root, "notes/a.md", "# A");
     write(root, ".git/HEAD-fake.md", "# git");
-    write(root, ".zetl/cache.md", "# zetl");
+    write(root, ".ztl/cache.md", "# ztl");
     write(root, "node_modules/lib.md", "# nm");
 
     // A user pattern that lexically overlaps with .git/ subpaths must
     // not cause the override stack to whitelist .git/ traversal.
     let opts = ScanOptions::default()
-        .with_exclude_patterns(vec![".git/HEAD-fake".into(), ".zetl/cache".into()]);
+        .with_exclude_patterns(vec![".git/HEAD-fake".into(), ".ztl/cache".into()]);
     let result = pages(root, &opts);
     assert!(result.contains("a"));
     for page in &result {
@@ -242,7 +242,7 @@ fn test_dot_rooted_vault_is_walked() {
     );
 }
 
-/// OBS-200: verbose mode emits `[zetl] scan: skipped <path> reason=<r>`
+/// OBS-200: verbose mode emits `[ztl] scan: skipped <path> reason=<r>`
 /// lines on stderr for each excluded entry. The reason taxonomy is part
 /// of the contract — verify a representative sample.
 #[test]
@@ -256,15 +256,15 @@ fn test_obs_200_verbose_emits_skip_lines() {
     let root = tmp.path();
     write(root, "notes/a.md", "# A");
     write(root, ".claude/leak.md", "# leak");
-    write(root, ".zetl/internal.md", "# zetl");
+    write(root, ".ztl/internal.md", "# ztl");
 
     let out_dir = tmp.path().join("dist");
-    let bin = env!("CARGO_BIN_EXE_zetl");
+    let bin = env!("CARGO_BIN_EXE_ztl");
     let output = Command::new(bin)
         .args(["-d", root.to_str().unwrap(), "--verbose", "build", "-o"])
         .arg(&out_dir)
         .output()
-        .expect("failed to execute zetl binary");
+        .expect("failed to execute ztl binary");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
@@ -274,12 +274,12 @@ fn test_obs_200_verbose_emits_skip_lines() {
         stderr
     );
     // The .claude/ directory exits via the dotdir branch of filter_entry.
-    // (The hardcoded force-ignores .git/ / .zetl/ / node_modules/ are
+    // (The hardcoded force-ignores .git/ / .ztl/ / node_modules/ are
     // removed by the WalkBuilder Override before filter_entry runs, so
     // they don't emit OBS-200 lines from the scanner; the watcher path
     // does emit "hardcoded" via classify_entry_os.)
     assert!(
-        stderr.contains("[zetl] scan: skipped")
+        stderr.contains("[ztl] scan: skipped")
             && stderr.contains(".claude")
             && stderr.contains("reason=dotdir"),
         "expected OBS-200 dotdir skip line for .claude in stderr; got: {stderr}"
@@ -354,7 +354,7 @@ fn test_207_no_unannotated_default_scan_options_in_production() {
     );
 }
 
-/// Bonus: explicit guard that nothing under `.git/`, `.zetl/`, or
+/// Bonus: explicit guard that nothing under `.git/`, `.ztl/`, or
 /// `node_modules/` ever appears, regardless of options.
 #[test]
 fn test_force_ignored_dirs_never_scanned() {
@@ -362,7 +362,7 @@ fn test_force_ignored_dirs_never_scanned() {
     let root = tmp.path();
     write(root, "notes/a.md", "# A\n");
     write(root, ".git/HEAD-fake.md", "# git\n");
-    write(root, ".zetl/cache.md", "# zetl\n");
+    write(root, ".ztl/cache.md", "# ztl\n");
     write(root, "node_modules/lib.md", "# nm\n");
 
     for opts in [

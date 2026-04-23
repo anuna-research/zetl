@@ -113,7 +113,7 @@ function resolveSplitKeyFactor(): SplitKeySecondFactor | null {
   if (raw === "spoken-phrase" || raw === "qr") return raw;
   if (typeof console !== "undefined" && typeof console.warn === "function") {
     console.warn(
-      `zetl: unknown [access.split_key] second_factor ${JSON.stringify(raw)}; disabling split-key support for this bundle`,
+      `ztl: unknown [access.split_key] second_factor ${JSON.stringify(raw)}; disabling split-key support for this bundle`,
     );
   }
   return null;
@@ -154,7 +154,7 @@ const defaultPromptHalf2: SplitKeyPrompt = async (factor) => {
 
 declare global {
   interface Window {
-    __zetlCapShim?: {
+    __ztlCapShim?: {
       renderCurrentPage: typeof renderCurrentPage;
       forgetBinding: typeof forgetBinding;
     };
@@ -162,7 +162,7 @@ declare global {
 }
 
 if (typeof window !== "undefined") {
-  window.__zetlCapShim = { renderCurrentPage, forgetBinding };
+  window.__ztlCapShim = { renderCurrentPage, forgetBinding };
   const start = () => {
     void renderCurrentPage();
   };

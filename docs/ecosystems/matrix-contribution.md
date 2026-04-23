@@ -1,15 +1,15 @@
-# Contributing to the zetl ecosystem matrix
+# Contributing to the ztl ecosystem matrix
 
 This doc is the authoritative tier-promotion checklist referenced by
 SPEC-033 §REQ-3311. Matrix entries live in
-[`tools/zetl-ecosystem-matrix.toml`](../../tools/zetl-ecosystem-matrix.toml);
+[`tools/ztl-ecosystem-matrix.toml`](../../tools/ztl-ecosystem-matrix.toml);
 their canary fixtures live under
 [`tests/ecosystem-fixtures/<ecosystem>/<plugin>/`](../../tests/ecosystem-fixtures/).
 
 The matrix is the surface the user consults when they ask
-*"is zetl going to silently eat my Wikilinks if I plug in
+*"is ztl going to silently eat my Wikilinks if I plug in
 pandoc-crossref?"* — tier is the answer. A row at `supported` says
-*zetl has run the fixture end-to-end and the declared behavioural
+*ztl has run the fixture end-to-end and the declared behavioural
 contract holds*. A row at `experimental` says *we've documented the
 plugin and wired a fixture, but the contract is inferred, not
 verified*. Moving a row up the ladder is how you make that answer

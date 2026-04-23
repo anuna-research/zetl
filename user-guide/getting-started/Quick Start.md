@@ -5,26 +5,26 @@ tags: [tutorial, getting-started]
 
 # Quick Start
 
-Sixty seconds from install to first result. This page uses the `demo-vault/` bundled with the zetl repo — a self-referential knowledge base about zetl itself. Run each command; what you see should match what's described.
+Sixty seconds from install to first result. This page uses the `demo-vault/` bundled with the ztl repo — a self-referential knowledge base about ztl itself. Run each command; what you see should match what's described.
 
-## Install zetl
+## Install ztl
 
 **macOS / Linux:**
 
 ```bash
-curl -fsSL https://files.anuna.io/zetl/latest/install.sh | bash
+curl -fsSL https://files.anuna.io/ztl/latest/install.sh | bash
 ```
 
-**Windows:** download [zetl-windows-x86_64.zip](https://files.anuna.io/zetl/latest/zetl-windows-x86_64.zip), extract `zetl.exe`, and add it to your `PATH`.
+**Windows:** download [ztl-windows-x86_64.zip](https://files.anuna.io/ztl/latest/ztl-windows-x86_64.zip), extract `ztl.exe`, and add it to your `PATH`.
 
-The installer puts `zetl` in `~/.local/bin`, generates the man page, and wires up shell completions. Full details, feature flags, and source-build instructions: [[Installation]].
+The installer puts `ztl` in `~/.local/bin`, generates the man page, and wires up shell completions. Full details, feature flags, and source-build instructions: [[Installation]].
 
 ## Get the demo vault
 
-Clone the zetl repo to get `demo-vault/`:
+Clone the ztl repo to get `demo-vault/`:
 
 ```bash
-git clone https://codeberg.org/anuna/zetl && cd zetl
+git clone https://codeberg.org/anuna/ztl && cd ztl
 ls demo-vault/
 # architecture/  concepts/  decisions/  features/  theories/  Demo Script.md ...
 ```
@@ -32,10 +32,10 @@ ls demo-vault/
 ## Build the index
 
 ```bash
-zetl -d ./demo-vault index
+ztl -d ./demo-vault index
 ```
 
-You'll see a one-line summary and a JSON block (zetl auto-detects JSON when output is redirected; in a terminal it prints a table). Something like:
+You'll see a one-line summary and a JSON block (ztl auto-detects JSON when output is redirected; in a terminal it prints a table). Something like:
 
 ```json
 {
@@ -47,14 +47,14 @@ You'll see a one-line summary and a JSON block (zetl auto-detects JSON when outp
 }
 ```
 
-27 files, 152 wikilinks, 2 dead links. The index now lives in `demo-vault/.zetl/` and is reused on subsequent runs — zetl only reparses files whose mtime or hash changed.
+27 files, 152 wikilinks, 2 dead links. The index now lives in `demo-vault/.ztl/` and is reused on subsequent runs — ztl only reparses files whose mtime or hash changed.
 
 ## Follow a link
 
 Every Markdown file that mentions `[[Scanner]]` gets threaded into the graph. Ask what *Scanner* points at:
 
 ```bash
-zetl -d ./demo-vault links "Scanner"
+ztl -d ./demo-vault links "Scanner"
 ```
 
 In a terminal you'll get a table:
@@ -79,7 +79,7 @@ Each row is one wikilink, with the line number in the source file so you can jum
 Which notes point at `Cache` — and which notes point at *those* notes?
 
 ```bash
-zetl -d ./demo-vault backlinks "Cache" --depth 2
+ztl -d ./demo-vault backlinks "Cache" --depth 2
 ```
 
 `--depth 2` means "include second-hop citations." You'll see direct backlinks (hop 1) and transitive ones (hop 2) labelled so you know which is which.
@@ -87,7 +87,7 @@ zetl -d ./demo-vault backlinks "Cache" --depth 2
 ## Open the web UI
 
 ```bash
-zetl -d ./demo-vault serve
+ztl -d ./demo-vault serve
 # Serving on http://localhost:3000
 ```
 
@@ -97,10 +97,10 @@ Browse to the URL. You get a sidebar with every page, rendered Markdown, a backl
 
 > **Requires `--features reason` at install time.** See [[Installation]].
 
-The demo vault has SPL facts and rules sprinkled through its pages — zetl's reasoning engine pulls them out and draws conclusions.
+The demo vault has SPL facts and rules sprinkled through its pages — ztl's reasoning engine pulls them out and draws conclusions.
 
 ```bash
-zetl -d ./demo-vault reason status
+ztl -d ./demo-vault reason status
 ```
 
 You'll see a theory summary and a list of conclusions, each labelled with one of `+D` (definitely provable), `-D` (definitely not), `+d` (defeasibly provable), or `-d` (defeasibly not), along with the source file and line number that grounds each one. For example:
@@ -121,15 +121,15 @@ Theory: 46 facts, 24 rules, 0 defeaters, 0 superiority relations from 18 files
 Want to know *why* `release-candidate` holds? Ask for the proof tree:
 
 ```bash
-zetl -d ./demo-vault reason explain "release-candidate" --format natural
+ztl -d ./demo-vault reason explain "release-candidate" --format natural
 ```
 
 ## That's the loop
 
-1. `zetl index` to scan.
-2. `zetl links` / `zetl backlinks` / `zetl search` to query.
-3. `zetl serve` or `zetl view` to read.
-4. `zetl reason` to draw conclusions (if you've enabled that feature).
+1. `ztl index` to scan.
+2. `ztl links` / `ztl backlinks` / `ztl search` to query.
+3. `ztl serve` or `ztl view` to read.
+4. `ztl reason` to draw conclusions (if you've enabled that feature).
 
 Next up: set up your own vault in [[Your First Vault]], or skim every command in the [[CLI Overview]].
 

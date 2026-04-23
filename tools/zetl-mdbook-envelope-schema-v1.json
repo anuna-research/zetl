@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://zetl.codeberg.page/schema/mdbook-envelope-v1.json",
-  "title": "zetl mdBook preprocessor envelope v1",
-  "description": "JSON shape exchanged with mdBook preprocessors per SPEC-033 REQ-3309 / CON-3309. Implements mdBook's own `[Context, Book]` protocol (CON-3304): the host writes a 2-element array to the preprocessor's stdin and reads back a `Book` on stdout. Version tracks the zetl adapter, not mdBook — the embedded `mdbook_version` field records which mdBook protocol version the envelope conforms to.",
+  "$id": "https://ztl.codeberg.page/schema/mdbook-envelope-v1.json",
+  "title": "ztl mdBook preprocessor envelope v1",
+  "description": "JSON shape exchanged with mdBook preprocessors per SPEC-033 REQ-3309 / CON-3309. Implements mdBook's own `[Context, Book]` protocol (CON-3304): the host writes a 2-element array to the preprocessor's stdin and reads back a `Book` on stdout. Version tracks the ztl adapter, not mdBook — the embedded `mdbook_version` field records which mdBook protocol version the envelope conforms to.",
   "type": "array",
   "prefixItems": [
     { "$ref": "#/$defs/Context" },
@@ -14,12 +14,12 @@
   "$defs": {
     "Context": {
       "type": "object",
-      "description": "mdBook preprocessor invocation context (first array element). Fields mirror mdBook's internal `PreprocessorContext` struct; zetl constructs synthetic values because there is no on-disk book.toml.",
+      "description": "mdBook preprocessor invocation context (first array element). Fields mirror mdBook's internal `PreprocessorContext` struct; ztl constructs synthetic values because there is no on-disk book.toml.",
       "required": ["root", "config", "renderer", "mdbook_version"],
       "properties": {
         "root": {
           "type": "string",
-          "description": "Absolute or vault-relative path to the book root. zetl passes the vault root."
+          "description": "Absolute or vault-relative path to the book root. ztl passes the vault root."
         },
         "config": {
           "type": "object",
@@ -36,7 +36,7 @@
             },
             "preprocessor": {
               "type": "object",
-              "description": "Preprocessor-specific config block read from book.toml's `[preprocessor.<name>]` tables. zetl synthesises an empty object; preprocessors requiring custom config are currently unsupported (tracked in the compat matrix)."
+              "description": "Preprocessor-specific config block read from book.toml's `[preprocessor.<name>]` tables. ztl synthesises an empty object; preprocessors requiring custom config are currently unsupported (tracked in the compat matrix)."
             }
           }
         },
@@ -65,7 +65,7 @@
       }
     },
     "BookItem": {
-      "description": "One entry in `book.sections`. The envelope v1 emits only `Chapter` items; mdBook itself also supports `PartTitle` and `Separator`, which zetl does not produce and does not pattern-match when reading back preprocessor output.",
+      "description": "One entry in `book.sections`. The envelope v1 emits only `Chapter` items; mdBook itself also supports `PartTitle` and `Separator`, which ztl does not produce and does not pattern-match when reading back preprocessor output.",
       "oneOf": [
         {
           "type": "object",
@@ -103,7 +103,7 @@
           "description": "Raw chapter Markdown; the field preprocessors rewrite."
         },
         "number": {
-          "description": "Section number; zetl emits null (no auto-numbering) but mdBook-mermaid and similar may set it on the way back.",
+          "description": "Section number; ztl emits null (no auto-numbering) but mdBook-mermaid and similar may set it on the way back.",
           "oneOf": [
             { "type": "null" },
             { "type": "array", "items": { "type": "integer", "minimum": 0 } }
@@ -111,18 +111,18 @@
         },
         "sub_items": {
           "type": "array",
-          "description": "Nested chapters. zetl emits an empty array for per-page scope; preprocessors like mdbook-toc may add entries on the way back.",
+          "description": "Nested chapters. ztl emits an empty array for per-page scope; preprocessors like mdbook-toc may add entries on the way back.",
           "items": { "$ref": "#/$defs/BookItem" }
         },
         "path": {
-          "description": "Vault-relative chapter path; zetl uses `<slug>.md`. May be null for Draft chapters.",
+          "description": "Vault-relative chapter path; ztl uses `<slug>.md`. May be null for Draft chapters.",
           "oneOf": [
             { "type": "string" },
             { "type": "null" }
           ]
         },
         "source_path": {
-          "description": "Source-file path; zetl copies `path` here.",
+          "description": "Source-file path; ztl copies `path` here.",
           "oneOf": [
             { "type": "string" },
             { "type": "null" }

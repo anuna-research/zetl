@@ -72,7 +72,7 @@ pub enum Probe {
     Regex {
         regex: Regex,
         /// Original pattern (without the `re:` prefix). Preserved for
-        /// diagnostics and `zetl hook dry-run`.
+        /// diagnostics and `ztl hook dry-run`.
         pattern: String,
     },
 }
@@ -249,7 +249,7 @@ impl CompiledSelector {
     }
 
     /// Return the number of compiled content probes. Useful for
-    /// `zetl hook dry-run` / coverage diagnostics.
+    /// `ztl hook dry-run` / coverage diagnostics.
     pub fn probe_count(&self) -> usize {
         self.content_probes.len()
     }

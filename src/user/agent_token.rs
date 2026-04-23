@@ -1,7 +1,7 @@
 //! Agent token derivation and verification (REQ-020-004, REQ-020-019, CON-020-003).
 //!
 //! Token format: `base64url(user_id_bytes || generation_byte || ed25519_signature)`
-//! where signature covers `b"zetl-agent-v1-" || user_id || generation`.
+//! where signature covers `b"ztl-agent-v1-" || user_id || generation`.
 //!
 //! Size: up to 64 bytes (user_id padded/truncated to 64) + 1 byte (generation) + 64 bytes (sig)
 //! = 129 bytes → 172 base64url characters.
@@ -19,7 +19,7 @@ use ed25519_dalek::{Signer, Verifier};
 const USER_ID_LEN: usize = 64;
 
 /// Domain separator prefix for the signed message.
-const DOMAIN_PREFIX: &[u8] = b"zetl-agent-v1-";
+const DOMAIN_PREFIX: &[u8] = b"ztl-agent-v1-";
 
 /// Generate an agent token from a BIP39 mnemonic, user ID, and generation counter.
 ///

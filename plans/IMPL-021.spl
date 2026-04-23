@@ -1,15 +1,15 @@
-;; IMPL-021: zetl mcp — Model Context Protocol Server
+;; IMPL-021: ztl mcp — Model Context Protocol Server
 ;; Implements SPEC-021 v0.2.0
 
 (meta plan
   (id "IMPL-021")
-  (title "zetl mcp — MCP Server for Graph-Native Knowledge Tools")
+  (title "ztl mcp — MCP Server for Graph-Native Knowledge Tools")
   (version "1.0.0")
   (status "active")
   (created "2026-04-07")
   (author "agent:claude")
   (spec "SPEC-021")
-  (description "Implement MCP server exposing zetl's graph, search, and reasoning as typed tools. Supports stdio and HTTP transports with user-signed JWT delegation auth."))
+  (description "Implement MCP server exposing ztl's graph, search, and reasoning as typed tools. Supports stdio and HTTP transports with user-signed JWT delegation auth."))
 
 ;; ── Agents ──────────────────────────────────────────────
 (given agent-claude-available)
@@ -95,7 +95,7 @@
 
 (meta task-resources
   (description "Implement MCP resource handlers: resources/list and resources/read for vault pages")
-  (acceptance "resources/list returns all pages with zetl:// URIs; resources/read returns markdown content"))
+  (acceptance "resources/list returns all pages with ztl:// URIs; resources/read returns markdown content"))
 
 (meta task-stdio
   (description "Implement stdio transport: JSON-RPC 2.0 over stdin/stdout, tool dispatch, clean EOF shutdown")
@@ -106,12 +106,12 @@
   (acceptance "HTTP transport accepts MCP requests; SSE stream opens; concurrent clients work; CORS headers set"))
 
 (meta task-auth-core
-  (description "Implement JWT auth middleware: decode zetl-delegate+jwt, verify ed25519 sig, check issuer, attach DelegateContext, enforce tool/scope per call")
+  (description "Implement JWT auth middleware: decode ztl-delegate+jwt, verify ed25519 sig, check issuer, attach DelegateContext, enforce tool/scope per call")
   (acceptance "Valid JWT passes; expired rejected; unknown issuer rejected; tool scope enforced; INSUFFICIENT_CAPABILITY on scope violation"))
 
 (meta task-delegate-cmd
-  (description "Implement zetl delegate CLI command: read stored identity key, sign JWT with tools/scope/exp claims, --mnemonic fallback")
-  (acceptance "zetl delegate outputs valid JWT; --tools and --scope restrict claims; --expiry sets exp; --mnemonic fallback works"))
+  (description "Implement ztl delegate CLI command: read stored identity key, sign JWT with tools/scope/exp claims, --mnemonic fallback")
+  (acceptance "ztl delegate outputs valid JWT; --tools and --scope restrict claims; --expiry sets exp; --mnemonic fallback works"))
 
 (meta task-bind-safety
   (description "Implement network bind safety: non-loopback requires auth or --insecure, security warnings on stderr")

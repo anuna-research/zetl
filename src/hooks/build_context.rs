@@ -6,7 +6,7 @@
 //! - **Session** — [`BuildMode`] (build vs. serve), `verbose`, `at`.
 //! - **Locations** — `vault_root`, `out_dir` (`None` under serve),
 //!   `hook_path`, `extension_id`.
-//! - **Identity** — active `theme` name, zetl binary version, AST schema
+//! - **Identity** — active `theme` name, ztl binary version, AST schema
 //!   version ([`crate::hooks::ast::AST_VERSION`]).
 //! - **Page** — [`PageMeta`] with name, relative path, slug, frontmatter.
 //! - **Build-data** — a read-only JSON snapshot of the shared key/value
@@ -21,7 +21,7 @@
 //! names REQ-3220 specifies (`vault_root`, `out_dir`, …) so the wire shape
 //! and the Rust shape stay locked together — one `#[derive]` covers both.
 //!
-//! The `ZETL_*` environment variables REQ-3220 requires for subprocess hooks
+//! The `ztl_*` environment variables REQ-3220 requires for subprocess hooks
 //! are derived from this struct by [`BuildContext::env_vars`].
 
 use std::path::{Path, PathBuf};
@@ -34,7 +34,7 @@ use crate::hooks::build_data::PageView;
 
 /// Run mode the build is currently operating in.
 ///
-/// Mirrors the REQ-3220 `ZETL_MODE` values directly so the env-var export
+/// Mirrors the REQ-3220 `ztl_MODE` values directly so the env-var export
 /// path is a single lookup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -44,7 +44,7 @@ pub enum BuildMode {
 }
 
 impl BuildMode {
-    /// Stable on-the-wire spelling matching REQ-3220's `ZETL_MODE` contract.
+    /// Stable on-the-wire spelling matching REQ-3220's `ztl_MODE` contract.
     pub fn as_str(self) -> &'static str {
         match self {
             BuildMode::Build => "build",
@@ -97,9 +97,9 @@ impl PageMeta {
 /// Context passed to every render-pipeline hook invocation (REQ-3220).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BuildContext {
-    /// `"build"` under `zetl build`, `"serve"` under `zetl serve`.
+    /// `"build"` under `ztl build`, `"serve"` under `ztl serve`.
     pub mode: BuildMode,
-    /// Absolute path to the vault root (REQ-3220 `ZETL_VAULT_ROOT`).
+    /// Absolute path to the vault root (REQ-3220 `ztl_VAULT_ROOT`).
     pub vault_root: PathBuf,
     /// Active theme name. Empty string when no theme is configured.
     pub theme: String,
@@ -108,13 +108,13 @@ pub struct BuildContext {
     pub out_dir: Option<PathBuf>,
     /// Whether the user requested verbose logging (`--verbose`).
     pub verbose: bool,
-    /// Historical-build timestamp if `zetl build --at <expr>` is in effect,
+    /// Historical-build timestamp if `ztl build --at <expr>` is in effect,
     /// else `None` — the field is omitted from the JSON payload so the
     /// REQ-3220 "else absent" contract holds exactly.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub at: Option<String>,
     /// Absolute path of the hook's own executable (REQ-3220
-    /// `ZETL_HOOK_PATH`). `None` for in-process Rust pipeline hooks;
+    /// `ztl_HOOK_PATH`). `None` for in-process Rust pipeline hooks;
     /// populated for subprocess dispatch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hook_path: Option<PathBuf>,
@@ -123,8 +123,8 @@ pub struct BuildContext {
     /// assigned one (e.g. the in-process scaffolding fixtures).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extension_id: Option<String>,
-    /// zetl binary version string (REQ-3220 `ZETL_VERSION`).
-    pub zetl_version: String,
+    /// ztl binary version string (REQ-3220 `ztl_VERSION`).
+    pub ztl_version: String,
     /// AST schema version the pipeline is emitting at the transform
     /// boundary — tracks [`AST_VERSION`] at the call site so hooks
     /// receiving older or newer shapes can reject loudly.
@@ -143,7 +143,7 @@ fn empty_object() -> Value {
 }
 
 impl BuildContext {
-    /// Construct a context seeded with the zetl binary version string and
+    /// Construct a context seeded with the ztl binary version string and
     /// the current [`AST_VERSION`] constant.
     ///
     /// Callers populate the remaining fields by chained setters (the
@@ -159,7 +159,7 @@ impl BuildContext {
             at: None,
             hook_path: None,
             extension_id: None,
-            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+            ztl_version: env!("CARGO_PKG_VERSION").to_string(),
             schema_version: AST_VERSION.to_string(),
             page,
             build_data: empty_object(),
@@ -205,13 +205,13 @@ impl BuildContext {
         self
     }
 
-    /// Builder-style setter for `ZETL_HOOK_PATH`.
+    /// Builder-style setter for `ztl_HOOK_PATH`.
     pub fn with_hook_path(mut self, hook_path: impl Into<PathBuf>) -> Self {
         self.hook_path = Some(hook_path.into());
         self
     }
 
-    /// Builder-style setter for `ZETL_EXTENSION_ID`.
+    /// Builder-style setter for `ztl_EXTENSION_ID`.
     pub fn with_extension_id(mut self, extension_id: impl Into<String>) -> Self {
         self.extension_id = Some(extension_id.into());
         self
@@ -230,57 +230,57 @@ impl BuildContext {
         self.build_data.get(extension_id).and_then(|m| m.get(key))
     }
 
-    /// Environment variables REQ-3220 requires zetl to set before spawning
+    /// Environment variables REQ-3220 requires ztl to set before spawning
     /// a subprocess hook.
     ///
-    /// `ZETL_OUT_DIR` is emitted as `""` when `out_dir` is `None` (serve
+    /// `ztl_OUT_DIR` is emitted as `""` when `out_dir` is `None` (serve
     /// mode) — env vars can't be `null`, and REQ-3220's wording
     /// ("null under serve") refers to the JSON payload. Callers wanting
     /// to distinguish "unset" from "empty" should consult
     /// [`Self::out_dir`] directly.
     ///
     /// Per REQ-3215 the binary version and AST schema version ship as two
-    /// independent strings: `ZETL_VERSION` tracks the zetl release train
-    /// and changes every build; `ZETL_AST_SCHEMA_VERSION` tracks the AST
+    /// independent strings: `ztl_VERSION` tracks the ztl release train
+    /// and changes every build; `ztl_AST_SCHEMA_VERSION` tracks the AST
     /// shape and only moves when [`AST_VERSION`] does. Hook authors pin
     /// against the schema version to survive non-AST-breaking binary
     /// upgrades.
     pub fn env_vars(&self) -> Vec<(String, String)> {
         let mut vars = vec![
-            ("ZETL_MODE".to_string(), self.mode.as_str().to_string()),
-            ("ZETL_THEME".to_string(), self.theme.clone()),
+            ("ztl_MODE".to_string(), self.mode.as_str().to_string()),
+            ("ztl_THEME".to_string(), self.theme.clone()),
             (
-                "ZETL_VAULT_ROOT".to_string(),
+                "ztl_VAULT_ROOT".to_string(),
                 self.vault_root.to_string_lossy().into_owned(),
             ),
             (
-                "ZETL_OUT_DIR".to_string(),
+                "ztl_OUT_DIR".to_string(),
                 self.out_dir
                     .as_ref()
                     .map(|p| p.to_string_lossy().into_owned())
                     .unwrap_or_default(),
             ),
             (
-                "ZETL_VERBOSE".to_string(),
+                "ztl_VERBOSE".to_string(),
                 if self.verbose { "true" } else { "false" }.to_string(),
             ),
-            ("ZETL_VERSION".to_string(), self.zetl_version.clone()),
+            ("ztl_VERSION".to_string(), self.ztl_version.clone()),
             (
-                "ZETL_AST_SCHEMA_VERSION".to_string(),
+                "ztl_AST_SCHEMA_VERSION".to_string(),
                 self.schema_version.clone(),
             ),
         ];
         if let Some(at) = &self.at {
-            vars.push(("ZETL_AT".to_string(), at.clone()));
+            vars.push(("ztl_AT".to_string(), at.clone()));
         }
         if let Some(hook_path) = &self.hook_path {
             vars.push((
-                "ZETL_HOOK_PATH".to_string(),
+                "ztl_HOOK_PATH".to_string(),
                 hook_path.to_string_lossy().into_owned(),
             ));
         }
         if let Some(ext_id) = &self.extension_id {
-            vars.push(("ZETL_EXTENSION_ID".to_string(), ext_id.clone()));
+            vars.push(("ztl_EXTENSION_ID".to_string(), ext_id.clone()));
         }
         vars
     }
@@ -321,7 +321,7 @@ mod tests {
             .with_out_dir("/tmp/vault/_site")
             .with_verbose(true)
             .with_at("2026-04-01T00:00:00Z")
-            .with_hook_path("/opt/zetl/hooks/my-hook")
+            .with_hook_path("/opt/ztl/hooks/my-hook")
             .with_extension_id("my-hook");
 
         let json = serde_json::to_value(&ctx).unwrap();
@@ -332,9 +332,9 @@ mod tests {
         assert_eq!(json["out_dir"], "/tmp/vault/_site");
         assert_eq!(json["verbose"], true);
         assert_eq!(json["at"], "2026-04-01T00:00:00Z");
-        assert_eq!(json["hook_path"], "/opt/zetl/hooks/my-hook");
+        assert_eq!(json["hook_path"], "/opt/ztl/hooks/my-hook");
         assert_eq!(json["extension_id"], "my-hook");
-        assert_eq!(json["zetl_version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(json["ztl_version"], env!("CARGO_PKG_VERSION"));
         assert_eq!(json["schema_version"], AST_VERSION);
         assert!(json["page"].is_object());
         assert_eq!(json["page"]["name"], "Hello");
@@ -381,9 +381,9 @@ mod tests {
     }
 
     #[test]
-    fn zetl_version_tracks_cargo_pkg_version() {
+    fn ztl_version_tracks_cargo_pkg_version() {
         let ctx = BuildContext::new(BuildMode::Build, "/v", sample_page());
-        assert_eq!(ctx.zetl_version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(ctx.ztl_version, env!("CARGO_PKG_VERSION"));
     }
 
     // ── BuildMode ──────────────────────────────────────────────────────────
@@ -453,36 +453,36 @@ mod tests {
             .with_out_dir("/tmp/vault/_site")
             .with_verbose(true)
             .with_at("2026-04-01T00:00:00Z")
-            .with_hook_path("/opt/zetl/hooks/citations")
+            .with_hook_path("/opt/ztl/hooks/citations")
             .with_extension_id("citations");
 
         let vars: std::collections::HashMap<_, _> = ctx.env_vars().into_iter().collect();
-        assert_eq!(vars.get("ZETL_MODE"), Some(&"build".to_string()));
-        assert_eq!(vars.get("ZETL_THEME"), Some(&"fountain".to_string()));
-        assert_eq!(vars.get("ZETL_VAULT_ROOT"), Some(&"/tmp/vault".to_string()));
+        assert_eq!(vars.get("ztl_MODE"), Some(&"build".to_string()));
+        assert_eq!(vars.get("ztl_THEME"), Some(&"fountain".to_string()));
+        assert_eq!(vars.get("ztl_VAULT_ROOT"), Some(&"/tmp/vault".to_string()));
         assert_eq!(
-            vars.get("ZETL_OUT_DIR"),
+            vars.get("ztl_OUT_DIR"),
             Some(&"/tmp/vault/_site".to_string())
         );
-        assert_eq!(vars.get("ZETL_VERBOSE"), Some(&"true".to_string()));
+        assert_eq!(vars.get("ztl_VERBOSE"), Some(&"true".to_string()));
         assert_eq!(
-            vars.get("ZETL_AT"),
+            vars.get("ztl_AT"),
             Some(&"2026-04-01T00:00:00Z".to_string())
         );
         assert_eq!(
-            vars.get("ZETL_HOOK_PATH"),
-            Some(&"/opt/zetl/hooks/citations".to_string())
+            vars.get("ztl_HOOK_PATH"),
+            Some(&"/opt/ztl/hooks/citations".to_string())
         );
         assert_eq!(
-            vars.get("ZETL_EXTENSION_ID"),
+            vars.get("ztl_EXTENSION_ID"),
             Some(&"citations".to_string())
         );
         assert_eq!(
-            vars.get("ZETL_VERSION"),
+            vars.get("ztl_VERSION"),
             Some(&env!("CARGO_PKG_VERSION").to_string())
         );
         assert_eq!(
-            vars.get("ZETL_AST_SCHEMA_VERSION"),
+            vars.get("ztl_AST_SCHEMA_VERSION"),
             Some(&AST_VERSION.to_string())
         );
     }
@@ -491,47 +491,47 @@ mod tests {
     fn env_vars_serve_mode_omits_optional_and_empties_out_dir() {
         let ctx = BuildContext::new(BuildMode::Serve, "/v", sample_page());
         let vars: std::collections::HashMap<_, _> = ctx.env_vars().into_iter().collect();
-        assert_eq!(vars.get("ZETL_MODE"), Some(&"serve".to_string()));
+        assert_eq!(vars.get("ztl_MODE"), Some(&"serve".to_string()));
         // out_dir is null under serve → empty env var (can't be null).
-        assert_eq!(vars.get("ZETL_OUT_DIR"), Some(&String::new()));
-        assert_eq!(vars.get("ZETL_VERBOSE"), Some(&"false".to_string()));
+        assert_eq!(vars.get("ztl_OUT_DIR"), Some(&String::new()));
+        assert_eq!(vars.get("ztl_VERBOSE"), Some(&"false".to_string()));
         // Version pair is mandatory at every invocation per REQ-3215 — it
         // survives serve mode and doesn't care about optional fields.
         assert_eq!(
-            vars.get("ZETL_VERSION"),
+            vars.get("ztl_VERSION"),
             Some(&env!("CARGO_PKG_VERSION").to_string())
         );
         assert_eq!(
-            vars.get("ZETL_AST_SCHEMA_VERSION"),
+            vars.get("ztl_AST_SCHEMA_VERSION"),
             Some(&AST_VERSION.to_string())
         );
         // Optional keys absent.
-        assert!(!vars.contains_key("ZETL_AT"));
-        assert!(!vars.contains_key("ZETL_HOOK_PATH"));
-        assert!(!vars.contains_key("ZETL_EXTENSION_ID"));
+        assert!(!vars.contains_key("ztl_AT"));
+        assert!(!vars.contains_key("ztl_HOOK_PATH"));
+        assert!(!vars.contains_key("ztl_EXTENSION_ID"));
     }
 
     /// REQ-3215 dual-version exposure: the env var must track
     /// [`BuildContext::schema_version`] exactly (not the binary version),
-    /// so hooks can pin against the AST shape independently of the zetl
+    /// so hooks can pin against the AST shape independently of the ztl
     /// release train.
     #[test]
     fn env_vars_decouple_binary_and_schema_versions() {
         let mut ctx = BuildContext::new(BuildMode::Build, "/v", sample_page());
-        ctx.zetl_version = "9.9.9-dev".into();
+        ctx.ztl_version = "9.9.9-dev".into();
         ctx.schema_version = "1.2".into();
 
         let vars: std::collections::HashMap<_, _> = ctx.env_vars().into_iter().collect();
-        assert_eq!(vars.get("ZETL_VERSION"), Some(&"9.9.9-dev".to_string()));
+        assert_eq!(vars.get("ztl_VERSION"), Some(&"9.9.9-dev".to_string()));
         assert_eq!(
-            vars.get("ZETL_AST_SCHEMA_VERSION"),
+            vars.get("ztl_AST_SCHEMA_VERSION"),
             Some(&"1.2".to_string())
         );
         // The two keys carry *different* strings — a hook pinning on the
         // schema version must not observe the binary version leaking in.
         assert_ne!(
-            vars.get("ZETL_VERSION"),
-            vars.get("ZETL_AST_SCHEMA_VERSION")
+            vars.get("ztl_VERSION"),
+            vars.get("ztl_AST_SCHEMA_VERSION")
         );
     }
 

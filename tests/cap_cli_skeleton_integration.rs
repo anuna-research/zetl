@@ -1,8 +1,8 @@
-//! Integration tests for the `zetl cap` subcommand skeleton
+//! Integration tests for the `ztl cap` subcommand skeleton
 //! (SPEC-034 REQ-3416, TEST-3416 scaffold).
 //!
 //! Covers:
-//! - `zetl cap --help` lists every verb from REQ-3416.
+//! - `ztl cap --help` lists every verb from REQ-3416.
 //! - Each verb's `--help` renders a flags + examples section.
 //! - Stubbed verbs exit `CAP_NOT_YET_IMPLEMENTED_EXIT` (2) with a
 //!   `not-yet-implemented` diagnostic on stderr.
@@ -52,7 +52,7 @@ const STUB_VERBS: &[(&str, &[&str])] = &[
 
 #[test]
 fn cap_help_lists_every_verb() {
-    let assert = cargo_bin_cmd!("zetl").args(["cap", "--help"]).assert();
+    let assert = cargo_bin_cmd!("ztl").args(["cap", "--help"]).assert();
 
     let out = assert.get_output();
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -60,7 +60,7 @@ fn cap_help_lists_every_verb() {
     for verb in CAP_VERBS {
         assert!(
             stdout.contains(verb),
-            "`zetl cap --help` is missing verb `{verb}`:\n{stdout}",
+            "`ztl cap --help` is missing verb `{verb}`:\n{stdout}",
         );
     }
     assert!(out.status.success());
@@ -69,7 +69,7 @@ fn cap_help_lists_every_verb() {
 #[test]
 fn cap_each_verb_has_help() {
     for verb in CAP_VERBS {
-        let assert = cargo_bin_cmd!("zetl")
+        let assert = cargo_bin_cmd!("ztl")
             .args(["cap", verb, "--help"])
             .assert()
             .success();
@@ -77,7 +77,7 @@ fn cap_each_verb_has_help() {
         let stdout = String::from_utf8_lossy(&out.stdout);
         assert!(
             stdout.contains("Usage:"),
-            "`zetl cap {verb} --help` is missing a Usage: block:\n{stdout}",
+            "`ztl cap {verb} --help` is missing a Usage: block:\n{stdout}",
         );
     }
 }
@@ -89,12 +89,12 @@ fn cap_stub_verbs_exit_not_yet_implemented() {
         args.extend_from_slice(extra_args);
 
         let assert =
-            cargo_bin_cmd!("zetl")
+            cargo_bin_cmd!("ztl")
                 .args(&args)
                 .assert()
                 .code(2)
                 .stderr(predicate::str::contains(format!(
-                    "zetl cap {verb}: not-yet-implemented"
+                    "ztl cap {verb}: not-yet-implemented"
                 )));
         let _ = assert;
     }
@@ -102,7 +102,7 @@ fn cap_stub_verbs_exit_not_yet_implemented() {
 
 #[test]
 fn cap_stub_verbs_emit_json_under_json_flag() {
-    let assert = cargo_bin_cmd!("zetl")
+    let assert = cargo_bin_cmd!("ztl")
         .args(["--json", "cap", "list"])
         .assert()
         .code(2);
@@ -123,7 +123,7 @@ fn cap_stub_verbs_emit_json_under_json_flag() {
 
 #[test]
 fn cap_stub_verbs_emit_json_under_format_flag() {
-    let assert = cargo_bin_cmd!("zetl")
+    let assert = cargo_bin_cmd!("ztl")
         .args(["-f", "json", "cap", "share", "grant-id-xyz"])
         .assert()
         .code(2);
@@ -135,7 +135,7 @@ fn cap_stub_verbs_emit_json_under_format_flag() {
 
 #[test]
 fn cap_unknown_verb_errors() {
-    cargo_bin_cmd!("zetl")
+    cargo_bin_cmd!("ztl")
         .args(["cap", "definitely-not-a-verb"])
         .assert()
         .failure()
@@ -148,10 +148,10 @@ fn cap_unknown_verb_errors() {
 
 #[test]
 fn cap_audit_diff_not_stubbed() {
-    // A bare `zetl cap audit-diff` (no refs, no --corpus) errors out
+    // A bare `ztl cap audit-diff` (no refs, no --corpus) errors out
     // because it requires args — but the error should come from the
     // real handler, not the stub diagnostic.
-    let assert = cargo_bin_cmd!("zetl").args(["cap", "audit-diff"]).assert();
+    let assert = cargo_bin_cmd!("ztl").args(["cap", "audit-diff"]).assert();
     let out = assert.get_output();
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(

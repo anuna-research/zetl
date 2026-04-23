@@ -2,7 +2,7 @@
 //! CON-3305 / ADR-3304 / TEST-3305).
 //!
 //! These tests exercise the adapter through the public
-//! `zetl::ecosystems::remark` surface. They are unix-only because the
+//! `ztl::ecosystems::remark` surface. They are unix-only because the
 //! harness relies on a POSIX subprocess model (pipes + SIGKILL watchdog)
 //! and require `node` on PATH — absent node, every test gates out early
 //! with a skip message rather than failing.
@@ -22,15 +22,15 @@ use std::time::Duration;
 
 use serde_json::json;
 
-use zetl::ecosystems::adapter::{
+use ztl::ecosystems::adapter::{
     run_conformance, EcosystemAdapter, HookContext, PluginManifest, PluginResponse, StageInput,
     StageOutput,
 };
-use zetl::ecosystems::default_fixtures;
-use zetl::ecosystems::remark::{IsolationMode, RemarkAdapter};
-use zetl::hooks::build_context::{BuildContext, BuildMode, PageMeta};
-use zetl::hooks::pipeline::Stage;
-use zetl::hooks::translators::AstType;
+use ztl::ecosystems::default_fixtures;
+use ztl::ecosystems::remark::{IsolationMode, RemarkAdapter};
+use ztl::hooks::build_context::{BuildContext, BuildMode, PageMeta};
+use ztl::hooks::pipeline::Stage;
+use ztl::hooks::translators::AstType;
 
 /// Skip-marker: emit a warning to stderr and return `true` if node is
 /// missing. Every test that spawns the harness early-outs on this so the
@@ -65,7 +65,7 @@ fn build_ctx(vault: PathBuf) -> BuildContext {
 /// stashes the plugin's returned transformer, and whose `.run(ast)`
 /// applies the transformer and returns the tree. This is a minimal
 /// shim that mimics the plugin-application contract the real
-/// unified/remark ecosystem exposes — enough to verify zetl's own
+/// unified/remark ecosystem exposes — enough to verify ztl's own
 /// plumbing end-to-end without a network `npm install`.
 fn setup_fake_unified_env() -> tempfile::TempDir {
     let tmp = tempfile::tempdir().unwrap();

@@ -1,4 +1,4 @@
-# zetl capability-mode HTML sanitiser policy
+# ztl capability-mode HTML sanitiser policy
 #
 # SPEC-034 REQ-3421 — mirrors the OWASP HTML sanitisation allowlist.
 # The Rust implementation that enforces this policy lives in
@@ -17,7 +17,7 @@ schema = "v1"
 # ── Allowlisted tags ─────────────────────────────────────────────────────
 #
 # Standard CommonMark output plus GFM extensions (tables, strikethrough,
-# sup/sub). Zetl-specific rendering is expected to compose from these.
+# sup/sub). ztl-specific rendering is expected to compose from these.
 
 [tags]
 allow = [

@@ -1,13 +1,13 @@
 ;; Plan metadata
 (meta plan
   (id "IMPL-016")
-  (title "zetl hooks — Git-Style Lifecycle Hooks for Vault Operations")
+  (title "ztl hooks — Git-Style Lifecycle Hooks for Vault Operations")
   (version "1.0.0")
   (status "active")
   (created "2026-03-02")
   (author "agent:architect")
   (spec "SPEC-016")
-  (description "Implement git-style lifecycle hooks for zetl vault operations: hook discovery, execution engine, context passing, theme-bundled hooks, and management commands"))
+  (description "Implement git-style lifecycle hooks for ztl vault operations: hook discovery, execution engine, context passing, theme-bundled hooks, and management commands"))
 
 ;; Agents
 (given agent-coder-available)
@@ -41,26 +41,26 @@
 
 ;; Task metadata — Phase 1
 (meta task-hook-discovery
-  (description "Add hook discovery module: scan .zetl/hooks/ and theme hooks directories; detect executable permissions; warn on non-executable hooks")
-  (acceptance "Hook files in .zetl/hooks/ are discovered; non-executable files produce a warning with chmod hint; unrecognised names silently ignored; no hooks directory produces no warnings")
+  (description "Add hook discovery module: scan .ztl/hooks/ and theme hooks directories; detect executable permissions; warn on non-executable hooks")
+  (acceptance "Hook files in .ztl/hooks/ are discovered; non-executable files produce a warning with chmod hint; unrecognised names silently ignored; no hooks directory produces no warnings")
   (context-files "src/web/mod.rs" "src/main.rs")
   (evaluate-checks "test:cargo test" "lint:cargo clippy"))
 
 (meta task-hook-executor
-  (description "Add hook execution engine: spawn hook as child process, write JSON context to stdin, set ZETL_* environment variables, set working directory to vault root, capture stdout/stderr, handle exit codes")
-  (acceptance "Hook receives JSON on stdin; working directory is vault root; ZETL_HOOK, ZETL_VAULT_ROOT, ZETL_THEME, ZETL_VERSION env vars set; post-hook non-zero exit logs warning but does not abort; exit code 0 logs stdout at verbose level")
+  (description "Add hook execution engine: spawn hook as child process, write JSON context to stdin, set ztl_* environment variables, set working directory to vault root, capture stdout/stderr, handle exit codes")
+  (acceptance "Hook receives JSON on stdin; working directory is vault root; ztl_HOOK, ztl_VAULT_ROOT, ztl_THEME, ztl_VERSION env vars set; post-hook non-zero exit logs warning but does not abort; exit code 0 logs stdout at verbose level")
   (context-files "src/main.rs")
   (evaluate-checks "test:cargo test" "lint:cargo clippy"))
 
 (meta task-context-builder
-  (description "Implement vault context serialiser: build JSON object with hook name, vault_root, theme, zetl_version, pages array (name, path, slug, frontmatter, outlinks, backlinks, is_orphan), and stats (total_pages, total_links, dead_links, orphans)")
-  (acceptance "Context JSON validates against CON-016-001 schema; pages array contains correct frontmatter and link data; stats match zetl check output")
+  (description "Implement vault context serialiser: build JSON object with hook name, vault_root, theme, ztl_version, pages array (name, path, slug, frontmatter, outlinks, backlinks, is_orphan), and stats (total_pages, total_links, dead_links, orphans)")
+  (acceptance "Context JSON validates against CON-016-001 schema; pages array contains correct frontmatter and link data; stats match ztl check output")
   (context-files "src/web/context.rs" "src/web/engine.rs")
   (evaluate-checks "test:cargo test" "lint:cargo clippy"))
 
 (meta task-wire-post-build
-  (description "Wire post-build hook invocation into build_static(): discover hooks, invoke with context including out_dir and pages_rendered fields, set ZETL_OUT_DIR env var")
-  (acceptance "post-build hook runs after build completes; hook can write file to $ZETL_OUT_DIR; failing hook logs warning but build output is intact")
+  (description "Wire post-build hook invocation into build_static(): discover hooks, invoke with context including out_dir and pages_rendered fields, set ztl_OUT_DIR env var")
+  (acceptance "post-build hook runs after build completes; hook can write file to $ztl_OUT_DIR; failing hook logs warning but build output is intact")
   (context-files "src/web/engine.rs" "src/web/routes.rs")
   (evaluate-checks "test:cargo test" "lint:cargo clippy"))
 
@@ -73,19 +73,19 @@
 ;; Task metadata — Phase 2
 (meta task-pre-hooks
   (description "Implement pre-build and pre-serve hooks with abort-on-failure semantics: non-zero exit aborts the parent operation and prints hook stderr as error message")
-  (acceptance "pre-build hook exiting 1 aborts build; pre-serve hook exiting 1 aborts server start; hook stderr printed as error; ZETL_OUT_DIR set for pre-build; ZETL_PORT set for pre-serve")
+  (acceptance "pre-build hook exiting 1 aborts build; pre-serve hook exiting 1 aborts server start; hook stderr printed as error; ztl_OUT_DIR set for pre-build; ztl_PORT set for pre-serve")
   (context-files "src/main.rs" "src/web/engine.rs")
   (evaluate-checks "test:cargo test" "lint:cargo clippy"))
 
 (meta task-on-save-hook
-  (description "Implement on-save hook in the save handler after reindex: invoke with context including saved.file, saved.page, saved.content_length fields; set ZETL_SAVED_FILE and ZETL_SAVED_PAGE env vars; run asynchronously so save response returns immediately")
-  (acceptance "on-save hook fires after page edit in serve mode; hook receives saved file context; hook runs in background task; hook errors logged to server stderr; ZETL_SAVED_FILE matches relative path of saved file")
+  (description "Implement on-save hook in the save handler after reindex: invoke with context including saved.file, saved.page, saved.content_length fields; set ztl_SAVED_FILE and ztl_SAVED_PAGE env vars; run asynchronously so save response returns immediately")
+  (acceptance "on-save hook fires after page edit in serve mode; hook receives saved file context; hook runs in background task; hook errors logged to server stderr; ztl_SAVED_FILE matches relative path of saved file")
   (context-files "src/web/routes.rs" "src/web/engine.rs")
   (evaluate-checks "test:cargo test" "lint:cargo clippy"))
 
 (meta task-post-check-hook
   (description "Implement post-check hook after diagnostics collection: invoke with context including diagnostics.dead_links, diagnostics.orphans, diagnostics.syntax_errors arrays")
-  (acceptance "post-check hook fires after zetl check; diagnostics count in context matches zetl check output; hook failure logs warning but check output is intact")
+  (acceptance "post-check hook fires after ztl check; diagnostics count in context matches ztl check output; hook failure logs warning but check output is intact")
   (context-files "src/main.rs" "src/web/engine.rs")
   (evaluate-checks "test:cargo test" "lint:cargo clippy"))
 
@@ -97,39 +97,39 @@
 
 ;; Task metadata — Phase 3
 (meta task-theme-hook-discovery
-  (description "Add theme hook discovery: check active theme's hooks/ directory (.zetl/themes/<name>/hooks/ for disk-installed; embedded path for bundled themes); run theme hooks before vault hooks at each lifecycle point")
-  (acceptance "Active theme's post-build hook is invoked before vault post-build hook; switching to --theme default stops previous theme's hooks from running; zetl hook list shows theme source correctly")
+  (description "Add theme hook discovery: check active theme's hooks/ directory (.ztl/themes/<name>/hooks/ for disk-installed; embedded path for bundled themes); run theme hooks before vault hooks at each lifecycle point")
+  (acceptance "Active theme's post-build hook is invoked before vault post-build hook; switching to --theme default stops previous theme's hooks from running; ztl hook list shows theme source correctly")
   (context-files "src/web/engine.rs" "src/main.rs")
   (evaluate-checks "test:cargo test" "lint:cargo clippy"))
 
 (meta task-bundled-hook-extraction
-  (description "For bundled (compile-time embedded) themes: extract hook files to .zetl/cache/hooks/<theme>/ before execution; refresh extracted hooks when zetl binary version changes; make extracted hooks executable")
+  (description "For bundled (compile-time embedded) themes: extract hook files to .ztl/cache/hooks/<theme>/ before execution; refresh extracted hooks when ztl binary version changes; make extracted hooks executable")
   (acceptance "Bundled theme hooks extracted to cache directory; extracted hooks are executable; cache refreshed on version change; hook invoked correctly from cache path")
   (context-files "src/main.rs")
   (evaluate-checks "test:cargo test" "lint:cargo clippy"))
 
 (meta task-theme-install-hooks
-  (description "Update zetl theme install to make hook files executable (chmod +x) during installation; log installed hooks to output")
-  (acceptance "zetl theme install makes hooks executable; installation log shows 'theme: installed hooks/post-build (executable)'; non-executable hook after install produces warning with chmod hint")
+  (description "Update ztl theme install to make hook files executable (chmod +x) during installation; log installed hooks to output")
+  (acceptance "ztl theme install makes hooks executable; installation log shows 'theme: installed hooks/post-build (executable)'; non-executable hook after install produces warning with chmod hint")
   (context-files "src/main.rs")
   (evaluate-checks "test:cargo test" "lint:cargo clippy"))
 
 ;; Task metadata — Phase 4
 (meta task-hook-list-cmd
-  (description "Add zetl hook list subcommand: list all active hooks for current vault and theme with name, source (theme/vault), path, and executable status; default output JSON; -f table for human-readable table")
-  (acceptance "zetl hook list shows all hooks with correct source and path; empty list on no hooks with no error; JSON schema matches CON-016-010 spec; table format is readable")
+  (description "Add ztl hook list subcommand: list all active hooks for current vault and theme with name, source (theme/vault), path, and executable status; default output JSON; -f table for human-readable table")
+  (acceptance "ztl hook list shows all hooks with correct source and path; empty list on no hooks with no error; JSON schema matches CON-016-010 spec; table format is readable")
   (context-files "src/main.rs")
   (evaluate-checks "test:cargo test" "lint:cargo clippy"))
 
 (meta task-hook-run-cmd
-  (description "Add zetl hook run <name> subcommand: run vault pipeline to build context, invoke named hook(s) with appropriate context, print stdout to terminal, print stderr to stderr, exit with hook's exit code; accept -- with extra JSON fields merged into context")
-  (acceptance "zetl hook run post-build invokes hook with real vault data; stdout printed to terminal; zetl hook run on-save -- '{...}' merges extra fields; zetl hook run nonexistent returns error; exit code matches hook exit code")
+  (description "Add ztl hook run <name> subcommand: run vault pipeline to build context, invoke named hook(s) with appropriate context, print stdout to terminal, print stderr to stderr, exit with hook's exit code; accept -- with extra JSON fields merged into context")
+  (acceptance "ztl hook run post-build invokes hook with real vault data; stdout printed to terminal; ztl hook run on-save -- '{...}' merges extra fields; ztl hook run nonexistent returns error; exit code matches hook exit code")
   (context-files "src/main.rs")
   (evaluate-checks "test:cargo test" "lint:cargo clippy"))
 
 (meta task-verbose-logging
   (description "Add verbose logging for hook discovery and execution: log hook name/source/path/duration/exit-code/stdout/stderr under --verbose; log which directories were checked, hooks found, and hooks skipped with reasons")
-  (acceptance "zetl --verbose build logs hook discovery and execution details; stdout truncated to 1 KB; stderr logged as warning on non-zero exit; hook duration in ms reported; non-verbose mode is silent on success")
+  (acceptance "ztl --verbose build logs hook discovery and execution details; stdout truncated to 1 KB; stderr logged as warning on non-zero exit; hook duration in ms reported; non-verbose mode is silent on success")
   (context-files "src/main.rs" "src/web/engine.rs")
   (evaluate-checks "test:cargo test" "lint:cargo clippy"))
 

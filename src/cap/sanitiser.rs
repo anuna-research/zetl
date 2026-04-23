@@ -38,7 +38,7 @@ use std::sync::OnceLock;
 use ammonia::Builder;
 
 /// Operator-visible copy of the sanitiser policy. Bundled into the binary
-/// so `zetl cap check` (and tests) can diff the Rust policy against the
+/// so `ztl cap check` (and tests) can diff the Rust policy against the
 /// authoritative TOML without filesystem access.
 pub const CONFIG_TOML: &str = include_str!("../../tools/sanitiser-config.toml");
 

@@ -1,4 +1,4 @@
-//! `zetl ecosystem check` aggregator (SPEC-033 REQ-3310 / CON-3310).
+//! `ztl ecosystem check` aggregator (SPEC-033 REQ-3310 / CON-3310).
 //!
 //! Probes each registered ecosystem's runtime ([`detection::detect_all_ecosystems`]),
 //! counts how many of the vault's composed hooks declare each ecosystem, and
@@ -73,7 +73,7 @@ impl EcosystemCheckStatus {
     }
 }
 
-/// One row of the `zetl ecosystem check` report — matches CON-3310's
+/// One row of the `ztl ecosystem check` report — matches CON-3310's
 /// JSON shape (`id`, `status`, `version`, `configured`, `available_plugins`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EcosystemCheckEntry {
@@ -110,7 +110,7 @@ pub struct EcosystemCheckEntry {
     pub hint: Option<String>,
 }
 
-/// Aggregate `zetl ecosystem check` output (CON-3310).
+/// Aggregate `ztl ecosystem check` output (CON-3310).
 ///
 /// `entries` is in canonical ecosystem order (pandoc → mdbook → remark);
 /// `hooks_configured_total` is the grand total across every ecosystem —
@@ -303,7 +303,7 @@ fn mdbook_preprocessors_on_path() -> Vec<String> {
 }
 
 /// remark plugins live under `./node_modules/remark-*`. We list the
-/// package directory names so `zetl ecosystem check` surfaces the set a
+/// package directory names so `ztl ecosystem check` surfaces the set a
 /// configured hook can actually `import()`.
 fn remark_plugins_in_node_modules(vault_root: &Path) -> Vec<String> {
     let dir = vault_root.join("node_modules");

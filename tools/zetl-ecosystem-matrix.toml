@@ -1,4 +1,4 @@
-# zetl ecosystem compatibility matrix (SPEC-033 REQ-3311).
+# ztl ecosystem compatibility matrix (SPEC-033 REQ-3311).
 #
 # Each [ecosystem.<id>] section corresponds to a registered ecosystem in
 # src/ecosystems/registry.rs. Plugin rows under each section (tiered
@@ -43,7 +43,7 @@ Known limitations at experimental tier: \
 (a) pandoc-types major version must match the user's pandoc binary \
 (crossref 0.3.14+ tracks pandoc 3.x / pandoc-types 1.23.x); mismatches \
 surface via REQ-3314 version-drift detection. \
-(b) Round-trip preservation of zetl Wikilink/Embed/SPL markers is \
+(b) Round-trip preservation of ztl Wikilink/Embed/SPL markers is \
 inferred from CON-3221 defaults but not yet verified by a live \
 golden-HTML run — promotion to `partial` blocks on that. \
 (c) Expansion ratio is not bounded in v1; crossref may inject caption \
@@ -58,7 +58,7 @@ repo = "https://github.com/jgm/pandoc-citeproc"
 maintainer = "John MacFarlane <jgm@berkeley.edu>"
 notes = """
 Legacy external filter for citation processing. Upstream was archived \
-in 2022 in favour of pandoc's built-in `--citeproc` flag, which zetl \
+in 2022 in favour of pandoc's built-in `--citeproc` flag, which ztl \
 exposes via the adapter's native-mode resolution path (SPEC-033 \
 ADR-3302 / task-pandoc-adapter). This entry is retained for users on \
 pandoc <2.11 or with a legacy Makefile pipeline; new deployments \
@@ -80,7 +80,7 @@ experimental tier: \
 -m pantable` — runtime probe at REQ-3313 checks for the Python \
 module, not a standalone binary. \
 (b) Tables produced may carry `colspecs` with non-default alignment \
-that round-trip through zetl-ext as plain Table nodes; alignment \
+that round-trip through ztl-ext as plain Table nodes; alignment \
 fidelity is best-effort and not gated. \
 (c) Promotion to `partial` blocks on a golden-HTML fixture that \
 confirms CSV-cell content survives the translate → filter → \
@@ -123,9 +123,9 @@ output backend; users running an alternative renderer (epub, linkcheck) \
 will see the shell markup but no runtime, which is cosmetically broken \
 by design — the adapter surfaces this via `mdbook-mermaid install` \
 guidance at probe time. \
-(c) Round-trip preservation of zetl Wikilink/Embed/SplBlock markers \
+(c) Round-trip preservation of ztl Wikilink/Embed/SplBlock markers \
 inside a mermaid fence is undefined — the preprocessor treats fence \
-bodies opaquely and zetl's SplBlock classifier fires first on \
+bodies opaquely and ztl's SplBlock classifier fires first on \
 ```spl, so collisions are unlikely but untested."""
 
 [[ecosystem.mdbook.plugins]]
@@ -139,7 +139,7 @@ notes = """
 Replaces the literal `<!-- toc -->` marker (or a configurable \
 alternate) with a generated `<ul>` list of in-chapter headings. \
 Known limitations at experimental tier: \
-(a) The marker is HTML-comment-based; zetl's frontmatter stripper \
+(a) The marker is HTML-comment-based; ztl's frontmatter stripper \
 runs first and the marker survives unmolested, but a user who wraps \
 the marker inside a fenced code block will see it preserved literally \
 — expected behaviour per upstream. \
@@ -147,7 +147,7 @@ the marker inside a fenced code block will see it preserved literally \
 book.toml (defaults `max-level = 4`); the canary fixture exercises \
 only depths 1–2 to stay terse and version-stable. \
 (c) Anchor slugs are computed by mdbook's own GitHub-style slugifier, \
-not zetl's; a page carrying an Obsidian `^block-id` that mirrors an \
+not ztl's; a page carrying an Obsidian `^block-id` that mirrors an \
 mdbook-generated anchor will collide silently. Promotion to \
 `partial` requires a fixture exercising unicode heading slugs."""
 
@@ -237,14 +237,14 @@ Enables GitHub Flavored Markdown extensions at the remark-parse \
 layer: pipe tables, task lists, strikethrough, autolink literals, \
 footnotes. Known limitations at experimental tier: \
 (a) Frontmatter stripping is the caller's responsibility — remark-gfm \
-does not ship a frontmatter parser; zetl hands the body over after \
+does not ship a frontmatter parser; ztl hands the body over after \
 its own frontmatter split, and a user who feeds raw source in will \
 see the YAML block echoed as a paragraph. \
 (b) Task-list DOM shape drifted between remark-gfm v3 (`<li>` only) \
 and v4 (`.contains-task-list` on the `<ul>` and `.task-list-item` on \
 each `<li>`); the fixture targets v4. \
 (c) Footnotes ordering is stable but the generated `id` attributes \
-embed the heading of the page — round-tripping a Zetl Wikilink that \
+embed the heading of the page — round-tripping a ztl Wikilink that \
 targets a footnoted page is best-effort and not yet gated."""
 
 [[ecosystem.remark.plugins]]
@@ -262,12 +262,12 @@ class=\"language-math math-display\">…</code></pre>`. Known \
 limitations at experimental tier: \
 (a) Actual glyph rendering requires a companion `rehype-katex` or \
 `rehype-mathjax` stage — remark-math itself is purely a parser. \
-Users pairing zetl with KaTeX also need to serve the KaTeX CSS from \
+Users pairing ztl with KaTeX also need to serve the KaTeX CSS from \
 the theme. \
 (b) Upstream was last released 2023-09-19 and the scan classifies it \
 as \"abandoned\"; it still works under unified v11 but promotion \
 above `experimental` is blocked on either a fresh upstream release \
-or a zetl-side fork decision. \
+or a ztl-side fork decision. \
 (c) Dollar-sign escape handling (`\\$`) is inherited from the \
 underlying micromark-extension-math and has edge cases around adjacent \
 punctuation; the canary fixture deliberately avoids these."""
@@ -292,7 +292,7 @@ inline-name-as-tag mapping the upstream docs recommend. \
 (b) Authors targeting MDX/Astro sites that already consume \
 directives should pair this plugin with the same hast-mapping \
 transform their existing pipeline uses, not the canary's, to avoid \
-class-name drift between zetl-built and MDX-built pages. \
+class-name drift between ztl-built and MDX-built pages. \
 (c) No preservation gate on user-defined directive names; if a \
 directive name collides with an HTML element (`:::table`), behaviour \
 depends entirely on the caller's map-to-hast transform."""

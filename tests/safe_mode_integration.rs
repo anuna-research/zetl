@@ -1,4 +1,4 @@
-//! SPEC-032 REQ-3223 — `zetl build --safe-mode` end-to-end coverage.
+//! SPEC-032 REQ-3223 — `ztl build --safe-mode` end-to-end coverage.
 //!
 //! Exercises the CLI surface: a theme that ships hooks emits the
 //! "ships <N> undeclared hook(s)" warning by default and the
@@ -38,7 +38,7 @@ fn setup_vault_with_theme(declare_callouts: bool) -> TempDir {
     // Disk-installed theme. The `template/` and `static/` dirs aren't
     // required for the build path we exercise here, but `theme.toml`
     // and `hooks/transform.d/*` are.
-    let theme_dir = vault.join(".zetl/themes/fountain");
+    let theme_dir = vault.join(".ztl/themes/fountain");
     fs::create_dir_all(&theme_dir).unwrap();
 
     // theme.toml — declare callouts, omit rogue.
@@ -105,7 +105,7 @@ fn safe_mode_skips_undeclared_theme_hook_with_log_line() {
     let dir = setup_vault_with_theme(true);
     let out = TempDir::new().unwrap();
 
-    cargo_bin_cmd!("zetl")
+    cargo_bin_cmd!("ztl")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -120,12 +120,12 @@ fn safe_mode_skips_undeclared_theme_hook_with_log_line() {
         .success()
         // Declared theme hook (callouts) is *not* skipped.
         .stderr(
-            predicate::str::contains("[zetl] --safe-mode: skipped transform/callouts from theme")
+            predicate::str::contains("[ztl] --safe-mode: skipped transform/callouts from theme")
                 .not(),
         )
         // Undeclared theme hook (rogue) is skipped, with SPEC-shape line.
         .stderr(predicate::str::contains(
-            "[zetl] --safe-mode: skipped transform/rogue from theme",
+            "[ztl] --safe-mode: skipped transform/rogue from theme",
         ));
 }
 
@@ -134,7 +134,7 @@ fn safe_mode_with_no_declarations_skips_every_hook() {
     let dir = setup_vault_with_theme(false);
     let out = TempDir::new().unwrap();
 
-    cargo_bin_cmd!("zetl")
+    cargo_bin_cmd!("ztl")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -148,10 +148,10 @@ fn safe_mode_with_no_declarations_skips_every_hook() {
         .assert()
         .success()
         .stderr(predicate::str::contains(
-            "[zetl] --safe-mode: skipped transform/callouts from theme",
+            "[ztl] --safe-mode: skipped transform/callouts from theme",
         ))
         .stderr(predicate::str::contains(
-            "[zetl] --safe-mode: skipped transform/rogue from theme",
+            "[ztl] --safe-mode: skipped transform/rogue from theme",
         ));
 }
 
@@ -160,7 +160,7 @@ fn undeclared_warning_emitted_without_safe_mode() {
     let dir = setup_vault_with_theme(true);
     let out = TempDir::new().unwrap();
 
-    cargo_bin_cmd!("zetl")
+    cargo_bin_cmd!("ztl")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -174,9 +174,9 @@ fn undeclared_warning_emitted_without_safe_mode() {
         .success()
         // SPEC-mandated warning shape.
         .stderr(predicate::str::contains(
-            "[zetl] theme fountain ships 1 undeclared hook(s); run",
+            "[ztl] theme fountain ships 1 undeclared hook(s); run",
         ))
-        .stderr(predicate::str::contains("'zetl theme show fountain'"))
+        .stderr(predicate::str::contains("'ztl theme show fountain'"))
         .stderr(predicate::str::contains("--safe-mode to suppress"));
 }
 
@@ -185,7 +185,7 @@ fn safe_mode_suppresses_undeclared_warning() {
     let dir = setup_vault_with_theme(true);
     let out = TempDir::new().unwrap();
 
-    cargo_bin_cmd!("zetl")
+    cargo_bin_cmd!("ztl")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -211,12 +211,12 @@ fn safe_mode_vault_hook_is_always_skipped_even_if_id_matches_declaration() {
     // unaffected by the theme allow-list — it must still be skipped.
     write_runnable(
         dir.path(),
-        ".zetl/hooks/transform.d/callouts.sh",
+        ".ztl/hooks/transform.d/callouts.sh",
         "#!/bin/sh\nexit 0\n",
     );
     let out = TempDir::new().unwrap();
 
-    cargo_bin_cmd!("zetl")
+    cargo_bin_cmd!("ztl")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -230,6 +230,6 @@ fn safe_mode_vault_hook_is_always_skipped_even_if_id_matches_declaration() {
         .assert()
         .success()
         .stderr(predicate::str::contains(
-            "[zetl] --safe-mode: skipped transform/callouts from vault",
+            "[ztl] --safe-mode: skipped transform/callouts from vault",
         ));
 }

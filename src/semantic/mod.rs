@@ -34,8 +34,8 @@ pub const CHUNK_THRESHOLD: usize = 512 * 4;
 /// RRF constant `k`. ADR-053.
 pub const RRF_K: usize = 60;
 
-/// On-disk layout under `.zetl/search/vectors/`. REQ-093.
-pub const VECTORS_DIR: &str = ".zetl/search/vectors";
+/// On-disk layout under `.ztl/search/vectors/`. REQ-093.
+pub const VECTORS_DIR: &str = ".ztl/search/vectors";
 pub const INDEX_FILE: &str = "index.bin";
 pub const CHUNKS_FILE: &str = "chunks.json";
 pub const MODEL_FILE: &str = "model.json";
@@ -73,7 +73,7 @@ impl VectorIndex {
     /// Build a vector index from a set of parsed files.
     ///
     /// Loads or downloads the ONNX model, embeds all chunks, and writes the index
-    /// to `.zetl/search/vectors/`. Reuses embeddings from any existing index for
+    /// to `.ztl/search/vectors/`. Reuses embeddings from any existing index for
     /// chunks whose BLAKE3 content hash is unchanged (REQ-097 incremental rebuild).
     ///
     /// REQ-092, REQ-093, REQ-097.
@@ -140,7 +140,7 @@ impl VectorIndex {
 
         let duration_ms = start.elapsed().as_millis();
         eprintln!(
-            "[zetl] embed: chunks={} reused={reused_count} embedded={embedded_count} duration_ms={duration_ms} model={MODEL_NAME}",
+            "[ztl] embed: chunks={} reused={reused_count} embedded={embedded_count} duration_ms={duration_ms} model={MODEL_NAME}",
             all_embeddings.len(),
         );
 
@@ -169,7 +169,7 @@ impl VectorIndex {
         })
     }
 
-    /// Open an existing vector index from `.zetl/search/vectors/`.
+    /// Open an existing vector index from `.ztl/search/vectors/`.
     ///
     /// Returns `None` if the vectors directory does not exist. REQ-093.
     pub fn open(vault_root: &Path) -> Result<Option<Self>> {
@@ -249,7 +249,7 @@ impl VectorIndex {
     /// Emit OBS-018 timing line to stderr.
     pub fn log_query_stats(&self, results: usize, duration_ms: u128) {
         eprintln!(
-            "[zetl] vector-query: chunks_scanned={} results={results} duration_ms={duration_ms}",
+            "[ztl] vector-query: chunks_scanned={} results={results} duration_ms={duration_ms}",
             self.embeddings.len()
         );
     }
@@ -384,7 +384,7 @@ mod tests {
     #[test]
     fn test_open_none_when_dir_absent() {
         let tmp = tempfile::TempDir::new().unwrap();
-        // No .zetl/search/vectors/ created.
+        // No .ztl/search/vectors/ created.
         let result = VectorIndex::open(tmp.path()).unwrap();
         assert!(
             result.is_none(),
@@ -613,7 +613,7 @@ pub(crate) fn load_embedding_cache(
 /// Load the ONNX session and HuggingFace tokenizer.
 ///
 /// Delegates to `acquisition::ensure_model` which handles:
-/// - `ZETL_MODEL_PATH` env var override
+/// - `ztl_MODEL_PATH` env var override
 /// - automatic download with user confirmation when files are absent
 /// - SHA-256 integrity validation via sidecar files
 fn load_model(vault_root: &Path) -> Result<(Session, Tokenizer)> {

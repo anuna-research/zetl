@@ -21,11 +21,11 @@
 //! |----------|-----------------------------------------------------------|
 //! | TEST-046 | BLAKE3 Merkle overhead ≤ 20 % of total `scan_vault` time  |
 //! | TEST-047 | Peak RSS delta ≤ 30 MB for 10 000 synthetic files         |
-//! | TEST-048 | `.zetl/` cache ≤ 25 MB for 10 000 synthetic files         |
+//! | TEST-048 | `.ztl/` cache ≤ 25 MB for 10 000 synthetic files         |
 //!
 //! These are smoke tests, not microbenchmarks — sufficient for regression
 //! detection.  Each test creates a synthetic vault in a `TempDir`, exercises
-//! the zetl library directly, and asserts that key performance envelopes are
+//! the ztl library directly, and asserts that key performance envelopes are
 //! not violated.
 
 use std::fs;
@@ -49,7 +49,7 @@ fn create_synthetic_vault(dir: &Path, n: usize) {
         let path = subdir.join(format!("note_{i:05}.md"));
         let content = format!(
             "# Note {i}\n\n\
-             Synthetic note {i} for zetl performance tests.\n\n\
+             Synthetic note {i} for ztl performance tests.\n\n\
              ## Details\n\n\
              Lorem ipsum dolor sit amet, consectetur adipiscing elit.\n\
              [[note_{prev:05}]]\n\n\
@@ -141,9 +141,9 @@ fn dir_size_bytes(dir: &Path) -> u64 {
 /// **Methodology**: `scan_vault()` embeds Merkle construction inside the
 /// parsing loop.  Because the leaf _content_ is not stored in the returned
 /// [`MerkleLeaf`] structs, this test approximates the leaf-hash cost by
-/// re-timing [`zetl::merkle::compute_leaf_hash`] with representative 100-byte
+/// re-timing [`ztl::merkle::compute_leaf_hash`] with representative 100-byte
 /// dummy content for every leaf, then adds the actual
-/// [`zetl::merkle::compute_file_root`] call cost (which re-combines the real
+/// [`ztl::merkle::compute_file_root`] call cost (which re-combines the real
 /// leaf hashes).  The total estimate represents the pure BLAKE3 workload.
 ///
 /// **Pass criterion**: `T_estimated_merkle / T_scan ≤ 0.20`.
@@ -168,7 +168,7 @@ fn perf_046_merkle_overhead() {
     // ── 1. Full scan including Merkle ────────────────────────────────────────
     let t_scan = {
         let start = Instant::now();
-        let files = zetl::scanner::scan_vault(vault.path(), &zetl::scanner::ScanOptions::default())
+        let files = ztl::scanner::scan_vault(vault.path(), &ztl::scanner::ScanOptions::default())
             .expect("scan_vault failed");
         let elapsed = start.elapsed();
         assert_eq!(
@@ -191,7 +191,7 @@ fn perf_046_merkle_overhead() {
         let start = Instant::now();
         for f in &files {
             for leaf in &f.merkle_leaves {
-                let _ = zetl::merkle::compute_leaf_hash(&leaf.node_type, &dummy);
+                let _ = ztl::merkle::compute_leaf_hash(&leaf.node_type, &dummy);
             }
         }
         start.elapsed()
@@ -201,7 +201,7 @@ fn perf_046_merkle_overhead() {
     let t_file_root = {
         let start = Instant::now();
         for f in &files {
-            let _ = zetl::merkle::compute_file_root(&f.merkle_leaves);
+            let _ = ztl::merkle::compute_file_root(&f.merkle_leaves);
         }
         start.elapsed()
     };
@@ -255,7 +255,7 @@ fn perf_047_memory_overhead() {
 
     let rss_before = rss_bytes();
 
-    let files = zetl::scanner::scan_vault(vault.path(), &zetl::scanner::ScanOptions::default())
+    let files = ztl::scanner::scan_vault(vault.path(), &ztl::scanner::ScanOptions::default())
         .expect("scan_vault failed");
     assert_eq!(
         files.len(),
@@ -291,7 +291,7 @@ fn perf_047_memory_overhead() {
 // ---------------------------------------------------------------------------
 
 /// After `save_cache()` on 10 000 synthetic files the total size of the
-/// `.zetl/` directory must not exceed 25 MB over a fresh-vault baseline
+/// `.ztl/` directory must not exceed 25 MB over a fresh-vault baseline
 /// (typically 0 bytes before first indexing).
 ///
 /// **Note on the limit:** the long-term target from the spec is 5 MB (achieved
@@ -311,11 +311,11 @@ fn perf_048_cache_size() {
     let vault = TempDir::new().expect("create tempdir");
     create_synthetic_vault(vault.path(), N);
 
-    // Baseline: measure .zetl/ before indexing (should be 0 or absent).
-    let baseline = dir_size_bytes(&vault.path().join(".zetl"));
+    // Baseline: measure .ztl/ before indexing (should be 0 or absent).
+    let baseline = dir_size_bytes(&vault.path().join(".ztl"));
 
     // Full pipeline: scan + save cache.
-    let files = zetl::scanner::scan_vault(vault.path(), &zetl::scanner::ScanOptions::default())
+    let files = ztl::scanner::scan_vault(vault.path(), &ztl::scanner::ScanOptions::default())
         .expect("scan_vault failed");
     assert_eq!(
         files.len(),
@@ -323,9 +323,9 @@ fn perf_048_cache_size() {
         "scan_vault returned {} files, expected {N}",
         files.len()
     );
-    zetl::cache::save_cache(vault.path(), &files).expect("save_cache failed");
+    ztl::cache::save_cache(vault.path(), &files).expect("save_cache failed");
 
-    let after = dir_size_bytes(&vault.path().join(".zetl"));
+    let after = dir_size_bytes(&vault.path().join(".ztl"));
     let delta = after.saturating_sub(baseline);
 
     eprintln!(
@@ -336,7 +336,7 @@ fn perf_048_cache_size() {
 
     assert!(
         delta <= LIMIT_BYTES,
-        "TEST-048 FAILED: .zetl/ cache delta {} KB exceeds 25 MB limit \
+        "TEST-048 FAILED: .ztl/ cache delta {} KB exceeds 25 MB limit \
          (target when cache format is optimised: 5 MB)",
         delta / 1024,
     );

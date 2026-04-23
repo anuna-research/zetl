@@ -1,16 +1,16 @@
-//! zetl-ext ↔ mdast translator (SPEC-033 REQ-3308).
+//! ztl-ext ↔ mdast translator (SPEC-033 REQ-3308).
 //!
 //! mdast is the AST produced by the remark / unified ecosystem. It's
-//! CommonMark-derived and closer in shape to zetl-ext than
+//! CommonMark-derived and closer in shape to ztl-ext than
 //! pandoc-types, so this translator is essentially a renaming of
 //! fields with a small number of marker conventions for nodes that
 //! mdast doesn't model natively.
 //!
 //! ## Marker conventions (REQ-3308 table)
 //!
-//! | zetl-ext           | mdast                                                       |
+//! | ztl-ext           | mdast                                                       |
 //! | ------------------ | ----------------------------------------------------------- |
-//! | `Document`         | `root` (with `zetl_ast_version` + optional `frontmatter`)   |
+//! | `Document`         | `root` (with `ztl_ast_version` + optional `frontmatter`)   |
 //! | `Heading`          | `heading { depth, children }`                               |
 //! | `Paragraph`        | `paragraph { children }`                                    |
 //! | `Text`             | `text { value }`                                            |
@@ -38,11 +38,11 @@
 //!
 //! ## Round-trip invariant (CON-3221)
 //!
-//! For every zetl-ext document `A`, `foreign_to_zetl(zetl_to_foreign(A))
+//! For every ztl-ext document `A`, `foreign_to_ztl(ztl_to_foreign(A))
 //! == A`. Verified via proptest on arbitrary documents in this module's
-//! test suite. The reverse direction (foreign → zetl → foreign) is
+//! test suite. The reverse direction (foreign → ztl → foreign) is
 //! only guaranteed to be *semantically* equivalent — mdast permits
-//! representations zetl doesn't track (custom data hangs off `data`).
+//! representations ztl doesn't track (custom data hangs off `data`).
 
 use serde_json::{json, Value};
 
@@ -54,7 +54,7 @@ use crate::hooks::ast::{
 
 use super::{AstType, TranslationError, Translator};
 
-/// Sentinel node-type string used by the translator for zetl concepts
+/// Sentinel node-type string used by the translator for ztl concepts
 /// that mdast doesn't model natively. Matches the convention used by
 /// the `remark-wiki-link` and related mdast plugins.
 const MDAST_WIKILINK_TYPE: &str = "wikiLink";
@@ -67,26 +67,26 @@ impl Translator for MdastTranslator {
         AstType::MdastExt
     }
 
-    fn zetl_to_foreign(&self, doc: &Document) -> Result<Value, TranslationError> {
+    fn ztl_to_foreign(&self, doc: &Document) -> Result<Value, TranslationError> {
         Ok(doc_to_mdast(doc))
     }
 
-    fn foreign_to_zetl(&self, foreign: Value) -> Result<Document, TranslationError> {
+    fn foreign_to_ztl(&self, foreign: Value) -> Result<Document, TranslationError> {
         mdast_to_doc(foreign)
     }
 }
 
-// ── zetl-ext → mdast ───────────────────────────────────────────────────
+// ── ztl-ext → mdast ───────────────────────────────────────────────────
 
 fn doc_to_mdast(doc: &Document) -> Value {
     let mut root = serde_json::Map::new();
     root.insert("type".into(), Value::String("root".into()));
     root.insert("position".into(), position_to_mdast(doc.position));
-    // Mark the zetl-ext schema version so lossy hooks that strip
-    // frontmatter etc. still let zetl recognise the shape on the way
-    // back (and can default missing fields on foreign_to_zetl).
+    // Mark the ztl-ext schema version so lossy hooks that strip
+    // frontmatter etc. still let ztl recognise the shape on the way
+    // back (and can default missing fields on foreign_to_ztl).
     root.insert(
-        "zetl_ast_version".into(),
+        "ztl_ast_version".into(),
         Value::String(doc.ast_version.clone()),
     );
     if let Some(fm) = &doc.frontmatter {
@@ -138,7 +138,7 @@ fn block_to_mdast(block: &Block) -> Value {
                 c.info.clone().map(Value::String).unwrap_or(Value::Null),
             );
             obj.insert("value".into(), Value::String(c.text.clone()));
-            obj.insert("zetl_fenced".into(), Value::Bool(c.fenced));
+            obj.insert("ztl_fenced".into(), Value::Bool(c.fenced));
             Value::Object(obj)
         }
         Block::ThematicBreak(t) => json!({
@@ -152,7 +152,7 @@ fn block_to_mdast(block: &Block) -> Value {
         }),
         Block::SplBlock(s) => {
             // mdast has no native SPL node; encode as a fenced code
-            // block with lang = "spl" plus a zetl marker so the reverse
+            // block with lang = "spl" plus a ztl marker so the reverse
             // translator can restore the typed node.
             let mut obj = serde_json::Map::new();
             obj.insert("type".into(), Value::String("code".into()));
@@ -163,7 +163,7 @@ fn block_to_mdast(block: &Block) -> Value {
                 s.info.clone().map(Value::String).unwrap_or(Value::Null),
             );
             obj.insert("value".into(), Value::String(s.text.clone()));
-            obj.insert("zetl_spl".into(), Value::Bool(true));
+            obj.insert("ztl_spl".into(), Value::Bool(true));
             Value::Object(obj)
         }
         Block::Embed(e) => {
@@ -176,7 +176,7 @@ fn block_to_mdast(block: &Block) -> Value {
                 "type": "paragraph",
                 "position": position_to_mdast(e.position),
                 "children": [inner],
-                "zetl_block_embed": true,
+                "ztl_block_embed": true,
             })
         }
     }
@@ -239,7 +239,7 @@ fn inline_to_mdast(inline: &Inline) -> Value {
             obj.insert("alt".into(), Value::String(i.alt.clone()));
             if !i.children.is_empty() {
                 obj.insert(
-                    "zetl_children".into(),
+                    "ztl_children".into(),
                     Value::Array(i.children.iter().map(inline_to_mdast).collect()),
                 );
             }
@@ -253,13 +253,13 @@ fn inline_to_mdast(inline: &Inline) -> Value {
             "type": "text",
             "position": position_to_mdast(b.position),
             "value": "\n",
-            "zetl_soft_break": true,
+            "ztl_soft_break": true,
         }),
         Inline::HtmlInline(h) => json!({
             "type": "html",
             "position": position_to_mdast(h.position),
             "value": h.text,
-            "zetl_inline_html": true,
+            "ztl_inline_html": true,
         }),
         Inline::Wikilink(w) => wikilink_to_mdast(w),
     }
@@ -267,8 +267,8 @@ fn inline_to_mdast(inline: &Inline) -> Value {
 
 fn wikilink_to_mdast(w: &Wikilink) -> Value {
     // The `remark-wiki-link` plugin emits `wikiLink` with `value`
-    // (the link target) and `data.alias`. We preserve all four zetl
-    // fields verbatim plus the position so foreign_to_zetl can restore
+    // (the link target) and `data.alias`. We preserve all four ztl
+    // fields verbatim plus the position so foreign_to_ztl can restore
     // the typed node.
     let mut data = serde_json::Map::new();
     data.insert(
@@ -317,16 +317,16 @@ fn position_to_mdast(pos: Position) -> Value {
     })
 }
 
-// ── mdast → zetl-ext ───────────────────────────────────────────────────
+// ── mdast → ztl-ext ───────────────────────────────────────────────────
 
 fn mdast_to_doc(v: Value) -> Result<Document, TranslationError> {
     let mut obj = require_object(v, "root")?;
     let ast_version = obj
-        .remove("zetl_ast_version")
+        .remove("ztl_ast_version")
         .and_then(|v| v.as_str().map(|s| s.to_string()))
         .unwrap_or_else(|| AST_VERSION.to_string());
     let position = match obj.remove("position") {
-        Some(v) => mdast_position_to_zetl(v)?,
+        Some(v) => mdast_position_to_ztl(v)?,
         None => Position::origin(),
     };
     let frontmatter = match obj.remove("frontmatter") {
@@ -368,8 +368,8 @@ fn map_to_frontmatter(map: serde_json::Map<String, Value>) -> Frontmatter {
     fm
 }
 
-/// Translate a single mdast block node to a zetl-ext block. Returns
-/// `Ok(None)` for nodes mdast models that zetl-ext silently drops (e.g.
+/// Translate a single mdast block node to a ztl-ext block. Returns
+/// `Ok(None)` for nodes mdast models that ztl-ext silently drops (e.g.
 /// mdast root nested inside root — shouldn't happen but is defensive).
 fn mdast_to_block(v: Value) -> Result<Option<Block>, TranslationError> {
     let obj = require_object(v, "block")?;
@@ -383,12 +383,12 @@ fn mdast_to_block(v: Value) -> Result<Option<Block>, TranslationError> {
     let mut obj = obj;
 
     // Preserve a block-level embed marker (see block_to_mdast for
-    // Block::Embed encoding): a paragraph carrying `zetl_block_embed:
+    // Block::Embed encoding): a paragraph carrying `ztl_block_embed:
     // true` and a single wikiLink child with `data.embed == true`
     // becomes a block-level Embed node.
     if ty == "paragraph"
         && obj
-            .get("zetl_block_embed")
+            .get("ztl_block_embed")
             .and_then(|v| v.as_bool())
             .unwrap_or(false)
     {
@@ -459,7 +459,7 @@ fn mdast_to_block(v: Value) -> Result<Option<Block>, TranslationError> {
             })))
         }
         "code" => {
-            // SPL block marker: lang == "spl" and optional zetl_spl flag.
+            // SPL block marker: lang == "spl" and optional ztl_spl flag.
             let lang = obj
                 .remove("lang")
                 .and_then(|v| v.as_str().map(|s| s.to_string()));
@@ -470,11 +470,11 @@ fn mdast_to_block(v: Value) -> Result<Option<Block>, TranslationError> {
                 .remove("value")
                 .and_then(|v| v.as_str().map(|s| s.to_string()))
                 .unwrap_or_default();
-            let zetl_spl = obj
-                .remove("zetl_spl")
+            let ztl_spl = obj
+                .remove("ztl_spl")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            if zetl_spl || lang.as_deref() == Some("spl") {
+            if ztl_spl || lang.as_deref() == Some("spl") {
                 return Ok(Some(Block::SplBlock(SplBlock {
                     position,
                     info: meta,
@@ -482,7 +482,7 @@ fn mdast_to_block(v: Value) -> Result<Option<Block>, TranslationError> {
                 })));
             }
             let fenced = obj
-                .remove("zetl_fenced")
+                .remove("ztl_fenced")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(true);
             Ok(Some(Block::CodeBlock(CodeBlock {
@@ -536,7 +536,7 @@ fn mdast_to_inline(v: Value) -> Result<Option<Inline>, TranslationError> {
                 .and_then(|v| v.as_str().map(|s| s.to_string()))
                 .unwrap_or_default();
             if obj
-                .remove("zetl_soft_break")
+                .remove("ztl_soft_break")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false)
             {
@@ -588,7 +588,7 @@ fn mdast_to_inline(v: Value) -> Result<Option<Inline>, TranslationError> {
                 .and_then(|v| v.as_str().map(|s| s.to_string()))
                 .unwrap_or_default();
             let children = obj
-                .remove("zetl_children")
+                .remove("ztl_children")
                 .map(array_or_empty)
                 .transpose()?
                 .map(|arr| {
@@ -613,8 +613,8 @@ fn mdast_to_inline(v: Value) -> Result<Option<Inline>, TranslationError> {
                 .remove("value")
                 .and_then(|v| v.as_str().map(|s| s.to_string()))
                 .unwrap_or_default();
-            // Heuristic: if `zetl_inline_html` was set we round-trip
-            // back to Inline::HtmlInline. Otherwise zetl-ext's block
+            // Heuristic: if `ztl_inline_html` was set we round-trip
+            // back to Inline::HtmlInline. Otherwise ztl-ext's block
             // HtmlBlock won't fit in an inline slot, so we demote the
             // value into an HtmlInline to stay round-trip correct at
             // the inline axis.
@@ -627,7 +627,7 @@ fn mdast_to_inline(v: Value) -> Result<Option<Inline>, TranslationError> {
     }
 }
 
-/// Try to parse `v` as either a zetl-namespaced wikiLink or a wikiLink-
+/// Try to parse `v` as either a ztl-namespaced wikiLink or a wikiLink-
 /// marked embed. Returns `Ok(Some(inline))` for wikilinks; embeds are
 /// promoted to an embed-block by the caller via
 /// [`inline_wikilink_to_embed_block`].
@@ -642,7 +642,7 @@ fn parse_wikilink_like(v: &Value) -> Result<Option<Inline>, TranslationError> {
     }
 
     let position = match obj.get("position") {
-        Some(v) => mdast_position_to_zetl(v.clone())?,
+        Some(v) => mdast_position_to_ztl(v.clone())?,
         None => Position::origin(),
     };
     let target = obj
@@ -666,9 +666,9 @@ fn parse_wikilink_like(v: &Value) -> Result<Option<Inline>, TranslationError> {
         .unwrap_or(false);
 
     if is_embed {
-        // Inline embeds aren't a zetl-ext concept — [`Block::Embed`] is
+        // Inline embeds aren't a ztl-ext concept — [`Block::Embed`] is
         // block-level. We surface this as a marker node (a synthetic
-        // Wikilink with a zetl_embed pseudo field). The block-level
+        // Wikilink with a ztl_embed pseudo field). The block-level
         // path in `mdast_to_block` catches embeds one layer up.
         Ok(Some(Inline::Wikilink(Wikilink {
             position,
@@ -731,7 +731,7 @@ fn take_inline_children(
     Ok(out)
 }
 
-fn mdast_position_to_zetl(v: Value) -> Result<Position, TranslationError> {
+fn mdast_position_to_ztl(v: Value) -> Result<Position, TranslationError> {
     let obj = match v {
         Value::Object(o) => o,
         Value::Null => return Ok(Position::origin()),
@@ -768,7 +768,7 @@ fn mdast_position_to_zetl(v: Value) -> Result<Position, TranslationError> {
 
 fn take_position(obj: &mut serde_json::Map<String, Value>) -> Position {
     match obj.remove("position") {
-        Some(v) => mdast_position_to_zetl(v).unwrap_or_else(|_| Position::origin()),
+        Some(v) => mdast_position_to_ztl(v).unwrap_or_else(|_| Position::origin()),
         None => Position::origin(),
     }
 }
@@ -877,13 +877,13 @@ mod tests {
             }),
         ]);
         let t = MdastTranslator;
-        let mdast = t.zetl_to_foreign(&doc).unwrap();
-        // Shape sanity — the top-level node is mdast `root`, not zetl
-        // `Document`. Zetl's AST schema version is preserved in a
+        let mdast = t.ztl_to_foreign(&doc).unwrap();
+        // Shape sanity — the top-level node is mdast `root`, not ztl
+        // `Document`. ztl's AST schema version is preserved in a
         // non-namespace-collision-prone field.
         assert_eq!(mdast["type"], "root");
-        assert_eq!(mdast["zetl_ast_version"], "1.0");
-        let back = t.foreign_to_zetl(mdast).unwrap();
+        assert_eq!(mdast["ztl_ast_version"], "1.0");
+        let back = t.foreign_to_ztl(mdast).unwrap();
         assert_eq!(back, doc);
     }
 
@@ -897,14 +897,14 @@ mod tests {
             block_id: Some("B".into()),
         })])]);
         let t = MdastTranslator;
-        let mdast = t.zetl_to_foreign(&doc).unwrap();
+        let mdast = t.ztl_to_foreign(&doc).unwrap();
         let wl = &mdast["children"][0]["children"][0];
         assert_eq!(wl["type"], MDAST_WIKILINK_TYPE);
         assert_eq!(wl["value"], "Target");
         assert_eq!(wl["data"]["alias"], "A");
         assert_eq!(wl["data"]["heading"], "H");
         assert_eq!(wl["data"]["block_id"], "B");
-        let back = t.foreign_to_zetl(mdast).unwrap();
+        let back = t.foreign_to_ztl(mdast).unwrap();
         assert_eq!(back, doc);
     }
 
@@ -916,13 +916,13 @@ mod tests {
             text: "fact :something".into(),
         })]);
         let t = MdastTranslator;
-        let mdast = t.zetl_to_foreign(&doc).unwrap();
+        let mdast = t.ztl_to_foreign(&doc).unwrap();
         let node = &mdast["children"][0];
         assert_eq!(node["type"], "code");
         assert_eq!(node["lang"], "spl");
         assert_eq!(node["meta"], "extra");
-        assert_eq!(node["zetl_spl"], true);
-        let back = t.foreign_to_zetl(mdast).unwrap();
+        assert_eq!(node["ztl_spl"], true);
+        let back = t.foreign_to_ztl(mdast).unwrap();
         assert_eq!(back, doc);
     }
 
@@ -939,13 +939,13 @@ mod tests {
             ],
         })]);
         let t = MdastTranslator;
-        let mdast = t.zetl_to_foreign(&doc).unwrap();
+        let mdast = t.ztl_to_foreign(&doc).unwrap();
         let node = &mdast["children"][0];
         assert_eq!(node["type"], "list");
         assert_eq!(node["ordered"], true);
         assert_eq!(node["spread"], false);
         assert_eq!(node["start"], 2);
-        let back = t.foreign_to_zetl(mdast).unwrap();
+        let back = t.foreign_to_ztl(mdast).unwrap();
         assert_eq!(back, doc);
     }
 
@@ -959,13 +959,13 @@ mod tests {
             text: "fn main() {}\n".into(),
         })]);
         let t = MdastTranslator;
-        let mdast = t.zetl_to_foreign(&doc).unwrap();
+        let mdast = t.ztl_to_foreign(&doc).unwrap();
         let node = &mdast["children"][0];
         assert_eq!(node["type"], "code");
         assert_eq!(node["lang"], "rust");
         assert_eq!(node["meta"], "edition=2021");
         assert_eq!(node["value"], "fn main() {}\n");
-        let back = t.foreign_to_zetl(mdast).unwrap();
+        let back = t.foreign_to_ztl(mdast).unwrap();
         assert_eq!(back, doc);
     }
 
@@ -982,9 +982,9 @@ mod tests {
             children: vec![para(vec![text("body")])],
         };
         let t = MdastTranslator;
-        let mdast = t.zetl_to_foreign(&doc).unwrap();
+        let mdast = t.ztl_to_foreign(&doc).unwrap();
         assert_eq!(mdast["frontmatter"]["title"], "Q2");
-        let back = t.foreign_to_zetl(mdast).unwrap();
+        let back = t.foreign_to_ztl(mdast).unwrap();
         assert_eq!(back, doc);
     }
 
@@ -995,7 +995,7 @@ mod tests {
             "children": [{"type": "definition", "value": "x"}],
         });
         let t = MdastTranslator;
-        let err = t.foreign_to_zetl(bogus).unwrap_err();
+        let err = t.foreign_to_ztl(bogus).unwrap_err();
         assert!(err.message.contains("definition"));
     }
 
@@ -1007,13 +1007,13 @@ mod tests {
             text("b"),
         ])]);
         let t = MdastTranslator;
-        let mdast = t.zetl_to_foreign(&doc).unwrap();
-        let back = t.foreign_to_zetl(mdast).unwrap();
+        let mdast = t.ztl_to_foreign(&doc).unwrap();
+        let back = t.foreign_to_ztl(mdast).unwrap();
         assert_eq!(back, doc);
     }
 
     #[test]
-    fn image_with_children_roundtrips_via_zetl_marker() {
+    fn image_with_children_roundtrips_via_ztl_marker() {
         let doc = wrap(vec![para(vec![Inline::Image(Image {
             position: pos(),
             url: "cat.png".into(),
@@ -1022,8 +1022,8 @@ mod tests {
             children: vec![text("cat alt children")],
         })])]);
         let t = MdastTranslator;
-        let mdast = t.zetl_to_foreign(&doc).unwrap();
-        let back = t.foreign_to_zetl(mdast).unwrap();
+        let mdast = t.ztl_to_foreign(&doc).unwrap();
+        let back = t.foreign_to_ztl(mdast).unwrap();
         assert_eq!(back, doc);
     }
 
@@ -1103,13 +1103,13 @@ mod tests {
         })]
 
         #[test]
-        fn prop_zetl_to_mdast_to_zetl_is_identity(
+        fn prop_ztl_to_mdast_to_ztl_is_identity(
             children in prop::collection::vec(arb_block(), 0..4)
         ) {
             let doc = wrap(children);
             let t = MdastTranslator;
-            let v = t.zetl_to_foreign(&doc).unwrap();
-            let back = t.foreign_to_zetl(v).unwrap();
+            let v = t.ztl_to_foreign(&doc).unwrap();
+            let back = t.foreign_to_ztl(v).unwrap();
             prop_assert_eq!(back, doc);
         }
     }

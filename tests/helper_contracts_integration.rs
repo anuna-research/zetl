@@ -1,7 +1,7 @@
 //! SPEC-032 REQ-3210 / CON-3210 — Cross-implementation helper contract test.
 //!
-//! Every first-party helper library (Rust core, `zetl-ast-py`,
-//! `zetl-ast-js`) must agree **bit-for-bit** on what an identity
+//! Every first-party helper library (Rust core, `ztl-ast-py`,
+//! `ztl-ast-js`) must agree **bit-for-bit** on what an identity
 //! transform of a v1 AST document does: read the AST, return the AST,
 //! unmodified. Any disagreement is a contract regression and this
 //! gate fails the build with a side-by-side diff of the culprit pair.
@@ -33,9 +33,9 @@ use std::time::Duration;
 use serde_json::{json, Value};
 use tempfile::TempDir;
 
-use zetl::hooks::ast::Document;
-use zetl::hooks::persistent::{HookMessage, PersistentHook, ProtocolError};
-use zetl::hooks::pipeline::Stage;
+use ztl::hooks::ast::Document;
+use ztl::hooks::persistent::{HookMessage, PersistentHook, ProtocolError};
+use ztl::hooks::pipeline::Stage;
 
 // ── Runtime discovery ──────────────────────────────────────────────────────
 
@@ -66,11 +66,11 @@ fn manifest_dir() -> &'static Path {
 }
 
 fn helper_js_dist() -> PathBuf {
-    manifest_dir().join("tools/zetl-ast-js/dist/esm/index.js")
+    manifest_dir().join("tools/ztl-ast-js/dist/esm/index.js")
 }
 
 fn helper_py_src() -> PathBuf {
-    manifest_dir().join("tools/zetl-ast-py/src")
+    manifest_dir().join("tools/ztl-ast-py/src")
 }
 
 fn fixtures_dir() -> PathBuf {
@@ -89,7 +89,7 @@ fn write_py_identity_hook(dir: &Path) -> PathBuf {
         "#!/usr/bin/env python3",
         "import sys",
         &format!("sys.path.insert(0, {src_literal})"),
-        "from zetl_ast import run",
+        "from ztl_ast import run",
         "",
         "def transform(ast, ctx):",
         "    return ast",
@@ -307,7 +307,7 @@ fn helper_contracts_identity_round_trip() {
             let py_out = drive_identity(py, "identity-py", fixture.clone());
             if &py_out != fixture {
                 failures.push(format!(
-                    "[py] fixture '{name}' differs after zetl-ast-py identity:\n{}",
+                    "[py] fixture '{name}' differs after ztl-ast-py identity:\n{}",
                     side_by_side_diff("fixture", fixture, "py_out", &py_out)
                 ));
             }
@@ -317,7 +317,7 @@ fn helper_contracts_identity_round_trip() {
             let js_out = drive_identity(js, "identity-js", fixture.clone());
             if &js_out != fixture {
                 failures.push(format!(
-                    "[js] fixture '{name}' differs after zetl-ast-js identity:\n{}",
+                    "[js] fixture '{name}' differs after ztl-ast-js identity:\n{}",
                     side_by_side_diff("fixture", fixture, "js_out", &js_out)
                 ));
             }

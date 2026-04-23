@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}{{ vault.name }} — zetl{% endblock %}</title>
-  <script type="application/json" id="zetl-search-index">{{ search_index | safe }}</script>
-  {% if bm25_index %}<script type="application/json" id="zetl-bm25-index">{{ bm25_index | safe }}</script>{% endif %}
+  <title>{% block title %}{{ vault.name }} — ztl{% endblock %}</title>
+  <script type="application/json" id="ztl-search-index">{{ search_index | safe }}</script>
+  {% if bm25_index %}<script type="application/json" id="ztl-bm25-index">{{ bm25_index | safe }}</script>{% endif %}
   <style>
     /* ── Courier Prime via bundled WOFF2 ── */
     @font-face {
@@ -1011,7 +1011,7 @@
     var filtered=[];
 
     var pageList=(function(){
-      try{return JSON.parse(document.getElementById('zetl-search-index').textContent||'[]');}
+      try{return JSON.parse(document.getElementById('ztl-search-index').textContent||'[]');}
       catch(e){return [];}
     })();
 
@@ -1105,7 +1105,7 @@
     }
 
     var searchIndex=(function(){
-      try{var el=document.getElementById('zetl-bm25-index');return el?JSON.parse(el.textContent):null;}
+      try{var el=document.getElementById('ztl-bm25-index');return el?JSON.parse(el.textContent):null;}
       catch(e){return null;}
     })();
 
@@ -1355,7 +1355,7 @@
     /* Build slug lookup from search index */
     var slugMap={};
     try{
-      var pages=JSON.parse(document.getElementById('zetl-search-index').textContent||'[]');
+      var pages=JSON.parse(document.getElementById('ztl-search-index').textContent||'[]');
       pages.forEach(function(p){slugMap[p.n.toLowerCase()]=p.s;});
     }catch(e){}
 

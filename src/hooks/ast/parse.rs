@@ -1,4 +1,4 @@
-//! Markdown → [`Document`] conversion used by `zetl ast sample`
+//! Markdown → [`Document`] conversion used by `ztl ast sample`
 //! (SPEC-032 REQ-3225).
 //!
 //! The transform-stage pipeline boundary (CON-3201) exchanges AST documents,
@@ -6,7 +6,7 @@
 //! would actually receive for a given page, this module realises the
 //! `parse` step of the pipeline: it walks pulldown-cmark events, extracts
 //! Obsidian-style `[[wikilinks]]` and `![[embeds]]`, and produces a
-//! [`Document`] that validates against `tools/zetl-ast-schema-v1.json`.
+//! [`Document`] that validates against `tools/ztl-ast-schema-v1.json`.
 //!
 //! Scope: CommonMark-subset covered by the v1 schema — Heading, Paragraph,
 //! BlockQuote, List/ListItem, CodeBlock (fenced or indented, promoted to

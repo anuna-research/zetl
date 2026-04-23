@@ -35,21 +35,21 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use zetl::ecosystems::nfr_gates::{
+use ztl::ecosystems::nfr_gates::{
     combined_multiplier, combined_within_budget, lifecycle_for, round_trip_budget_for,
     round_trip_fidelity_holds, size_delta_within_budget, COLD_START_BUDGET,
     COMBINED_BUILD_MULTIPLIER, DETERMINISM_SCOPE, NODE_HARNESS_ROUND_TRIP_BUDGET,
     PER_FEATURE_SIZE_BUDGET_BYTES, PIPE_ROUND_TRIP_BUDGET, PROCESS_MEMORY_CEILINGS,
     ROUND_TRIP_FIDELITY_CORPUS,
 };
-use zetl::ecosystems::registry::{Ecosystem, ECOSYSTEMS};
-use zetl::ecosystems::{detect_all_ecosystems, probe_runtime_dep};
-use zetl::hooks::ast::{
+use ztl::ecosystems::registry::{Ecosystem, ECOSYSTEMS};
+use ztl::ecosystems::{detect_all_ecosystems, probe_runtime_dep};
+use ztl::hooks::ast::{
     Block, Document, DocumentKind, Heading, Paragraph, Position, Text, Wikilink, AST_VERSION,
 };
-use zetl::hooks::nfr_gates::p95;
-use zetl::hooks::translators::canonicalise::canonicalise;
-use zetl::hooks::translators::AstType;
+use ztl::hooks::nfr_gates::p95;
+use ztl::hooks::translators::canonicalise::canonicalise;
+use ztl::hooks::translators::AstType;
 
 // ── shared fixtures ─────────────────────────────────────────────────────────
 
@@ -57,7 +57,7 @@ fn pos() -> Position {
     Position::origin()
 }
 
-/// Hand-crafted ~50-node zetl-ext document — enough breadth for
+/// Hand-crafted ~50-node ztl-ext document — enough breadth for
 /// canonicalise + dispatch helpers without dragging proptest into the
 /// integration crate.
 fn fixture_document() -> Document {
@@ -86,15 +86,15 @@ fn fixture_document() -> Document {
     }
 }
 
-fn text(s: &str) -> zetl::hooks::ast::Inline {
-    zetl::hooks::ast::Inline::Text(Text {
+fn text(s: &str) -> ztl::hooks::ast::Inline {
+    ztl::hooks::ast::Inline::Text(Text {
         position: pos(),
         text: s.to_string(),
     })
 }
 
-fn wikilink(target: &str) -> zetl::hooks::ast::Inline {
-    zetl::hooks::ast::Inline::Wikilink(Wikilink {
+fn wikilink(target: &str) -> ztl::hooks::ast::Inline {
+    ztl::hooks::ast::Inline::Wikilink(Wikilink {
         position: pos(),
         target: target.to_string(),
         alias: None,
@@ -210,34 +210,34 @@ fn nfr_3303_node_harness_round_trip_budget_pinned() {
 }
 
 /// Coarse gate: ensure the in-process translation step (the part of the
-/// round-trip zetl owns; the rest is the foreign runtime's cost) is
+/// round-trip ztl owns; the rest is the foreign runtime's cost) is
 /// orders-of-magnitude inside the per-page budget. We translate the
 /// 25-node fixture 1,000 times through every translator and assert the
 /// aggregate clears the per-call budget × sample count.
 #[test]
 fn nfr_3302_3303_translation_layer_is_well_under_budget() {
-    use zetl::hooks::translators::TranslatorRegistry;
+    use ztl::hooks::translators::TranslatorRegistry;
 
     let reg = TranslatorRegistry::all_v1();
     let doc = fixture_document();
 
-    for ast_type in [AstType::ZetlExt, AstType::MdastExt, AstType::PandocExt] {
+    for ast_type in [AstType::ztlExt, AstType::MdastExt, AstType::PandocExt] {
         let translator = reg.get(ast_type).expect("translator registered");
         let mut samples = Vec::with_capacity(1_000);
         for _ in 0..1_000 {
             let t0 = Instant::now();
             let foreign = translator
-                .zetl_to_foreign(&doc)
+                .ztl_to_foreign(&doc)
                 .expect("translate to foreign");
             let _back = translator
-                .foreign_to_zetl(foreign)
+                .foreign_to_ztl(foreign)
                 .expect("translate from foreign");
             samples.push(t0.elapsed());
         }
 
         let total: Duration = samples.iter().sum();
         let per_call_budget = round_trip_budget_for(match ast_type {
-            AstType::ZetlExt | AstType::MdastExt => Ecosystem::Remark, // mdast → remark; zetl-ext gated by remark for headroom
+            AstType::ztlExt | AstType::MdastExt => Ecosystem::Remark, // mdast → remark; ztl-ext gated by remark for headroom
             AstType::PandocExt => Ecosystem::Pandoc,
         });
         let aggregate_budget = per_call_budget * 1_000;
@@ -269,7 +269,7 @@ fn nfr_3304_size_budget_pinned() {
 }
 
 /// Strict gate: read the release binary's stripped size from
-/// `target/release/zetl` (present after `cargo build --release`) and
+/// `target/release/ztl` (present after `cargo build --release`) and
 /// emit it as telemetry. We do NOT compare against a no-feature
 /// baseline here — that needs a side-by-side build the CI nightly
 /// pipeline runs separately. This gate exists to catch regressions
@@ -307,7 +307,7 @@ fn release_binary_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("target")
         .join("release")
-        .join("zetl")
+        .join("ztl")
 }
 
 // ── NFR-3305: Translation round-trip fidelity ───────────────────────────────
@@ -320,7 +320,7 @@ fn release_binary_path() -> PathBuf {
 #[test]
 fn nfr_3305_round_trip_fidelity_holds_for_known_docs() {
     let doc = fixture_document();
-    for ast_type in [AstType::ZetlExt, AstType::MdastExt, AstType::PandocExt] {
+    for ast_type in [AstType::ztlExt, AstType::MdastExt, AstType::PandocExt] {
         assert!(
             round_trip_fidelity_holds(ast_type, &doc, &doc),
             "NFR-3305: identity must satisfy canonical-form equivalence for {ast_type}"
@@ -355,7 +355,7 @@ fn nfr_3305_round_trip_fidelity_corpus_pinned() {
 #[test]
 fn nfr_3306_determinism_canonicalise_is_idempotent() {
     let doc = fixture_document();
-    for ast_type in [AstType::ZetlExt, AstType::MdastExt, AstType::PandocExt] {
+    for ast_type in [AstType::ztlExt, AstType::MdastExt, AstType::PandocExt] {
         let once = canonicalise(ast_type, &doc);
         let twice = canonicalise(ast_type, &once);
         assert_eq!(
@@ -412,7 +412,7 @@ fn nfr_3307_individual_ceilings_match_spec() {
     let mdbook = lifecycle_for(Ecosystem::Mdbook).unwrap();
     assert!(!mdbook.persistent_default);
 
-    // remark Node harness: one harness per zetl process; ≤ 256 MiB ceiling.
+    // remark Node harness: one harness per ztl process; ≤ 256 MiB ceiling.
     let remark = lifecycle_for(Ecosystem::Remark).unwrap();
     assert_eq!(remark.max_resident_bytes, 256 * 1024 * 1024);
     assert!(remark.persistent_default);

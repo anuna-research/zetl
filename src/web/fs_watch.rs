@@ -1,8 +1,8 @@
 //! Filesystem watch for external edits (REQ-020-039).
 //!
-//! Detects changes to vault files that happen outside of zetl's own pipeline
+//! Detects changes to vault files that happen outside of ztl's own pipeline
 //! (e.g. from text editors, git operations, agents, CI). The detection
-//! mechanism uses a `PendingWrites` set: files that zetl is currently writing
+//! mechanism uses a `PendingWrites` set: files that ztl is currently writing
 //! are registered before the write and cleared after; any FS event for a path
 //! NOT in the set is treated as an external edit.
 //!
@@ -46,7 +46,7 @@ pub enum ExternalSource {
 /// Debounce window for batching filesystem events (REQ-020-039 step 1).
 const DEBOUNCE_MS: u64 = 500;
 
-/// Tracks files that zetl is currently writing, so FS events for those
+/// Tracks files that ztl is currently writing, so FS events for those
 /// paths can be filtered out (they are internal, not external edits).
 #[derive(Clone, Default)]
 pub struct PendingWrites {
@@ -58,21 +58,21 @@ impl PendingWrites {
         Self::default()
     }
 
-    /// Register a path as being written by zetl. Call before `fs::write`.
+    /// Register a path as being written by ztl. Call before `fs::write`.
     pub fn insert(&self, path: &Path) {
         if let Ok(mut set) = self.inner.lock() {
             set.insert(path.to_path_buf());
         }
     }
 
-    /// Clear a path after zetl finishes writing. Call after `fs::write`.
+    /// Clear a path after ztl finishes writing. Call after `fs::write`.
     pub fn remove(&self, path: &Path) {
         if let Ok(mut set) = self.inner.lock() {
             set.remove(path);
         }
     }
 
-    /// Check if a path is currently being written by zetl.
+    /// Check if a path is currently being written by ztl.
     pub fn contains(&self, path: &Path) -> bool {
         self.inner
             .lock()
@@ -275,11 +275,11 @@ fn fire_external_save_hooks(state: &WebState, changed_paths: &[PathBuf], source:
         let hook_env = hooks::HookEnv {
             vault_root: state.vault_root.as_ref().clone(),
             theme: state.theme.clone(),
-            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+            ztl_version: env!("CARGO_PKG_VERSION").to_string(),
             extra_vars: vec![
-                ("ZETL_SAVED_FILE".into(), rel_str),
-                ("ZETL_SAVED_PAGE".into(), page_name),
-                ("ZETL_HOOK_DEPTH".into(), "0".into()),
+                ("ztl_SAVED_FILE".into(), rel_str),
+                ("ztl_SAVED_PAGE".into(), page_name),
+                ("ztl_HOOK_DEPTH".into(), "0".into()),
             ],
         };
 
@@ -450,14 +450,14 @@ fn fire_acl_violation_hook(state: &WebState, violations: Vec<HookAclViolationEnt
     let hook_env = hooks::HookEnv {
         vault_root: state.vault_root.as_ref().clone(),
         theme: state.theme.clone(),
-        zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+        ztl_version: env!("CARGO_PKG_VERSION").to_string(),
         extra_vars: vec![
             (
-                "ZETL_ACL_VIOLATION_COUNT".into(),
+                "ztl_ACL_VIOLATION_COUNT".into(),
                 violations.len().to_string(),
             ),
-            ("ZETL_ACL_VIOLATION_PAGES".into(), violation_pages.join(",")),
-            ("ZETL_HOOK_DEPTH".into(), "0".into()),
+            ("ztl_ACL_VIOLATION_PAGES".into(), violation_pages.join(",")),
+            ("ztl_HOOK_DEPTH".into(), "0".into()),
         ],
     };
 
@@ -485,7 +485,7 @@ fn fire_acl_violation_hook(state: &WebState, violations: Vec<HookAclViolationEnt
 
 /// Spawn the filesystem watcher background task (REQ-020-039).
 ///
-/// Watches the vault root for file changes, filters out zetl's own writes
+/// Watches the vault root for file changes, filters out ztl's own writes
 /// via the `PendingWrites` set, debounces events over a 500ms window, and
 /// runs the reconciliation pipeline for external edits.
 pub fn spawn_fs_watcher(state: WebState) -> tokio::task::JoinHandle<()> {
@@ -593,14 +593,14 @@ fn filter_event(
 
     let mut external_paths = Vec::new();
 
-    // Load `.gitignore` + `.zetlignore` once per event batch into a single
+    // Load `.gitignore` + `.ztlignore` once per event batch into a single
     // whitelist matcher so negated patterns can override the dotdir
     // default — keeps watcher in sync with scanner (REQ-206 / defects 2-3).
     // Falls back to None when neither file exists.
     let whitelist: Option<ignore::gitignore::Gitignore> = {
         let mut gi = ignore::gitignore::GitignoreBuilder::new(vault_root);
         let mut any = false;
-        for name in [".gitignore", ".zetlignore"] {
+        for name in [".gitignore", ".ztlignore"] {
             let p = vault_root.join(name);
             if p.exists() {
                 gi.add(&p);
@@ -639,7 +639,7 @@ fn filter_event(
                     basename_str,
                     !is_last,
                     opts,
-                    || partial.join(".zetl").is_dir(),
+                    || partial.join(".ztl").is_dir(),
                     whitelist.as_ref(),
                 );
                 if matches!(decision, crate::scanner::Decision::Exclude(_)) {
@@ -652,7 +652,7 @@ fn filter_event(
             }
         }
 
-        // Skip files zetl is currently writing.
+        // Skip files ztl is currently writing.
         if pending_writes.contains(path) {
             // Clear the pending write now that we've seen the event.
             pending_writes.remove(path);
@@ -694,18 +694,18 @@ mod tests {
                 &[("notes/a.md", "# A"), (".claude/session.md", "# leak")],
             ),
             (
-                "with_dotdir_and_zetlignore_negation",
+                "with_dotdir_and_ztlignore_negation",
                 &[
                     ("notes/a.md", "# A"),
                     (".archive/old.md", "# old"),
-                    (".zetlignore", "!.archive/\n"),
+                    (".ztlignore", "!.archive/\n"),
                 ],
             ),
             (
                 "with_force_ignored",
                 &[
                     ("notes/a.md", "# A"),
-                    (".zetl/internal.md", "# zetl"),
+                    (".ztl/internal.md", "# ztl"),
                     (".git/config-as-md.md", "# git"),
                     ("node_modules/lib.md", "# nm"),
                 ],
@@ -878,7 +878,7 @@ mod tests {
 
         let event = Event {
             kind: EventKind::Create(notify::event::CreateKind::File),
-            paths: vec![vault.join(".zetl/data.md"), vault.join(".git/refs.md")],
+            paths: vec![vault.join(".ztl/data.md"), vault.join(".git/refs.md")],
             attrs: Default::default(),
         };
 
@@ -985,7 +985,7 @@ mod tests {
         .unwrap();
 
         // Create a user profile that will be denied edit access via policy.
-        let users_dir = dir.path().join(".zetl").join("users").join("bob-12345678");
+        let users_dir = dir.path().join(".ztl").join("users").join("bob-12345678");
         std::fs::create_dir_all(&users_dir).unwrap();
         std::fs::write(
             users_dir.join("profile.json"),
@@ -1003,9 +1003,9 @@ mod tests {
         .unwrap();
 
         // Create an access.spl policy that denies edit for bob on "secret".
-        let zetl_dir = dir.path().join(".zetl");
+        let ztl_dir = dir.path().join(".ztl");
         std::fs::write(
-            zetl_dir.join("access.spl"),
+            ztl_dir.join("access.spl"),
             r#"
 (given (deny-edit "bob-12345678" "secret"))
 (strict r-deny-bob-secret
@@ -1054,7 +1054,7 @@ mod tests {
         std::fs::write(dir.path().join("page.md"), "# Page\n\nContent.\n").unwrap();
 
         // Create two users: owner (allowed) and editor (will be denied via policy).
-        let alice_dir = dir.path().join(".zetl").join("users").join("alice-owner");
+        let alice_dir = dir.path().join(".ztl").join("users").join("alice-owner");
         std::fs::create_dir_all(&alice_dir).unwrap();
         std::fs::write(
             alice_dir.join("profile.json"),
@@ -1071,7 +1071,7 @@ mod tests {
         )
         .unwrap();
 
-        let bob_dir = dir.path().join(".zetl").join("users").join("bob-editor");
+        let bob_dir = dir.path().join(".ztl").join("users").join("bob-editor");
         std::fs::create_dir_all(&bob_dir).unwrap();
         std::fs::write(
             bob_dir.join("profile.json"),
@@ -1089,9 +1089,9 @@ mod tests {
         .unwrap();
 
         // Deny bob-editor from editing "page".
-        let zetl_dir = dir.path().join(".zetl");
+        let ztl_dir = dir.path().join(".ztl");
         std::fs::write(
-            zetl_dir.join("access.spl"),
+            ztl_dir.join("access.spl"),
             r#"
 (given (deny-edit "bob-editor" "page"))
 (strict r-deny-bob-page
@@ -1228,8 +1228,8 @@ mod tests {
     fn reconcile_deleted_file_writes_recovery() {
         let dir = tempfile::TempDir::new().unwrap();
         std::fs::write(dir.path().join("note.md"), "# Note\n\nOriginal.\n").unwrap();
-        // Ensure .zetl dir exists for recovery subdir.
-        std::fs::create_dir_all(dir.path().join(".zetl")).unwrap();
+        // Ensure .ztl dir exists for recovery subdir.
+        std::fs::create_dir_all(dir.path().join(".ztl")).unwrap();
 
         let state = make_test_state(dir.path());
 
@@ -1269,7 +1269,7 @@ mod tests {
         );
 
         // Recovery file should exist.
-        let recovery_path = dir.path().join(".zetl").join("recovery").join("note.md");
+        let recovery_path = dir.path().join(".ztl").join("recovery").join("note.md");
         assert!(
             recovery_path.exists(),
             "recovery file should be written at {}",
@@ -1288,7 +1288,7 @@ mod tests {
     fn reconcile_deleted_clean_crdt_no_recovery() {
         let dir = tempfile::TempDir::new().unwrap();
         std::fs::write(dir.path().join("note.md"), "# Note\n").unwrap();
-        std::fs::create_dir_all(dir.path().join(".zetl")).unwrap();
+        std::fs::create_dir_all(dir.path().join(".ztl")).unwrap();
 
         let state = make_test_state(dir.path());
 
@@ -1312,7 +1312,7 @@ mod tests {
         assert!(!state.crdt_store.is_loaded("note"));
 
         // No recovery file since CRDT was clean.
-        let recovery_path = dir.path().join(".zetl").join("recovery").join("note.md");
+        let recovery_path = dir.path().join(".ztl").join("recovery").join("note.md");
         assert!(
             !recovery_path.exists(),
             "no recovery file expected for clean CRDT"

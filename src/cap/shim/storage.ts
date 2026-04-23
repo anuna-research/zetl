@@ -13,7 +13,7 @@
 // AES-GCM AAD check catch a mismatch if the browser's origin-keying
 // is ever bypassed).
 
-export const DB_NAME = "zetl-cap-shim";
+export const DB_NAME = "ztl-cap-shim";
 /// v2 adds `STORE_AUDIT` for REQ-3425 collision-UI audit entries.
 /// Existing readers with a v1 DB upgrade in place — `STORE_BINDINGS`
 /// rows are preserved; only the new store is created.
@@ -70,7 +70,7 @@ export function defaultFactory(): IdbFactoryLike | null {
   return null;
 }
 
-/// Open `zetl-cap-shim` DB, upgrading the schema in place to
+/// Open `ztl-cap-shim` DB, upgrading the schema in place to
 /// version [`DB_VERSION`]. Subsequent schema bumps append new
 /// upgrade branches; the v1 branch is stable.
 export async function openDb(

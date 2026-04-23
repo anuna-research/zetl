@@ -21,7 +21,7 @@
 //! - [`ProbeOutcome::StageMismatch`] — hook's `stages` omit the stage
 //!   it was composed into. Disables the hook with a diagnostic.
 //! - [`ProbeOutcome::AstVersionMismatch`] — the hook's declared
-//!   `zetl_ast` is not compatible with the zetl AST schema version.
+//!   `ztl_ast` is not compatible with the ztl AST schema version.
 //! - [`ProbeOutcome::ProbeError`] — transport-level or protocol error
 //!   (timeout, non-zero exit, malformed JSON). Disables the hook.
 
@@ -63,8 +63,8 @@ pub enum ProbeOutcome {
         expected: Stage,
         declared: Vec<String>,
     },
-    /// Probe succeeded but the hook's declared `zetl_ast` is not
-    /// compatible with the running zetl's AST schema version.
+    /// Probe succeeded but the hook's declared `ztl_ast` is not
+    /// compatible with the running ztl's AST schema version.
     AstVersionMismatch {
         result: ProbeResult,
         declared: String,
@@ -106,7 +106,7 @@ impl ProbeOutcome {
     }
 }
 
-/// Per-hook capability report surfaced by `zetl hook capabilities` and
+/// Per-hook capability report surfaced by `ztl hook capabilities` and
 /// by pipeline-init probe wiring.
 #[derive(Debug, Clone, Serialize)]
 pub struct CapabilityReport {
@@ -123,7 +123,7 @@ pub struct CapabilityReport {
 }
 
 /// Serialisable projection of [`ProbeOutcome`]. The wire form is a
-/// tagged union so `zetl hook capabilities --json` round-trips cleanly
+/// tagged union so `ztl hook capabilities --json` round-trips cleanly
 /// into tooling.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", rename_all = "kebab-case")]
@@ -251,8 +251,8 @@ pub fn classify(result: ProbeResult, expected: Stage) -> ProbeOutcome {
         return ProbeOutcome::Declined { result, reason };
     }
 
-    if !ast_schema_compatible(&result.zetl_ast, AST_VERSION) {
-        let declared = result.zetl_ast.clone();
+    if !ast_schema_compatible(&result.ztl_ast, AST_VERSION) {
+        let declared = result.ztl_ast.clone();
         return ProbeOutcome::AstVersionMismatch {
             result,
             declared,
@@ -274,12 +274,12 @@ pub fn classify(result: ProbeResult, expected: Stage) -> ProbeOutcome {
     ProbeOutcome::Ok(result)
 }
 
-/// Compatibility check for the hook's declared `zetl_ast` against the
-/// running zetl's AST schema version.
+/// Compatibility check for the hook's declared `ztl_ast` against the
+/// running ztl's AST schema version.
 ///
 /// Semver rules apply: MAJOR must match exactly; MINOR and PATCH are
-/// forward-compatible (the hook may declare a lower minor than zetl
-/// is running; zetl is responsible for preserving older minor shapes).
+/// forward-compatible (the hook may declare a lower minor than ztl
+/// is running; ztl is responsible for preserving older minor shapes).
 /// Free-form strings that don't look like semver fall back to exact
 /// equality.
 pub fn ast_schema_compatible(declared: &str, running: &str) -> bool {
@@ -334,35 +334,35 @@ pub fn probe_stage_pipeline(
 }
 
 /// Summarise a single capability report into a one-line stderr
-/// diagnostic (`[zetl] hook probe: ...`). Used by both the init-time
-/// probe wiring and the `zetl hook capabilities` pretty-printer.
+/// diagnostic (`[ztl] hook probe: ...`). Used by both the init-time
+/// probe wiring and the `ztl hook capabilities` pretty-printer.
 pub fn format_diagnostic(report: &CapabilityReport) -> String {
     match &report.outcome {
         CapabilityOutcome::Ok { result } => format!(
-            "[zetl] hook probe ok: stage={} id={} version={} zetl_ast={}",
-            report.stage, report.extension_id, result.version, result.zetl_ast
+            "[ztl] hook probe ok: stage={} id={} version={} ztl_ast={}",
+            report.stage, report.extension_id, result.version, result.ztl_ast
         ),
         CapabilityOutcome::Declined { reason, .. } => {
             let r = reason.as_deref().unwrap_or("(no reason given)");
             format!(
-                "[zetl] hook probe: stage={} id={} declined: {r}",
+                "[ztl] hook probe: stage={} id={} declined: {r}",
                 report.stage, report.extension_id
             )
         }
         CapabilityOutcome::StageMismatch {
             expected, declared, ..
         } => format!(
-            "[zetl] hook probe: stage={} id={} manifest/probe mismatch: expected stage {expected}, declared {declared:?}",
+            "[ztl] hook probe: stage={} id={} manifest/probe mismatch: expected stage {expected}, declared {declared:?}",
             report.stage, report.extension_id
         ),
         CapabilityOutcome::AstVersionMismatch {
             declared, expected, ..
         } => format!(
-            "[zetl] hook probe: stage={} id={} ast version mismatch: hook declared {declared}, zetl speaks {expected}",
+            "[ztl] hook probe: stage={} id={} ast version mismatch: hook declared {declared}, ztl speaks {expected}",
             report.stage, report.extension_id
         ),
         CapabilityOutcome::Error { message } => format!(
-            "[zetl] hook probe: stage={} id={} error: {message}",
+            "[ztl] hook probe: stage={} id={} error: {message}",
             report.stage, report.extension_id
         ),
     }
@@ -375,11 +375,11 @@ mod tests {
 
     fn sample_result(stages: &[&str], ready: bool) -> ProbeResult {
         ProbeResult {
-            zetl_ast: AST_VERSION.to_string(),
+            ztl_ast: AST_VERSION.to_string(),
             hook: "sample".into(),
             version: "0.1.0".into(),
             stages: stages.iter().map(|s| s.to_string()).collect(),
-            ast_types: Some(vec!["zetl-ext".into()]),
+            ast_types: Some(vec!["ztl-ext".into()]),
             applies_when: Some(AppliesWhen::default()),
             ready,
             reason: None,
@@ -424,7 +424,7 @@ mod tests {
     #[test]
     fn classify_ast_major_bump_is_mismatch() {
         let mut r = sample_result(&["transform"], true);
-        r.zetl_ast = "2.0".into();
+        r.ztl_ast = "2.0".into();
         assert!(matches!(
             classify(r, Stage::Transform),
             ProbeOutcome::AstVersionMismatch { .. }
@@ -433,15 +433,15 @@ mod tests {
 
     #[test]
     fn ast_schema_compatibility_accepts_minor_lower() {
-        // Hook pinned to 1.0 runs on zetl 1.3.
+        // Hook pinned to 1.0 runs on ztl 1.3.
         assert!(ast_schema_compatible("1.0", "1.3"));
         assert!(ast_schema_compatible("1.2", "1.2.7"));
     }
 
     #[test]
     fn ast_schema_compatibility_rejects_higher_minor() {
-        // Hook built for zetl 1.5 won't run on zetl 1.3 — the hook
-        // expects a shape that older zetl doesn't emit.
+        // Hook built for ztl 1.5 won't run on ztl 1.3 — the hook
+        // expects a shape that older ztl doesn't emit.
         assert!(!ast_schema_compatible("1.5", "1.3"));
     }
 

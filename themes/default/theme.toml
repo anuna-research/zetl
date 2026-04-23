@@ -1,8 +1,8 @@
 [theme]
 name = "default"
 version = "0.9.0"
-description = "The default zetl theme"
-author = "zetl contributors"
+description = "The default ztl theme"
+author = "ztl contributors"
 license = "AGPL-3.0"
 
 [theme.templates]
@@ -47,7 +47,7 @@ placement = "docked"
 
 # SPEC-028 REQ-113: opt in to the persistent-shell SPA navigation module.
 # When enabled, base.html loads _static/spa.js and the element carrying
-# `data-zetl-volatile` is swapped on same-origin <a> clicks instead of
+# `data-ztl-volatile` is swapped on same-origin <a> clicks instead of
 # triggering a full page reload.
 [spa]
 enabled = true

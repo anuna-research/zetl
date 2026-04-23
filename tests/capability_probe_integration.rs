@@ -8,7 +8,7 @@
 //!   not an error;
 //! - probe_result whose `stages` omit the composed stage is flagged as
 //!   [`ProbeOutcome::StageMismatch`];
-//! - `zetl hook capabilities` CLI subcommand prints a table / JSON
+//! - `ztl hook capabilities` CLI subcommand prints a table / JSON
 //!   against a fixture vault and exits non-zero on probe failures.
 //!
 //! Python3 is required; tests are skipped gracefully when it's absent.
@@ -23,11 +23,11 @@ use std::time::Duration;
 use assert_cmd::cargo::cargo_bin_cmd;
 use tempfile::TempDir;
 
-use zetl::hooks::capability::{classify, probe_hook, ProbeOutcome, DEFAULT_PROBE_TIMEOUT};
-use zetl::hooks::composition::{ComposedHook, CompositionSource};
-use zetl::hooks::persistent::{AppliesWhen, PersistentHook, ProbeResult};
-use zetl::hooks::pipeline::Stage;
-use zetl::hooks::translators::AstType;
+use ztl::hooks::capability::{classify, probe_hook, ProbeOutcome, DEFAULT_PROBE_TIMEOUT};
+use ztl::hooks::composition::{ComposedHook, CompositionSource};
+use ztl::hooks::persistent::{AppliesWhen, PersistentHook, ProbeResult};
+use ztl::hooks::pipeline::Stage;
+use ztl::hooks::translators::AstType;
 
 fn python3_available() -> bool {
     Command::new("python3")
@@ -63,7 +63,7 @@ fn mk_composed(exe_path: &Path, extension_id: &str, stage: Stage) -> ComposedHoo
         before: Vec::new(),
         after: Vec::new(),
         optional: false,
-        ast_type: AstType::ZetlExt,
+        ast_type: AstType::ztlExt,
         ast_version: None,
         preserves: Vec::new(),
         ecosystem: None,
@@ -79,7 +79,7 @@ fn probe_only_hook(stages: &[&str], ready: bool) -> String {
     format!(
         r#"
 import json, sys
-sys.stdout.write('{{"zetl_ast":1,"hook":"p","version":"0.1.0","ready":true}}\n')
+sys.stdout.write('{{"ztl_ast":1,"hook":"p","version":"0.1.0","ready":true}}\n')
 sys.stdout.flush()
 for line in sys.stdin:
     try:
@@ -92,11 +92,11 @@ for line in sys.stdin:
     if t == "probe":
         resp = {{
             "type": "probe_result",
-            "zetl_ast": "1.0",
+            "ztl_ast": "1.0",
             "hook": "p",
             "version": "0.1.0",
             "stages": {stages_json},
-            "ast_types": ["zetl-ext"],
+            "ast_types": ["ztl-ext"],
             "ready": {ready_py},
         }}
         sys.stdout.write(json.dumps(resp) + "\n")
@@ -124,7 +124,7 @@ fn probe_round_trip_returns_ok_outcome() {
         ProbeOutcome::Ok(r) => {
             assert_eq!(r.hook, "p");
             assert_eq!(r.version, "0.1.0");
-            assert_eq!(r.zetl_ast, "1.0");
+            assert_eq!(r.ztl_ast, "1.0");
             assert_eq!(r.stages, vec!["transform"]);
             assert!(r.ready);
         }
@@ -189,7 +189,7 @@ fn probe_timeout_classifies_as_error() {
     // probe call should time out; probe_hook returns ProbeError.
     let body = r#"
 import json, sys, time
-sys.stdout.write('{"zetl_ast":1,"hook":"slow","version":"0.1.0","ready":true}\n')
+sys.stdout.write('{"ztl_ast":1,"hook":"slow","version":"0.1.0","ready":true}\n')
 sys.stdout.flush()
 # Never respond to anything — just sleep.
 for line in sys.stdin:
@@ -221,7 +221,7 @@ fn probe_malformed_response_classifies_as_error() {
     // Hook handshakes fine, then returns a plain-text line when probed.
     let body = r#"
 import json, sys
-sys.stdout.write('{"zetl_ast":1,"hook":"bad","version":"0.1.0","ready":true}\n')
+sys.stdout.write('{"ztl_ast":1,"hook":"bad","version":"0.1.0","ready":true}\n')
 sys.stdout.flush()
 for line in sys.stdin:
     msg = json.loads(line)
@@ -257,7 +257,7 @@ fn probe_via_persistent_hook_api_direct() {
         PersistentHook::spawn(Command::new(&hook_path), "direct", Stage::Transform).unwrap();
     let result: ProbeResult = hook.probe(Some("build"), 2_000).unwrap();
     assert_eq!(result.stages, vec!["transform", "post-render"]);
-    assert_eq!(result.zetl_ast, "1.0");
+    assert_eq!(result.ztl_ast, "1.0");
     assert!(result.ready);
 
     // After probe, the hook should still accept further messages.
@@ -269,11 +269,11 @@ fn classify_unit_checks_applies_when_is_preserved() {
     // Unit-layer sanity — if a hook emits applies_when the classifier
     // must preserve it in the Ok(result) so CLI callers can render it.
     let r = ProbeResult {
-        zetl_ast: "1.0".into(),
+        ztl_ast: "1.0".into(),
         hook: "x".into(),
         version: "0.1.0".into(),
         stages: vec!["transform".into()],
-        ast_types: Some(vec!["zetl-ext".into()]),
+        ast_types: Some(vec!["ztl-ext".into()]),
         applies_when: Some(AppliesWhen {
             modes: Some(vec!["build".into()]),
             ..Default::default()
@@ -295,7 +295,7 @@ fn classify_unit_checks_applies_when_is_preserved() {
 // ── CLI coverage ──────────────────────────────────────────────────────────
 
 fn scaffold_vault_with_hook(vault: &Path, stage: &str, name: &str, hook_body: &str) {
-    let hook_dir = vault.join(format!(".zetl/hooks/{stage}.d"));
+    let hook_dir = vault.join(format!(".ztl/hooks/{stage}.d"));
     std::fs::create_dir_all(&hook_dir).unwrap();
     let exe_path = hook_dir.join(format!("{name}.py"));
     let script = format!("#!/usr/bin/env python3\n{hook_body}");
@@ -321,7 +321,7 @@ fn cli_hook_capabilities_reports_every_composed_hook() {
         &probe_only_hook(&["transform"], true),
     );
 
-    let out = cargo_bin_cmd!("zetl")
+    let out = cargo_bin_cmd!("ztl")
         .args([
             "--dir",
             vault.to_str().unwrap(),
@@ -331,7 +331,7 @@ fn cli_hook_capabilities_reports_every_composed_hook() {
             "transform",
         ])
         .output()
-        .expect("run zetl hook capabilities");
+        .expect("run ztl hook capabilities");
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -370,7 +370,7 @@ fn cli_hook_capabilities_exits_nonzero_on_stage_mismatch() {
         &probe_only_hook(&["post-render"], true),
     );
 
-    let out = cargo_bin_cmd!("zetl")
+    let out = cargo_bin_cmd!("ztl")
         .args([
             "--dir",
             vault.to_str().unwrap(),
@@ -380,7 +380,7 @@ fn cli_hook_capabilities_exits_nonzero_on_stage_mismatch() {
             "transform",
         ])
         .output()
-        .expect("run zetl hook capabilities");
+        .expect("run ztl hook capabilities");
     let code = out.status.code().unwrap_or(-1);
     assert_eq!(code, 1, "expected exit 1 on probe failure; got {code}");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -406,7 +406,7 @@ fn cli_hook_capabilities_json_output_round_trips() {
         &probe_only_hook(&["transform"], true),
     );
 
-    let out = cargo_bin_cmd!("zetl")
+    let out = cargo_bin_cmd!("ztl")
         .args([
             "--dir",
             vault.to_str().unwrap(),
@@ -417,7 +417,7 @@ fn cli_hook_capabilities_json_output_round_trips() {
             "transform",
         ])
         .output()
-        .expect("run zetl hook capabilities --json");
+        .expect("run ztl hook capabilities --json");
     assert!(
         out.status.success(),
         "json output must exit 0 when probes succeed; stderr={}",

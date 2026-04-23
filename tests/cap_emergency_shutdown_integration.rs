@@ -1,4 +1,4 @@
-//! Integration tests for `zetl cap emergency-shutdown`
+//! Integration tests for `ztl cap emergency-shutdown`
 //! (SPEC-034 REQ-3431, §11.3; BUG-024 resolution).
 //!
 //! The command is documentation-only: it must print the operator
@@ -44,11 +44,11 @@ fn fresh_vault(name: &str) -> tempfile::TempDir {
 
 #[test]
 fn emergency_shutdown_prints_full_checklist_on_stdout() {
-    let vault = fresh_vault("zetl-cap-es-full");
+    let vault = fresh_vault("ztl-cap-es-full");
     fs::write(vault.path().join("recipients.toml"), RECIPIENTS_TOML)
         .expect("write recipients.toml");
 
-    let assert = cargo_bin_cmd!("zetl")
+    let assert = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             vault.path().to_str().unwrap(),
@@ -63,10 +63,10 @@ fn emergency_shutdown_prints_full_checklist_on_stdout() {
     // Header + all four REQ-3431 canonical steps + the re-enrolment
     // step must appear in order.
     for marker in [
-        "zetl cap emergency-shutdown",
+        "ztl cap emergency-shutdown",
         "Step 1 — Remove or redirect DNS",
         "Step 2 — CDN: purge /c/* objects",
-        "Step 3 — Rotate ZETL_CAP_SECRET + ZETL_CAP_SIGNING_KEY",
+        "Step 3 — Rotate ztl_CAP_SECRET + ztl_CAP_SIGNING_KEY",
         "Step 4 — Announce to readers",
         "Step 5 — Re-enrolment",
     ] {
@@ -85,11 +85,11 @@ fn emergency_shutdown_prints_full_checklist_on_stdout() {
 
 #[test]
 fn emergency_shutdown_enumerates_cohorts_and_signing_pubkey() {
-    let vault = fresh_vault("zetl-cap-es-cohorts");
+    let vault = fresh_vault("ztl-cap-es-cohorts");
     fs::write(vault.path().join("recipients.toml"), RECIPIENTS_TOML)
         .expect("write recipients.toml");
 
-    let assert = cargo_bin_cmd!("zetl")
+    let assert = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             vault.path().to_str().unwrap(),
@@ -117,9 +117,9 @@ fn emergency_shutdown_enumerates_cohorts_and_signing_pubkey() {
 
 #[test]
 fn emergency_shutdown_degrades_without_recipients_toml() {
-    let vault = fresh_vault("zetl-cap-es-bare");
+    let vault = fresh_vault("ztl-cap-es-bare");
 
-    let assert = cargo_bin_cmd!("zetl")
+    let assert = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             vault.path().to_str().unwrap(),
@@ -146,7 +146,7 @@ fn emergency_shutdown_degrades_without_recipients_toml() {
 
 #[test]
 fn emergency_shutdown_is_idempotent_on_disk() {
-    let vault = fresh_vault("zetl-cap-es-nowrite");
+    let vault = fresh_vault("ztl-cap-es-nowrite");
     fs::write(vault.path().join("recipients.toml"), RECIPIENTS_TOML)
         .expect("write recipients.toml");
 
@@ -156,7 +156,7 @@ fn emergency_shutdown_is_idempotent_on_disk() {
         .collect();
     let before_body = fs::read_to_string(vault.path().join("recipients.toml")).unwrap();
 
-    cargo_bin_cmd!("zetl")
+    cargo_bin_cmd!("ztl")
         .args([
             "-d",
             vault.path().to_str().unwrap(),
@@ -181,11 +181,11 @@ fn emergency_shutdown_is_idempotent_on_disk() {
 
 #[test]
 fn emergency_shutdown_emits_json_under_json_flag() {
-    let vault = fresh_vault("zetl-cap-es-json");
+    let vault = fresh_vault("ztl-cap-es-json");
     fs::write(vault.path().join("recipients.toml"), RECIPIENTS_TOML)
         .expect("write recipients.toml");
 
-    let assert = cargo_bin_cmd!("zetl")
+    let assert = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             vault.path().to_str().unwrap(),
@@ -199,7 +199,7 @@ fn emergency_shutdown_emits_json_under_json_flag() {
 
     let parsed: serde_json::Value =
         serde_json::from_str(stdout.trim()).expect("stdout must be JSON under --json");
-    assert_eq!(parsed["command"], "zetl cap emergency-shutdown");
+    assert_eq!(parsed["command"], "ztl cap emergency-shutdown");
     assert_eq!(parsed["spec"], "SPEC-034 REQ-3431");
     assert_eq!(parsed["automated"], false);
     assert_eq!(parsed["steps"].as_array().unwrap().len(), 5);
@@ -215,9 +215,9 @@ fn emergency_shutdown_emits_json_under_json_flag() {
 
 #[test]
 fn emergency_shutdown_surfaces_vault_basename() {
-    let vault = fresh_vault("zetl-cap-es-named-vault");
+    let vault = fresh_vault("ztl-cap-es-named-vault");
 
-    let assert = cargo_bin_cmd!("zetl")
+    let assert = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             vault.path().to_str().unwrap(),
@@ -242,14 +242,14 @@ fn emergency_shutdown_surfaces_vault_basename() {
 
 #[test]
 fn emergency_shutdown_tolerates_malformed_recipients_toml() {
-    let vault = fresh_vault("zetl-cap-es-malformed");
+    let vault = fresh_vault("ztl-cap-es-malformed");
     fs::write(
         vault.path().join("recipients.toml"),
         "this is not toml = = =",
     )
     .expect("write bad toml");
 
-    let assert = cargo_bin_cmd!("zetl")
+    let assert = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             vault.path().to_str().unwrap(),
@@ -277,8 +277,8 @@ fn emergency_shutdown_is_not_stubbed() {
     // Sanity check mirroring `cap_audit_diff_not_stubbed` in the
     // skeleton suite: the command must not hit the
     // `not-yet-implemented` path.
-    let vault = fresh_vault("zetl-cap-es-not-stub");
-    let assert = cargo_bin_cmd!("zetl")
+    let vault = fresh_vault("ztl-cap-es-not-stub");
+    let assert = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             vault.path().to_str().unwrap(),

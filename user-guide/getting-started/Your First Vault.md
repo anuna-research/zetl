@@ -14,7 +14,7 @@ mkdir ~/notes
 cd ~/notes
 ```
 
-That's the whole setup. No config files, no database, no `init` command. zetl treats any folder containing Markdown as a vault.
+That's the whole setup. No config files, no database, no `init` command. ztl treats any folder containing Markdown as a vault.
 
 ## Create three linked notes
 
@@ -88,7 +88,7 @@ Three files. Six wikilinks between them. One of them (`[[2026 Goals#writing]]`) 
 ## Build the index
 
 ```bash
-zetl index
+ztl index
 ```
 
 If your terminal shows a table like:
@@ -102,12 +102,12 @@ Dead links          0
 Orphans             0
 ```
 
-…then zetl parsed everything correctly. The `.zetl/` cache now holds the graph, the search index, and (if built with `--features history`) a snapshot.
+…then ztl parsed everything correctly. The `.ztl/` cache now holds the graph, the search index, and (if built with `--features history`) a snapshot.
 
 ## Check vault health
 
 ```bash
-zetl check
+ztl check
 ```
 
 With three internally-consistent files, you should see `No issues found` (or an empty diagnostics block in JSON mode). Typical things `check` catches as a vault grows:
@@ -116,40 +116,40 @@ With three internally-consistent files, you should see `No issues found` (or an 
 - **Orphan pages** — notes nothing links to and that link to nothing.
 - **Syntax errors** — malformed wikilinks, broken frontmatter.
 
-Run `zetl check --dead-links` or `zetl check --orphans` to isolate one category. See [[Finding Orphans and Dead Links]] for the full workflow.
+Run `ztl check --dead-links` or `ztl check --orphans` to isolate one category. See [[Finding Orphans and Dead Links]] for the full workflow.
 
 ## Query the graph
 
 Who points at *Projects*?
 
 ```bash
-zetl backlinks "Projects"
+ztl backlinks "Projects"
 ```
 
 Answer: both `2026 Goals` and `Daily Journal` do. What does *2026 Goals* link out to?
 
 ```bash
-zetl links "2026 Goals"
+ztl links "2026 Goals"
 ```
 
 Answer: `Daily Journal` and `Projects`. Two hops:
 
 ```bash
-zetl path "Daily Journal" "Projects"
+ztl path "Daily Journal" "Projects"
 ```
 
-zetl finds the shortest path through your link graph — in this three-note case, one hop, but the same command scales to hundred-hop traversals in a large vault.
+ztl finds the shortest path through your link graph — in this three-note case, one hop, but the same command scales to hundred-hop traversals in a large vault.
 
 ## Read it in the browser
 
 ```bash
-zetl serve
+ztl serve
 # Serving on http://localhost:3000
 ```
 
 You get a three-column layout: sidebar with all three pages, rendered Markdown in the middle, backlinks and transclusion cards on the right. Click `[[2026 Goals]]` in `Projects.md` and the page navigates without reload — the graph widget in the corner updates its highlighted node.
 
-Edits in the browser save straight back to `~/notes/*.md`. Your text editor sees the update immediately. zetl re-indexes in the background.
+Edits in the browser save straight back to `~/notes/*.md`. Your text editor sees the update immediately. ztl re-indexes in the background.
 
 ## Wikilink syntax cheat-sheet
 
@@ -167,13 +167,13 @@ See [[Wikilinks]] for every variant and [[Linking Pages]] for the day-to-day wor
 
 ## What just happened
 
-You made a folder, wrote three Markdown files, and pointed zetl at it. That's a vault. Add 397 more files and you have a Zettelkasten. zetl never wrote to any of your notes; everything it needed to remember lives in `~/notes/.zetl/` and can be deleted without losing a word.
+You made a folder, wrote three Markdown files, and pointed ztl at it. That's a vault. Add 397 more files and you have a Zettelkasten. ztl never wrote to any of your notes; everything it needed to remember lives in `~/notes/.ztl/` and can be deleted without losing a word.
 
 ## Next
 
 - [[Writing Pages]] — titles, Markdown flavours, frontmatter conventions.
 - [[Linking Pages]] — aliases, heading links, block references, day-to-day practice.
-- [[The Link Graph]] — how zetl thinks about your notes.
+- [[The Link Graph]] — how ztl thinks about your notes.
 - [[Finding Orphans and Dead Links]] — keeping the vault healthy as it grows.
 
 ## Related

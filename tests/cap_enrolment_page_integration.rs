@@ -2,7 +2,7 @@
 //! (SPEC-034 REQ-3404 / REQ-3414 / CON-3409, TEST-3404 + TEST-3414
 //! Rust side).
 //!
-//! Runs `zetl::cap::build::run_capability_build` with an
+//! Runs `ztl::cap::build::run_capability_build` with an
 //! `enroll_integrity` SRI token threaded through `BuildConfig` and
 //! asserts:
 //!
@@ -27,20 +27,20 @@ use base64::Engine as _;
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
-use zetl::cap::build::{run_capability_build, BuildConfig, PageInput, Visibility};
-use zetl::cap::deploy_headers::CAP_CSP;
-use zetl::cap::enrolment::{
+use ztl::cap::build::{run_capability_build, BuildConfig, PageInput, Visibility};
+use ztl::cap::deploy_headers::CAP_CSP;
+use ztl::cap::enrolment::{
     compute_prf_salt, ENROLL_HTML_FILENAME, ENROLL_JS_PATH, ENROLL_MOUNT_ID, PRF_SALT_PREFIX,
 };
-use zetl::cap::genkey::{
+use ztl::cap::genkey::{
     build_secret, decode_secret, encode_secret, ParsedSecret, SECRET_VERSION_V1,
 };
-use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
-use zetl::cap::recipients::parsing::{
+use ztl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
+use ztl::cap::recipients::parsing::{
     Cohort, CohortMode, RecipientsFile, VaultSection, AGE_RECIPIENT_V1_PREFIX,
 };
-use zetl::cap::scoping::access_config::AccessConfig;
-use zetl::cap::sign::VaultSigningKey;
+use ztl::cap::scoping::access_config::AccessConfig;
+use ztl::cap::sign::VaultSigningKey;
 
 const SAMPLE_ENROLL_SRI: &str =
     "sha384-EnrollAAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLLMMMMNNNNOOOOP0=";
@@ -185,7 +185,7 @@ fn enroll_html_emitted_when_integrity_threaded() {
         "missing CSP meta fallback in:\n{html}"
     );
 
-    let expected_mount = format!("<main id=\"{ENROLL_MOUNT_ID}\" data-zetl-enroll>");
+    let expected_mount = format!("<main id=\"{ENROLL_MOUNT_ID}\" data-ztl-enroll>");
     assert!(
         html.contains(&expected_mount),
         "missing mount-point div in:\n{html}"

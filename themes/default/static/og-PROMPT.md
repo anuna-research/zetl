@@ -1,11 +1,11 @@
 # Open Graph background image — Midjourney prompt
 
-`zetl build` generates a `og.png` (1200×630) for every built page using a
+`ztl build` generates a `og.png` (1200×630) for every built page using a
 user-supplied background template composited underneath the page title. If
-you drop a file at any of these paths, `zetl build` will pick it up
+you drop a file at any of these paths, `ztl build` will pick it up
 automatically:
 
-- `<your-vault>/.zetl/static/og-background.png`
+- `<your-vault>/.ztl/static/og-background.png`
 - `<your-theme>/static/og-background.png` (for a custom theme)
 
 The template should be subtle enough to sit behind white text at the
@@ -50,7 +50,7 @@ editorial magazine aesthetic, subtle film grain --ar 1200:630 --style raw
 - The page title is drawn at roughly 72px inset from the left edge,
   starting around y=410 of the 630px canvas. Keep that region uncluttered.
 - The vault name (smaller subtitle) sits at y=350.
-- The zetl wordmark appears in the bottom-right corner.
+- The ztl wordmark appears in the bottom-right corner.
 - A dark gradient scrim is automatically overlaid on the bottom ~55% of
   the frame, so you can safely publish brighter or busier backgrounds.
 - Output MUST be saved as PNG at 1200×630 (Midjourney at `--ar 1200:630`

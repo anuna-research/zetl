@@ -3,7 +3,7 @@
 Generated: 2026-04-19T02:04:30Z
 
 Classifies the top-50 Obsidian community plugins by install count against
-the markers required for zetl's v1 MarkdownPostProcessor shim.
+the markers required for ztl's v1 MarkdownPostProcessor shim.
 
 **Data sources:**
 - Plugin list: https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json

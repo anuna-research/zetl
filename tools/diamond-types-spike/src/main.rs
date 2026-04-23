@@ -1,7 +1,7 @@
 //! IMPL-029 Phase 0 spike — diamond-types API exploration.
 //!
 //! Exercises the diamond-types 1.0 OpLog/Branch surface against the shapes
-//! zetl currently needs from automerge (see src/crdt/mod.rs + src/web/ws.rs):
+//! ztl currently needs from automerge (see src/crdt/mod.rs + src/web/ws.rs):
 //! insert, delete, save/load, fork/merge, char-position addressing.
 //!
 //! Also runs the same scripted edit trace through automerge-0.5 so the wire
@@ -19,7 +19,7 @@ use diamond_types::list::{Branch, OpLog};
 fn main() {
     banner("diamond-types crate metadata");
     println!("crate version      : 1.0.0 (first stable release, 2023-07)");
-    println!("zetl pin candidate : 1.0  (only 1.x released; no breaking bumps since)");
+    println!("ztl pin candidate : 1.0  (only 1.x released; no breaking bumps since)");
     println!("license            : ISC");
     println!("default features   : lz4 (used for content compression in encoded blobs)");
 
@@ -134,7 +134,7 @@ fn demo_char_position() {
     banner("(4) char-position addressing (multi-byte text)");
     // Diamond-types' internal rope stores content in unicode code points
     // and positions are char indices — *not* byte indices. Relevant for
-    // zetl's em-dash/emoji pages (see Cache.md repro test).
+    // ztl's em-dash/emoji pages (see Cache.md repro test).
     let mut oplog = OpLog::new();
     let a = oplog.get_or_create_agent_id("alice");
 
@@ -322,7 +322,7 @@ enum Op {
 }
 
 /// A small scripted edit trace loosely representing 5 minutes of typing
-/// in a zetl note: mostly run-inserts with a handful of backspaces. Used
+/// in a ztl note: mostly run-inserts with a handful of backspaces. Used
 /// as a level playing field for wire-size comparisons.
 fn scripted_trace() -> Vec<Op> {
     let mut ops = Vec::new();

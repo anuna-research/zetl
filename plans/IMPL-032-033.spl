@@ -109,19 +109,19 @@
 ;; ── Task metadata ───────────────────────────────────────
 
 (meta task-ast-schema
-  (description "Author tools/zetl-ast-schema-v1.json (JSON Schema Draft 2020-12). Covers Wikilink, Embed, SPL, FrontMatter + core Markdown nodes per SPEC-032 REQ-3202 / CON-3202.")
+  (description "Author tools/ztl-ast-schema-v1.json (JSON Schema Draft 2020-12). Covers Wikilink, Embed, SPL, FrontMatter + core Markdown nodes per SPEC-032 REQ-3202 / CON-3202.")
   (acceptance "Schema parses as Draft 2020-12; TEST-3202 fixtures validate; schema file versioned at v1.0.0; reviewed by hand against CON-3202 node-type list."))
 
 (meta task-ast-types-rust
-  (description "Rust representation of zetl-ext AST with serde round-trip to schema. Internal representation used by pre-parse/transform/post-render pipeline.")
+  (description "Rust representation of ztl-ext AST with serde round-trip to schema. Internal representation used by pre-parse/transform/post-render pipeline.")
   (acceptance "src/hooks/ast/ types compile; property test: schema.validate(serde_json::to_value(node)) for representative sample; round-trip parse of fixture corpus is stable."))
 
 (meta task-ast-reference-gen
-  (description "tools/zetl-ast-reference-gen/ (Rust) producing docs/zetl-ast-reference.md from the JSON Schema. One section per node type: shape, attrs, canonical example, HTML rendering expectation. Wired into CI as a diff gate.")
-  (acceptance "Running `cargo run -p zetl-ast-reference-gen` regenerates docs/zetl-ast-reference.md; CI fails on uncommitted diff; schema / reference traceability enforced."))
+  (description "tools/ztl-ast-reference-gen/ (Rust) producing docs/ztl-ast-reference.md from the JSON Schema. One section per node type: shape, attrs, canonical example, HTML rendering expectation. Wired into CI as a diff gate.")
+  (acceptance "Running `cargo run -p ztl-ast-reference-gen` regenerates docs/ztl-ast-reference.md; CI fails on uncommitted diff; schema / reference traceability enforced."))
 
 (meta task-manifest-parser
-  (description "Parse .zetl/hooks/<stage>.d/<name>.toml per REQ-3203 / CON-3203. Fields: stage, mode (persistent|one-shot), timeout_ms, selector {path, content, frontmatter}, contract (preserves, idempotent, may_restructure, pure, expansion_bound), ordering, ast_type.")
+  (description "Parse .ztl/hooks/<stage>.d/<name>.toml per REQ-3203 / CON-3203. Fields: stage, mode (persistent|one-shot), timeout_ms, selector {path, content, frontmatter}, contract (preserves, idempotent, may_restructure, pure, expansion_bound), ordering, ast_type.")
   (acceptance "TEST-3203 passes; malformed manifest emits five-part diagnostic (CON-3225); per-field defaults applied; unknown keys rejected in strict mode."))
 
 (meta task-selector-eval
@@ -129,7 +129,7 @@
   (acceptance "TEST-3204 (short-circuit) + TEST-3205 (predicate grammar) pass; TEST-3201-perf selector hot-path latency NFR-3201 holds at zero-match budget; per-build cache hits measured."))
 
 (meta task-frontmatter-opt-out
-  (description "Per-file extension opt-out via frontmatter per REQ-3211 / CON-3211. `zetl: { ext: { <id>: false } }` disables a single hook.")
+  (description "Per-file extension opt-out via frontmatter per REQ-3211 / CON-3211. `ztl: { ext: { <id>: false } }` disables a single hook.")
   (acceptance "TEST-3211 passes; unit tests cover page-level disable, no collision with selectors, diagnostic when opting out of non-existent id."))
 
 (meta task-three-stage-pipeline
@@ -141,19 +141,19 @@
   (acceptance "TEST-3207-perf passes; kill-switch on timeout_ms exceeded; stderr surfaces to diagnostic; child-process leak test: 0 orphans after build."))
 
 (meta task-typed-ast-protocol
-  (description "Typed AST-protocol (ast_type) dispatch surface per REQ-3221 / CON-3221. Hooks declare ast_type = zetl-ext|mdast|pandoc-types; shared translator layer converts to/from zetl-ext canonical form.")
+  (description "Typed AST-protocol (ast_type) dispatch surface per REQ-3221 / CON-3221. Hooks declare ast_type = ztl-ext|mdast|pandoc-types; shared translator layer converts to/from ztl-ext canonical form.")
   (acceptance "Hook with ast_type=mdast executes against a translated AST; translators registered; dispatch table covered by TEST-3221."))
 
 (meta task-ast-version-exposure
-  (description "Dual-version exposure per REQ-3215: both zetl binary version and AST schema version exposed to hooks (`init` payload + `ZETL_AST_SCHEMA_VERSION` env).")
+  (description "Dual-version exposure per REQ-3215: both ztl binary version and AST schema version exposed to hooks (`init` payload + `ztl_AST_SCHEMA_VERSION` env).")
   (acceptance "Hook can read both versions; capability probe (next task) uses schema version to decide supported ast_types."))
 
 (meta task-capability-probe
-  (description "`zetl hook capabilities` subcommand + init-time capability probe per REQ-3216. Reports supported ast_types, stages, and AST schema version.")
+  (description "`ztl hook capabilities` subcommand + init-time capability probe per REQ-3216. Reports supported ast_types, stages, and AST schema version.")
   (acceptance "JSON output matches CON schema; hook manifest declaring an unsupported ast_type rejected at load-time with diagnostic pointing at the capability report."))
 
 (meta task-composition
-  (description "Directory drop-in precedence per REQ-3206 / CON-3206. Vault .zetl/hooks/<stage>.d/*.toml > theme hooks > built-in, with explicit ordering hooks per REQ-3217.")
+  (description "Directory drop-in precedence per REQ-3206 / CON-3206. Vault .ztl/hooks/<stage>.d/*.toml > theme hooks > built-in, with explicit ordering hooks per REQ-3217.")
   (acceptance "TEST-3206 composition-and-precedence passes; CON-3217 worked example reproduced in fixture (vault overrides theme, theme overrides built-in)."))
 
 (meta task-failure-scoping
@@ -165,12 +165,12 @@
   (acceptance "Fixture: hook accumulates totals across pages; cross-page concurrency test (race detector) passes; finalise stage sees merged view."))
 
 (meta task-build-context
-  (description "Expose build context to hooks per REQ-3220. `ctx` contains vault_root, theme, page metadata, zetl version, schema version, build_data handle.")
+  (description "Expose build context to hooks per REQ-3220. `ctx` contains vault_root, theme, page metadata, ztl version, schema version, build_data handle.")
   (acceptance "Hook init receives complete ctx payload; theme-aware fixture: hook reads theme id and branches output; TEST covers schema of ctx."))
 
 (meta task-safe-mode
-  (description "Safe-mode execution per REQ-3223. `zetl build --safe-mode` disables untrusted hooks (all except explicitly allow-listed theme hooks). Theme hooks must be declared in theme.toml `[hooks]`.")
-  (acceptance "Safe-mode build refuses to execute vault .zetl/hooks/*; theme hook without theme.toml declaration also rejected; TEST covers both."))
+  (description "Safe-mode execution per REQ-3223. `ztl build --safe-mode` disables untrusted hooks (all except explicitly allow-listed theme hooks). Theme hooks must be declared in theme.toml `[hooks]`.")
+  (acceptance "Safe-mode build refuses to execute vault .ztl/hooks/*; theme hook without theme.toml declaration also rejected; TEST covers both."))
 
 (meta task-behavioural-contracts
   (description "Behavioural contract declarations + enforcement per REQ-3224 / CON-3224. Fields: preserves, idempotent, may_restructure, pure, expansion_bound. Property-test harness validates claims against fixtures.")
@@ -189,28 +189,28 @@
   (acceptance "Helper-library contract tests pass; benchmark: dispatch overhead per node <50µs."))
 
 (meta task-hook-dry-run
-  (description "`zetl hook dry-run <page>` per REQ-3209. Runs all matching hooks against a single page; prints before/after diff; no writes.")
+  (description "`ztl hook dry-run <page>` per REQ-3209. Runs all matching hooks against a single page; prints before/after diff; no writes.")
   (acceptance "TEST-3209 passes; diff output readable; --json emits structured form."))
 
 (meta task-hook-coverage
-  (description "`zetl hook coverage` per REQ-3208 / CON-3208. Reports: pages matched, hook invocations, unmatched hooks, unmatched pages. Table + --json.")
+  (description "`ztl hook coverage` per REQ-3208 / CON-3208. Reports: pages matched, hook invocations, unmatched hooks, unmatched pages. Table + --json.")
   (acceptance "TEST-3208 passes; report identifies an intentionally-unmatched hook; optional hooks correctly excluded from 'unmatched' list."))
 
 (meta task-hook-authoring-cli
-  (description "`zetl hook new/test/fixture --from/watch` per REQ-3225. Scaffolds hook skeleton + manifest + fixtures; runs fixture tests; `--from PAGE` captures current rendering as fixture; `watch` loops.")
+  (description "`ztl hook new/test/fixture --from/watch` per REQ-3225. Scaffolds hook skeleton + manifest + fixtures; runs fixture tests; `--from PAGE` captures current rendering as fixture; `watch` loops.")
   (acceptance "TEST-3225 subcommand matrix passes; scaffolded hook runs out-of-box; `test` exits non-zero when fixture diverges; `--from` captures a fixture that re-passes immediately."))
 
 (meta task-ast-cli
-  (description "`zetl ast sample <page>` and `zetl ast diff <a> <b>` per REQ-3225. `sample` prints canonical zetl-ext JSON of a page; `diff` shows AST-level diff (not text diff).")
-  (acceptance "TEST-3225 includes ast subcommand cases; JSON output validates against zetl-ast-schema-v1; diff handles additions, removals, attr changes."))
+  (description "`ztl ast sample <page>` and `ztl ast diff <a> <b>` per REQ-3225. `sample` prints canonical ztl-ext JSON of a page; `diff` shows AST-level diff (not text diff).")
+  (acceptance "TEST-3225 includes ast subcommand cases; JSON output validates against ztl-ast-schema-v1; diff handles additions, removals, attr changes."))
 
 (meta task-diagnostic-design
   (description "Five-part diagnostic message design per CON-3225: summary / context / observed / cause / hint. Shared `HookDiagnostic` type used across manifest parse, hook failure, contract violation, schema mismatch.")
   (acceptance "All hook-originating diagnostics use the shared type; regression gate: snapshot-test of the three CON-3225 worked examples stays byte-stable across releases."))
 
 (meta task-observability-hooks
-  (description "SPEC-032 §9 observability. `[zetl] hook: stage=transform id=callouts page=X duration_ms=N` log lines; stats block: per-stage time, per-hook time, pages matched, diagnostics emitted.")
-  (acceptance "`--verbose` emits per-page, per-hook lines; `zetl stats` surfaces hook aggregates; OBS-style lines match existing codebase style (see OBS-011..013)."))
+  (description "SPEC-032 §9 observability. `[ztl] hook: stage=transform id=callouts page=X duration_ms=N` log lines; stats block: per-stage time, per-hook time, pages matched, diagnostics emitted.")
+  (acceptance "`--verbose` emits per-page, per-hook lines; `ztl stats` surfaces hook aggregates; OBS-style lines match existing codebase style (see OBS-011..013)."))
 
 (meta task-security-hooks
   (description "SPEC-032 §10 security: untrusted-script considerations, process isolation, timeout enforcement, stdout/stderr streaming (no in-memory buffering), redact-env-by-default.")
@@ -225,12 +225,12 @@
   (acceptance "`cargo xtask test-matrix --spec SPEC-032` passes; deliberately un-tested REQ in fixture fails the gate."))
 
 (meta task-helper-py
-  (description "`zetl-ast-py` package on PyPI per REQ-3210. Version pinned to AST schema v1.0. Provides AST types, @on_node dispatch, manifest helpers, stdio protocol client.")
-  (acceptance "CON-3210 contract tests pass; `pip install zetl-ast-py && python -c 'import zetl_ast'` works; version metadata readable by capability probe."))
+  (description "`ztl-ast-py` package on PyPI per REQ-3210. Version pinned to AST schema v1.0. Provides AST types, @on_node dispatch, manifest helpers, stdio protocol client.")
+  (acceptance "CON-3210 contract tests pass; `pip install ztl-ast-py && python -c 'import ztl_ast'` works; version metadata readable by capability probe."))
 
 (meta task-helper-js
-  (description "`zetl-ast-js` package on npm per REQ-3210. Same surface as helper-py (types, onNode dispatch, manifest helpers, stdio protocol client).")
-  (acceptance "CON-3210 contract tests pass; `npm install zetl-ast-js` works in a clean project; ESM + CJS entry points; TS types published."))
+  (description "`ztl-ast-js` package on npm per REQ-3210. Same surface as helper-py (types, onNode dispatch, manifest helpers, stdio protocol client).")
+  (acceptance "CON-3210 contract tests pass; `npm install ztl-ast-js` works in a clean project; ESM + CJS entry points; TS types published."))
 
 (meta task-helper-contracts
   (description "Cross-implementation contract tests per REQ-3210 / CON-3210. Same fixture corpus runs against py + js + native Rust harness; all three must agree bit-for-bit on AST transforms.")
@@ -242,7 +242,7 @@
 
 (meta task-ext-tasks
   (description "Tasks canonical-extension as thin stub. Obsidian `- [ ]`, `- [x]` syntax captured; stub emits template-vars (`page.ext.tasks.open`, `.done`, `.due`). Theme renders tasks from vars.")
-  (acceptance "TEST-3212b golden HTML passes; named DQL subset per SPEC-032 §13 Q4 documented (`not done`, `due before`, `path includes`, `tag includes`); unsupported queries render as `<span class=\"zetl-unsupported-query\">`."))
+  (acceptance "TEST-3212b golden HTML passes; named DQL subset per SPEC-032 §13 Q4 documented (`not done`, `due before`, `path includes`, `tag includes`); unsupported queries render as `<span class=\"ztl-unsupported-query\">`."))
 
 (meta task-ext-admonition
   (description "Admonition canonical-extension as thin stub. `ad-*` blocks (Obsidian) + `!!! note` (Python-Markdown MkDocs variant) recognised.")
@@ -257,7 +257,7 @@
   (acceptance "TEST-3301 registry integrity passes; registering a new ecosystem requires both code + matrix entry (lint enforced)."))
 
 (meta task-adapter-trait
-  (description "EcosystemAdapter trait per REQ-3302 / CON-3302. Methods: probe (runtime available?), translate_in (zetl-ext→native AST), invoke (run plugin), translate_out (native→zetl-ext).")
+  (description "EcosystemAdapter trait per REQ-3302 / CON-3302. Methods: probe (runtime available?), translate_in (ztl-ext→native AST), invoke (run plugin), translate_out (native→ztl-ext).")
   (acceptance "TEST-3302 trait-conformance passes on a mock adapter; real adapters pass too once landed."))
 
 (meta task-parser-registry
@@ -273,7 +273,7 @@
   (acceptance "TEST-3313 runtime-detection passes; missing-runtime build still emits HTML (minus the ecosystem's pages); exit code reflects partial build."))
 
 (meta task-eco-check
-  (description "`zetl ecosystem check` subcommand per REQ-3310 / CON-3310. Reports per-ecosystem: detected? version? plugins configured? plugins reachable?")
+  (description "`ztl ecosystem check` subcommand per REQ-3310 / CON-3310. Reports per-ecosystem: detected? version? plugins configured? plugins reachable?")
   (acceptance "TEST-3310 passes; table output readable; --json output parseable by CI gates; exit code non-zero if any user-requested ecosystem is unavailable."))
 
 (meta task-eco-feature-flags
@@ -281,7 +281,7 @@
   (acceptance "All four flags compile in isolation and together; NFR-3304 size budget holds; `cargo build --features ecosystems-v1` enables all three."))
 
 (meta task-eco-translators-scaffold
-  (description "Translator module scaffolding with property-test harness per NFR-3305. Round-trip fidelity: zetl-ext → native → zetl-ext produces canonical-equivalent form (relaxed from byte-identity per NFR-3305).")
+  (description "Translator module scaffolding with property-test harness per NFR-3305. Round-trip fidelity: ztl-ext → native → ztl-ext produces canonical-equivalent form (relaxed from byte-identity per NFR-3305).")
   (acceptance "Harness in place; proptest strategies for Wikilink, Embed, SPL, FrontMatter defined; CI gate on round-trip property."))
 
 (meta task-pandoc-adapter
@@ -289,7 +289,7 @@
   (acceptance "TEST-3303 passes with real pandoc binary in CI; TEST-3303-perf round-trip budget met; ADR-3302 trade-off documented."))
 
 (meta task-pandoc-translator
-  (description "zetl-ext ↔ pandoc-types translator per REQ-3307. Marker-table approach per amended REQ-3307 (slimmed model). Covers Wikilink, Embed, SPL, FrontMatter + core Markdown.")
+  (description "ztl-ext ↔ pandoc-types translator per REQ-3307. Marker-table approach per amended REQ-3307 (slimmed model). Covers Wikilink, Embed, SPL, FrontMatter + core Markdown.")
   (acceptance "TEST-3307 translation correctness passes; proptest round-trip gate on fixture corpus."))
 
 (meta task-pandoc-matrix-seed
@@ -321,7 +321,7 @@
   (acceptance "TEST-3305 passes with real node + remark; cold-start budget per NFR-3301 met; fresh-context mode verified to clear inter-page state."))
 
 (meta task-remark-translator
-  (description "zetl-ext ↔ mdast translator per REQ-3308. Marker-table approach per amended REQ-3308 (slimmed model).")
+  (description "ztl-ext ↔ mdast translator per REQ-3308. Marker-table approach per amended REQ-3308 (slimmed model).")
   (acceptance "TEST-3308 passes; proptest round-trip fidelity gate on fixture corpus; mdast extension attrs preserved across round-trip."))
 
 (meta task-remark-matrix-seed

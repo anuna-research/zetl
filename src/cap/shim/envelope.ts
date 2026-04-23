@@ -1,12 +1,12 @@
 // Wire-format parser for CON-3404 envelopes.
 // Byte-for-byte inverse of `src/cap/sign.rs::build_envelope`:
 //
-//   Zetl-Schema: v4\n
-//   Zetl-Cohort-Id: <id>\n
-//   Zetl-Cohort-Mode: delegated-url|webauthn-prf\n
-//   Zetl-Slug: <slug>\n
-//   Zetl-Build-Epoch: <rfc3339>\n
-//   Zetl-Signature: <b64url>\n
+//   ztl-Schema: v4\n
+//   ztl-Cohort-Id: <id>\n
+//   ztl-Cohort-Mode: delegated-url|webauthn-prf\n
+//   ztl-Slug: <slug>\n
+//   ztl-Build-Epoch: <rfc3339>\n
+//   ztl-Signature: <b64url>\n
 //   \n
 //   <age v1 ciphertext bytes>
 
@@ -86,22 +86,22 @@ export function parseEnvelope(bytes: Uint8Array): ParsedEnvelope {
     const name = line.slice(0, delim);
     const value = line.slice(delim + 2);
     switch (name) {
-      case "Zetl-Schema":
+      case "ztl-Schema":
         schema = value;
         break;
-      case "Zetl-Cohort-Id":
+      case "ztl-Cohort-Id":
         cohortId = value;
         break;
-      case "Zetl-Cohort-Mode":
+      case "ztl-Cohort-Mode":
         cohortModeRaw = value;
         break;
-      case "Zetl-Slug":
+      case "ztl-Slug":
         slug = value;
         break;
-      case "Zetl-Build-Epoch":
+      case "ztl-Build-Epoch":
         buildEpoch = value;
         break;
-      case "Zetl-Signature":
+      case "ztl-Signature":
         signatureB64 = value;
         break;
       // Forward-compat: unknown headers are tolerated. A wire break
@@ -112,25 +112,25 @@ export function parseEnvelope(bytes: Uint8Array): ParsedEnvelope {
   if (schema === undefined) {
     throw new EnvelopeParseError(
       "missing-header",
-      "required header Zetl-Schema is missing",
+      "required header ztl-Schema is missing",
     );
   }
   if (schema !== ENVELOPE_SCHEMA) {
     throw new EnvelopeParseError(
       "schema-mismatch",
-      `Zetl-Schema is ${JSON.stringify(schema)}; expected ${JSON.stringify(ENVELOPE_SCHEMA)} — shim is too old for this envelope`,
+      `ztl-Schema is ${JSON.stringify(schema)}; expected ${JSON.stringify(ENVELOPE_SCHEMA)} — shim is too old for this envelope`,
     );
   }
   if (cohortId === undefined) {
     throw new EnvelopeParseError(
       "missing-header",
-      "required header Zetl-Cohort-Id is missing",
+      "required header ztl-Cohort-Id is missing",
     );
   }
   if (cohortModeRaw === undefined) {
     throw new EnvelopeParseError(
       "missing-header",
-      "required header Zetl-Cohort-Mode is missing",
+      "required header ztl-Cohort-Mode is missing",
     );
   }
   let cohortMode: CohortMode;
@@ -139,25 +139,25 @@ export function parseEnvelope(bytes: Uint8Array): ParsedEnvelope {
   } else {
     throw new EnvelopeParseError(
       "unknown-cohort-mode",
-      `Zetl-Cohort-Mode is ${JSON.stringify(cohortModeRaw)}; expected "delegated-url" or "webauthn-prf"`,
+      `ztl-Cohort-Mode is ${JSON.stringify(cohortModeRaw)}; expected "delegated-url" or "webauthn-prf"`,
     );
   }
   if (slug === undefined) {
     throw new EnvelopeParseError(
       "missing-header",
-      "required header Zetl-Slug is missing",
+      "required header ztl-Slug is missing",
     );
   }
   if (buildEpoch === undefined) {
     throw new EnvelopeParseError(
       "missing-header",
-      "required header Zetl-Build-Epoch is missing",
+      "required header ztl-Build-Epoch is missing",
     );
   }
   if (signatureB64 === undefined) {
     throw new EnvelopeParseError(
       "missing-header",
-      "required header Zetl-Signature is missing",
+      "required header ztl-Signature is missing",
     );
   }
 
@@ -167,13 +167,13 @@ export function parseEnvelope(bytes: Uint8Array): ParsedEnvelope {
   } catch (err) {
     throw new EnvelopeParseError(
       "signature-base64",
-      `Zetl-Signature is not valid base64url: ${(err as Error).message}`,
+      `ztl-Signature is not valid base64url: ${(err as Error).message}`,
     );
   }
   if (signature.length !== SIGNATURE_LEN) {
     throw new EnvelopeParseError(
       "signature-length",
-      `Zetl-Signature decodes to ${signature.length} bytes; Ed25519 signatures are ${SIGNATURE_LEN}`,
+      `ztl-Signature decodes to ${signature.length} bytes; Ed25519 signatures are ${SIGNATURE_LEN}`,
     );
   }
 

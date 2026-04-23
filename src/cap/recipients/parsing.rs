@@ -71,22 +71,22 @@ pub struct Cohort {
     /// Stable path-cap salt per CON-3401 (base64url, 16+ bytes). When
     /// present, `cap::derivation::derive_path_cap` feeds this as
     /// `cohort_salt_stable`; rotating it invalidates every URL in the
-    /// cohort (the "rotate-paths" flow). When absent, `zetl cap invite`
+    /// cohort (the "rotate-paths" flow). When absent, `ztl cap invite`
     /// initialises it on first invocation for this cohort so the very
     /// first issued URL is stable thereafter.
     #[serde(default)]
     pub salt_stable: Option<String>,
     /// Rotatable content-key salt per CON-3401 (base64url, 16+ bytes).
-    /// Managed by `zetl cap rotate --cohort <id>`; bumping it records a
+    /// Managed by `ztl cap rotate --cohort <id>`; bumping it records a
     /// rotation event without touching `salt_stable` so URLs remain
     /// stable across rotations (REQ-3402 / BUG-023 resolution). The
     /// build driver consumes the field only as an observability counter
     /// today; because `age` already picks a random file key per
-    /// encryption, rerunning `zetl build` after a rotation is what
+    /// encryption, rerunning `ztl build` after a rotation is what
     /// invalidates any ciphertext a removed reader may have cached.
     #[serde(default)]
     pub salt_rotated: Option<String>,
-    /// RFC 3339 UTC timestamp of the most recent `zetl cap rotate` call
+    /// RFC 3339 UTC timestamp of the most recent `ztl cap rotate` call
     /// for this cohort. Human-readable audit trail; pinned to the same
     /// strict format as `grants.toml::created` so operators can grep
     /// recipients.toml chronologically.

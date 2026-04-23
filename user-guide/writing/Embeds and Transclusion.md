@@ -22,13 +22,13 @@ the plain wikilink forms — see [[Wikilinks]].
 
 ## How embeds render
 
-When you run `zetl serve` or `zetl build`, embeds render as **transclusion
+When you run `ztl serve` or `ztl build`, embeds render as **transclusion
 cards** in a right-rail panel alongside the main content. The surrounding
 prose keeps flowing; the embedded material appears next to the paragraph that
 references it, in its own framed card showing the source page, the
 quoted region, and a link back to the original.
 
-In the terminal viewer (`zetl view`), embeds render in the two-pane layout,
+In the terminal viewer (`ztl view`), embeds render in the two-pane layout,
 with the source content expanded where the `![[...]]` appears — see
 [[Terminal Viewer]].
 
@@ -87,7 +87,7 @@ forests, peasant villages, and names. The parallel isn't incidental.
 
 The essay quotes the book without duplicating the passage. Update the
 definition in the book note and every essay that embeds it picks up the
-change on the next `zetl build`.
+change on the next `ztl build`.
 
 ## For theme authors: `page.transclusion_cards`
 

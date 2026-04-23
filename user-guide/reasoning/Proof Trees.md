@@ -5,13 +5,13 @@ tags: [reasoning, explain, provenance]
 
 # Proof Trees
 
-`zetl reason explain <literal>` shows **why** a conclusion holds. The output is a proof tree: the rules that fired, the facts they rested on, and any defeaters that were considered. This page is about when and how to read one.
+`ztl reason explain <literal>` shows **why** a conclusion holds. The output is a proof tree: the rules that fired, the facts they rested on, and any defeaters that were considered. This page is about when and how to read one.
 
 > **Requires `--features reason` at install.** See [[Installation]].
 
 ## What a proof tree is
 
-When zetl concludes that some literal holds (or doesn't), it found — or failed to find — a chain of rules and facts that lead to that literal. A proof tree is that chain laid out as text:
+When ztl concludes that some literal holds (or doesn't), it found — or failed to find — a chain of rules and facts that lead to that literal. A proof tree is that chain laid out as text:
 
 - The **root** is the literal you asked about.
 - Each **node** is a rule that fired, labelled with the rule's name.
@@ -23,7 +23,7 @@ Every node carries **provenance**: the source file, line number, and page name w
 ## The command
 
 ```bash
-zetl reason explain "acme-ready-to-start"
+ztl reason explain "acme-ready-to-start"
 ```
 
 By default the output is JSON. Three other formats are available via `--as`:
@@ -42,7 +42,7 @@ There is also `--depth N` (default 10) which caps how deep the tree goes. Unboun
 `--as natural` is the one to use when you want a sentence you can paste into Slack:
 
 ```bash
-zetl reason explain "acme-ready-to-start" --as natural
+ztl reason explain "acme-ready-to-start" --as natural
 ```
 
 Output looks like:
@@ -62,7 +62,7 @@ No formal notation, no symbols — just the chain of reasoning written out.
 `--as dot` emits Graphviz source. Good for architectural reviews and posters:
 
 ```bash
-zetl reason explain "release-candidate" --as dot \
+ztl reason explain "release-candidate" --as dot \
   | dot -Tpng -o release-proof.png
 ```
 
@@ -70,16 +70,16 @@ The resulting diagram has one node per rule and fact, with arrows showing how co
 
 ## When to read one
 
-The usual trigger is surprise. You ran `zetl reason status`, you saw a conclusion that doesn't match what you expected, and you need to know why. A few concrete cases:
+The usual trigger is surprise. You ran `ztl reason status`, you saw a conclusion that doesn't match what you expected, and you need to know why. A few concrete cases:
 
-- **"Why does zetl say the release candidate is ready?"** You expected one more review. `explain` tells you which facts made the readiness rule fire — including, possibly, an outdated `given` still sitting in an old meeting note.
+- **"Why does ztl say the release candidate is ready?"** You expected one more review. `explain` tells you which facts made the readiness rule fire — including, possibly, an outdated `given` still sitting in an old meeting note.
 - **"Who signed off on docs-updated?"** The rule fired, which means somewhere a `given docs-updated` was asserted. The proof tree names the file and line. Go look; it might be three months old.
 - **"Why *isn't* the build-blocked literal holding?"** When you expected a negative conclusion but got silence. The tree shows which body literals failed to be proved, pointing you at the missing premise.
 
-When the conclusion is negative and you want the **failure** analysis — what's missing, what defeated what — reach for `zetl reason why-not <literal>` instead. It is the explicit counterpart to `explain`, and it lists candidate rules with their blockers:
+When the conclusion is negative and you want the **failure** analysis — what's missing, what defeated what — reach for `ztl reason why-not <literal>` instead. It is the explicit counterpart to `explain`, and it lists candidate rules with their blockers:
 
 ```bash
-zetl reason why-not "acme-ready-to-start"
+ztl reason why-not "acme-ready-to-start"
 ```
 
 For each rule that could have produced the conclusion, `why-not` shows which body literals were unprovable or which defeater fired.
@@ -90,20 +90,20 @@ For each rule that could have produced the conclusion, `why-not` shows which bod
 
 ```bash
 # Drill down into the logical chain
-zetl reason explain "acme-ready-to-start" --as natural
+ztl reason explain "acme-ready-to-start" --as natural
 
 # Zoom out to the pages involved
-zetl reason provenance "acme-ready-to-start"
+ztl reason provenance "acme-ready-to-start"
 ```
 
 ## A worked pattern
 
-A habit worth adopting: whenever `zetl reason status` tells you something you didn't expect, pipe the literal straight into `explain --as natural`:
+A habit worth adopting: whenever `ztl reason status` tells you something you didn't expect, pipe the literal straight into `explain --as natural`:
 
 ```bash
-zetl reason status --literal "acme*" --positive
+ztl reason status --literal "acme*" --positive
 # Oh — acme-ready-to-start is +d, but legal hasn't cleared yet?
-zetl reason explain "acme-ready-to-start" --as natural
+ztl reason explain "acme-ready-to-start" --as natural
 ```
 
 Nine times out of ten, the explanation points at a stale `given` or a missing `(prefer ...)` — the kind of thing you fix in thirty seconds once you can see it.

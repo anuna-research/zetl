@@ -1,4 +1,4 @@
-//! SPEC-032 TEST-3225 — integration matrix for `zetl hook new / test /
+//! SPEC-032 TEST-3225 — integration matrix for `ztl hook new / test /
 //! fixture / watch`.
 //!
 //! The matrix (per SPEC-032 §TEST-3225) exercises each subcommand on a
@@ -39,27 +39,27 @@ macro_rules! require_python {
 
 fn touch_vault(dir: &TempDir) -> &Path {
     // An empty vault root is enough — all scaffolding writes relative
-    // to `<vault>/.zetl/hooks/...` and `<vault>/tests/hook-fixtures/...`,
+    // to `<vault>/.ztl/hooks/...` and `<vault>/tests/hook-fixtures/...`,
     // both of which the scaffolder creates on demand.
     dir.path()
 }
 
-fn run_zetl(vault: &Path, args: &[&str]) -> std::process::Output {
-    cargo_bin_cmd!("zetl")
+fn run_ztl(vault: &Path, args: &[&str]) -> std::process::Output {
+    cargo_bin_cmd!("ztl")
         .args(["--dir", vault.to_str().unwrap()])
         .args(args)
         .output()
-        .expect("run zetl")
+        .expect("run ztl")
 }
 
-// ── Matrix row 1: `zetl hook new transform foo --lang py` ────────────────
+// ── Matrix row 1: `ztl hook new transform foo --lang py` ────────────────
 
 #[test]
 fn hook_new_scaffolds_at_expected_paths() {
     let tmp = TempDir::new().unwrap();
     let vault = touch_vault(&tmp);
 
-    let out = run_zetl(vault, &["hook", "new", "transform", "foo", "--lang", "py"]);
+    let out = run_ztl(vault, &["hook", "new", "transform", "foo", "--lang", "py"]);
     assert!(
         out.status.success(),
         "hook new failed: {}\n{}",
@@ -67,9 +67,9 @@ fn hook_new_scaffolds_at_expected_paths() {
         String::from_utf8_lossy(&out.stderr)
     );
 
-    let hook_path = vault.join(".zetl/hooks/transform.d/foo.py");
+    let hook_path = vault.join(".ztl/hooks/transform.d/foo.py");
     // Composition reads `<filename-with-ext>.toml`; scaffold matches that.
-    let manifest_path = vault.join(".zetl/hooks/transform.d/foo.py.toml");
+    let manifest_path = vault.join(".ztl/hooks/transform.d/foo.py.toml");
     let input_path = vault.join("tests/hook-fixtures/foo/input.md");
     let expected_path = vault.join("tests/hook-fixtures/foo/expected.json");
     assert!(hook_path.is_file(), "{}", hook_path.display());
@@ -98,10 +98,10 @@ fn hook_new_then_hook_test_passes_on_fresh_scaffold() {
     let tmp = TempDir::new().unwrap();
     let vault = touch_vault(&tmp);
 
-    let out = run_zetl(vault, &["hook", "new", "transform", "bar", "--lang", "py"]);
+    let out = run_ztl(vault, &["hook", "new", "transform", "bar", "--lang", "py"]);
     assert!(out.status.success());
 
-    let out = run_zetl(vault, &["hook", "test", "bar"]);
+    let out = run_ztl(vault, &["hook", "test", "bar"]);
     assert!(
         out.status.success(),
         "fresh-scaffold hook test must pass immediately:\nstdout:\n{}\nstderr:\n{}",
@@ -115,7 +115,7 @@ fn hook_new_then_hook_test_passes_on_fresh_scaffold() {
     );
 }
 
-// ── Matrix row 2: `zetl hook test <existing>` no-op ──────────────────────
+// ── Matrix row 2: `ztl hook test <existing>` no-op ──────────────────────
 
 #[test]
 fn hook_test_noop_exits_zero() {
@@ -123,19 +123,19 @@ fn hook_test_noop_exits_zero() {
     let tmp = TempDir::new().unwrap();
     let vault = touch_vault(&tmp);
 
-    let out = run_zetl(vault, &["hook", "new", "transform", "noop", "--lang", "py"]);
+    let out = run_ztl(vault, &["hook", "new", "transform", "noop", "--lang", "py"]);
     assert!(out.status.success());
 
     // First test run.
-    let out = run_zetl(vault, &["hook", "test", "noop"]);
+    let out = run_ztl(vault, &["hook", "test", "noop"]);
     assert!(out.status.success());
 
     // Second run — still a no-op.
-    let out = run_zetl(vault, &["hook", "test", "noop"]);
+    let out = run_ztl(vault, &["hook", "test", "noop"]);
     assert!(out.status.success());
 }
 
-// ── Matrix row 3: `zetl hook test <existing>` after edit ─────────────────
+// ── Matrix row 3: `ztl hook test <existing>` after edit ─────────────────
 
 #[test]
 fn hook_test_after_edit_exits_non_zero_with_diff() {
@@ -145,7 +145,7 @@ fn hook_test_after_edit_exits_non_zero_with_diff() {
 
     // Use pre-parse stage: scaffold's golden is plain markdown, easiest to
     // mutate by editing the hook to prepend a banner line.
-    let out = run_zetl(
+    let out = run_ztl(
         vault,
         &["hook", "new", "pre-parse", "edit_me", "--lang", "py"],
     );
@@ -153,10 +153,10 @@ fn hook_test_after_edit_exits_non_zero_with_diff() {
 
     // Overwrite the hook with a non-identity version: prepend "MUTATED\n"
     // to every payload.
-    let hook_path = vault.join(".zetl/hooks/pre-parse.d/edit_me.py");
+    let hook_path = vault.join(".ztl/hooks/pre-parse.d/edit_me.py");
     let mutated = r#"#!/usr/bin/env python3
 import json, sys
-sys.stdout.write(json.dumps({"zetl_ast":1,"hook":"edit_me","version":"0.1.0","ready":True}) + "\n")
+sys.stdout.write(json.dumps({"ztl_ast":1,"hook":"edit_me","version":"0.1.0","ready":True}) + "\n")
 sys.stdout.flush()
 for line in sys.stdin:
     try:
@@ -176,7 +176,7 @@ for line in sys.stdin:
     use std::os::unix::fs::PermissionsExt;
     fs::set_permissions(&hook_path, fs::Permissions::from_mode(0o755)).unwrap();
 
-    let out = run_zetl(vault, &["hook", "test", "edit_me"]);
+    let out = run_ztl(vault, &["hook", "test", "edit_me"]);
     assert!(!out.status.success(), "must exit non-zero after hook edit");
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
@@ -190,7 +190,7 @@ for line in sys.stdin:
     );
 }
 
-// ── Matrix row 4: `zetl hook test --update` ──────────────────────────────
+// ── Matrix row 4: `ztl hook test --update` ──────────────────────────────
 
 #[test]
 fn hook_test_update_regenerates_golden_and_exits_zero() {
@@ -198,14 +198,14 @@ fn hook_test_update_regenerates_golden_and_exits_zero() {
     let tmp = TempDir::new().unwrap();
     let vault = touch_vault(&tmp);
 
-    let out = run_zetl(vault, &["hook", "new", "pre-parse", "gold", "--lang", "py"]);
+    let out = run_ztl(vault, &["hook", "new", "pre-parse", "gold", "--lang", "py"]);
     assert!(out.status.success());
 
     // Mutate the hook as in row 3.
-    let hook_path = vault.join(".zetl/hooks/pre-parse.d/gold.py");
+    let hook_path = vault.join(".ztl/hooks/pre-parse.d/gold.py");
     let mutated = r#"#!/usr/bin/env python3
 import json, sys
-sys.stdout.write(json.dumps({"zetl_ast":1,"hook":"gold","version":"0.1.0","ready":True}) + "\n")
+sys.stdout.write(json.dumps({"ztl_ast":1,"hook":"gold","version":"0.1.0","ready":True}) + "\n")
 sys.stdout.flush()
 for line in sys.stdin:
     try:
@@ -225,13 +225,13 @@ for line in sys.stdin:
 
     // Without --update this should fail; with --update it should pass
     // AND the new golden should contain the mutation string.
-    let out = run_zetl(vault, &["hook", "test", "gold"]);
+    let out = run_ztl(vault, &["hook", "test", "gold"]);
     assert!(
         !out.status.success(),
         "diverged hook must fail without --update"
     );
 
-    let out = run_zetl(vault, &["hook", "test", "gold", "--update"]);
+    let out = run_ztl(vault, &["hook", "test", "gold", "--update"]);
     assert!(
         out.status.success(),
         "--update must exit zero: {}",
@@ -245,7 +245,7 @@ for line in sys.stdin:
 
     // Subsequent plain `hook test` now passes against the regenerated
     // golden.
-    let out = run_zetl(vault, &["hook", "test", "gold"]);
+    let out = run_ztl(vault, &["hook", "test", "gold"]);
     assert!(
         out.status.success(),
         "after --update, plain `hook test` must pass: {}",
@@ -253,7 +253,7 @@ for line in sys.stdin:
     );
 }
 
-// ── Matrix row 5: `zetl hook fixture --from <page>` ──────────────────────
+// ── Matrix row 5: `ztl hook fixture --from <page>` ──────────────────────
 
 #[test]
 fn hook_fixture_captures_vault_page_as_input() {
@@ -262,7 +262,7 @@ fn hook_fixture_captures_vault_page_as_input() {
     let vault = touch_vault(&tmp);
 
     // Scaffold the hook first.
-    let out = run_zetl(vault, &["hook", "new", "pre-parse", "cap", "--lang", "py"]);
+    let out = run_ztl(vault, &["hook", "new", "pre-parse", "cap", "--lang", "py"]);
     assert!(out.status.success());
 
     // Drop a real vault page at `projects/q2.md`.
@@ -270,7 +270,7 @@ fn hook_fixture_captures_vault_page_as_input() {
     let page_body = "# Q2 Plan\n\nReview quarterly goals.\n";
     fs::write(vault.join("projects/q2.md"), page_body).unwrap();
 
-    let out = run_zetl(
+    let out = run_ztl(
         vault,
         &[
             "hook",
@@ -294,7 +294,7 @@ fn hook_fixture_captures_vault_page_as_input() {
     );
 
     // Golden re-seeded from identity hook; `hook test` should pass.
-    let out = run_zetl(vault, &["hook", "test", "cap"]);
+    let out = run_ztl(vault, &["hook", "test", "cap"]);
     assert!(
         out.status.success(),
         "captured fixture must round-trip: {}",
@@ -314,7 +314,7 @@ fn scaffold_matrix_all_stages_accepted() {
         ("post-render", "html"),
     ] {
         let name = format!("h_{}", stage.replace('-', "_"));
-        let out = run_zetl(vault, &["hook", "new", stage, &name, "--lang", "py"]);
+        let out = run_ztl(vault, &["hook", "new", stage, &name, "--lang", "py"]);
         assert!(
             out.status.success(),
             "scaffold failed for stage={stage}: {}",
@@ -333,23 +333,23 @@ fn scaffold_matrix_all_stages_accepted() {
 fn scaffold_refuses_overwrite_without_force() {
     let tmp = TempDir::new().unwrap();
     let vault = touch_vault(&tmp);
-    let out = run_zetl(vault, &["hook", "new", "transform", "dup", "--lang", "py"]);
+    let out = run_ztl(vault, &["hook", "new", "transform", "dup", "--lang", "py"]);
     assert!(out.status.success());
-    let out = run_zetl(vault, &["hook", "new", "transform", "dup", "--lang", "py"]);
+    let out = run_ztl(vault, &["hook", "new", "transform", "dup", "--lang", "py"]);
     assert!(
         !out.status.success(),
         "second scaffold without --force must fail"
     );
-    let out = run_zetl(
+    let out = run_ztl(
         vault,
         &["hook", "new", "transform", "dup", "--lang", "py", "--force"],
     );
     assert!(out.status.success(), "scaffold --force must succeed");
 }
 
-// ── Matrix row 6: `zetl hook watch` restart ──────────────────────────────
+// ── Matrix row 6: `ztl hook watch` restart ──────────────────────────────
 //
-// `zetl hook watch` blocks on a file watcher and Ctrl-C. Driving the
+// `ztl hook watch` blocks on a file watcher and Ctrl-C. Driving the
 // full CLI here would require juggling child processes + signals in a
 // way that's platform-brittle. Instead we test the watch loop *library*
 // function directly — same code path the CLI wires, minus the blocking
@@ -365,11 +365,11 @@ fn watch_loop_restarts_on_source_edit_within_500ms() {
     let vault = touch_vault(&tmp);
 
     // Scaffold an identity hook.
-    let scaffold = zetl::hooks::authoring::scaffold(
+    let scaffold = ztl::hooks::authoring::scaffold(
         vault,
-        &zetl::cli::AuthoringStage::Transform,
+        &ztl::cli::AuthoringStage::Transform,
         "watched",
-        &zetl::cli::HookLang::Py,
+        &ztl::cli::HookLang::Py,
         None,
         false,
     )
@@ -378,19 +378,19 @@ fn watch_loop_restarts_on_source_edit_within_500ms() {
     // Fork the watch loop into a background thread so we can edit the
     // file from the main thread and still observe events.
     use std::sync::mpsc;
-    let (tx, rx) = mpsc::channel::<zetl::hooks::authoring::WatchEvent>();
+    let (tx, rx) = mpsc::channel::<ztl::hooks::authoring::WatchEvent>();
     let vault_owned = vault.to_path_buf();
     let handle = std::thread::spawn(move || {
-        let opts = zetl::hooks::authoring::WatchOptions {
+        let opts = ztl::hooks::authoring::WatchOptions {
             debounce: std::time::Duration::from_millis(50),
             max_events: Some(1), // stop after one restart
         };
-        zetl::hooks::authoring::watch(&vault_owned, "watched", opts, |e| match e {
-            zetl::hooks::authoring::WatchEvent::Spawned => {
-                let _ = tx.send(zetl::hooks::authoring::WatchEvent::Spawned);
+        ztl::hooks::authoring::watch(&vault_owned, "watched", opts, |e| match e {
+            ztl::hooks::authoring::WatchEvent::Spawned => {
+                let _ = tx.send(ztl::hooks::authoring::WatchEvent::Spawned);
             }
-            zetl::hooks::authoring::WatchEvent::Restart => {
-                let _ = tx.send(zetl::hooks::authoring::WatchEvent::Restart);
+            ztl::hooks::authoring::WatchEvent::Restart => {
+                let _ = tx.send(ztl::hooks::authoring::WatchEvent::Restart);
             }
             _ => {}
         })
@@ -402,7 +402,7 @@ fn watch_loop_restarts_on_source_edit_within_500ms() {
         .recv_timeout(std::time::Duration::from_secs(5))
         .expect("initial spawn event");
     assert!(
-        matches!(initial, zetl::hooks::authoring::WatchEvent::Spawned),
+        matches!(initial, ztl::hooks::authoring::WatchEvent::Spawned),
         "first event must be Spawned"
     );
 
@@ -419,7 +419,7 @@ fn watch_loop_restarts_on_source_edit_within_500ms() {
     let event = rx.recv_timeout(std::time::Duration::from_millis(500));
     let elapsed = t0.elapsed();
     assert!(
-        matches!(event, Ok(zetl::hooks::authoring::WatchEvent::Restart)),
+        matches!(event, Ok(ztl::hooks::authoring::WatchEvent::Restart)),
         "expected one Restart within 500 ms, got {event:?} after {elapsed:?}"
     );
 
@@ -443,7 +443,7 @@ fn ecosystem_pandoc_scaffold_writes_composition_canonical_manifest_and_lua_filte
     let tmp = TempDir::new().unwrap();
     let vault = touch_vault(&tmp);
 
-    let out = run_zetl(
+    let out = run_ztl(
         vault,
         &[
             "hook",
@@ -464,14 +464,14 @@ fn ecosystem_pandoc_scaffold_writes_composition_canonical_manifest_and_lua_filte
     );
 
     // Composition-canonical manifest path (was `smallcaps.toml` pre-fix).
-    let manifest = vault.join(".zetl/hooks/transform.d/smallcaps.py.toml");
+    let manifest = vault.join(".ztl/hooks/transform.d/smallcaps.py.toml");
     assert!(
         manifest.is_file(),
         "manifest must use composition-canonical naming: {}",
         manifest.display()
     );
     // Identity Lua filter is on disk so `lua_filter = "..."` resolves.
-    let lua = vault.join(".zetl/hooks/transform.d/filters/smallcaps.lua");
+    let lua = vault.join(".ztl/hooks/transform.d/filters/smallcaps.lua");
     assert!(
         lua.is_file(),
         "lua filter must be seeded: {}",
@@ -482,7 +482,7 @@ fn ecosystem_pandoc_scaffold_writes_composition_canonical_manifest_and_lua_filte
     // without hand-edits — the pre-fix scaffold failed here with
     // "must declare exec or lua_filter".
     let toml_text = fs::read_to_string(&manifest).unwrap();
-    let parsed = zetl::hooks::manifest::parse_manifest(&toml_text, Some(&manifest))
+    let parsed = ztl::hooks::manifest::parse_manifest(&toml_text, Some(&manifest))
         .expect("scaffolded pandoc manifest must parse end-to-end");
     let eco = parsed
         .extra

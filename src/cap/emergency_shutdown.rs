@@ -1,7 +1,7 @@
 //! Operator checklist for taking a capability-mode deployment offline
 //! at the host level (SPEC-034 REQ-3431, §11.3; BUG-024 resolution).
 //!
-//! `zetl cap emergency-shutdown` is a **documentation-generation**
+//! `ztl cap emergency-shutdown` is a **documentation-generation**
 //! command — the spec deliberately has no cryptographic kill-switch, so
 //! this module merely assembles a printable operator runbook from
 //! whatever vault-level context is discoverable on disk. The effectful
@@ -13,8 +13,8 @@
 //! The four canonical steps mirror REQ-3431:
 //!   1. Remove or point DNS away from the deployment.
 //!   2. Instruct the CDN to purge/delete all `/c/*` objects.
-//!   3. Rotate `ZETL_CAP_SECRET` + `ZETL_CAP_SIGNING_KEY`
-//!      (fresh `zetl cap genkey`).
+//!   3. Rotate `ztl_CAP_SECRET` + `ztl_CAP_SIGNING_KEY`
+//!      (fresh `ztl cap genkey`).
 //!   4. Announce the incident to readers; expect re-enrolment when
 //!      service is restored.
 
@@ -36,7 +36,7 @@ pub struct ShutdownContext {
     /// Empty when `recipients.toml` is missing or unreadable.
     pub cohorts: Vec<CohortRef>,
     /// Deploy target hostname if the operator has configured one
-    /// (`--site-url` on `zetl build --capability`, or equivalent).
+    /// (`--site-url` on `ztl build --capability`, or equivalent).
     /// Printed as a breadcrumb in step 1; absence is non-fatal.
     pub deploy_target: Option<String>,
     /// Ed25519 vault-signing pubkey from `recipients.toml` `[vault]`
@@ -61,7 +61,7 @@ pub struct CohortRef {
 pub fn render_checklist(ctx: &ShutdownContext) -> String {
     let mut out = String::new();
 
-    out.push_str("zetl cap emergency-shutdown\n");
+    out.push_str("ztl cap emergency-shutdown\n");
     out.push_str("===========================\n");
     out.push_str(&format!("vault:  {}\n", ctx.vault_name));
     if let Some(target) = ctx.deploy_target.as_deref() {
@@ -107,10 +107,10 @@ pub fn render_checklist(ctx: &ShutdownContext) -> String {
     );
     out.push('\n');
 
-    out.push_str("Step 3 — Rotate ZETL_CAP_SECRET + ZETL_CAP_SIGNING_KEY\n");
+    out.push_str("Step 3 — Rotate ztl_CAP_SECRET + ztl_CAP_SIGNING_KEY\n");
     out.push_str("------------------------------------------------------\n");
     out.push_str(
-        "  * Run `zetl cap genkey` to produce fresh encryption and signing\n\
+        "  * Run `ztl cap genkey` to produce fresh encryption and signing\n\
          \x20   secrets. Store them in the password manager; the old values are\n\
          \x20   now considered compromised.\n\
          \x20 * Any subsequent rebuild SHALL use the new secrets. Readers will\n\
@@ -155,7 +155,7 @@ pub fn render_checklist(ctx: &ShutdownContext) -> String {
     out.push_str("Step 5 — Re-enrolment (when service resumes)\n");
     out.push_str("--------------------------------------------\n");
     out.push_str(
-        "  * Issue fresh `zetl cap invite` grants for returning readers.\n\
+        "  * Issue fresh `ztl cap invite` grants for returning readers.\n\
          \x20 * Do NOT reuse any old invite URL, grant id, or cohort salt.\n\
          \x20 * The new deployment starts from a clean TOFU state.\n",
     );
@@ -168,7 +168,7 @@ pub fn render_checklist(ctx: &ShutdownContext) -> String {
 /// parse the structured form without scraping the text layout.
 pub fn checklist_json(ctx: &ShutdownContext) -> serde_json::Value {
     serde_json::json!({
-        "command": "zetl cap emergency-shutdown",
+        "command": "ztl cap emergency-shutdown",
         "spec": "SPEC-034 REQ-3431",
         "automated": false,
         "vault_name": ctx.vault_name,
@@ -188,8 +188,8 @@ pub fn checklist_json(ctx: &ShutdownContext) -> serde_json::Value {
             },
             {
                 "n": 3,
-                "title": "Rotate ZETL_CAP_SECRET + ZETL_CAP_SIGNING_KEY",
-                "summary": "Run `zetl cap genkey` for fresh secrets; discard the compromised pair."
+                "title": "Rotate ztl_CAP_SECRET + ztl_CAP_SIGNING_KEY",
+                "summary": "Run `ztl cap genkey` for fresh secrets; discard the compromised pair."
             },
             {
                 "n": 4,
@@ -199,7 +199,7 @@ pub fn checklist_json(ctx: &ShutdownContext) -> serde_json::Value {
             {
                 "n": 5,
                 "title": "Re-enrolment",
-                "summary": "Issue fresh grants with `zetl cap invite`; do not reuse old URLs or salts."
+                "summary": "Issue fresh grants with `ztl cap invite`; do not reuse old URLs or salts."
             }
         ]
     })
@@ -232,7 +232,7 @@ mod tests {
         let out = render_checklist(&base_ctx());
         assert!(out.contains("Step 1 — Remove or redirect DNS"));
         assert!(out.contains("Step 2 — CDN: purge /c/* objects"));
-        assert!(out.contains("Step 3 — Rotate ZETL_CAP_SECRET + ZETL_CAP_SIGNING_KEY"));
+        assert!(out.contains("Step 3 — Rotate ztl_CAP_SECRET + ztl_CAP_SIGNING_KEY"));
         assert!(out.contains("Step 4 — Announce to readers"));
         assert!(out.contains("Step 5 — Re-enrolment"));
     }

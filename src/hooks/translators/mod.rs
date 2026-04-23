@@ -1,15 +1,15 @@
 //! Typed AST-protocol dispatch surface (SPEC-032 REQ-3221 / CON-3221).
 //!
-//! This module owns the translator layer that converts a zetl-ext
+//! This module owns the translator layer that converts a ztl-ext
 //! canonical AST ([`crate::hooks::ast::Document`]) to and from the
 //! foreign ecosystems a hook might declare via `ast_type` in its
 //! manifest:
 //!
-//! - **`zetl-ext`** (default) — zetl's native AST. Identity translator.
+//! - **`ztl-ext`** (default) — ztl's native AST. Identity translator.
 //! - **`mdast-ext`** — mdast (remark) shape with marker conventions for
-//!   zetl-native Wikilink / Embed / SPL nodes (SPEC-033 REQ-3308).
+//!   ztl-native Wikilink / Embed / SPL nodes (SPEC-033 REQ-3308).
 //! - **`pandoc-ext`** — pandoc-types shape with marker conventions for
-//!   the same zetl concepts (SPEC-033 REQ-3307).
+//!   the same ztl concepts (SPEC-033 REQ-3307).
 //!
 //! ## Dispatch surface
 //!
@@ -18,10 +18,10 @@
 //! `ast_type`, then call [`dispatch_transform`]:
 //!
 //! ```text
-//!   zetl-ext AST --zetl_to_foreign--> foreign JSON
+//!   ztl-ext AST --ztl_to_foreign--> foreign JSON
 //!                                     --(persistent protocol: run)-->
 //!                                     foreign JSON'
-//!                --foreign_to_zetl--> zetl-ext AST'
+//!                --foreign_to_ztl--> ztl-ext AST'
 //!                --marker-strip scan--> [warnings]
 //! ```
 //!
@@ -31,24 +31,24 @@
 //!
 //! ## Not-compiled ecosystems (SPEC-033 REQ-3313)
 //!
-//! A v1 binary registering only `zetl-ext` rejects `pandoc-ext` and
+//! A v1 binary registering only `ztl-ext` rejects `pandoc-ext` and
 //! `mdast-ext` manifests at load time via
 //! [`TranslatorRegistry::require`], which returns a typed
 //! [`DispatchError::EcosystemNotCompiled`] carrying an actionable hint
-//! (pointing at the `zetl ecosystem check` subcommand planned for
+//! (pointing at the `ztl ecosystem check` subcommand planned for
 //! REQ-3310).
 //!
 //! ## Mixed pipelines (REQ-3221)
 //!
 //! Two hooks at the same stage may declare different `ast_type`s.
-//! Between hooks the pipeline always holds a canonical zetl-ext
-//! document; each translator invocation is a round trip (foreign → zetl
+//! Between hooks the pipeline always holds a canonical ztl-ext
+//! document; each translator invocation is a round trip (foreign → ztl
 //! → foreign) so no hook ever sees another hook's AST in a format it
 //! didn't request.
 //!
 //! ## Marker-strip detection (REQ-3221 / REQ-3224)
 //!
-//! After each foreign-ext hook invocation, zetl counts instances of
+//! After each foreign-ext hook invocation, ztl counts instances of
 //! each node type listed in the hook's `contract.preserves` declaration
 //! in the input and the output; a net decrease produces a
 //! [`StripWarning`]. The pipeline continues — marker-strip is a warning
@@ -60,7 +60,7 @@
 pub mod canonicalise;
 pub mod mdast;
 pub mod pandoc;
-pub mod zetl_ext;
+pub mod ztl_ext;
 
 #[cfg(test)]
 mod proptest_strategies;
@@ -76,9 +76,9 @@ use crate::hooks::ast::{Block, Document, Inline};
 
 /// The concrete AST ecosystems a hook manifest may declare.
 ///
-/// `zetl-ext` is the canonical internal form and the manifest default
+/// `ztl-ext` is the canonical internal form and the manifest default
 /// (REQ-3221). The other variants require their corresponding translator
-/// to be registered — a v1 binary registering only `zetl-ext` rejects
+/// to be registered — a v1 binary registering only `ztl-ext` rejects
 /// manifests declaring `pandoc-ext` / `mdast-ext` at load time with a
 /// typed [`DispatchError::EcosystemNotCompiled`] (REQ-3313).
 ///
@@ -87,9 +87,9 @@ use crate::hooks::ast::{Block, Document, Inline};
 /// ergonomic toml authoring but emitted in canonical form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum AstType {
-    #[serde(rename = "zetl-ext")]
+    #[serde(rename = "ztl-ext")]
     #[default]
-    ZetlExt,
+    ztlExt,
     #[serde(rename = "mdast-ext", alias = "mdast")]
     MdastExt,
     #[serde(rename = "pandoc-ext", alias = "pandoc-types")]
@@ -98,10 +98,10 @@ pub enum AstType {
 
 impl AstType {
     /// The canonical wire spelling emitted in diagnostics and the
-    /// `zetl ecosystem check` output.
+    /// `ztl ecosystem check` output.
     pub const fn as_str(self) -> &'static str {
         match self {
-            AstType::ZetlExt => "zetl-ext",
+            AstType::ztlExt => "ztl-ext",
             AstType::MdastExt => "mdast-ext",
             AstType::PandocExt => "pandoc-ext",
         }
@@ -110,14 +110,14 @@ impl AstType {
     /// Default `contract.preserves` for this ecosystem when the manifest
     /// does not declare its own (REQ-3221 / REQ-3224).
     ///
-    /// `zetl-ext` requires the hook author to opt in — a hook that
+    /// `ztl-ext` requires the hook author to opt in — a hook that
     /// doesn't touch wikilinks shouldn't pay marker-strip bookkeeping.
     /// Foreign adapters inherit the baseline `Wikilink / Embed /
     /// SplBlock` list because those nodes ride into the foreign AST as
     /// markers and are the most plausible casualty of a naive filter.
     pub fn default_preserves(self) -> &'static [&'static str] {
         match self {
-            AstType::ZetlExt => &[],
+            AstType::ztlExt => &[],
             AstType::MdastExt | AstType::PandocExt => &["Wikilink", "Embed", "SplBlock"],
         }
     }
@@ -133,7 +133,7 @@ impl std::str::FromStr for AstType {
     type Err = UnknownAstType;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "zetl-ext" => Ok(AstType::ZetlExt),
+            "ztl-ext" => Ok(AstType::ztlExt),
             "mdast-ext" | "mdast" => Ok(AstType::MdastExt),
             "pandoc-ext" | "pandoc-types" => Ok(AstType::PandocExt),
             other => Err(UnknownAstType(other.to_string())),
@@ -145,9 +145,9 @@ impl std::str::FromStr for AstType {
 /// value isn't one of the three known ecosystem names.
 ///
 /// This is distinct from [`DispatchError::EcosystemNotCompiled`] —
-/// `UnknownAstType` means the value isn't even known to zetl as a
+/// `UnknownAstType` means the value isn't even known to ztl as a
 /// concept (a typo, a future ecosystem, an invented name), while
-/// `EcosystemNotCompiled` means zetl recognises the name but this build
+/// `EcosystemNotCompiled` means ztl recognises the name but this build
 /// didn't link the translator in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnknownAstType(pub String);
@@ -156,7 +156,7 @@ impl std::fmt::Display for UnknownAstType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "unknown ast_type '{}' (expected one of: zetl-ext, mdast-ext, pandoc-ext)",
+            "unknown ast_type '{}' (expected one of: ztl-ext, mdast-ext, pandoc-ext)",
             self.0
         )
     }
@@ -164,7 +164,7 @@ impl std::fmt::Display for UnknownAstType {
 
 impl std::error::Error for UnknownAstType {}
 
-/// Bidirectional translator between zetl-ext canonical AST and a foreign
+/// Bidirectional translator between ztl-ext canonical AST and a foreign
 /// AST ecosystem. Implementors are pure (REQ-3221 / CON-3221) — no I/O,
 /// no global state, so they can be exercised as plain Rust functions in
 /// unit tests.
@@ -172,18 +172,18 @@ pub trait Translator: Send + Sync {
     /// The `ast_type` this translator implements.
     fn ast_type(&self) -> AstType;
 
-    /// Serialise a zetl-ext document into its foreign wire shape.
-    fn zetl_to_foreign(&self, doc: &Document) -> Result<serde_json::Value, TranslationError>;
+    /// Serialise a ztl-ext document into its foreign wire shape.
+    fn ztl_to_foreign(&self, doc: &Document) -> Result<serde_json::Value, TranslationError>;
 
-    /// Deserialise a foreign wire shape back into the zetl-ext canonical
-    /// document. Lossy translations (foreign AST had attrs zetl doesn't
+    /// Deserialise a foreign wire shape back into the ztl-ext canonical
+    /// document. Lossy translations (foreign AST had attrs ztl doesn't
     /// track) are permitted per CON-3221 — the round-trip guarantee is
     /// semantic (renders identically), not byte-identical.
-    fn foreign_to_zetl(&self, foreign: serde_json::Value) -> Result<Document, TranslationError>;
+    fn foreign_to_ztl(&self, foreign: serde_json::Value) -> Result<Document, TranslationError>;
 }
 
 /// A translation-layer error — either serialisation failed or the
-/// foreign shape couldn't be coaxed back into a zetl-ext document.
+/// foreign shape couldn't be coaxed back into a ztl-ext document.
 ///
 /// Kept as a single error type (rather than a nested enum per
 /// ecosystem) because callers in the pipeline treat every translation
@@ -200,7 +200,7 @@ impl TranslationError {
     pub fn to_foreign(ast_type: AstType, message: impl Into<String>) -> Self {
         Self {
             ast_type,
-            direction: TranslationDirection::ZetlToForeign,
+            direction: TranslationDirection::ztlToForeign,
             message: message.into(),
         }
     }
@@ -208,7 +208,7 @@ impl TranslationError {
     pub fn from_foreign(ast_type: AstType, message: impl Into<String>) -> Self {
         Self {
             ast_type,
-            direction: TranslationDirection::ForeignToZetl,
+            direction: TranslationDirection::ForeignToztl,
             message: message.into(),
         }
     }
@@ -229,15 +229,15 @@ impl std::error::Error for TranslationError {}
 /// Direction of a translation step, used in [`TranslationError`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TranslationDirection {
-    ZetlToForeign,
-    ForeignToZetl,
+    ztlToForeign,
+    ForeignToztl,
 }
 
 impl std::fmt::Display for TranslationDirection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TranslationDirection::ZetlToForeign => f.write_str("zetl→foreign"),
-            TranslationDirection::ForeignToZetl => f.write_str("foreign→zetl"),
+            TranslationDirection::ztlToForeign => f.write_str("ztl→foreign"),
+            TranslationDirection::ForeignToztl => f.write_str("foreign→ztl"),
         }
     }
 }
@@ -245,10 +245,10 @@ impl std::fmt::Display for TranslationDirection {
 /// Registry of concrete translators this binary has been compiled with.
 ///
 /// Binaries decide at construction time which ecosystems to expose;
-/// [`TranslatorRegistry::zetl_only`] matches the v1 default (ships
-/// `zetl-ext` identity translator only) and rejects `pandoc-ext` /
+/// [`TranslatorRegistry::ztl_only`] matches the v1 default (ships
+/// `ztl-ext` identity translator only) and rejects `pandoc-ext` /
 /// `mdast-ext` manifests with the REQ-3313 error. [`Self::all_v1`]
-/// registers every v1-known ecosystem and is what the zetl binary
+/// registers every v1-known ecosystem and is what the ztl binary
 /// actually constructs at startup.
 pub struct TranslatorRegistry {
     translators: HashMap<AstType, Box<dyn Translator>>,
@@ -263,25 +263,25 @@ impl std::fmt::Debug for TranslatorRegistry {
 }
 
 impl TranslatorRegistry {
-    /// Registry containing only the `zetl-ext` identity translator.
+    /// Registry containing only the `ztl-ext` identity translator.
     /// Matches the v1 binary default (SPEC-033 REQ-3313) when no
     /// ecosystem feature flags are enabled at compile time.
-    pub fn zetl_only() -> Self {
+    pub fn ztl_only() -> Self {
         let mut r = Self {
             translators: HashMap::new(),
         };
-        r.register(Box::new(zetl_ext::ZetlExtTranslator));
+        r.register(Box::new(ztl_ext::ztlExtTranslator));
         r
     }
 
-    /// Registry containing every v1-known translator: `zetl-ext`,
+    /// Registry containing every v1-known translator: `ztl-ext`,
     /// `mdast-ext`, `pandoc-ext`. The translators are minimal-fidelity
     /// and focus on round-tripping the common CommonMark nodes plus
-    /// zetl marker nodes (Wikilink / Embed / SplBlock); deeper
+    /// ztl marker nodes (Wikilink / Embed / SplBlock); deeper
     /// ecosystem-specific fidelity belongs to the per-ecosystem tasks
     /// (task-eco-pandoc / task-eco-mdbook / task-eco-remark).
     pub fn all_v1() -> Self {
-        let mut r = Self::zetl_only();
+        let mut r = Self::ztl_only();
         r.register(Box::new(mdast::MdastTranslator));
         r.register(Box::new(pandoc::PandocTranslator));
         r
@@ -305,8 +305,8 @@ impl TranslatorRegistry {
         self.translators.contains_key(&ast_type)
     }
 
-    /// All registered ast_types in canonical order for `zetl ecosystem
-    /// check` / `zetl hook capabilities` reports.
+    /// All registered ast_types in canonical order for `ztl ecosystem
+    /// check` / `ztl hook capabilities` reports.
     pub fn registered_types(&self) -> Vec<AstType> {
         let mut out: Vec<_> = self.translators.keys().copied().collect();
         out.sort_by_key(|t| t.as_str());
@@ -319,7 +319,7 @@ impl TranslatorRegistry {
     /// whose declared `ast_type` isn't compiled into this binary.
     /// Returns the translator on success; on failure returns a typed
     /// [`DispatchError::EcosystemNotCompiled`] with the same error text
-    /// `zetl ecosystem check` prints so users can triage both paths
+    /// `ztl ecosystem check` prints so users can triage both paths
     /// with one message.
     pub fn require(
         &self,
@@ -350,10 +350,10 @@ fn ecosystem_not_compiled_hint(ast_type: AstType, registered: Vec<AstType>) -> S
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "ast_type '{ast_type}' is not compiled into this zetl binary \
+        "ast_type '{ast_type}' is not compiled into this ztl binary \
          (registered: [{registered_str}]). \
-         Run `zetl ecosystem check` for the full capability report, \
-         or rebuild zetl with the ecosystem feature enabled.",
+         Run `ztl ecosystem check` for the full capability report, \
+         or rebuild ztl with the ecosystem feature enabled.",
     )
 }
 
@@ -362,7 +362,7 @@ fn ecosystem_not_compiled_hint(ast_type: AstType, registered: Vec<AstType>) -> S
 /// table.
 #[derive(Debug, Clone)]
 pub enum DispatchError {
-    /// Manifest declared an `ast_type` that this zetl binary wasn't
+    /// Manifest declared an `ast_type` that this ztl binary wasn't
     /// compiled with a translator for (SPEC-033 REQ-3313). The hook is
     /// disabled at pipeline-init with an actionable hint.
     EcosystemNotCompiled {
@@ -371,7 +371,7 @@ pub enum DispatchError {
         hint: String,
     },
     /// Translation either way failed (malformed foreign JSON, shape
-    /// unrepresentable in zetl-ext, …). CON-3221 failure table row
+    /// unrepresentable in ztl-ext, …). CON-3221 failure table row
     /// "Hook returns foreign AST that fails to translate back".
     Translation(TranslationError),
     /// The caller's run closure returned an error — e.g. the persistent
@@ -440,7 +440,7 @@ impl StripWarning {
     }
 }
 
-/// Outcome of [`dispatch_transform`]: the post-hook zetl-ext document
+/// Outcome of [`dispatch_transform`]: the post-hook ztl-ext document
 /// plus any marker-strip warnings surfaced by the preserves scan.
 #[derive(Debug)]
 pub struct DispatchOutcome {
@@ -455,13 +455,13 @@ pub struct DispatchOutcome {
 ///
 /// 1. Translator is looked up from `registry` (REQ-3313 error if the
 ///    ecosystem isn't compiled).
-/// 2. `input` is serialised via [`Translator::zetl_to_foreign`].
+/// 2. `input` is serialised via [`Translator::ztl_to_foreign`].
 /// 3. The caller-supplied `run` closure sends the JSON to the hook and
 ///    returns the hook's response — this closure lives in the caller so
 ///    dispatch stays decoupled from the transport (persistent protocol,
 ///    in-process fake, …).
 /// 4. The response JSON is deserialised via
-///    [`Translator::foreign_to_zetl`] back to zetl-ext.
+///    [`Translator::foreign_to_ztl`] back to ztl-ext.
 /// 5. The `preserves` list is scanned: for each name, if the post-hook
 ///    count is strictly less than the pre-hook count a [`StripWarning`]
 ///    is recorded.
@@ -487,9 +487,9 @@ where
     // marker-strip warning on the first page.)
     let before_counts = count_node_types(&input, preserves);
 
-    let foreign = translator.zetl_to_foreign(&input)?;
+    let foreign = translator.ztl_to_foreign(&input)?;
     let returned = run(foreign)?;
-    let output = translator.foreign_to_zetl(returned)?;
+    let output = translator.foreign_to_ztl(returned)?;
 
     let after_counts = count_node_types(&output, preserves);
 
@@ -512,7 +512,7 @@ where
 
 /// Count occurrences of each node-type name in `doc`. Walks the full
 /// tree (blocks + inlines + list items). Node-type names follow the
-/// zetl-ext schema's `"type"` tag — e.g. `"Wikilink"`, `"Embed"`,
+/// ztl-ext schema's `"type"` tag — e.g. `"Wikilink"`, `"Embed"`,
 /// `"SplBlock"`, `"Paragraph"`.
 ///
 /// Names not present in the tree are absent from the map (not mapped
@@ -655,7 +655,7 @@ mod tests {
 
     #[test]
     fn ast_type_parse_accepts_canonical_names() {
-        assert_eq!("zetl-ext".parse::<AstType>().unwrap(), AstType::ZetlExt);
+        assert_eq!("ztl-ext".parse::<AstType>().unwrap(), AstType::ztlExt);
         assert_eq!("mdast-ext".parse::<AstType>().unwrap(), AstType::MdastExt);
         assert_eq!("pandoc-ext".parse::<AstType>().unwrap(), AstType::PandocExt);
     }
@@ -677,14 +677,14 @@ mod tests {
     }
 
     #[test]
-    fn ast_type_default_is_zetl_ext() {
-        assert_eq!(AstType::default(), AstType::ZetlExt);
+    fn ast_type_default_is_ztl_ext() {
+        assert_eq!(AstType::default(), AstType::ztlExt);
     }
 
     #[test]
     fn ast_type_roundtrips_through_serde() {
         // Manifests consume ast_type via serde with the canonical name.
-        for t in [AstType::ZetlExt, AstType::MdastExt, AstType::PandocExt] {
+        for t in [AstType::ztlExt, AstType::MdastExt, AstType::PandocExt] {
             let v = serde_json::to_value(t).unwrap();
             assert_eq!(v, serde_json::Value::String(t.as_str().to_string()));
             let back: AstType = serde_json::from_value(v).unwrap();
@@ -702,7 +702,7 @@ mod tests {
 
     #[test]
     fn default_preserves_matches_spec_baseline() {
-        assert!(AstType::ZetlExt.default_preserves().is_empty());
+        assert!(AstType::ztlExt.default_preserves().is_empty());
         let baseline = &["Wikilink", "Embed", "SplBlock"];
         assert_eq!(AstType::MdastExt.default_preserves(), baseline);
         assert_eq!(AstType::PandocExt.default_preserves(), baseline);
@@ -711,9 +711,9 @@ mod tests {
     // ── Registry ───────────────────────────────────────────────────────
 
     #[test]
-    fn zetl_only_registry_rejects_non_default_ecosystems() {
-        let reg = TranslatorRegistry::zetl_only();
-        assert!(reg.is_registered(AstType::ZetlExt));
+    fn ztl_only_registry_rejects_non_default_ecosystems() {
+        let reg = TranslatorRegistry::ztl_only();
+        assert!(reg.is_registered(AstType::ztlExt));
         assert!(!reg.is_registered(AstType::MdastExt));
         assert!(!reg.is_registered(AstType::PandocExt));
         let err = match reg.require(AstType::MdastExt, "mdast-hook") {
@@ -729,8 +729,8 @@ mod tests {
                 assert_eq!(ast_type, AstType::MdastExt);
                 assert_eq!(hook_id, "mdast-hook");
                 // REQ-3313 requires an actionable hint.
-                assert!(hint.contains("zetl ecosystem check"));
-                assert!(hint.contains("zetl-ext"));
+                assert!(hint.contains("ztl ecosystem check"));
+                assert!(hint.contains("ztl-ext"));
             }
             other => panic!("expected EcosystemNotCompiled, got {other:?}"),
         }
@@ -739,27 +739,27 @@ mod tests {
     #[test]
     fn all_v1_registry_has_every_known_ecosystem() {
         let reg = TranslatorRegistry::all_v1();
-        assert!(reg.is_registered(AstType::ZetlExt));
+        assert!(reg.is_registered(AstType::ztlExt));
         assert!(reg.is_registered(AstType::MdastExt));
         assert!(reg.is_registered(AstType::PandocExt));
         assert_eq!(
             reg.registered_types(),
-            vec![AstType::MdastExt, AstType::PandocExt, AstType::ZetlExt]
+            vec![AstType::MdastExt, AstType::PandocExt, AstType::ztlExt]
         );
     }
 
     // ── Dispatch: identity pass-through ────────────────────────────────
 
     #[test]
-    fn zetl_ext_dispatch_identity_round_trips_a_document() {
+    fn ztl_ext_dispatch_identity_round_trips_a_document() {
         let reg = TranslatorRegistry::all_v1();
         let doc = doc_with(vec![para(vec![text("hello "), wikilink("Other")])]);
 
-        // The hook closure returns its input unchanged; the zetl-ext
+        // The hook closure returns its input unchanged; the ztl-ext
         // identity translator means the document we get back is byte-
         // equivalent to the input.
         let outcome =
-            dispatch_transform(&reg, AstType::ZetlExt, "identity", &[], doc.clone(), |v| {
+            dispatch_transform(&reg, AstType::ztlExt, "identity", &[], doc.clone(), |v| {
                 Ok(v)
             })
             .unwrap();
@@ -787,7 +787,7 @@ mod tests {
             Ok(serde_json::json!({
                 "type": "root",
                 "position": {"start_line":1,"start_col":1,"end_line":1,"end_col":1},
-                "zetl_ast_version": "1.0",
+                "ztl_ast_version": "1.0",
                 "children": [
                     {
                         "type": "paragraph",
@@ -829,7 +829,7 @@ mod tests {
         let preserves = vec!["Wikilink".to_string()];
 
         let outcome =
-            dispatch_transform(&reg, AstType::ZetlExt, "identity", &preserves, input, |v| {
+            dispatch_transform(&reg, AstType::ztlExt, "identity", &preserves, input, |v| {
                 Ok(v)
             })
             .unwrap();
@@ -841,7 +841,7 @@ mod tests {
 
     #[test]
     fn dispatch_errors_when_ecosystem_missing() {
-        let reg = TranslatorRegistry::zetl_only();
+        let reg = TranslatorRegistry::ztl_only();
         let doc = doc_with(vec![]);
 
         let err = dispatch_transform(&reg, AstType::PandocExt, "needs-pandoc", &[], doc, |v| {

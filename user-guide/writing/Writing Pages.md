@@ -5,12 +5,12 @@ tags: [writing, pages, markdown]
 
 # Writing Pages
 
-In a zetl vault, one page is one Markdown file. No databases, no sidecar XML, no
-magic — if you can write a `.md` file, you can write a zetl page.
+In a ztl vault, one page is one Markdown file. No databases, no sidecar XML, no
+magic — if you can write a `.md` file, you can write a ztl page.
 
 ## The filename is the title
 
-zetl uses the filename (minus `.md`) as the page title. Title-case filenames
+ztl uses the filename (minus `.md`) as the page title. Title-case filenames
 with spaces are the convention:
 
 ```
@@ -20,13 +20,13 @@ with spaces are the convention:
   Meeting with Priya 2026-04-18.md
 ```
 
-When another page writes `[[Zettelkasten Method]]`, zetl resolves the link by
+When another page writes `[[Zettelkasten Method]]`, ztl resolves the link by
 matching the filename. Slugification happens at *render* time — the URL becomes
 `/zettelkasten-method/`, but your filesystem stays human-readable. Case doesn't
 matter for resolution; `[[zettelkasten method]]` works too.
 
 There is no restriction on where a file lives. Folders are for your eyes, not
-zetl's. See [[Organising Your Vault]].
+ztl's. See [[Organising Your Vault]].
 
 ## A minimal page
 
@@ -55,27 +55,27 @@ Books I want to read this year, with a running note once I finish each.
 ```
 
 That's it. No build step, no registration. Save the file; it's a page. Run
-`zetl list` and you'll see it.
+`ztl list` and you'll see it.
 
 ## Markdown flavour
 
-zetl parses CommonMark plus a small set of widely-supported extensions:
+ztl parses CommonMark plus a small set of widely-supported extensions:
 fenced code blocks, tables, footnotes, strikethrough, task lists. Wikilinks
-(`[[...]]` and `![[...]]`) and block anchors (`^id`) are zetl-specific — see
+(`[[...]]` and `![[...]]`) and block anchors (`^id`) are ztl-specific — see
 [[Wikilinks]] and [[Headings and Blocks]].
 
 If you have been using Obsidian or another wikilink editor, your existing
 Markdown will almost certainly parse without changes. See
 [[Migrating from Obsidian]].
 
-## zetl doesn't impose a method
+## ztl doesn't impose a method
 
 You don't have to run a Zettelkasten. You don't have to run Johnny Decimal.
 You don't have to write atomic notes, daily notes, MOCs, or any other thing. A
 vault of long-form essays works. A vault of one-line bookmarks works. A vault
 that mixes research notes, a reading journal, and project plans works.
 
-The only rule zetl cares about: *pages are files, links are `[[links]]`*.
+The only rule ztl cares about: *pages are files, links are `[[links]]`*.
 Everything else is your call.
 
 ## Writing workflows
@@ -94,9 +94,9 @@ A few idioms that tend to work well:
 Three ways to see the rendered page:
 
 ```bash
-zetl view "Reading List 2026"   # two-pane terminal view
-zetl serve                      # local web server
-zetl build                      # write dist/ as static HTML
+ztl view "Reading List 2026"   # two-pane terminal view
+ztl serve                      # local web server
+ztl build                      # write dist/ as static HTML
 ```
 
 See [[Terminal Viewer]], [[Web Server]], and [[Static Site Export]].

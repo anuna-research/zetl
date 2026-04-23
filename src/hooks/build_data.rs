@@ -10,7 +10,7 @@
 //!
 //! ## Concurrency — sharding + finalise-stage merge
 //!
-//! Pages may be rendered concurrently during `zetl build`. To keep
+//! Pages may be rendered concurrently during `ztl build`. To keep
 //! hook observations race-free without serialising the whole build,
 //! this module uses sharding:
 //!
@@ -40,7 +40,7 @@
 //!
 //! ## Serve mode
 //!
-//! `zetl serve` clears the store between page renders
+//! `ztl serve` clears the store between page renders
 //! ([`BuildDataStore::clear`]) so each render starts from an empty
 //! channel (CON-3219).
 
@@ -264,7 +264,7 @@ impl BuildDataStore {
     }
 
     /// Reset the store to empty — used between renders under
-    /// `zetl serve` (CON-3219).
+    /// `ztl serve` (CON-3219).
     ///
     /// Also clears the byte reservation counter. Any outstanding
     /// shards keep their snapshots (they cloned the map), but

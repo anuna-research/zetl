@@ -1,7 +1,7 @@
 //! HistoricalIndexCache: per-vault-root-hash index snapshots (REQ-079, ADR-047).
 //!
-//! Stores snapshots of the zetl index in `.zetl/history/<vault_root_hash>.json`,
-//! using the same JSON format as `.zetl/index.json` (version + files map +
+//! Stores snapshots of the ztl index in `.ztl/history/<vault_root_hash>.json`,
+//! using the same JSON format as `.ztl/index.json` (version + files map +
 //! vault_root_hash).  A bounded LRU eviction policy (default 100 entries) keeps
 //! disk usage under control by removing the least-recently-written entries when
 //! capacity is exceeded.
@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-const HISTORY_SUBDIR: &str = ".zetl/history";
+const HISTORY_SUBDIR: &str = ".ztl/history";
 /// Cache version — must match the `index.json` format version (ADR-047).
 const CACHE_VERSION: u32 = 2;
 /// Default maximum number of history entries retained on disk.
@@ -27,10 +27,10 @@ struct HistoricalIndex {
     vault_root_hash: Option<String>,
 }
 
-/// A disk-backed, bounded LRU cache of historical zetl index snapshots.
+/// A disk-backed, bounded LRU cache of historical ztl index snapshots.
 ///
-/// Each entry is stored as `.zetl/history/<vault_root_hash>.json` inside the
-/// vault.  The file format is identical to `.zetl/index.json` so that the same
+/// Each entry is stored as `.ztl/history/<vault_root_hash>.json` inside the
+/// vault.  The file format is identical to `.ztl/index.json` so that the same
 /// deserialization path can be used for both live and historical indexes.
 ///
 /// # Eviction
@@ -82,7 +82,7 @@ impl HistoricalIndexCache {
 
     /// Persist `files` as the snapshot for `vault_root_hash`.
     ///
-    /// Creates `.zetl/history/` if it does not exist.  After writing, evicts
+    /// Creates `.ztl/history/` if it does not exist.  After writing, evicts
     /// the oldest entries until at most `capacity` entries remain.
     pub fn store(
         &self,

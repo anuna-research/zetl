@@ -1,7 +1,7 @@
-//! SPEC-032 TEST-3208 — integration coverage for `zetl hook coverage`.
+//! SPEC-032 TEST-3208 — integration coverage for `ztl hook coverage`.
 //!
-//! Build-mode persistence (`.zetl/build/hook-coverage.json`) is not yet
-//! wired into `zetl build`, so TEST-3208 focuses on the dry-run fallback
+//! Build-mode persistence (`.ztl/build/hook-coverage.json`) is not yet
+//! wired into `ztl build`, so TEST-3208 focuses on the dry-run fallback
 //! path guaranteed by REQ-3208: "for the most-recent build (or a fresh
 //! dry-run if none exists)". The tests cover:
 //!
@@ -99,7 +99,7 @@ include = ["**/*.md"]
 
 fn scaffold_hook(vault: &Path, stage: &str, name: &str, manifest: &str) {
     use std::os::unix::fs::PermissionsExt;
-    let hook_dir = vault.join(".zetl/hooks").join(format!("{stage}.d"));
+    let hook_dir = vault.join(".ztl/hooks").join(format!("{stage}.d"));
     fs::create_dir_all(&hook_dir).unwrap();
     let exe = hook_dir.join(format!("{name}.py"));
     write(
@@ -113,17 +113,17 @@ fn scaffold_hook(vault: &Path, stage: &str, name: &str, manifest: &str) {
 }
 
 fn run_coverage(vault: &Path, args: &[&str]) -> std::process::Output {
-    cargo_bin_cmd!("zetl")
+    cargo_bin_cmd!("ztl")
         .args(["--dir", vault.to_str().unwrap(), "hook", "coverage"])
         .args(args)
         .output()
-        .expect("run zetl hook coverage")
+        .expect("run ztl hook coverage")
 }
 
 /// Same as [`run_coverage`], but forces the table format — `assert_cmd`
 /// pipes stdout, which auto-detects as `--json` otherwise.
 fn run_coverage_table(vault: &Path, args: &[&str]) -> std::process::Output {
-    cargo_bin_cmd!("zetl")
+    cargo_bin_cmd!("ztl")
         .args([
             "--dir",
             vault.to_str().unwrap(),
@@ -134,7 +134,7 @@ fn run_coverage_table(vault: &Path, args: &[&str]) -> std::process::Output {
         ])
         .args(args)
         .output()
-        .expect("run zetl hook coverage")
+        .expect("run ztl hook coverage")
 }
 
 #[test]
@@ -343,11 +343,11 @@ fn coverage_reads_persisted_build_coverage_when_present() {
     let vault = tmp.path();
     scaffold_vault(vault);
 
-    // Future `zetl build` wires up persistence (§REQ-3208 "Persistence
+    // Future `ztl build` wires up persistence (§REQ-3208 "Persistence
     // semantics"). Simulate it here with a pre-populated file so we can
     // exercise the read path without a live build pipeline.
     write(
-        &vault.join(".zetl/build/hook-coverage.json"),
+        &vault.join(".ztl/build/hook-coverage.json"),
         r#"{
   "hooks": [
     {

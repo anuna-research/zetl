@@ -1,6 +1,6 @@
 //! `EcosystemAdapter` trait (SPEC-033 REQ-3302 / CON-3302).
 //!
-//! Every plugin ecosystem zetl supports (Pandoc filters, mdBook
+//! Every plugin ecosystem ztl supports (Pandoc filters, mdBook
 //! preprocessors, remark plugins, and any future additions) is reached
 //! through a single uniform interface defined here. An adapter owns:
 //!
@@ -11,17 +11,17 @@
 //!   disables the adapter for the session rather than aborting the build.
 //!
 //! - **AST translation** — [`EcosystemAdapter::translate_to_foreign`] and
-//!   [`EcosystemAdapter::translate_from_foreign`] bridge zetl-ext
+//!   [`EcosystemAdapter::translate_from_foreign`] bridge ztl-ext
 //!   ([`crate::hooks::ast::Document`]) and the ecosystem's native AST
 //!   shape (pandoc-types, mdast, etc.). Round-trip fidelity is the
 //!   property-test target (NFR-3305): every v1 ecosystem's adapter must
-//!   survive `foreign ← zetl → foreign' → zetl'` with canonical
+//!   survive `foreign ← ztl → foreign' → ztl'` with canonical
 //!   equivalence.
 //!
 //! - **Invocation** — [`EcosystemAdapter::invoke_plugin`] applies the
 //!   ecosystem's protocol conventions (env vars, argv, stdin/stdout
 //!   shape) and returns the plugin's output as a [`PluginResponse`].
-//!   The adapter is the only code path in zetl that understands how
+//!   The adapter is the only code path in ztl that understands how
 //!   pandoc filters vs. mdbook preprocessors vs. remark plugins actually
 //!   get called — the SPEC-032 hook runtime below delegates all of that
 //!   transport detail here.
@@ -79,7 +79,7 @@ use crate::hooks::translators::{AstType, TranslationError};
 
 // ── Trait surface (CON-3302) ────────────────────────────────────────────────
 
-/// Uniform interface for every plugin ecosystem zetl can drive
+/// Uniform interface for every plugin ecosystem ztl can drive
 /// (SPEC-033 REQ-3302 / CON-3302).
 ///
 /// Concrete implementations live in `src/ecosystems/<name>/adapter.rs`
@@ -94,7 +94,7 @@ pub trait EcosystemAdapter: Send + Sync {
     /// Stable registry id for this adapter, matching
     /// [`crate::ecosystems::EcosystemEntry::id`].
     ///
-    /// Used in diagnostics, the `zetl ecosystem check` report, and the
+    /// Used in diagnostics, the `ztl ecosystem check` report, and the
     /// adapter-trait conformance harness's failure messages.
     fn id(&self) -> &str;
 
@@ -117,17 +117,17 @@ pub trait EcosystemAdapter: Send + Sync {
     /// same ecosystem id (TEST-3301 asserts the two stay in sync).
     fn supported_stages(&self) -> &[Stage];
 
-    /// Serialise a zetl-ext document into the ecosystem's native AST
+    /// Serialise a ztl-ext document into the ecosystem's native AST
     /// shape, as JSON at the trait boundary (see module docs).
     ///
     /// Returning `Ok` does *not* guarantee the hook will accept the
-    /// payload — it means zetl has produced a shape the ecosystem's
+    /// payload — it means ztl has produced a shape the ecosystem's
     /// toolchain recognises. Plugin-specific validation failures
     /// surface later through [`Self::invoke_plugin`]'s
     /// [`PluginResponse::Error`].
     fn translate_to_foreign(&self, doc: &Document) -> Result<Value, TranslationError>;
 
-    /// Deserialise a foreign AST response back into zetl-ext. Lossy
+    /// Deserialise a foreign AST response back into ztl-ext. Lossy
     /// conversions are permitted per CON-3221 — the round-trip contract
     /// is semantic equivalence under
     /// [`crate::hooks::contract::canonicalise`], not byte equality.
@@ -152,7 +152,7 @@ pub trait EcosystemAdapter: Send + Sync {
 // ── Supporting types ────────────────────────────────────────────────────────
 
 /// Outcome of [`EcosystemAdapter::probe`]. Reported to the user via
-/// `zetl ecosystem check` and consulted by the pipeline before enabling
+/// `ztl ecosystem check` and consulted by the pipeline before enabling
 /// any hook backed by this adapter.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "kebab-case")]
@@ -160,7 +160,7 @@ pub enum RuntimeStatus {
     /// The ecosystem's binary is on `PATH` at an acceptable version.
     Available {
         /// Path to the resolved executable (if the adapter inspected
-        /// one). Empty when the runtime is intrinsic to the zetl
+        /// one). Empty when the runtime is intrinsic to the ztl
         /// binary (e.g. a pure-Rust ecosystem).
         #[serde(default)]
         executable: Option<PathBuf>,
@@ -206,7 +206,7 @@ impl RuntimeStatus {
         matches!(self, RuntimeStatus::Available { .. })
     }
 
-    /// Short axis tag for table rendering (`zetl ecosystem check`).
+    /// Short axis tag for table rendering (`ztl ecosystem check`).
     pub fn tag(&self) -> &'static str {
         match self {
             RuntimeStatus::Available { .. } => "available",
@@ -330,7 +330,7 @@ pub enum PluginResponse {
     Success {
         output: StageOutput,
         /// Structured advisory messages the plugin emitted. Empty is
-        /// the common case; each entry surfaces as a `[zetl] ...` log
+        /// the common case; each entry surfaces as a `[ztl] ...` log
         /// line at the pipeline level.
         #[serde(default)]
         diagnostics: Vec<Diagnostic>,
@@ -476,7 +476,7 @@ pub enum CheckOutcome {
 /// Parameterised TEST-3302 conformance suite.
 ///
 /// Exercises the adapter trait end-to-end against a corpus of
-/// zetl-ext fixtures. Downstream adapter tasks call this from their
+/// ztl-ext fixtures. Downstream adapter tasks call this from their
 /// own integration tests to confirm identity of behaviour across
 /// mock / pandoc / mdbook / remark. The harness performs:
 ///
@@ -645,7 +645,7 @@ fn run_invoke_conformance<A: EcosystemAdapter>(
 /// One entry in the conformance fixture corpus. Kept lightweight —
 /// adapters' own integration tests extend the corpus with
 /// ecosystem-specific edge cases (`pandoc-crossref` attrs, `mdast`
-/// wikiLink markers, …); this module's corpus covers the zetl-ext
+/// wikiLink markers, …); this module's corpus covers the ztl-ext
 /// baseline every adapter must survive.
 #[derive(Debug, Clone)]
 pub struct ConformanceFixture {
@@ -656,7 +656,7 @@ pub struct ConformanceFixture {
 }
 
 /// Default v1 conformance corpus — small, hand-picked documents that
-/// exercise the zetl-ext node types every adapter is expected to carry
+/// exercise the ztl-ext node types every adapter is expected to carry
 /// across the foreign boundary.
 pub fn default_fixtures() -> Vec<ConformanceFixture> {
     use crate::hooks::ast::{
@@ -731,9 +731,9 @@ pub fn default_fixtures() -> Vec<ConformanceFixture> {
 ///
 /// - [`Self::probe`] always reports `RuntimeStatus::Available`.
 /// - [`Self::translate_to_foreign`] / [`Self::translate_from_foreign`]
-///   use `serde_json` to round-trip a zetl-ext document exactly
+///   use `serde_json` to round-trip a ztl-ext document exactly
 ///   (byte-identical round trip — the mock's "foreign AST" is just
-///   zetl-ext JSON).
+///   ztl-ext JSON).
 /// - [`Self::invoke_plugin`] returns the input verbatim wrapped in
 ///   [`PluginResponse::Success`].
 ///
@@ -749,7 +749,7 @@ impl Default for MockEcosystemAdapter {
     fn default() -> Self {
         Self {
             id: "mock".into(),
-            ast_type: AstType::ZetlExt,
+            ast_type: AstType::ztlExt,
             stages: vec![Stage::Transform],
         }
     }
@@ -1014,7 +1014,7 @@ mod tests {
                 "broken"
             }
             fn ast_type(&self) -> AstType {
-                AstType::ZetlExt
+                AstType::ztlExt
             }
             fn probe(&mut self) -> RuntimeStatus {
                 RuntimeStatus::Missing {
@@ -1026,13 +1026,13 @@ mod tests {
                 &[Stage::Transform]
             }
             fn translate_to_foreign(&self, _doc: &Document) -> Result<Value, TranslationError> {
-                Err(TranslationError::to_foreign(AstType::ZetlExt, "boom"))
+                Err(TranslationError::to_foreign(AstType::ztlExt, "boom"))
             }
             fn translate_from_foreign(
                 &self,
                 _foreign: Value,
             ) -> Result<Document, TranslationError> {
-                Err(TranslationError::from_foreign(AstType::ZetlExt, "boom"))
+                Err(TranslationError::from_foreign(AstType::ztlExt, "boom"))
             }
             fn invoke_plugin(
                 &mut self,
@@ -1072,6 +1072,6 @@ mod tests {
     fn mock_adapter_ctor_returns_box_dyn() {
         let adapter: Box<dyn EcosystemAdapter> = mock_adapter_ctor();
         assert_eq!(adapter.id(), "mock");
-        assert_eq!(adapter.ast_type(), AstType::ZetlExt);
+        assert_eq!(adapter.ast_type(), AstType::ztlExt);
     }
 }

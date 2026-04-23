@@ -1,6 +1,6 @@
 //! Access request storage for the collab access-request flow (REQ-020-047).
 //!
-//! Requests are stored in `.zetl/collab/access-requests.json` as a JSON array
+//! Requests are stored in `.ztl/collab/access-requests.json` as a JSON array
 //! of `AccessRequest` objects.
 
 use anyhow::{Context, Result};
@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
-const COLLAB_DIR: &str = ".zetl/collab";
-const ACCESS_REQUESTS_FILE: &str = ".zetl/collab/access-requests.json";
+const COLLAB_DIR: &str = ".ztl/collab";
+const ACCESS_REQUESTS_FILE: &str = ".ztl/collab/access-requests.json";
 
 /// A single access request record.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -26,7 +26,7 @@ pub struct AccessRequest {
     pub status: String,
 }
 
-/// Load all access requests from `.zetl/collab/access-requests.json`.
+/// Load all access requests from `.ztl/collab/access-requests.json`.
 ///
 /// Returns an empty vector if the file does not exist.
 pub fn load_access_requests(vault_root: &Path) -> Result<Vec<AccessRequest>> {
@@ -44,7 +44,7 @@ pub fn load_access_requests(vault_root: &Path) -> Result<Vec<AccessRequest>> {
     Ok(requests)
 }
 
-/// Save the full list of access requests to `.zetl/collab/access-requests.json`.
+/// Save the full list of access requests to `.ztl/collab/access-requests.json`.
 pub fn save_access_requests(vault_root: &Path, requests: &[AccessRequest]) -> Result<()> {
     let dir = vault_root.join(COLLAB_DIR);
     fs::create_dir_all(&dir).with_context(|| format!("failed to create {}", dir.display()))?;

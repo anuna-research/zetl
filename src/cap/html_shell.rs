@@ -15,7 +15,7 @@
 //!    crossorigin="anonymous"></script>` — the shim loader, SRI-
 //!    pinned so a CDN-substituted shim fails integrity verification
 //!    before it runs (REQ-3427 resolution for BUG-004).
-//! 3. `<main data-zetl-capability></main>` — the mount point the
+//! 3. `<main data-ztl-capability></main>` — the mount point the
 //!    shim's render step injects sanitised HTML into
 //!    (`cap/shim/render.ts::HOST_SELECTOR`).
 //!
@@ -47,7 +47,7 @@ use crate::cap::deploy_headers::{CAP_CSP, SHIM_PATH};
 /// path.
 pub const SHIM_SRI_FILENAME: &str = "shim.sri";
 
-/// Filename under `<out_dir>/_zetl/` where the shared HTML shell is
+/// Filename under `<out_dir>/_ztl/` where the shared HTML shell is
 /// emitted. A downstream `task-cap-deploy-artifacts` change wires
 /// CDN rewrites so the browser receives this file when navigating to
 /// any `/c/<path-cap>/<slug>.html`. Until then, the file exists as
@@ -57,7 +57,7 @@ pub const CAPABILITY_SHELL_FILENAME: &str = "capability-shell.html";
 /// DOM selector the shim uses to find its mount point. Kept as a
 /// constant so tests in both modules can cross-check against the
 /// exact string.
-pub const HOST_SELECTOR: &str = "main[data-zetl-capability]";
+pub const HOST_SELECTOR: &str = "main[data-ztl-capability]";
 
 /// Document-wide referrer policy meta tag (SPEC-034 REQ-3413 /
 /// OBS-3407). Pinned byte-for-byte so CI and operators can grep the
@@ -128,7 +128,7 @@ pub fn render_shell(sri_hash: &str) -> String {
     out.push_str("<meta http-equiv=\"Content-Security-Policy\" content=\"");
     out.push_str(&attr_escape(CAP_CSP));
     out.push_str("\">\n");
-    out.push_str("<title>zetl</title>\n");
+    out.push_str("<title>ztl</title>\n");
     out.push_str("<script src=\"");
     out.push_str(SHIM_PATH);
     out.push_str("\" integrity=\"");
@@ -136,17 +136,17 @@ pub fn render_shell(sri_hash: &str) -> String {
     out.push_str("\" crossorigin=\"anonymous\"></script>\n");
     out.push_str("</head>\n");
     out.push_str("<body>\n");
-    out.push_str("<main data-zetl-capability></main>\n");
+    out.push_str("<main data-ztl-capability></main>\n");
     out.push_str("</body>\n");
     out.push_str("</html>\n");
     out
 }
 
-/// Write the shell to `<out_dir>/_zetl/capability-shell.html`.
+/// Write the shell to `<out_dir>/_ztl/capability-shell.html`.
 /// Creates intermediate directories and overwrites an existing file
 /// so rebuilds stay idempotent alongside the deploy-recipe tree.
 pub fn write_shell(out_dir: &Path, sri_hash: &str) -> Result<PathBuf, io::Error> {
-    let dir = out_dir.join("_zetl");
+    let dir = out_dir.join("_ztl");
     fs::create_dir_all(&dir)?;
     let path = dir.join(CAPABILITY_SHELL_FILENAME);
     fs::write(&path, render_shell(sri_hash))?;
@@ -213,7 +213,7 @@ mod tests {
     fn shell_contains_shim_mount_point() {
         let html = render_shell(SAMPLE_SRI);
         assert!(
-            html.contains("<main data-zetl-capability></main>"),
+            html.contains("<main data-ztl-capability></main>"),
             "missing capability mount point, got:\n{html}"
         );
     }
@@ -297,15 +297,15 @@ mod tests {
         let b2 = fs::read_to_string(&p2).unwrap();
         assert_eq!(p1, p2);
         assert_eq!(b1, b2);
-        assert!(b1.contains("<main data-zetl-capability>"));
+        assert!(b1.contains("<main data-ztl-capability>"));
     }
 
     #[test]
     fn host_selector_matches_shim_constant() {
-        // The shim's `render.ts` hardcodes `main[data-zetl-capability]`
+        // The shim's `render.ts` hardcodes `main[data-ztl-capability]`
         // as its host selector. If this selector ever diverges the
         // shell will render but the shim will fail with `host-missing`,
         // so the constant is pinned here as a regression gate.
-        assert_eq!(HOST_SELECTOR, "main[data-zetl-capability]");
+        assert_eq!(HOST_SELECTOR, "main[data-ztl-capability]");
     }
 }

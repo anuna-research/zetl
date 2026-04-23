@@ -2,7 +2,7 @@
 //! CON-3303 / ADR-3302 / TEST-3303).
 //!
 //! These tests exercise the adapter through the public
-//! `zetl::ecosystems::pandoc` surface — the path downstream build/serve
+//! `ztl::ecosystems::pandoc` surface — the path downstream build/serve
 //! wiring will use when invoking a real pandoc filter. The key shapes
 //! validated here:
 //!
@@ -30,15 +30,15 @@ use std::time::Duration;
 
 use serde_json::json;
 
-use zetl::ecosystems::adapter::{
+use ztl::ecosystems::adapter::{
     run_conformance, EcosystemAdapter, HookContext, PluginManifest, PluginResponse, StageInput,
     StageOutput,
 };
-use zetl::ecosystems::default_fixtures;
-use zetl::ecosystems::pandoc::{resolve_mode, PandocAdapter, PandocMode, PandocOptions};
-use zetl::hooks::build_context::{BuildContext, BuildMode, PageMeta};
-use zetl::hooks::pipeline::Stage;
-use zetl::hooks::translators::AstType;
+use ztl::ecosystems::default_fixtures;
+use ztl::ecosystems::pandoc::{resolve_mode, PandocAdapter, PandocMode, PandocOptions};
+use ztl::hooks::build_context::{BuildContext, BuildMode, PageMeta};
+use ztl::hooks::pipeline::Stage;
+use ztl::hooks::translators::AstType;
 
 fn build_ctx() -> BuildContext {
     BuildContext::new(
@@ -102,7 +102,7 @@ fn test_3303_filter_mode_round_trips_through_identity_shim() {
     };
     let input = json!({
         "pandoc-api-version": [1,23,1,0],
-        "meta": {"zetl-ast-version": {"t": "MetaInlines", "c": [{"t": "Str", "c": "1.0"}]}},
+        "meta": {"ztl-ast-version": {"t": "MetaInlines", "c": [{"t": "Str", "c": "1.0"}]}},
         "blocks": [
             {"t": "Para", "c": [{"t": "Str", "c": "hello"}]}
         ]

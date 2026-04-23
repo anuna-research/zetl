@@ -56,7 +56,7 @@
 
 (meta task-empty-query-fix
   (description "REQ-019: Reject empty/whitespace search queries with exit code 2 instead of panicking. Add guard at top of search_vault() or build_matcher(). Also reject in cmd_search before calling search_vault.")
-  (acceptance "zetl search '' exits with code 2 and structured error. No panics. Whitespace-only query also rejected. TEST-019 passes."))
+  (acceptance "ztl search '' exits with code 2 and structured error. No panics. Whitespace-only query also rejected. TEST-019 passes."))
 
 (meta task-json-errors
   (description "REQ-020/CON-009/ADR-003: All error paths output JSON on stdout when -f json. Create error_json() helper. Modify find_page() callers (cmd_links, cmd_backlinks, cmd_path) to use it. Modify cmd_search for invalid regex. Modify cmd_similar for no results. Pattern: if format==json, print {\"error\":msg,\"code\":N} to stdout; else eprintln as before.")
@@ -72,15 +72,15 @@
 
 (meta task-list-cmd
   (description "REQ-023/CON-010: Add 'list' subcommand. Lean version: just page name + path, sorted alphabetically. Does NOT need the full graph pipeline — can use scan_vault() output directly. Add List variant to Command enum. Add cmd_list() handler. JSON output: {pages: [{page,path}], total: N}.")
-  (acceptance "zetl -f json list returns all pages sorted alphabetically. Respects .zetlignore. Empty vault returns {pages:[],total:0}. TEST-023 passes."))
+  (acceptance "ztl -f json list returns all pages sorted alphabetically. Respects .ztlignore. Empty vault returns {pages:[],total:0}. TEST-023 passes."))
 
 (meta task-search-path
   (description "REQ-024/CON-008 ext: Add --path <GLOB> flag to search command. Add path_filter: Option<String> to SearchConfig. In search_vault(), after matching a file path against the walk, check if it matches the glob pattern. Use ignore::overrides or a simple glob match.")
-  (acceptance "zetl search 'note' --path 'concepts/' returns only results from concepts/. TEST-024 passes."))
+  (acceptance "ztl search 'note' --path 'concepts/' returns only results from concepts/. TEST-024 passes."))
 
 (meta task-export-cmd
   (description "REQ-025/CON-011: Add 'export' subcommand. Runs full pipeline, then serializes nodes (page+path) and edges (source+target, deduplicated). Add Export variant to Command enum with --edges-only flag. JSON output: {nodes:[],edges:[],node_count:N,edge_count:N}.")
-  (acceptance "zetl -f json export returns complete graph. Edges are unique (source,target) pairs. Dead link targets appear as nodes. TEST-025 passes."))
+  (acceptance "ztl -f json export returns complete graph. Edges are unique (source,target) pairs. Dead link targets appear as nodes. TEST-025 passes."))
 
 (meta task-verify
   (description "Run cargo test, cargo clippy -- -D warnings, and manual verification of all TEST-019 through TEST-025 scenarios.")

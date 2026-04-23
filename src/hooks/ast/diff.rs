@@ -1,5 +1,5 @@
-//! Tree-aware structural diff between two zetl-ext AST documents
-//! (SPEC-032 REQ-3225 `zetl ast diff`).
+//! Tree-aware structural diff between two ztl-ext AST documents
+//! (SPEC-032 REQ-3225 `ztl ast diff`).
 //!
 //! The diff operates on [`serde_json::Value`] rather than the typed
 //! [`crate::hooks::ast::Document`] so it works even when one side of the

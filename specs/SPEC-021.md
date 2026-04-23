@@ -1,5 +1,5 @@
 ---
-title: "SPEC-021: zetl mcp — Model Context Protocol Server for Graph-Native Knowledge Tools"
+title: "SPEC-021: ztl mcp — Model Context Protocol Server for Graph-Native Knowledge Tools"
 version: 0.2.0
 status: draft
 date: 2026-04-07
@@ -23,7 +23,7 @@ dependencies:
 | Field        | Value                                                     |
 |--------------|-----------------------------------------------------------|
 | Document     | SPEC-021                                                  |
-| Title        | zetl mcp — Model Context Protocol Server for Graph-Native Knowledge Tools |
+| Title        | ztl mcp — Model Context Protocol Server for Graph-Native Knowledge Tools |
 | Version      | 0.2.0                                                     |
 | Status       | Draft                                                     |
 | Author       | Agent (USDD Protocol v1.3.0)                              |
@@ -40,29 +40,29 @@ dependencies:
 
 ### 1.1 Problem
 
-LLM agents operating over personal knowledge bases need structured access to the vault's content, search indexes, and graph topology. Today, an agent can interact with zetl through the HTTP API (`zetl serve`) or by invoking CLI commands. Both approaches have friction:
+LLM agents operating over personal knowledge bases need structured access to the vault's content, search indexes, and graph topology. Today, an agent can interact with ztl through the HTTP API (`ztl serve`) or by invoking CLI commands. Both approaches have friction:
 
 - **HTTP API** requires a running server, URL configuration, and authentication setup. It is designed for web UIs and programmatic clients, not for the tool-calling pattern that MCP clients use.
 - **CLI invocation** requires subprocess management, output parsing, and lacks the bidirectional capability negotiation that MCP provides.
 
-Neither approach exposes zetl's graph structure as first-class tool affordances. An LLM that wants to find the shortest path between two concepts, or discover what a page links to, must either know the right CLI flags or the right API endpoints. MCP's tool discovery protocol eliminates this — the agent sees a typed tool catalog and calls what it needs.
+Neither approach exposes ztl's graph structure as first-class tool affordances. An LLM that wants to find the shortest path between two concepts, or discover what a page links to, must either know the right CLI flags or the right API endpoints. MCP's tool discovery protocol eliminates this — the agent sees a typed tool catalog and calls what it needs.
 
 ### 1.2 Core Insight
 
-zetl's wikilink graph makes its MCP server fundamentally more capable than a search-only MCP server. Most knowledge-base MCP integrations expose search and retrieval. zetl can additionally expose **graph traversal** — forward links, backlinks, shortest path, neighbourhood — giving agents structural reasoning over the knowledge base, not just keyword lookup. The graph is the differentiator.
+ztl's wikilink graph makes its MCP server fundamentally more capable than a search-only MCP server. Most knowledge-base MCP integrations expose search and retrieval. ztl can additionally expose **graph traversal** — forward links, backlinks, shortest path, neighbourhood — giving agents structural reasoning over the knowledge base, not just keyword lookup. The graph is the differentiator.
 
 ### 1.3 Design Philosophy
 
-- **MCP server imports only the public SDK API.** The MCP layer calls the same Rust functions that `zetl serve` and the CLI use (`LinkGraph::forward_links`, `LinkGraph::backlinks`, `LinkGraph::shortest_path`, the Tantivy search index, the vault scanner). It never reaches into internal state or bypasses the pipeline.
+- **MCP server imports only the public SDK API.** The MCP layer calls the same Rust functions that `ztl serve` and the CLI use (`LinkGraph::forward_links`, `LinkGraph::backlinks`, `LinkGraph::shortest_path`, the Tantivy search index, the vault scanner). It never reaches into internal state or bypasses the pipeline.
 - **Tools are atomic and composable.** Each MCP tool does one thing. An agent composes `search` → `get` → `links` → `get` to navigate the vault. The server does not try to be clever.
 - **Transport is a deployment choice, not a code change.** The same tool implementations serve both stdio and HTTP transports. The transport layer is configured at startup.
-- **Read-only by default.** The MCP server does not expose write operations. zetl's MCP server is a query interface over the vault's content and graph. Write operations remain in the HTTP API (SPEC-020) where authentication and ACL apply.
+- **Read-only by default.** The MCP server does not expose write operations. ztl's MCP server is a query interface over the vault's content and graph. Write operations remain in the HTTP API (SPEC-020) where authentication and ACL apply.
 
 ### 1.4 Scope
 
 **In scope:**
 
-- MCP server binary/mode exposing zetl's read capabilities as typed tools
+- MCP server binary/mode exposing ztl's read capabilities as typed tools
 - stdio transport (default, for subprocess-based MCP clients like Claude Desktop, Cursor, VS Code)
 - HTTP+SSE transport (daemon mode, for persistent connections and remote deployment)
 - Remote deployment: bind address configuration, bearer token authentication, healthcheck endpoint
@@ -89,10 +89,10 @@ zetl's wikilink graph makes its MCP server fundamentally more capable than a sea
 
 **Goals:** Ask Claude questions about their personal knowledge base without leaving the conversation. "What links to my Architecture Decision Records page?" "Find notes related to distributed systems." "What's the shortest path from Kafka to Event Sourcing in my vault?"
 
-**Constraints:** Uses Claude Desktop with MCP support. Expects to configure zetl as an MCP server in `claude_desktop_config.json` and have it just work. Does not want to run `zetl serve` separately.
+**Constraints:** Uses Claude Desktop with MCP support. Expects to configure ztl as an MCP server in `claude_desktop_config.json` and have it just work. Does not want to run `ztl serve` separately.
 
 **Happy path:**
-1. Adds zetl to Claude Desktop config with `"command": "zetl", "args": ["mcp", "--vault", "/path/to/vault"]`
+1. Adds ztl to Claude Desktop config with `"command": "ztl", "args": ["mcp", "--vault", "/path/to/vault"]`
 2. Starts a conversation: "What are the backlinks to my 'Project Roadmap' page?"
 3. Claude calls the `backlinks` tool → receives structured JSON → synthesizes a natural-language answer
 4. User follows up: "Show me the shortest path from Project Roadmap to Sprint Planning"
@@ -105,7 +105,7 @@ zetl's wikilink graph makes its MCP server fundamentally more capable than a sea
 **Constraints:** Runs as an MCP server in Cursor's tool configuration. Must start quickly (stdio). Must not block the IDE.
 
 **Happy path:**
-1. Configures zetl MCP in Cursor settings
+1. Configures ztl MCP in Cursor settings
 2. During coding, asks: "Search my vault for authentication middleware patterns"
 3. Cursor agent calls `search` → gets ranked results → presents relevant snippets
 4. Agent calls `get` on the top result → retrieves full page content
@@ -117,7 +117,7 @@ zetl's wikilink graph makes its MCP server fundamentally more capable than a sea
 **Constraints:** Uses HTTP transport for persistent connections. Needs structured JSON responses. May run multiple concurrent queries.
 
 **Happy path:**
-1. Starts zetl MCP in HTTP mode: `zetl mcp --transport http --port 3100 --vault /path/to/vault`
+1. Starts ztl MCP in HTTP mode: `ztl mcp --transport http --port 3100 --vault /path/to/vault`
 2. Agent connects via HTTP+SSE
 3. Agent calls `status` → gets vault stats and index health
 4. Agent calls `check` → gets dead links and orphans
@@ -132,12 +132,12 @@ zetl's wikilink graph makes its MCP server fundamentally more capable than a sea
 
 **Happy path:**
 1. Admin syncs the vault to the server (git pull, rsync, or NFS mount)
-2. Admin runs `zetl index` to build/refresh the index
-3. Admin starts: `zetl mcp --transport http --port 3100 --host 0.0.0.0 --auth-token-file /etc/zetl/tokens`
+2. Admin runs `ztl index` to build/refresh the index
+3. Admin starts: `ztl mcp --transport http --port 3100 --host 0.0.0.0 --auth-token-file /etc/ztl/tokens`
 4. Caddy reverse proxy terminates TLS at `mcp.team.example.com` → `localhost:3100`
 5. Remote agent connects with `Authorization: Bearer <agent-token>` header
 6. Agent calls `search`, `links`, `backlinks` — same tools as local, over the network
-7. Admin periodically runs `zetl index` (via cron or webhook) to pick up vault changes; agents call `status` with `reindex: true` if needed
+7. Admin periodically runs `ztl index` (via cron or webhook) to pick up vault changes; agents call `status` with `reindex: true` if needed
 
 **Failure modes:**
 - Missing or invalid bearer token → 401 Unauthorized (clear error, not MCP tool error)
@@ -152,10 +152,10 @@ zetl's wikilink graph makes its MCP server fundamentally more capable than a sea
 
 #### REQ-110: MCP Server Command
 
-The system SHALL provide a `zetl mcp` subcommand that starts an MCP server:
+The system SHALL provide a `ztl mcp` subcommand that starts an MCP server:
 
 ```
-zetl mcp [--vault <path>] [--transport stdio|http] [--port <port>] [--host <addr>]
+ztl mcp [--vault <path>] [--transport stdio|http] [--port <port>] [--host <addr>]
          [--allowed-issuer <DID>]... [--insecure] [--cors-origin <origin>]
 ```
 
@@ -171,15 +171,15 @@ zetl mcp [--vault <path>] [--transport stdio|http] [--port <port>] [--host <addr
 
 **Startup sequence:**
 
-1. Locate vault root (same resolution as `zetl index`: walk upward from `--vault` to find `.zetl/`)
-2. Load or build the vault index (reuse existing `.zetl/index.json` if fresh; re-index if stale or missing)
+1. Locate vault root (same resolution as `ztl index`: walk upward from `--vault` to find `.ztl/`)
+2. Load or build the vault index (reuse existing `.ztl/index.json` if fresh; re-index if stale or missing)
 3. Load the link graph (`LinkGraph::build`)
 4. Load the search index (Tantivy, if `search` feature enabled; vector index, if `vector` feature enabled)
 5. Register MCP tools based on available features
 6. Start the transport listener (stdio: read from stdin, write to stdout; HTTP: bind to host:port)
 7. Respond to MCP `initialize` with server capabilities
 
-The server SHALL hold the vault index, link graph, and search indexes in memory for the duration of the process. It SHALL NOT watch for file changes (unlike `zetl serve`). To pick up vault changes, the user restarts the MCP server or triggers reindex via the `status` tool's `reindex` parameter.
+The server SHALL hold the vault index, link graph, and search indexes in memory for the duration of the process. It SHALL NOT watch for file changes (unlike `ztl serve`). To pick up vault changes, the user restarts the MCP server or triggers reindex via the `status` tool's `reindex` parameter.
 
 Trace: TEST-133, CON-033
 
@@ -190,7 +190,7 @@ The system SHALL support MCP communication over stdio (stdin/stdout) using JSON-
 - All diagnostic/debug output SHALL go to stderr, never stdout (stdout is reserved for MCP protocol messages)
 - The server SHALL handle `initialize`, `initialized`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, and `ping` methods
 - The server SHALL exit cleanly when stdin reaches EOF (client disconnected)
-- The server SHALL set its process name to `zetl-mcp` for process manager visibility
+- The server SHALL set its process name to `ztl-mcp` for process manager visibility
 
 Trace: TEST-134
 
@@ -217,8 +217,8 @@ On `initialize`, the server SHALL declare the following capabilities:
     "resources": {}
   },
   "serverInfo": {
-    "name": "zetl-mcp",
-    "version": "<zetl version>"
+    "name": "ztl-mcp",
+    "version": "<ztl version>"
   }
 }
 ```
@@ -322,7 +322,7 @@ The `get` tool SHALL retrieve the full markdown content of a page.
 ]
 ```
 
-The content SHALL be the raw markdown as stored on disk. Page name resolution SHALL be case-insensitive and match against the resolved page title (same resolution as `zetl links`).
+The content SHALL be the raw markdown as stored on disk. Page name resolution SHALL be case-insensitive and match against the resolved page title (same resolution as `ztl links`).
 
 If the page does not exist, return `isError: true` with a message listing the closest matches (using the same fuzzy matching as the TUI page picker, up to 5 suggestions).
 
@@ -650,12 +650,12 @@ The MCP server SHALL expose vault pages as an MCP resource directory, enabling c
 {
   "resources": [
     {
-      "uri": "zetl://vault/pages/Architecture Overview",
+      "uri": "ztl://vault/pages/Architecture Overview",
       "name": "Architecture Overview",
       "mimeType": "text/markdown"
     },
     {
-      "uri": "zetl://vault/pages/Event Sourcing",
+      "uri": "ztl://vault/pages/Event Sourcing",
       "name": "Event Sourcing",
       "mimeType": "text/markdown"
     }
@@ -669,7 +669,7 @@ The MCP server SHALL expose vault pages as an MCP resource directory, enabling c
 {
   "contents": [
     {
-      "uri": "zetl://vault/pages/Architecture Overview",
+      "uri": "ztl://vault/pages/Architecture Overview",
       "mimeType": "text/markdown",
       "text": "# Architecture Overview\n\n..."
     }
@@ -677,7 +677,7 @@ The MCP server SHALL expose vault pages as an MCP resource directory, enabling c
 }
 ```
 
-The URI scheme SHALL be `zetl://vault/pages/<page-name>`. Page names in URIs are URL-encoded.
+The URI scheme SHALL be `ztl://vault/pages/<page-name>`. Page names in URIs are URL-encoded.
 
 Trace: TEST-136, CON-035
 
@@ -685,7 +685,7 @@ Trace: TEST-136, CON-035
 
 #### REQ-114e: User-Signed JWT Authentication for HTTP Transport
 
-The system SHALL authenticate HTTP transport connections using signed JWTs issued by SPEC-020 users via `zetl delegate`. Each token is a capability: a signed permission slip specifying which MCP tools and pages the bearer can access, optionally with an expiry.
+The system SHALL authenticate HTTP transport connections using signed JWTs issued by SPEC-020 users via `ztl delegate`. Each token is a capability: a signed permission slip specifying which MCP tools and pages the bearer can access, optionally with an expiry.
 
 **Design principle:** The common case must be one command with no arguments. Scoping and expiry are available when needed, not required when not.
 
@@ -696,7 +696,7 @@ A delegation token is a JWT signed by the user's ed25519 private key (derived fr
 ```json
 {
   "alg": "EdDSA",
-  "typ": "zetl-delegate+jwt"
+  "typ": "ztl-delegate+jwt"
 }
 .
 {
@@ -742,43 +742,43 @@ The `scope` field restricts which pages are accessible, using vault-relative glo
 
 Scope applies to all page-addressing tools: `get` checks the requested page; `search` filters results; `links`/`backlinks` check source/target; `check` filters diagnostics. `status` is not scopeable (vault-wide metadata).
 
-**CLI — `zetl delegate`:**
+**CLI — `ztl delegate`:**
 
 ```bash
 # Default: all tools, all pages, no expiry
-# Uses stored identity key (~/.config/zetl/identity.key from SPEC-020 registration)
-zetl delegate
+# Uses stored identity key (~/.config/ztl/identity.key from SPEC-020 registration)
+ztl delegate
 # → eyJhbGciOiJFZERTQSIs...
 # Paste this into your MCP client config.
 
 # Scoped: specific tools and pages
-zetl delegate --tools search,get --scope "projects/**"
+ztl delegate --tools search,get --scope "projects/**"
 # → eyJhbGciOiJFZERTQSIs...
 
 # Time-limited: for a short-lived task
-zetl delegate --tools search --expiry 1h
+ztl delegate --tools search --expiry 1h
 # → eyJhbGciOiJFZERTQSIs...
 
 # Full options
-zetl delegate \
+ztl delegate \
   --tools search,get,links,backlinks \
   --scope "projects/**" \
   --expiry 7d
 # → eyJhbGciOiJFZERTQSIs...
 
 # Recovery path: use mnemonic directly (when identity.key is unavailable)
-zetl delegate --mnemonic "word1 word2 ... word24"
+ztl delegate --mnemonic "word1 word2 ... word24"
 # → eyJhbGciOiJFZERTQSIs...
 ```
 
-`zetl delegate` reads the private key from `~/.config/zetl/identity.key` (stored during SPEC-020 registration via `zetl auth init` or collab bootstrap). The `--mnemonic` flag is a fallback for recovery or first-time setup on a new machine — it derives the key, signs the token, and optionally stores the key for future use (`--save-key`).
+`ztl delegate` reads the private key from `~/.config/ztl/identity.key` (stored during SPEC-020 registration via `ztl auth init` or collab bootstrap). The `--mnemonic` flag is a fallback for recovery or first-time setup on a new machine — it derives the key, signs the token, and optionally stores the key for future use (`--save-key`).
 
 **Server-side verification:**
 
 On each HTTP request to `/mcp` or `/mcp/sse`:
 
 1. Extract `Authorization: Bearer <jwt>` header
-2. Decode the JWT; verify `typ` is `zetl-delegate+jwt`
+2. Decode the JWT; verify `typ` is `ztl-delegate+jwt`
 3. Verify the ed25519 signature against the `iss` public key
 4. Check `exp` — if present, must not have passed; if `null`, token is valid indefinitely
 5. Check `iss` is a registered SPEC-020 user in the vault
@@ -808,8 +808,8 @@ The HTTP transport SHALL expose a `GET /health` endpoint that returns HTTP 200 w
 ```json
 {
   "status": "ok",
-  "server": "zetl-mcp",
-  "version": "<zetl version>",
+  "server": "ztl-mcp",
+  "version": "<ztl version>",
   "vault_pages": 412,
   "index_stale": false,
   "uptime_seconds": 3600
@@ -835,9 +835,9 @@ The `--host` flag (REQ-110) SHALL accept:
 
 When `--host` is set to anything other than `127.0.0.1` or `::1`, the server SHALL:
 
-1. Print a security notice to stderr: `zetl-mcp: listening on <host>:<port> (network-accessible)`
+1. Print a security notice to stderr: `ztl-mcp: listening on <host>:<port> (network-accessible)`
 2. Enforce JWT authentication by default. Requests without a valid signed delegation token are rejected with 401.
-3. If `--insecure` is passed, disable auth enforcement and print a warning: `zetl-mcp: WARNING: network-accessible without authentication. This is unsafe for production.`
+3. If `--insecure` is passed, disable auth enforcement and print a warning: `ztl-mcp: WARNING: network-accessible without authentication. This is unsafe for production.`
 4. Without `--insecure` and without any registered SPEC-020 users in the vault: refuse to start with exit code 1 and message `"Error: no registered users in vault. Token authentication requires at least one SPEC-020 user. Use --insecure for unauthenticated access."`
 
 This prevents accidental exposure of an unauthenticated MCP server to the network.
@@ -941,7 +941,7 @@ HTTP Request
 ┌──────────────────────────┐
 │  Decode JWT,             │──fail─→ 401 { "reason": "invalid token: <detail>" }
 │  verify typ =            │
-│  zetl-delegate+jwt,      │
+│  ztl-delegate+jwt,      │
 │  verify ed25519 sig      │
 └─────────┬────────────────┘
           │ ok
@@ -993,12 +993,12 @@ Three deployment patterns are supported. The MCP server code is identical across
 
 ```
 ┌──────────────────┐    stdin/stdout    ┌──────────────┐
-│  Claude Desktop  │◄──────────────────►│  zetl mcp    │
+│  Claude Desktop  │◄──────────────────►│  ztl mcp    │
 │  / Cursor / IDE  │                    │  (subprocess) │
 └──────────────────┘                    └──────────────┘
 ```
 
-`zetl mcp --vault ~/notes`
+`ztl mcp --vault ~/notes`
 
 No network. No auth. Process lifecycle managed by the MCP client.
 
@@ -1006,12 +1006,12 @@ No network. No auth. Process lifecycle managed by the MCP client.
 
 ```
 ┌──────────────────┐    localhost:3100   ┌──────────────┐
-│  Custom agent    │◄───────────────────►│  zetl mcp    │
+│  Custom agent    │◄───────────────────►│  ztl mcp    │
 │  / RAG pipeline  │                     │  --http      │
 └──────────────────┘                     └──────────────┘
 ```
 
-`zetl mcp --transport http --vault ~/notes`
+`ztl mcp --transport http --vault ~/notes`
 
 Loopback only. No auth needed (same machine). Persistent process — models stay loaded, no startup cost per query.
 
@@ -1019,15 +1019,15 @@ Loopback only. No auth needed (same machine). Persistent process — models stay
 
 ```
 ┌──────────────────┐         ┌───────────────┐         ┌──────────────┐
-│  Remote agents   │──TLS──►│  Reverse proxy │──HTTP──►│  zetl mcp    │
+│  Remote agents   │──TLS──►│  Reverse proxy │──HTTP──►│  ztl mcp    │
 │  (bearer JWT)    │         │  (Caddy/nginx) │         │  --http      │
 └──────────────────┘         └───────────────┘         │  --host 0.0.0.0│
                                                         └──────────────┘
 ```
 
-`zetl mcp --transport http --host 0.0.0.0 --port 3100`
+`ztl mcp --transport http --host 0.0.0.0 --port 3100`
 
-Network-accessible. Signed JWT auth enforced automatically (non-loopback). Each agent presents a token issued by `zetl delegate` on the user's machine. TLS terminated at reverse proxy. Vault synced to the server (git pull, rsync, or shared filesystem). Index refreshed by cron or agent-triggered reindex.
+Network-accessible. Signed JWT auth enforced automatically (non-loopback). Each agent presents a token issued by `ztl delegate` on the user's machine. TLS terminated at reverse proxy. Vault synced to the server (git pull, rsync, or shared filesystem). Index refreshed by cron or agent-triggered reindex.
 
 **Recommended reverse proxy config (Caddy):**
 
@@ -1037,12 +1037,12 @@ mcp.team.example.com {
 }
 ```
 
-Caddy auto-provisions TLS via Let's Encrypt. No zetl configuration needed beyond `--host 0.0.0.0`.
+Caddy auto-provisions TLS via Let's Encrypt. No ztl configuration needed beyond `--host 0.0.0.0`.
 
 **Recommended vault sync (cron):**
 
 ```
-*/5 * * * * cd /srv/vault && git pull --ff-only && zetl index --quiet
+*/5 * * * * cd /srv/vault && git pull --ff-only && ztl index --quiet
 ```
 
 Agents call `status` to check if the index is stale; the `reindex: true` option provides on-demand refresh without cron.
@@ -1069,7 +1069,7 @@ No new data structures are introduced for graph queries. The MCP layer is a thin
 
 ### 4.7 Token Provisioning — How Agents Obtain Access
 
-The user issues a signed token by running `zetl delegate`. The agent does not register, negotiate, or request access — the user gives it a token. The token is a signed JWT: the server verifies the ed25519 signature and checks that the issuer is a known vault user. No server-side token storage.
+The user issues a signed token by running `ztl delegate`. The agent does not register, negotiate, or request access — the user gives it a token. The token is a signed JWT: the server verifies the ed25519 signature and checks that the issuer is a known vault user. No server-side token storage.
 
 #### Delegation Lifecycle
 
@@ -1078,40 +1078,40 @@ The user issues a signed token by running `zetl delegate`. The agent does not re
    (one-time, SPEC-020)        (one command)              (every session)
 
 ┌────────────────────┐      ┌──────────────────┐      ┌─────────────────┐
-│ zetl auth init     │      │ zetl delegate    │      │ MCP Client:     │
+│ ztl auth init     │      │ ztl delegate    │      │ MCP Client:     │
 │   --mnemonic "..." │      │                  │      │ reads token     │
 │                    │      │ Signs JWT with   │      │ from config,    │
 │ → identity.key     │      │ stored key       │─────►│ sends as        │
 │   saved to         │      │                  │      │ Authorization:  │
-│   ~/.config/zetl/  │      │ → eyJhbGci...    │      │ Bearer <jwt>    │
+│   ~/.config/ztl/  │      │ → eyJhbGci...    │      │ Bearer <jwt>    │
 └────────────────────┘      └──────────────────┘      └─────────────────┘
 ```
 
-Step 1 happens once (during SPEC-020 registration or standalone `zetl auth init`). Step 2 is one command, no arguments needed. Step 3 is automatic — paste the JWT into the MCP client config once.
+Step 1 happens once (during SPEC-020 registration or standalone `ztl auth init`). Step 2 is one command, no arguments needed. Step 3 is automatic — paste the JWT into the MCP client config once.
 
 #### Issuing a Token
 
 ```bash
 # Default: all tools, all pages, no expiry
-zetl delegate
+ztl delegate
 # → eyJhbGciOiJFZERTQSIs...
 # Paste this into your MCP client config.
 
 # Scoped: specific tools and pages
-zetl delegate --tools search,get --scope "projects/**"
+ztl delegate --tools search,get --scope "projects/**"
 # → eyJhbGciOiJFZERTQSIs...
 
 # Time-limited: for a short-lived task
-zetl delegate --tools search --expiry 1h
+ztl delegate --tools search --expiry 1h
 # → eyJhbGciOiJFZERTQSIs...
 
 # Recovery path: mnemonic directly (new machine, no stored key)
-zetl delegate --mnemonic "word1 word2 ... word24" --save-key
+ztl delegate --mnemonic "word1 word2 ... word24" --save-key
 # → eyJhbGciOiJFZERTQSIs...
-# → Identity key saved to ~/.config/zetl/identity.key
+# → Identity key saved to ~/.config/ztl/identity.key
 ```
 
-`zetl delegate` reads `~/.config/zetl/identity.key` (stored during SPEC-020 registration). The `--mnemonic` flag is a fallback for recovery or first-time setup — it derives the key, signs the token, and optionally stores the key for future use (`--save-key`).
+`ztl delegate` reads `~/.config/ztl/identity.key` (stored during SPEC-020 registration). The `--mnemonic` flag is a fallback for recovery or first-time setup — it derives the key, signs the token, and optionally stores the key for future use (`--save-key`).
 
 **Defaults:**
 
@@ -1128,7 +1128,7 @@ zetl delegate --mnemonic "word1 word2 ... word24" --save-key
 ```json
 {
   "mcpServers": {
-    "zetl": {
+    "ztl": {
       "url": "https://mcp.team.example.com/mcp",
       "headers": {
         "Authorization": "Bearer eyJhbGciOiJFZERTQSIs..."
@@ -1143,8 +1143,8 @@ For local stdio (no auth needed):
 ```json
 {
   "mcpServers": {
-    "zetl": {
-      "command": "zetl",
+    "ztl": {
+      "command": "ztl",
       "args": ["mcp", "--vault", "/path/to/vault"]
     }
   }
@@ -1156,7 +1156,7 @@ For local stdio (no auth needed):
 ```json
 {
   "mcpServers": {
-    "zetl": {
+    "ztl": {
       "url": "https://mcp.team.example.com/mcp",
       "headers": {
         "Authorization": "Bearer eyJhbGciOiJFZERTQSIs..."
@@ -1169,10 +1169,10 @@ For local stdio (no auth needed):
 **Environment variable** (CI, scripts):
 
 ```bash
-export ZETL_MCP_TOKEN="eyJhbGciOiJFZERTQSIs..."
+export ztl_MCP_TOKEN="eyJhbGciOiJFZERTQSIs..."
 
 curl -X POST "https://mcp.team.example.com/mcp" \
-  -H "Authorization: Bearer $ZETL_MCP_TOKEN" \
+  -H "Authorization: Bearer $ztl_MCP_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
@@ -1184,7 +1184,7 @@ from mcp import ClientSession, HttpTransport
 
 transport = HttpTransport(
     url="https://mcp.team.example.com/mcp",
-    headers={"Authorization": f"Bearer {os.environ['ZETL_MCP_TOKEN']}"}
+    headers={"Authorization": f"Bearer {os.environ['ztl_MCP_TOKEN']}"}
 )
 async with ClientSession(transport) as session:
     tools = await session.list_tools()  # only tools granted by token appear
@@ -1200,42 +1200,42 @@ Tokens are stateless — the server does not store issued tokens. Revocation str
 |----------|-----------|---------|
 | **Expiry** | Issue with `--expiry 1h` or `--expiry 7d`. Token self-revokes. | Up to expiry window |
 | **Issuer revocation** | `--allowed-issuer` flag on the server. Remove a user's DID to invalidate all tokens they issued. | Requires server restart |
-| **Re-key** | User runs `zetl auth rotate` to generate a new keypair. All tokens signed with the old key become invalid. | Immediate for new requests |
+| **Re-key** | User runs `ztl auth rotate` to generate a new keypair. All tokens signed with the old key become invalid. | Immediate for new requests |
 
-For tokens without expiry: the user is the root of trust. If the token leaks, `zetl auth rotate` invalidates it (and all other tokens from that identity). Re-run `zetl delegate` and update client configs.
+For tokens without expiry: the user is the root of trust. If the token leaks, `ztl auth rotate` invalidates it (and all other tokens from that identity). Re-run `ztl delegate` and update client configs.
 
 #### Security Considerations
 
 - **Tokens are bearer tokens.** Anyone who possesses the JWT can use it. Treat them like API keys: do not commit to version control, use environment variables or secrets managers.
-- **TLS is required for remote.** Tokens sent over plaintext HTTP are visible to network observers. TLS is terminated at the reverse proxy (Caddy, nginx). zetl does not handle TLS itself.
-- **Identity key is the master secret.** `~/.config/zetl/identity.key` can sign unlimited tokens. Protect it. If compromised, `zetl auth rotate` generates a new keypair and invalidates all existing tokens.
+- **TLS is required for remote.** Tokens sent over plaintext HTTP are visible to network observers. TLS is terminated at the reverse proxy (Caddy, nginx). ztl does not handle TLS itself.
+- **Identity key is the master secret.** `~/.config/ztl/identity.key` can sign unlimited tokens. Protect it. If compromised, `ztl auth rotate` generates a new keypair and invalidates all existing tokens.
 - **Clock skew.** Token expiry (when set) is checked against server time. The server SHOULD allow a 60-second grace period for clock skew.
 
 ---
 
 ## 5. Contract Specifications
 
-### CON-033: `zetl mcp` CLI Interface
+### CON-033: `ztl mcp` CLI Interface
 
-**Interface:** `zetl mcp [--vault <path>] [--transport stdio|http] [--port <port>] [--host <addr>] [--auth-token <TOKEN>] [--auth-token-file <PATH>] [--insecure] [--cors-origin <origin>]`
+**Interface:** `ztl mcp [--vault <path>] [--transport stdio|http] [--port <port>] [--host <addr>] [--auth-token <TOKEN>] [--auth-token-file <PATH>] [--insecure] [--cors-origin <origin>]`
 
 **Pre-conditions:**
 
 - Vault directory exists and contains at least one `.md` file
-- `.zetl/` directory exists (or will be created by initial indexing)
+- `.ztl/` directory exists (or will be created by initial indexing)
 - If `--auth-token-file` is provided, the file exists and is readable
 
 **Post-conditions:**
 
 - For stdio: the server reads JSON-RPC from stdin and writes JSON-RPC to stdout. All non-protocol output goes to stderr. Auth flags are ignored.
-- For HTTP: the server binds to `host:port` and accepts connections. A startup message is printed to stderr: `zetl-mcp listening on http://<host>:<port>`
+- For HTTP: the server binds to `host:port` and accepts connections. A startup message is printed to stderr: `ztl-mcp listening on http://<host>:<port>`
 - For HTTP with auth: `GET /health` responds without auth; all other endpoints require valid bearer token.
 - The server responds to MCP `initialize` with the capability object specified in REQ-113
 - The server continues running until stdin EOF (stdio) or SIGTERM/SIGINT (HTTP)
 
 **Error model:**
 
-- Vault not found: exit 1 with stderr message `"Error: no vault found at <path>. Run zetl index first."`
+- Vault not found: exit 1 with stderr message `"Error: no vault found at <path>. Run ztl index first."`
 - Port already in use (HTTP): exit 1 with stderr message `"Error: port <port> already in use"`
 - Invalid transport: exit 1 with stderr message `"Error: unknown transport '<value>'. Use 'stdio' or 'http'."`
 - Network-accessible without auth (no `--insecure`, no registered users): exit 1 with stderr message `"Error: no registered users in vault. Token authentication requires at least one SPEC-020 user. Use --insecure for unauthenticated access."`
@@ -1291,7 +1291,7 @@ For tokens without expiry: the user is the root of trust. If the token leaks, `z
 **Post-conditions for `resources/list`:**
 
 - Response contains `resources` array
-- Each resource has `uri` (format: `zetl://vault/pages/<url-encoded-page-name>`), `name` (page title), and `mimeType` (`text/markdown`)
+- Each resource has `uri` (format: `ztl://vault/pages/<url-encoded-page-name>`), `name` (page title), and `mimeType` (`text/markdown`)
 - The list includes all pages in the vault index
 
 **Post-conditions for `resources/read`:**
@@ -1328,11 +1328,11 @@ Tool-level errors (page not found, feature unavailable) are NOT JSON-RPC errors.
 
 ### NFR-044: MCP Server Startup Latency
 
-The MCP server SHALL complete initialization and be ready to accept tool calls in ≤ 2 seconds FOR a vault of 2,000 pages WITH the index already built (`.zetl/index.json` exists and is fresh) WITH 95th percentile confidence.
+The MCP server SHALL complete initialization and be ready to accept tool calls in ≤ 2 seconds FOR a vault of 2,000 pages WITH the index already built (`.ztl/index.json` exists and is fresh) WITH 95th percentile confidence.
 
 This is critical for stdio transport where the MCP client (e.g., Claude Desktop) spawns the server as a subprocess and expects quick readiness. The 2-second budget covers: vault root resolution, index loading (deserialize JSON), graph building, search index opening, and MCP `initialize` response.
 
-When the index is stale or missing, startup may take longer (up to the full re-index time). The server SHALL emit a progress notification to stderr: `zetl-mcp: re-indexing vault...` so the user understands the delay.
+When the index is stale or missing, startup may take longer (up to the full re-index time). The server SHALL emit a progress notification to stderr: `ztl-mcp: re-indexing vault...` so the user understands the delay.
 
 Trace: TEST-133
 
@@ -1372,7 +1372,7 @@ Trace: TEST-133
 
 **Decision:** Use the `rmcp` crate (Rust MCP SDK) for protocol handling, tool registration, and transport management.
 
-**Context:** Implementing the MCP protocol from scratch requires handling JSON-RPC 2.0 framing, SSE streaming, capability negotiation, and the full MCP method set (`initialize`, `tools/list`, `tools/call`, `resources/*`, `ping`, etc.). This is substantial protocol plumbing that is orthogonal to zetl's value.
+**Context:** Implementing the MCP protocol from scratch requires handling JSON-RPC 2.0 framing, SSE streaming, capability negotiation, and the full MCP method set (`initialize`, `tools/list`, `tools/call`, `resources/*`, `ping`, etc.). This is substantial protocol plumbing that is orthogonal to ztl's value.
 
 **Rationale:** `rmcp` provides:
 
@@ -1388,15 +1388,15 @@ Trace: TEST-133
 - (+) Transport switching via configuration, not code changes
 - (-) New dependency (~500KB compiled)
 - (-) Pre-1.0 crate; API may change
-- (-) Must adapt zetl's error model to MCP's `isError` convention
+- (-) Must adapt ztl's error model to MCP's `isError` convention
 
 **Rejected alternatives:**
 
 1. *Hand-rolled JSON-RPC over stdio* — feasible for stdio-only, but maintaining HTTP+SSE transport manually is error-prone and duplicates work that rmcp already handles
-2. *Wrapping the HTTP API with an MCP proxy* — adds a network hop, requires `zetl serve` running separately, and loses the subprocess deployment model that makes MCP convenient
-3. *TypeScript MCP SDK with Rust FFI* — introduces a Node.js dependency, which contradicts zetl's single-binary design
+2. *Wrapping the HTTP API with an MCP proxy* — adds a network hop, requires `ztl serve` running separately, and loses the subprocess deployment model that makes MCP convenient
+3. *TypeScript MCP SDK with Rust FFI* — introduces a Node.js dependency, which contradicts ztl's single-binary design
 
-**Mitigation for API instability:** Pin to a specific `rmcp` version. The tool handler functions are pure Rust calling zetl's public API; if rmcp's registration API changes, only `server.rs` needs adaptation.
+**Mitigation for API instability:** Pin to a specific `rmcp` version. The tool handler functions are pure Rust calling ztl's public API; if rmcp's registration API changes, only `server.rs` needs adaptation.
 
 ### ADR-058: Read-Only MCP Server
 
@@ -1407,7 +1407,7 @@ Trace: TEST-133
 **Rationale:**
 
 1. **Safety by default.** A read-only server cannot cause data loss regardless of how the agent uses it. The worst case is wasted queries, not deleted pages.
-2. **Separation of concerns.** Write operations require authentication, ACL checks, git attribution, and hook execution (SPEC-020). The MCP server does not handle any of these. Routing writes through `zetl serve` (which does handle them) is the correct architecture.
+2. **Separation of concerns.** Write operations require authentication, ACL checks, git attribution, and hook execution (SPEC-020). The MCP server does not handle any of these. Routing writes through `ztl serve` (which does handle them) is the correct architecture.
 3. **MCP ecosystem convention.** Most MCP servers for knowledge bases are read-only (query, retrieve, search). Write operations are typically exposed through separate, explicitly-authorized tool sets.
 4. **Future extensibility.** Write tools can be added later behind a `--allow-writes` flag with appropriate confirmation UX, without changing the read-only default.
 
@@ -1421,7 +1421,7 @@ Trace: TEST-133
 
 ### ADR-059: User-Signed JWT Delegation for Remote HTTP Transport
 
-**Decision:** Authenticate remote HTTP connections using user-signed JWTs with capability claims (`tools`, `scope`, `exp`), issued via `zetl delegate` from the user's stored ed25519 identity key. No agent keypairs, no proof chains, no server-side token state.
+**Decision:** Authenticate remote HTTP connections using user-signed JWTs with capability claims (`tools`, `scope`, `exp`), issued via `ztl delegate` from the user's stored ed25519 identity key. No agent keypairs, no proof chains, no server-side token state.
 
 **Context:** The MCP server's HTTP transport can be bound to `0.0.0.0`, making it network-accessible. We evaluated five authentication approaches:
 
@@ -1437,17 +1437,17 @@ A simple JWT signed by the user's ed25519 key gives the same practical security:
 
 **Rationale:**
 
-1. **One command, no arguments.** `zetl delegate` with sensible defaults (all tools, all pages, no expiry). The user's identity key is already stored from SPEC-020 registration. No mnemonics to type, no DIDs to copy, no agent keypairs to generate.
+1. **One command, no arguments.** `ztl delegate` with sensible defaults (all tools, all pages, no expiry). The user's identity key is already stored from SPEC-020 registration. No mnemonics to type, no DIDs to copy, no agent keypairs to generate.
 2. **User-driven delegation.** The user — not an admin — decides what their agent can do. Scoping (`--tools`, `--scope`) and expiry (`--expiry`) are available when needed, invisible when not.
 3. **Stateless verification.** The server checks the ed25519 signature and looks up the `iss` in the SPEC-020 user registry. No token table, no session store, no revocation list.
-4. **Identity reuse.** SPEC-020 `did:key` identities are JWT issuers. The same key that authenticates to `zetl serve --collab` signs delegation tokens. One identity, one key.
+4. **Identity reuse.** SPEC-020 `did:key` identities are JWT issuers. The same key that authenticates to `ztl serve --collab` signs delegation tokens. One identity, one key.
 5. **Per-tool, per-page scoping.** The `tools` and `scope` claims are enforced on every tool call. An agent with `tools: ["search"]` cannot call `get`, even if it discovers the tool name.
-6. **Honest security model.** The token is a bearer token. We don't pretend otherwise. TLS (via reverse proxy) protects it in transit. Key rotation (`zetl auth rotate`) revokes all tokens instantly.
+6. **Honest security model.** The token is a bearer token. We don't pretend otherwise. TLS (via reverse proxy) protects it in transit. Key rotation (`ztl auth rotate`) revokes all tokens instantly.
 7. **No expiry by default.** For your own agent accessing your own read-only vault, forced expiry is just chores. Expiry is opt-in for short-lived tasks or delegation to others.
 
 **Trade-offs:**
 
-- (+) Simplest possible UX: `zetl delegate` → paste into config → done
+- (+) Simplest possible UX: `ztl delegate` → paste into config → done
 - (+) No agent keypairs, no DIDs to manage, no proof chains
 - (+) Stateless verification — no server-side token storage
 - (+) Ed25519 keys already exist (SPEC-020)
@@ -1456,7 +1456,7 @@ A simple JWT signed by the user's ed25519 key gives the same practical security:
 - (-) No delegation chains (agent cannot further attenuate to sub-agent). Acceptable for v1; if needed, UCAN can be adopted later as the JWT is a compatible subset.
 - (-) No audience binding (anyone with the token can use it). Mitigated by TLS and key rotation.
 - (-) Revocation requires key rotation (invalidates ALL tokens) or `--allowed-issuer` (invalidates all tokens from one user). No per-token revocation.
-- (-) TLS not handled by zetl — relies on reverse proxy.
+- (-) TLS not handled by ztl — relies on reverse proxy.
 
 **Rejected alternatives:**
 
@@ -1475,13 +1475,13 @@ A simple JWT signed by the user's ed25519 key gives the same practical security:
 
 **Requirement:** REQ-110, NFR-044
 
-**Preconditions:** Vault with 50 `.md` files; `.zetl/index.json` exists and is fresh
+**Preconditions:** Vault with 50 `.md` files; `.ztl/index.json` exists and is fresh
 
 **Steps:**
 
-1. Start `zetl mcp --vault <path>` as a subprocess
+1. Start `ztl mcp --vault <path>` as a subprocess
 2. Send MCP `initialize` request via stdin
-3. Verify response contains `serverInfo.name` = `"zetl-mcp"` and `capabilities.tools` object
+3. Verify response contains `serverInfo.name` = `"ztl-mcp"` and `capabilities.tools` object
 4. Verify no output appeared on stdout before the `initialize` response (no startup banners on stdout)
 5. Measure time from process start to `initialize` response; verify ≤ 2 seconds
 6. Send `ping` request; verify `pong` response
@@ -1510,8 +1510,8 @@ A simple JWT signed by the user's ed25519 key gives the same practical security:
 
 **Steps:**
 
-1. Start `zetl mcp --transport http --port 3100 --vault <path>`
-2. Verify stderr contains `zetl-mcp listening on http://127.0.0.1:3100`
+1. Start `ztl mcp --transport http --port 3100 --vault <path>`
+2. Verify stderr contains `ztl-mcp listening on http://127.0.0.1:3100`
 3. POST `http://127.0.0.1:3100/mcp` with MCP `initialize` → verify 200 with capabilities
 4. GET `http://127.0.0.1:3100/mcp/sse` → verify SSE stream opens (Content-Type: text/event-stream)
 5. POST `tools/list` → verify tool catalog returned
@@ -1527,9 +1527,9 @@ A simple JWT signed by the user's ed25519 key gives the same practical security:
 **Steps:**
 
 1. Send `initialize` → verify `capabilities.tools` and `capabilities.resources` are present
-2. Send `resources/list` → verify 3 resources returned with `zetl://vault/pages/` URIs
-3. Send `resources/read` with URI `zetl://vault/pages/Foo` → verify markdown content of Foo returned
-4. Send `resources/read` with URI `zetl://vault/pages/Nonexistent` → verify error response
+2. Send `resources/list` → verify 3 resources returned with `ztl://vault/pages/` URIs
+3. Send `resources/read` with URI `ztl://vault/pages/Foo` → verify markdown content of Foo returned
+4. Send `resources/read` with URI `ztl://vault/pages/Nonexistent` → verify error response
 
 ### TEST-137: Tool — search
 
@@ -1624,14 +1624,14 @@ A simple JWT signed by the user's ed25519 key gives the same practical security:
 
 **Preconditions:** Vault with 10 pages (including pages "Alpha" in `projects/alpha/` and "Beta" in `notes/`); SPEC-020 user registered (Alice, `did:key:z6MkAlice...`)
 
-**Setup:** Generate three tokens via `zetl delegate`:
+**Setup:** Generate three tokens via `ztl delegate`:
 - `jwt_full`: tools=`*`, scope=`**` (no expiry)
 - `jwt_scoped`: tools=`search,get`, scope=`projects/**` (no expiry)
 - `jwt_expired`: tools=`*`, scope=`**`, expiry=-1h (already expired)
 
 **Steps:**
 
-1. Start `zetl mcp --transport http --host 0.0.0.0 --port 3100 --vault <path>`
+1. Start `ztl mcp --transport http --host 0.0.0.0 --port 3100 --vault <path>`
 2. POST `/mcp` with `Authorization: Bearer <jwt_full>` and `initialize` → verify 200 with capabilities listing all tools
 3. POST `/mcp` with `Authorization: Bearer <jwt_scoped>` and `initialize` → verify 200 with capabilities listing only `search` and `get`
 4. Using `jwt_scoped`: call `get` with `{ "page": "Alpha" }` → verify 200 with page content (page is within `projects/**` scope)
@@ -1649,14 +1649,14 @@ A simple JWT signed by the user's ed25519 key gives the same practical security:
 **Preconditions:** SPEC-020 user Alice registered; MCP server running with JWT auth enforced
 
 **Setup:**
-- Generate `jwt_valid` via `zetl delegate` (signed with Alice's current key)
+- Generate `jwt_valid` via `ztl delegate` (signed with Alice's current key)
 
 **Steps:**
 
 1. Using `jwt_valid`: call `search` with `{ "query": "test" }` → verify 200 (token works)
-2. Run `zetl auth rotate` to generate a new keypair for Alice
+2. Run `ztl auth rotate` to generate a new keypair for Alice
 3. Using `jwt_valid`: call `search` → verify 401 with `"reason": "issuer not recognized"` (old key no longer matches)
-4. Generate `jwt_new` via `zetl delegate` (signed with new key)
+4. Generate `jwt_new` via `ztl delegate` (signed with new key)
 5. Using `jwt_new`: call `search` → verify 200 (new token works)
 
 ### TEST-143b: Healthcheck Endpoint
@@ -1668,7 +1668,7 @@ A simple JWT signed by the user's ed25519 key gives the same practical security:
 **Steps:**
 
 1. GET `/health` → verify 200 with JSON body
-2. Verify body contains `status: "ok"`, `server: "zetl-mcp"`, `version` (non-empty string), `vault_pages` (integer ≥ 50), `index_stale` (boolean), `uptime_seconds` (integer ≥ 0)
+2. Verify body contains `status: "ok"`, `server: "ztl-mcp"`, `version` (non-empty string), `vault_pages` (integer ≥ 50), `index_stale` (boolean), `uptime_seconds` (integer ≥ 0)
 3. Measure response latency; verify ≤ 10ms
 4. Modify a vault file on disk (touch a .md file)
 5. GET `/health` → verify `index_stale` is now `true`
@@ -1683,13 +1683,13 @@ A simple JWT signed by the user's ed25519 key gives the same practical security:
 
 **Steps:**
 
-1. Start `zetl mcp --transport http --host 0.0.0.0 --vault <path>` (no users, no --insecure) → verify exit code 1
+1. Start `ztl mcp --transport http --host 0.0.0.0 --vault <path>` (no users, no --insecure) → verify exit code 1
 2. Verify stderr contains "no registered users" error message
-3. Start `zetl mcp --transport http --host 0.0.0.0 --insecure --vault <path>` → verify server starts
+3. Start `ztl mcp --transport http --host 0.0.0.0 --insecure --vault <path>` → verify server starts
 4. Verify stderr contains "WARNING: network-accessible without authentication"
-5. Register a SPEC-020 user (bootstrap); start `zetl mcp --transport http --host 0.0.0.0 --vault <path>` → verify server starts (JWT auth enforced, users exist)
+5. Register a SPEC-020 user (bootstrap); start `ztl mcp --transport http --host 0.0.0.0 --vault <path>` → verify server starts (JWT auth enforced, users exist)
 6. Verify stderr contains "listening on 0.0.0.0:3100 (network-accessible)" (informational, not warning)
-7. Start `zetl mcp --transport http --host 127.0.0.1 --vault <path>` (loopback, no users) → verify server starts without error (loopback is safe)
+7. Start `ztl mcp --transport http --host 127.0.0.1 --vault <path>` (loopback, no users) → verify server starts without error (loopback is safe)
 
 ---
 
@@ -1732,7 +1732,7 @@ A simple JWT signed by the user's ed25519 key gives the same practical security:
 
 ### Dependency Rule
 
-Dependencies point inward: shell → core. The pure core module (`src/mcp/tools.rs` serialization functions) SHALL NOT import `rmcp`, `tokio`, `std::fs`, or any I/O crate. It operates on zetl's existing data types (`ForwardLinkResult`, `BacklinkResult`, `PathResult`, `DeadLink`, `Orphan`, `GraphStats`) and produces `serde_json::Value`.
+Dependencies point inward: shell → core. The pure core module (`src/mcp/tools.rs` serialization functions) SHALL NOT import `rmcp`, `tokio`, `std::fs`, or any I/O crate. It operates on ztl's existing data types (`ForwardLinkResult`, `BacklinkResult`, `PathResult`, `DeadLink`, `Orphan`, `GraphStats`) and produces `serde_json::Value`.
 
 ### Enforcement
 

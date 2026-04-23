@@ -65,7 +65,7 @@ fn initialize_request(id: u64) -> Value {
             "protocolVersion": "2025-03-26",
             "capabilities": {},
             "clientInfo": {
-                "name": "zetl-test",
+                "name": "ztl-test",
                 "version": "0.1.0"
             }
         }
@@ -80,11 +80,11 @@ fn initialized_notification() -> Value {
     })
 }
 
-/// Run zetl mcp with the given messages, return parsed NDJSON responses.
+/// Run ztl mcp with the given messages, return parsed NDJSON responses.
 fn run_mcp(vault: &TempDir, messages: &[Value]) -> Vec<Value> {
     let stdin_data = build_stdin(messages);
 
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     let output = cmd
         .args([
             "-d",
@@ -96,7 +96,7 @@ fn run_mcp(vault: &TempDir, messages: &[Value]) -> Vec<Value> {
         .write_stdin(stdin_data)
         .timeout(Duration::from_secs(15))
         .output()
-        .expect("failed to run zetl mcp");
+        .expect("failed to run ztl mcp");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     parse_ndjson(&stdout)
@@ -123,8 +123,8 @@ fn mcp_stdio_initialize() {
     let server_info = result.get("serverInfo").expect("no serverInfo");
     let name = server_info["name"].as_str().unwrap();
     assert!(
-        name.contains("zetl"),
-        "server name should contain 'zetl', got: {name}"
+        name.contains("ztl"),
+        "server name should contain 'ztl', got: {name}"
     );
 }
 

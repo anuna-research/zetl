@@ -1,6 +1,6 @@
-# zetl user guide
+# ztl user guide
 
-A comprehensive, ~40-page guide to zetl, written as a zetl vault.
+A comprehensive, ~40-page guide to ztl, written as a ztl vault.
 
 Everything in this folder is plain Markdown with `[[wikilinks]]`. Start at [Index.md](Index.md).
 
@@ -8,22 +8,22 @@ Everything in this folder is plain Markdown with `[[wikilinks]]`. Start at [Inde
 
 Pick whichever you prefer:
 
-- **In a web browser** — `make serve` (or `zetl serve --theme quickstart`), then open <http://localhost:3000>. The `quickstart` theme redirects `/` to the Quick Start page; without it you get zetl's default vault landing (stats + page grid) and have to click through to Index.
-- **As a static site** — `make build` (or `zetl build --theme quickstart --out-dir site`), then upload `site/` to any HTTP host.
-- **In a terminal** — run `zetl view Index` for the two-pane reader.
+- **In a web browser** — `make serve` (or `ztl serve --theme quickstart`), then open <http://localhost:3000>. The `quickstart` theme redirects `/` to the Quick Start page; without it you get ztl's default vault landing (stats + page grid) and have to click through to Index.
+- **As a static site** — `make build` (or `ztl build --theme quickstart --out-dir site`), then upload `site/` to any HTTP host.
+- **In a terminal** — run `ztl view Index` for the two-pane reader.
 - **In Obsidian / Logseq / Foam / Dendron** — open this folder as a vault.
 - **On GitHub / Codeberg** — the wikilinks render as plain text, but every page is readable.
 
 ## About
 
-- **What is zetl?** See [getting-started/What is zetl.md](getting-started/What%20is%20zetl.md).
-- **Canonical zetl source:** <https://codeberg.org/anuna/zetl>
-- **Scope of this guide:** every feature shipped in the zetl CLI as of v0.5, aimed at writers and knowledge workers.
+- **What is ztl?** See [getting-started/What is ztl.md](getting-started/What%20is%20ztl.md).
+- **Canonical ztl source:** <https://codeberg.org/anuna/ztl>
+- **Scope of this guide:** every feature shipped in the ztl CLI as of v0.5, aimed at writers and knowledge workers.
 
 ## Contributing
 
-Found a mistake? Run `zetl check` on the vault and open an issue or PR at the zetl source repository.
+Found a mistake? Run `ztl check` on the vault and open an issue or PR at the ztl source repository.
 
 ## License
 
-Same as zetl: [AGPL-3.0](../LICENSE).
+Same as ztl: [AGPL-3.0](../LICENSE).

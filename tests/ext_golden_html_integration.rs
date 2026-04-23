@@ -18,7 +18,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use zetl::extensions::golden::{compare, load_fixtures, normalise_html, render_diff};
+use ztl::extensions::golden::{compare, load_fixtures, normalise_html, render_diff};
 
 #[path = "../tools/xtask/src/runners.rs"]
 mod runners;

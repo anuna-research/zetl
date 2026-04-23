@@ -1,18 +1,18 @@
 # Capability-URL Security Model
 
-This document is the operator-facing security reference for `zetl build
+This document is the operator-facing security reference for `ztl build
 --capability`. It explains the threat model, the trust assumptions, the
 deployment modes, what capability mode is *not* intended to defend, and
 the quantitative bounds operators can rely on. It is derived from
 SPEC-034 §1, §11, and §12; the spec is the normative source of truth,
 this document is the long-form discussion.
 
-If you are choosing between `zetl serve`, a reverse proxy with SSO, and
-`zetl build --capability`, read §3 first.
+If you are choosing between `ztl serve`, a reverse proxy with SSO, and
+`ztl build --capability`, read §3 first.
 
 ## 1. What Capability Mode Is
 
-Capability mode is a **build-time ACL**. `zetl build --capability`
+Capability mode is a **build-time ACL**. `ztl build --capability`
 encrypts every published page with [`age`][age] against the current
 cohort's recipient list and signs the ciphertext with the operator's
 Ed25519 vault-signing key. The deploy target is an ordinary static host
@@ -53,9 +53,9 @@ architecture.
 | **Anonymous whistleblowing / source protection**                                       | Membership of a cohort is not hidden from someone with operator-side access to `grants.toml`. Padding defeats outsiders, not insiders (§4).                                                                             |
 | **Cryptocurrency wallet recovery material, bearer credentials, or long-term secrets** | Harvest-now-decrypt-later against classical X25519 is a real 2035+ concern; there is no PQ path in v1.                                                                                                                   |
 | **Content you cannot afford to sign once with a long-lived key**                       | The vault-signing key is operator-held and rotation requires a coordinated CDN cache invalidation. Operators unwilling to accept key-rotation downtime must not use capability mode.                                    |
-| **Content mixed with untrusted contributions**                                         | A malicious PR can inject content that ciphers and signs exactly like legitimate content. `zetl cap audit-diff` + the sanitiser (REQ-3421, REQ-3424) raise the bar, but a compromised contributor who also controls CI can defeat it. |
+| **Content mixed with untrusted contributions**                                         | A malicious PR can inject content that ciphers and signs exactly like legitimate content. `ztl cap audit-diff` + the sanitiser (REQ-3421, REQ-3424) raise the bar, but a compromised contributor who also controls CI can defeat it. |
 
-If any of the above applies: use `zetl serve` (server-side ACL, real
+If any of the above applies: use `ztl serve` (server-side ACL, real
 revocation, per-user audit) or a reverse-proxy-authenticated deployment.
 Capability mode is for content whose **loss** is recoverable and whose
 **leakage** is bounded by the sensitivity of things like internal
@@ -66,9 +66,9 @@ engineering wikis, member-only community notes, or course material.
 Four common deployment shapes address the "how do I restrict who reads
 this wiki" question. They are not substitutes for each other.
 
-| Dimension                                 | Delegated-URL (default)                                    | Hardened (opt-in)                                        | `zetl serve` (SPEC-020)                           | Reverse-proxy auth (e.g. oauth2-proxy, Cloudflare Access, Tailscale) |
+| Dimension                                 | Delegated-URL (default)                                    | Hardened (opt-in)                                        | `ztl serve` (SPEC-020)                           | Reverse-proxy auth (e.g. oauth2-proxy, Cloudflare Access, Tailscale) |
 | ----------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------- |
-| **Server-side component**                 | None — CDN / static host only                              | None — CDN / static host only                            | `zetl serve` (process on a host)                  | Proxy + IdP                                                          |
+| **Server-side component**                 | None — CDN / static host only                              | None — CDN / static host only                            | `ztl serve` (process on a host)                  | Proxy + IdP                                                          |
 | **Identity primitive**                    | Per-grant X25519 + TOFU-pinned passkey                     | Cohort-scoped WebAuthn-PRF-derived X25519                | SPEC-020 ACL (session cookie / token)             | IdP (OIDC, SAML, …)                                                  |
 | **URL carries secret?**                   | Yes (`#k=…` fragment)                                      | No                                                       | No                                                | No                                                                   |
 | **Invite medium**                          | Operator-generated URL                                     | Pubkey handoff out-of-band + enrolment page              | Operator adds user to ACL                         | IdP user-add                                                         |
@@ -78,9 +78,9 @@ this wiki" question. They are not substitutes for each other.
 | **CDN-substitution resistance**            | Ed25519 signature verification (REQ-3427)                  | Ed25519 signature verification (REQ-3427)                | TLS + origin trust                                | TLS + proxy trust                                                    |
 | **Works when your server is down**         | Yes — CDN-static                                           | Yes — CDN-static                                         | No                                                | No (proxy depends on upstream)                                       |
 | **Hide cohort membership from outsiders?** | Yes (per-grant keypair, X25519 padding to tier)            | Yes (per-cohort PRF salt, X25519 padding to tier)        | N/A — outsiders never see ciphertexts             | N/A                                                                  |
-| **Hide cohort membership from insiders?**  | No (`grants.toml` maps names → grants)                     | No (operator holds pubkey ↔ reader map)                  | Depends on `zetl serve` logging                   | Depends on IdP                                                       |
+| **Hide cohort membership from insiders?**  | No (`grants.toml` maps names → grants)                     | No (operator holds pubkey ↔ reader map)                  | Depends on `ztl serve` logging                   | Depends on IdP                                                       |
 | **Leak surface if invite URL escapes**     | TOFU-window exposure — see §5                              | None — URL has no secret                                 | Session cookie exposure                           | OIDC token exposure                                                  |
-| **Operator machine compromise blast**      | Catastrophic (signing key + ZETL_CAP_SECRET)                | Catastrophic (same)                                      | Catastrophic (keys + runtime state)               | IdP-dependent                                                        |
+| **Operator machine compromise blast**      | Catastrophic (signing key + ztl_CAP_SECRET)                | Catastrophic (same)                                      | Catastrophic (keys + runtime state)               | IdP-dependent                                                        |
 | **Works for >1000-reader cohorts**         | Yes, but count-tier padding grows                           | Yes                                                      | Yes                                               | Yes                                                                  |
 | **Post-quantum posture**                   | Classical only (X25519/Ed25519)                             | Classical only                                           | Depends on deployment                             | IdP-dependent                                                        |
 | **Operator cost**                           | Zero-ops                                                     | Zero-ops (plus out-of-band pubkey collection)           | One process, one DB                                 | Proxy + IdP subscription                                             |
@@ -95,7 +95,7 @@ adversaries (Safe Browsing, link preview bots, browser sync) and you
 can accept the one-off friction of asking readers to paste a pubkey
 out-of-band.
 
-**Use `zetl serve`** when: you need per-user audit, real-time
+**Use `ztl serve`** when: you need per-user audit, real-time
 revocation, or forward secrecy.
 
 **Use reverse-proxy auth** when: you already run an IdP; the wiki is
@@ -118,8 +118,8 @@ SPEC-034 §11.1 defines seven adversaries. This section expands on each.
 | A3 | **CDN-compromised**             | Attacker who substitutes bytes at the CDN layer: stolen CDN credentials, rogue CDN employee.    |
 | A4 | **Authenticator thief**         | Physical theft of an unlocked device with a paired authenticator; passkey takeover.             |
 | A5 | **Malicious contributor**       | A PR author who tries to inject XSS, exfiltrating CSS, or otherwise hostile markdown.           |
-| A6 | **Compromised CI**              | Attacker controlling the build environment: leaked `ZETL_CAP_SECRET`, leaked signing key.      |
-| A7 | **Signing-key compromiser**     | Attacker who extracts `ZETL_CAP_SIGNING_KEY` from CI, ops machine, or backup.                  |
+| A6 | **Compromised CI**              | Attacker controlling the build environment: leaked `ztl_CAP_SECRET`, leaked signing key.      |
+| A7 | **Signing-key compromiser**     | Attacker who extracts `ztl_CAP_SIGNING_KEY` from CI, ops machine, or backup.                  |
 
 ### Per-Attack Mitigation Surface
 
@@ -141,7 +141,7 @@ mitigations and their honest limits:
 
   - `NFR-3412` caps the invite-URL usability window (default 7 days,
     minimum 60 s).
-  - `zetl cap finalise` marks a grant as post-onboarding; operators
+  - `ztl cap finalise` marks a grant as post-onboarding; operators
     may (out-of-band) retire the URL.
   - Opt-in **split-key mode** (REQ-3430) sends the URL and a second
     factor via separate channels; an attacker needs both to TOFU-bind.
@@ -187,15 +187,15 @@ mitigations and their honest limits:
   1. `ammonia`-based HTML sanitiser with an OWASP-aligned allowlist
      (REQ-3421; config at `tools/sanitiser-config.toml`).
   2. Content Security Policy `default-src 'none'; script-src 'self';
-     trusted-types zetl-cap; …` (CON-3410).
-  3. `zetl cap audit-diff <old-ref> <new-ref>` PR gate against a
+     trusted-types ztl-cap; …` (CON-3410).
+  3. `ztl cap audit-diff <old-ref> <new-ref>` PR gate against a
      malicious-content corpus (REQ-3424).
 
   None of these stops a contributor who *also* controls CI and can push
   a shim with the sanitiser disabled. That is adversary A6 and is
   mitigated organisationally (branch protection, review).
 
-- **Signing-key compromise (A7).** Rotate via `zetl cap
+- **Signing-key compromise (A7).** Rotate via `ztl cap
   rotate-signing-key`; rebuild all pages; deploy; invalidate the CDN
   cache for `/assets/shim.js`. The rotation window is the exposure
   window — design your incident-response SLA accordingly.
@@ -224,7 +224,7 @@ mitigations and their honest limits:
   and any on-path observer will see the path-cap in their `Referer`
   logs.** `make ref-leak-test` is the CI canary.
 
-- **ZETL_CAP_SECRET compromise (A6).** Catastrophic. `zetl cap
+- **ztl_CAP_SECRET compromise (A6).** Catastrophic. `ztl cap
   emergency-shutdown` prints the operator checklist (DNS, CDN purge,
   secret rotation, reader notification).
 
@@ -377,7 +377,7 @@ whose SRI hash does not match.
 The interesting attack here is not brute-forcing the key; it's
 **stealing** it from the operator's machine, CI, or backup. That's
 adversary A7 and is an operational-security problem, not a
-cryptographic one. `zetl cap rotate-signing-key` is the recourse.
+cryptographic one. `ztl cap rotate-signing-key` is the recourse.
 
 ### Path-Cap Entropy (NFR-3401)
 
@@ -412,7 +412,7 @@ vault-signing pubkey.
 
 The vault-signing **public key** is:
 
-1. Generated by `zetl cap genkey` on the operator's machine.
+1. Generated by `ztl cap genkey` on the operator's machine.
 2. Embedded into the shim bundle (`dist/assets/shim.js`) at build time.
 3. Shipped to readers alongside every page.
 4. Pinned via **Subresource Integrity** (SRI):
@@ -423,7 +423,7 @@ The vault-signing **public key** is:
            crossorigin="anonymous"></script>
    ```
 
-The vault-signing **private key** (`ZETL_CAP_SIGNING_KEY`):
+The vault-signing **private key** (`ztl_CAP_SIGNING_KEY`):
 
 - NEVER crosses into browser code (NFR-3408).
 - Is provided to the build at CI time via env var.
@@ -432,7 +432,7 @@ The vault-signing **private key** (`ZETL_CAP_SIGNING_KEY`):
 **Trust flow.**
 
 ```
-  operator generates keypair (zetl cap genkey)
+  operator generates keypair (ztl cap genkey)
        │
        ├──► private key  ──► env var at CI ──► build signs ciphertexts
        │
@@ -459,7 +459,7 @@ residual).
 
 ### Signing-Key Rotation Hazards
 
-`zetl cap rotate-signing-key` triggers:
+`ztl cap rotate-signing-key` triggers:
 
 1. Generate new Ed25519 keypair.
 2. Rebuild every page with new signatures.
@@ -489,7 +489,7 @@ the Tier 2 review S2-05 as a v2 consideration. It is not in v1.
 
 ### Signing-Key Loss
 
-If the operator loses `ZETL_CAP_SIGNING_KEY` without having rotated,
+If the operator loses `ztl_CAP_SIGNING_KEY` without having rotated,
 all previously-signed content remains readable (signature verification
 still passes against the pinned pubkey), but **no new content can be
 signed**. Re-issuing the signing key is equivalent to the rotation
@@ -497,7 +497,7 @@ procedure above.
 
 An M-of-N Shamir-split recovery key is noted as a future option (SPEC-034
 §14 OQ-2). v1 has no such recovery; operators should back up
-`ZETL_CAP_SIGNING_KEY` alongside `ZETL_CAP_SECRET`.
+`ztl_CAP_SIGNING_KEY` alongside `ztl_CAP_SECRET`.
 
 ## 7. Prior Art and Empirical Basis
 
@@ -520,7 +520,7 @@ as unmodified.
 | [Pulse Security — "Sensitive data in URLs"][pulse] | Empirical analysis of URL-harvester surfaces (Safe Browsing, SmartScreen, unfurl bots).                    | Motivates both the delegated-URL residual disclosure and split-key mode (REQ-3430).   |
 | [`ammonia` (Rust)][ammonia] / [DOMPurify (JS)][dompurify] | Battle-tested HTML sanitisers with OWASP-aligned defaults.                                           | `ammonia` is the build-side sanitiser (REQ-3421); DOMPurify is the reference shim-side config. |
 | [Subresource Integrity (W3C SRI)][sri]             | Browser-verified script integrity against the hash declared in the tag.                                    | Required on shim loader (REQ-3421) to pin the vault-signing pubkey.                   |
-| [CSP Level 3 — Trusted Types][trusted-types]       | Browser-enforced DOM-XSS mitigation via type-tagged sinks.                                                  | `require-trusted-types-for 'script'; trusted-types zetl-cap` (CON-3410).                |
+| [CSP Level 3 — Trusted Types][trusted-types]       | Browser-enforced DOM-XSS mitigation via type-tagged sinks.                                                  | `require-trusted-types-for 'script'; trusted-types ztl-cap` (CON-3410).                |
 
 [webauthn-prf]: https://www.w3.org/TR/webauthn-3/#prf-extension
 [filippo-passkeys]: https://words.filippo.io/passkey-encryption/
@@ -546,7 +546,7 @@ spec.
 - **Operator-side multi-cohort linkage (delegated-URL).** Operator
   with `grants.toml` sees the mapping. Inherent.
 - **Forward secrecy not provided.** Revoked readers retain past
-  decryption. Use `zetl serve` if this matters.
+  decryption. Use `ztl serve` if this matters.
 - **URL forwarding.** Invite URL is a bearer capability; anyone with
   it during the TOFU window can bind.
 - **Path-cap probing.** Liveness enumeration is observable. Bounded by
@@ -560,32 +560,32 @@ spec.
 - **Timing side-channel in decrypt.** Page-size-dependent; not
   defended.
 - **Link shorteners / preview bots.** REQ-3410 prints an operator
-  warning on every `zetl cap invite`. Operator obligation.
+  warning on every `ztl cap invite`. Operator obligation.
 - **Post-quantum harvest-now-decrypt-later.** Classical X25519 only.
   No v1 PQ path. Consider this before publishing very-long-shelf-life
   content.
 
 ## 9. Incident-Response Playbooks
 
-Reproduced from SPEC-034 §11.3 for operator convenience. `zetl cap
+Reproduced from SPEC-034 §11.3 for operator convenience. `ztl cap
 emergency-shutdown` prints a live checklist at invocation time; the
 table below is a reference.
 
 | Incident                                 | Response                                                                                                                             |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Reader leaves                             | `zetl cap revoke <grant-id>` → rebuild → deploy. Latency ≤ NFR-3409 (rebuild + `max-age`, default ≤ 1 h).                             |
-| Authenticator compromised                 | Rotate affected cohort (`zetl cap rotate --cohort <id>`); redistribute entry URLs.                                                   |
-| Invite URL leaked pre-TOFU, within expiry | `zetl cap revoke <grant-id>` + re-invite on a fresh URL. Old URL becomes inert on next rebuild.                                      |
+| Reader leaves                             | `ztl cap revoke <grant-id>` → rebuild → deploy. Latency ≤ NFR-3409 (rebuild + `max-age`, default ≤ 1 h).                             |
+| Authenticator compromised                 | Rotate affected cohort (`ztl cap rotate --cohort <id>`); redistribute entry URLs.                                                   |
+| Invite URL leaked pre-TOFU, within expiry | `ztl cap revoke <grant-id>` + re-invite on a fresh URL. Old URL becomes inert on next rebuild.                                      |
 | Invite URL leaked post-expiry             | Already inert. No action required beyond monitoring for anomalous access patterns.                                                   |
-| Signing key compromised                   | `zetl cap rotate-signing-key` → rebuild all pages → deploy → invalidate `/assets/shim.js` cache at CDN. Monitor OBS-3413 post-cutover. |
-| `ZETL_CAP_SECRET` compromised             | `zetl cap genkey` → rotate ALL cohorts → rebuild → re-issue all URLs → readers re-TOFU per device. Effectively a full re-onboarding.  |
-| Malicious PR landed                       | Revert on main → rebuild → `zetl cap audit-diff` across the exposure window → consider sanitiser allowlist tightening.               |
-| Emergency shutdown                        | `zetl cap emergency-shutdown` → follow printed checklist (DNS removal, CDN purge, secret rotation, reader notification).             |
+| Signing key compromised                   | `ztl cap rotate-signing-key` → rebuild all pages → deploy → invalidate `/assets/shim.js` cache at CDN. Monitor OBS-3413 post-cutover. |
+| `ztl_CAP_SECRET` compromised             | `ztl cap genkey` → rotate ALL cohorts → rebuild → re-issue all URLs → readers re-TOFU per device. Effectively a full re-onboarding.  |
+| Malicious PR landed                       | Revert on main → rebuild → `ztl cap audit-diff` across the exposure window → consider sanitiser allowlist tightening.               |
+| Emergency shutdown                        | `ztl cap emergency-shutdown` → follow printed checklist (DNS removal, CDN purge, secret rotation, reader notification).             |
 
 ## 10. Cross-References
 
 - `specs/SPEC-034.md` — normative source (§1, §11, §12 in particular).
-- `specs/SPEC-020.md` — `zetl serve` runtime ACL (the forward-secrecy
+- `specs/SPEC-020.md` — `ztl serve` runtime ACL (the forward-secrecy
   alternative).
 - `docs/hook-security.md` — unrelated but analogous: pipeline-hook
   trust model for SPEC-032.

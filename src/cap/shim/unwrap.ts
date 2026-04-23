@@ -6,7 +6,7 @@
 //                    publicKey: { challenge, allowCredentials: [...binding.credentialId],
 //                                 extensions: { prf: { eval: { first: binding.prfSalt } } } } })
 //     prf_output = credential.getClientExtensionResults().prf.results.first
-//     K_wrap     = HKDF-SHA256(prf_output, "", "zetl/tofu-wrap/v1", 32)
+//     K_wrap     = HKDF-SHA256(prf_output, "", "ztl/tofu-wrap/v1", 32)
 //     priv_A     = AES-256-GCM-decrypt(K_wrap, binding.iv, binding.aad, binding.ciphertext)
 //
 // Per REQ-3406 this path is fragment-free: priv_A never transits the

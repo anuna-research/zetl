@@ -7,7 +7,7 @@ audience: agent, human
 parent: SPEC-027
 related:
   - SPEC-027  # History UI (per-page and per-vault surfaces)
-  - SPEC-017  # zetl history — invisible temporal graph
+  - SPEC-017  # ztl history — invisible temporal graph
   - SPEC-004  # Web UI and static export (if applicable)
 ---
 
@@ -33,18 +33,18 @@ related:
 
 ## 1. Overview
 
-`zetl` currently exposes a full link graph via the JSON API (`GET /api/graph`) and writes a static `search_index.json` + embeds a per-page `search_index` string into every rendered template as `{{ search_index | safe }}`. This pattern — a pre-serialized JSON asset, available both as a static file and as a template variable — has proven robust for search.
+`ztl` currently exposes a full link graph via the JSON API (`GET /api/graph`) and writes a static `search_index.json` + embeds a per-page `search_index` string into every rendered template as `{{ search_index | safe }}`. This pattern — a pre-serialized JSON asset, available both as a static file and as a template variable — has proven robust for search.
 
-There is, however, no visual graph view. Obsidian's built-in force-directed graph is one of the features that made wiki-style link visualisation mainstream; zetl users ask for something equivalent. The building blocks are in place (the graph is already computed and JSON-serialisable), but no client-side renderer is wired up and no template surface exposes it.
+There is, however, no visual graph view. Obsidian's built-in force-directed graph is one of the features that made wiki-style link visualisation mainstream; ztl users ask for something equivalent. The building blocks are in place (the graph is already computed and JSON-serialisable), but no client-side renderer is wired up and no template surface exposes it.
 
-This spec introduces an **interactive graph view** as a themeable, optional UI component, served dynamically under `zetl serve` and emitted statically under `zetl build`, rendered client-side by **Sigma.js v3** on WebGL with the **graphology** data model and the **ForceAtlas2** layout (all MIT). The rendering is entirely in the theme layer — the Rust binary only provides the data, mirroring the `search_index` / `history-index.json` contract.
+This spec introduces an **interactive graph view** as a themeable, optional UI component, served dynamically under `ztl serve` and emitted statically under `ztl build`, rendered client-side by **Sigma.js v3** on WebGL with the **graphology** data model and the **ForceAtlas2** layout (all MIT). The rendering is entirely in the theme layer — the Rust binary only provides the data, mirroring the `search_index` / `history-index.json` contract.
 
 ### 1.1 Motivation
 
-- **Discoverability of structure.** A vault's link topology is its most zetl-specific affordance. A graph view turns the backlinks-as-list into backlinks-as-shape.
-- **Feature parity with Obsidian.** Obsidian's graph view is closed source, but users expect an equivalent when they import an Obsidian vault into zetl. Sigma.js with the ForceAtlas2 layout visually approximates the Obsidian graph panel, while scaling to much larger vaults via WebGL.
+- **Discoverability of structure.** A vault's link topology is its most ztl-specific affordance. A graph view turns the backlinks-as-list into backlinks-as-shape.
+- **Feature parity with Obsidian.** Obsidian's graph view is closed source, but users expect an equivalent when they import an Obsidian vault into ztl. Sigma.js with the ForceAtlas2 layout visually approximates the Obsidian graph panel, while scaling to much larger vaults via WebGL.
 - **Reuses proven pipeline.** The existing `search_index` and `history_index` template variables and static-file emission pattern (see `src/web/engine.rs`, `src/web/build.rs`) extend naturally to a `graph_index`. No new data plumbing is required — only serialisation and a template.
-- **Static-first.** `zetl build` users currently lose all interactive surfaces. A client-rendered graph preserves parity: a static HTML page + static JSON asset + a JS bundle, no server required.
+- **Static-first.** `ztl build` users currently lose all interactive surfaces. A client-rendered graph preserves parity: a static HTML page + static JSON asset + a JS bundle, no server required.
 - **Themeable.** Themes can opt in, restyle, or replace the graph view without patching the binary. The component is a self-contained partial template.
 
 ### 1.2 Design Principles
@@ -52,7 +52,7 @@ This spec introduces an **interactive graph view** as a themeable, optional UI c
 1. **Data already exists — serialise, don't recompute.** The in-memory link graph (outlinks, backlinks, page metadata) is the sole source of truth. The renderer consumes a single JSON artefact.
 2. **Serve and build reach parity.** Every graph surface that renders under `serve` MUST also render under `build`. Both modes consume the same `graph_index` JSON.
 3. **Payload is externalised by default.** The graph JSON is written to a static file (`graph-index.json`) and fetched client-side, not inlined into every page. Inlining is available as a template opt-in for small vaults or offline use.
-4. **Themeable.** The graph component is a Minijinja partial (`_graph.html`) overridable under `.zetl/themes/<theme>/`. Default styling lives alongside the component and respects existing CSS tokens.
+4. **Themeable.** The graph component is a Minijinja partial (`_graph.html`) overridable under `.ztl/themes/<theme>/`. Default styling lives alongside the component and respects existing CSS tokens.
 5. **Graceful absence.** When JavaScript is disabled, the graph container degrades to a `<noscript>` message with a link to the page list. When the vault has zero links, the component renders an empty-state message.
 6. **Vendor isolation.** Sigma.js, graphology, and `graphology-layout-forceatlas2` are bundled as static assets under `_static/vendor/sigma/`; no CDN dependency at runtime.
 7. **No new data fields.** If a proposed graph feature cannot be rendered from existing graph data, it is out of scope for this spec. New fields (e.g., community detection) are deferred to a successor.
@@ -89,32 +89,32 @@ This spec introduces an **interactive graph view** as a themeable, optional UI c
 
 ### 2.1 User: Vault author browsing locally
 
-**Role:** Individual knowledge-worker running `zetl serve`.
+**Role:** Individual knowledge-worker running `ztl serve`.
 **Goal:** Visually explore the shape of their vault; discover clusters and orphans.
 **Constraints:** Desktop browser; keyboard + mouse; expects Obsidian-like interaction.
 
 **Happy path:**
 
-1. `zetl serve` → navigate to `http://localhost:3000` → see "Graph" in sidebar → click → `/_graph` renders within 1s for vaults up to 2,000 pages.
+1. `ztl serve` → navigate to `http://localhost:3000` → see "Graph" in sidebar → click → `/_graph` renders within 1s for vaults up to 2,000 pages.
 2. Pan with drag, zoom with scroll, click a node → navigate to that page.
 3. On any page, see a small "local graph" panel showing the current page and its 1-hop neighbourhood.
 
 ### 2.2 User: Static-site publisher
 
-**Role:** Runs `zetl build`, deploys to GitHub Pages / Netlify / S3.
+**Role:** Runs `ztl build`, deploys to GitHub Pages / Netlify / S3.
 **Goal:** Give public readers the same graph view as the serve UI.
 **Constraints:** No server; CDN-only hosting; assets must be relative-path-safe.
 
 **Happy path:**
 
-1. `zetl build --out-dir dist` → `dist/_graph.html`, `dist/graph-index.json`, and `dist/_static/vendor/sigma/*.js` are written.
+1. `ztl build --out-dir dist` → `dist/_graph.html`, `dist/graph-index.json`, and `dist/_static/vendor/sigma/*.js` are written.
 2. Upload `dist/` to any static host → the deployed `_graph.html` renders identically to serve mode.
 3. Per-page local-graph panels work via `fetch('/graph-index.json')` relative-URL resolution.
 
 ### 2.3 User: Theme author
 
-**Role:** Customises `.zetl/themes/<theme>/`.
-**Goal:** Restyle or disable the graph without patching `zetl`.
+**Role:** Customises `.ztl/themes/<theme>/`.
+**Goal:** Restyle or disable the graph without patching `ztl`.
 **Constraints:** Only overrides templates and static assets; no Rust.
 
 **Happy path:**
@@ -139,7 +139,7 @@ Trace:
 
 ### REQ-102: Static `graph-index.json` Asset
 
-Under `zetl build`, the system SHALL write `<out-dir>/graph-index.json` containing the serialised graph (REQ-101) exactly once per build AS part of the normal asset-write pass, co-located with `search_index.json` and `history-index.json`.
+Under `ztl build`, the system SHALL write `<out-dir>/graph-index.json` containing the serialised graph (REQ-101) exactly once per build AS part of the normal asset-write pass, co-located with `search_index.json` and `history-index.json`.
 
 Trace:
 
@@ -148,7 +148,7 @@ Trace:
 
 ### REQ-103: Serve Route for Graph Index
 
-Under `zetl serve`, the system SHALL expose the serialised graph at `GET /graph-index.json` RETURNING a JSON body matching REQ-101 WITH `Content-Type: application/json` AND a `Cache-Control: no-cache` header (graph updates on reindex).
+Under `ztl serve`, the system SHALL expose the serialised graph at `GET /graph-index.json` RETURNING a JSON body matching REQ-101 WITH `Content-Type: application/json` AND a `Cache-Control: no-cache` header (graph updates on reindex).
 
 Trace:
 
@@ -189,7 +189,7 @@ Trace:
 
 ### REQ-108: Persistent Graph Widget (Single Instance, Mode-Switched)
 
-The default theme SHALL mount exactly ONE Sigma.js instance inside the persistent shell (outside the volatile content region, per REQ-113) AND SHALL NOT mount a second graph inside `page.html` or any other volatile element. The widget SHALL re-render in a new *mode* on `zetl:after-navigate` without re-instantiating Sigma or re-running layout.
+The default theme SHALL mount exactly ONE Sigma.js instance inside the persistent shell (outside the volatile content region, per REQ-113) AND SHALL NOT mount a second graph inside `page.html` or any other volatile element. The widget SHALL re-render in a new *mode* on `ztl:after-navigate` without re-instantiating Sigma or re-running layout.
 
 Widget modes:
 
@@ -205,7 +205,7 @@ Trace:
 
 ### REQ-116: Default Widget Placement — Docked Mini-Map
 
-The default theme SHALL render the persistent graph widget AS a fixed-position docked mini-map in the bottom-right of the viewport, 280 × 200 px by default, WITH a resize handle (CSS `resize: both`) AND a click-to-expand control that navigates to `/_graph`. The widget SHALL NOT overlap the transclusion panel (`.transclusion-panel`) NOR the existing sidebar in the default desktop layout, AND SHALL be positioned via CSS custom properties (`--zetl-graph-widget-width`, `--zetl-graph-widget-height`, `--zetl-graph-widget-bottom`, `--zetl-graph-widget-right`) SO THAT theme authors may restyle without rewriting the partial.
+The default theme SHALL render the persistent graph widget AS a fixed-position docked mini-map in the bottom-right of the viewport, 280 × 200 px by default, WITH a resize handle (CSS `resize: both`) AND a click-to-expand control that navigates to `/_graph`. The widget SHALL NOT overlap the transclusion panel (`.transclusion-panel`) NOR the existing sidebar in the default desktop layout, AND SHALL be positioned via CSS custom properties (`--ztl-graph-widget-width`, `--ztl-graph-widget-height`, `--ztl-graph-widget-bottom`, `--ztl-graph-widget-right`) SO THAT theme authors may restyle without rewriting the partial.
 
 The default theme SHALL additionally document two opt-in alternative placements in `theme.toml` under `[graph.placement]`:
 
@@ -262,7 +262,7 @@ Trace:
 
 ### REQ-113: Persistent Shell and SPA Navigation
 
-WHEN the active theme's `theme.toml` sets `spa.enabled = true`, the system SHALL inject a same-origin navigation shell that intercepts `<a>` clicks within the rendered document AND swaps only the designated volatile region (the element carrying `data-zetl-volatile` or the `<main>` fallback) SO THAT the graph component's DOM element and Sigma instance are never unmounted between navigations, WITH the result that camera position, computed layout coordinates, and selection state persist WITHOUT a visual flash.
+WHEN the active theme's `theme.toml` sets `spa.enabled = true`, the system SHALL inject a same-origin navigation shell that intercepts `<a>` clicks within the rendered document AND swaps only the designated volatile region (the element carrying `data-ztl-volatile` or the `<main>` fallback) SO THAT the graph component's DOM element and Sigma instance are never unmounted between navigations, WITH the result that camera position, computed layout coordinates, and selection state persist WITHOUT a visual flash.
 
 When `spa.enabled` is unset or `false`, the system SHALL NOT inject the navigation shell, AND the graph SHALL re-initialise per page (documented degradation). Browser back/forward, meta-click / Ctrl-click / middle-click (open-in-new-tab), and cross-origin links SHALL continue to behave as native browser navigation in both cases.
 
@@ -273,9 +273,9 @@ Trace:
 
 ### REQ-114: Theme CSS Custom-Property Contract
 
-The default theme SHALL document and consume a stable, versioned set of CSS custom properties (`--zetl-graph-*` for colours and typography, `--zetl-shell-*` for layout regions) AS its sole mechanism for graph visual styling, SO THAT custom themes may restyle the graph and shell by overriding those properties WITHOUT touching JavaScript or recompiling the binary. The Sigma reducers in `_graph.html` SHALL read these properties at render time via `getComputedStyle` and SHALL refresh on `data-theme` / `class` mutation or `prefers-color-scheme` change.
+The default theme SHALL document and consume a stable, versioned set of CSS custom properties (`--ztl-graph-*` for colours and typography, `--ztl-shell-*` for layout regions) AS its sole mechanism for graph visual styling, SO THAT custom themes may restyle the graph and shell by overriding those properties WITHOUT touching JavaScript or recompiling the binary. The Sigma reducers in `_graph.html` SHALL read these properties at render time via `getComputedStyle` and SHALL refresh on `data-theme` / `class` mutation or `prefers-color-scheme` change.
 
-The property contract SHALL be versioned (breaking changes bump `theme.contract.version` in the theme authoring reference) and backwards-compatible within a major zetl release.
+The property contract SHALL be versioned (breaking changes bump `theme.contract.version` in the theme authoring reference) and backwards-compatible within a major ztl release.
 
 Trace:
 
@@ -285,10 +285,10 @@ Trace:
 
 The SPA navigation shell SHALL dispatch two `window`-level events around each successful navigation:
 
-- `zetl:before-navigate` — dispatched after the content fetch completes but before the DOM swap, with `detail = { fromSlug, toSlug, url }`. Cancelable via `preventDefault()`; when cancelled, the shell falls back to native navigation.
-- `zetl:after-navigate` — dispatched immediately after the DOM swap, with `detail = { slug, contentRoot }`, where `contentRoot` is the newly-mounted volatile element.
+- `ztl:before-navigate` — dispatched after the content fetch completes but before the DOM swap, with `detail = { fromSlug, toSlug, url }`. Cancelable via `preventDefault()`; when cancelled, the shell falls back to native navigation.
+- `ztl:after-navigate` — dispatched immediately after the DOM swap, with `detail = { slug, contentRoot }`, where `contentRoot` is the newly-mounted volatile element.
 
-Themes and graph reducers SHALL use `zetl:after-navigate` to re-run enhancements on swapped content (Mermaid, KaTeX, custom widgets) AND to update graph highlight state WITHOUT re-initialising the Sigma instance.
+Themes and graph reducers SHALL use `ztl:after-navigate` to re-run enhancements on swapped content (Mermaid, KaTeX, custom widgets) AND to update graph highlight state WITHOUT re-initialising the Sigma instance.
 
 Trace:
 
@@ -350,7 +350,7 @@ Trace:
 {
   "options": { "type": "directed", "multi": false, "allowSelfLoops": true },
   "attributes": {
-    "format": "zetl-graph/v1",
+    "format": "ztl-graph/v1",
     "generated_at": "2026-04-15T12:00:00Z",
     "vault": { "name": "my-vault", "pages": 123, "links": 456 }
   },
@@ -409,12 +409,12 @@ Verified by: TEST-103.
 
 **Rationale:**
 
-- **Scale headroom.** WebGL2 rendering comfortably handles the 10k+ node vaults zetl expects once users import large Obsidian libraries and once temporal / semantic overlays compose on the same canvas. Cytoscape's default canvas renderer tops out around 2–5k.
+- **Scale headroom.** WebGL2 rendering comfortably handles the 10k+ node vaults ztl expects once users import large Obsidian libraries and once temporal / semantic overlays compose on the same canvas. Cytoscape's default canvas renderer tops out around 2–5k.
 - **Clean data model.** graphology is a standalone, typed graph library. The same `DirectedGraph` instance feeds the renderer, the layout, and any analytics plugins (centrality, clustering) without re-serialisation. This directly enables future specs that compose history (SPEC-027) and reasoning into the graph view.
 - **Bundle size.** Sigma + graphology + FA2 is ≤ 250 kB gzipped — smaller than Cytoscape + fcose in the WebGL-enabled configuration.
 - **Theming integration.** Sigma's reducer pattern (`nodeReducer`, `edgeReducer`) is called every frame; combined with the CSS custom-property contract (REQ-114) reducers read computed styles via `getComputedStyle`, so theme authors still author in CSS. The loss of Cytoscape's CSS-like stylesheet DSL is compensated by a documented, versioned CSS-var API.
 - **Server-rendered SVG** (option 1) is cheap but static — no hover, no local-graph exploration, no zoom-to-fit. It fails the discovery use case.
-- **Cosmograph** (option 4) scales further but has a smaller ecosystem and less mature keyboard/accessibility story. It remains a documented future migration target if zetl regularly encounters 100k+ node vaults.
+- **Cosmograph** (option 4) scales further but has a smaller ecosystem and less mature keyboard/accessibility story. It remains a documented future migration target if ztl regularly encounters 100k+ node vaults.
 
 **Trade-offs:**
 
@@ -462,7 +462,7 @@ Layout coordinates are persisted across SPA navigation via the persistent Sigma 
 
 ### OBS-101: Graph Serialisation Timing
 
-`build_graph_index(vault_root)` SHALL emit a `[zetl] graph-export: pages=N edges=M duration_ms=X bytes=Y` line under `--verbose`, mirroring the existing `history-export:` instrumentation (SPEC-027 OBS-013).
+`build_graph_index(vault_root)` SHALL emit a `[ztl] graph-export: pages=N edges=M duration_ms=X bytes=Y` line under `--verbose`, mirroring the existing `history-export:` instrumentation (SPEC-027 OBS-013).
 
 Trace:
 
@@ -470,7 +470,7 @@ Trace:
 
 ### OBS-102: Stats Integration
 
-`zetl stats` SHALL include the graph-index size (bytes, nodes, edges) under a `Graph:` section in table output AND as a `graph` field in JSON output, mirroring the existing `History:` section.
+`ztl stats` SHALL include the graph-index size (bytes, nodes, edges) under a `Graph:` section in table output AND as a `graph` field in JSON output, mirroring the existing `History:` section.
 
 Trace:
 
@@ -478,7 +478,7 @@ Trace:
 
 ### OBS-113: SPA Navigation Timing
 
-The SPA navigation shell SHALL emit a `performance.measure('zetl:navigate', ...)` spanning from link-click interception to `zetl:after-navigate` dispatch, allowing users and CI to assert on navigation-to-paint time via the browser Performance panel.
+The SPA navigation shell SHALL emit a `performance.measure('ztl:navigate', ...)` spanning from link-click interception to `ztl:after-navigate` dispatch, allowing users and CI to assert on navigation-to-paint time via the browser Performance panel.
 
 Trace:
 
@@ -486,7 +486,7 @@ Trace:
 
 ### OBS-201: Client Render Timing
 
-The default `_graph.html` partial SHALL log `performance.mark('zetl:graph:render:start')` before layout and `performance.measure('zetl:graph:render', 'zetl:graph:render:start')` on `layoutstop`, allowing users to measure NFR-101 locally via the browser devtools Performance panel.
+The default `_graph.html` partial SHALL log `performance.mark('ztl:graph:render:start')` before layout and `performance.measure('ztl:graph:render', 'ztl:graph:render:start')` on `layoutstop`, allowing users to measure NFR-101 locally via the browser devtools Performance panel.
 
 Trace:
 
@@ -504,7 +504,7 @@ Technique: property-based (pure core) + one integration fixture.
 
 ### TEST-102: Build-Mode Asset Emission
 
-`zetl build --out-dir /tmp/out` on the demo vault produces `/tmp/out/graph-index.json` matching CON-101, and `/tmp/out/_graph.html` that references it via relative URL.
+`ztl build --out-dir /tmp/out` on the demo vault produces `/tmp/out/graph-index.json` matching CON-101, and `/tmp/out/_graph.html` that references it via relative URL.
 
 ### TEST-103: Serve-Mode Route Contract
 
@@ -516,7 +516,7 @@ Minijinja render of a trivial template `{{ graph_index_url }}|{{ graph_index | l
 
 ### TEST-106/107/108: Default Theme Integration
 
-Snapshot tests: rendered `_graph.html` contains a `<div id="zetl-graph">`, a `<script>` loading Sigma, graphology, and `graphology-layout-forceatlas2` from `_static/vendor/sigma/`, and either an inline JSON blob or a `fetch(graph_index_url)` call.
+Snapshot tests: rendered `_graph.html` contains a `<div id="ztl-graph">`, a `<script>` loading Sigma, graphology, and `graphology-layout-forceatlas2` from `_static/vendor/sigma/`, and either an inline JSON blob or a `fetch(graph_index_url)` call.
 
 ### TEST-109: Graceful Absence Matrix
 
@@ -543,7 +543,7 @@ Fixture loads three routes sequentially (`/page-a`, `/_graph`, `/page-b`) via th
 - The Sigma `WebGLRenderingContext` identity is unchanged across all navigations (same instance).
 - The widget's `data-mode` attribute transitions `local → vault → local` and the camera state matches each mode's expected framing.
 - FA2 layout runs once (on initial mount); `layoutstop` fires exactly once across all navigations.
-- Mode is persisted in `sessionStorage` under `zetl:graph:mode` and restored on reload.
+- Mode is persisted in `sessionStorage` under `ztl:graph:mode` and restored on reload.
 
 ### TEST-116: Default Docked Mini-Map Placement
 
@@ -560,23 +560,23 @@ Puppeteer resizes viewport below the 900 px breakpoint; widget is `display: none
 Headless-browser test with the default theme (`spa.enabled = true`):
 
 1. Load `/_graph`; record the Sigma canvas's `webglContext` identity and current camera state.
-2. Click a node; await `zetl:after-navigate`.
-3. Assert: canvas's `webglContext` identity is unchanged (same GL context, same instance), camera state matches pre-navigation, URL updated, new page content is mounted in `data-zetl-volatile`, document title updated.
+2. Click a node; await `ztl:after-navigate`.
+3. Assert: canvas's `webglContext` identity is unchanged (same GL context, same instance), camera state matches pre-navigation, URL updated, new page content is mounted in `data-ztl-volatile`, document title updated.
 4. Browser back/forward returns the previous content without flash.
 5. Meta-click on a link opens a new tab (native behaviour retained).
 6. With `spa.enabled = false` in a sibling fixture, assert navigation falls back to full page reload (Sigma instance changes identity).
 
 ### TEST-114: CSS Custom-Property Theming
 
-Snapshot / computed-style test: override each `--zetl-graph-*` and `--zetl-shell-*` property in a fixture theme; assert the rendered graph reflects the override (node colour sampled from the canvas via `readPixels` at a known node position; shell grid tracks measured via `getBoundingClientRect`).
+Snapshot / computed-style test: override each `--ztl-graph-*` and `--ztl-shell-*` property in a fixture theme; assert the rendered graph reflects the override (node colour sampled from the canvas via `readPixels` at a known node position; shell grid tracks measured via `getBoundingClientRect`).
 
 ### TEST-115: Navigation Lifecycle Events
 
-Fixture page registers listeners for `zetl:before-navigate` and `zetl:after-navigate`. Test asserts:
+Fixture page registers listeners for `ztl:before-navigate` and `ztl:after-navigate`. Test asserts:
 
 - Both events fire on every SPA navigation, in order.
-- `zetl:before-navigate` is cancelable; calling `preventDefault()` falls back to native navigation.
-- `zetl:after-navigate.detail.contentRoot` is the newly-mounted volatile element and contains the expected page content.
+- `ztl:before-navigate` is cancelable; calling `preventDefault()` falls back to native navigation.
+- `ztl:after-navigate.detail.contentRoot` is the newly-mounted volatile element and contains the expected page content.
 
 ### TEST-201–205: NFRs
 
@@ -618,11 +618,11 @@ The graph view is designed to be **additive** to the theme system: nothing in `b
 
 | Touchpoint                        | Type           | Override path                                      |
 | --------------------------------- | -------------- | -------------------------------------------------- |
-| `_graph.html`                     | Partial        | `.zetl/themes/<theme>/_graph.html`                 |
-| `vault_graph.html`                | Full page      | `.zetl/themes/<theme>/vault_graph.html`            |
-| Sidebar "Graph" link              | `base.html`    | `.zetl/themes/<theme>/base.html`                   |
-| Sigma + graphology assets         | Static files   | `.zetl/themes/<theme>/static/vendor/sigma/`        |
-| `theme.toml` inline flag          | `graph_inline` | `.zetl/themes/<theme>/theme.toml`                  |
+| `_graph.html`                     | Partial        | `.ztl/themes/<theme>/_graph.html`                 |
+| `vault_graph.html`                | Full page      | `.ztl/themes/<theme>/vault_graph.html`            |
+| Sidebar "Graph" link              | `base.html`    | `.ztl/themes/<theme>/base.html`                   |
+| Sigma + graphology assets         | Static files   | `.ztl/themes/<theme>/static/vendor/sigma/`        |
+| `theme.toml` inline flag          | `graph_inline` | `.ztl/themes/<theme>/theme.toml`                  |
 
 **Data contract to themes** (added to the theme authoring reference):
 
@@ -635,7 +635,7 @@ This mirrors the existing `search_index` contract line-for-line, so theme author
 
 ### 10.1 Static Output Parity
 
-`zetl build` emits:
+`ztl build` emits:
 
 ```
 dist/
@@ -651,7 +651,7 @@ dist/
       index.html                           # contains collapsed local-graph panel
 ```
 
-All assets use relative paths, preserving zetl's "deploy-to-any-CDN" property. `graph_index_url` resolves relative to the emitted HTML's location.
+All assets use relative paths, preserving ztl's "deploy-to-any-CDN" property. `graph_index_url` resolves relative to the emitted HTML's location.
 
 ### 10.2 SPA Shell and Persistent Regions
 
@@ -660,7 +660,7 @@ Themes that want "no-flash" graph continuity declare the capability in `theme.to
 **`theme.toml` declaration:**
 
 ```toml
-# .zetl/themes/<theme>/theme.toml
+# .ztl/themes/<theme>/theme.toml
 name = "paper"
 
 [spa]
@@ -681,18 +681,18 @@ The persistent shell contains the sidebar and the single graph widget. The volat
 ```html
 <body data-slug="{{ page.slug }}">
   {% block persistent_shell %}
-    <nav class="zetl-shell zetl-shell--sidebar">
+    <nav class="ztl-shell ztl-shell--sidebar">
       {% block sidebar %}{% include "_sidebar.html" %}{% endblock %}
     </nav>
 
     <!-- Single Sigma instance. Default placement: fixed mini-map bottom-right.
-         Never unmounted; mode switches on zetl:after-navigate. -->
-    <div class="zetl-graph-widget" data-mode="local">
+         Never unmounted; mode switches on ztl:after-navigate. -->
+    <div class="ztl-graph-widget" data-mode="local">
       {% block graph_widget %}{% include "_graph.html" %}{% endblock %}
     </div>
   {% endblock %}
 
-  <main data-zetl-volatile>
+  <main data-ztl-volatile>
     {% block content %}{% endblock %}
     {# page.html renders its transclusion panel inside content — it's page-specific
        and re-renders per page. The graph widget above stays mounted; the
@@ -735,7 +735,7 @@ Switching placement changes only CSS and a `data-placement` attribute on the she
 Rules:
 
 1. Anything inside `{% block persistent_shell %}` is **never swapped** on navigation.
-2. The element carrying `data-zetl-volatile` (or the implicit `<main>` fallback) **is swapped** — its `innerHTML` is replaced by the corresponding element from the fetched document.
+2. The element carrying `data-ztl-volatile` (or the implicit `<main>` fallback) **is swapped** — its `innerHTML` is replaced by the corresponding element from the fetched document.
 3. Themes that rewrite `base.html` from scratch MUST preserve both markers to retain the no-flash property. Omitting the markers is a valid opt-out: the theme still works, but the graph re-initialises per page.
 
 **Styling contract (extends §10.1):**
@@ -744,18 +744,18 @@ The default theme exposes these CSS custom properties. Custom themes override an
 
 | Property                          | Purpose                                                |
 | --------------------------------- | ------------------------------------------------------ |
-| `--zetl-graph-node`               | Default node fill                                      |
-| `--zetl-graph-node-dead`          | Node fill for dead-link targets                        |
-| `--zetl-graph-edge`               | Default edge colour                                    |
-| `--zetl-graph-edge-dead`          | Edge colour / pattern for dead-link edges              |
-| `--zetl-graph-label`              | Node label colour                                      |
-| `--zetl-graph-label-font`         | Node label `font-family` (passed to Sigma at init)     |
-| `--zetl-shell-sidebar-area`       | Grid track size for the sidebar shell region           |
-| `--zetl-graph-widget-width`       | Docked mini-map width (default 280 px)                 |
-| `--zetl-graph-widget-height`      | Docked mini-map height (default 200 px)                |
-| `--zetl-graph-widget-right`       | Offset from viewport right (default 16 px)             |
-| `--zetl-graph-widget-bottom`      | Offset from viewport bottom (default 16 px)            |
-| `--zetl-graph-widget-breakpoint`  | Min viewport width to show widget (default 900 px)     |
+| `--ztl-graph-node`               | Default node fill                                      |
+| `--ztl-graph-node-dead`          | Node fill for dead-link targets                        |
+| `--ztl-graph-edge`               | Default edge colour                                    |
+| `--ztl-graph-edge-dead`          | Edge colour / pattern for dead-link edges              |
+| `--ztl-graph-label`              | Node label colour                                      |
+| `--ztl-graph-label-font`         | Node label `font-family` (passed to Sigma at init)     |
+| `--ztl-shell-sidebar-area`       | Grid track size for the sidebar shell region           |
+| `--ztl-graph-widget-width`       | Docked mini-map width (default 280 px)                 |
+| `--ztl-graph-widget-height`      | Docked mini-map height (default 200 px)                |
+| `--ztl-graph-widget-right`       | Offset from viewport right (default 16 px)             |
+| `--ztl-graph-widget-bottom`      | Offset from viewport bottom (default 16 px)            |
+| `--ztl-graph-widget-breakpoint`  | Min viewport width to show widget (default 900 px)     |
 
 Sigma reducers in the default `_graph.html` read these via `getComputedStyle` and refresh on theme mutation. Theme authors who want structural changes (node shape, edge thickness curve, dashed patterns) override `_graph.html` itself.
 
@@ -764,24 +764,24 @@ Sigma reducers in the default `_graph.html` read these via `getComputedStyle` an
 The SPA shell dispatches `window`-level events that any theme script can subscribe to:
 
 ```js
-// .zetl/themes/<theme>/static/enhance.js
-window.addEventListener('zetl:after-navigate', (e) => {
+// .ztl/themes/<theme>/static/enhance.js
+window.addEventListener('ztl:after-navigate', (e) => {
   // e.detail = { slug, contentRoot }
   if (window.mermaid) mermaid.run({ nodes: e.detail.contentRoot.querySelectorAll('.mermaid') });
   if (window.renderMathInElement) renderMathInElement(e.detail.contentRoot);
 });
 
-window.addEventListener('zetl:before-navigate', (e) => {
+window.addEventListener('ztl:before-navigate', (e) => {
   // e.detail = { fromSlug, toSlug, url }
   // Call e.preventDefault() to fall back to native navigation (e.g., editor unsaved changes)
 });
 ```
 
-The graph's own reducers in `_graph.html` also listen for `zetl:after-navigate` and call `renderer.refresh()` with the new `active_slug` to update highlighting — never re-instantiating Sigma.
+The graph's own reducers in `_graph.html` also listen for `ztl:after-navigate` and call `renderer.refresh()` with the new `active_slug` to update highlighting — never re-instantiating Sigma.
 
 ### 10.3 Serve Mode
 
-`zetl serve` exposes:
+`ztl serve` exposes:
 
 - `GET /_graph` → `vault_graph.html`
 - `GET /graph-index.json` → CON-101
@@ -799,7 +799,7 @@ No change to `/api/graph` — it stays as the authenticated, richer JSON API for
 3. **Frontmatter-driven node colouring.** Proposed as a theme override example, not a core requirement. Fine as-is.
 4. **Interaction with `--features history`.** Should nodes fade based on `stable_days`? Deferred — composes SPEC-027 data with SPEC-028 visuals, warrants its own successor spec.
 5. **Dead-link nodes in the graph.** CON-101 includes `is_dead: true` nodes. Should they be included by default or filtered? Proposed: included by default, stylistically muted, with a theme-level filter toggle in a successor. REQ-112 codifies inclusion + styling.
-6. **SPA shell in `serve` collab mode.** Collab mode injects live-editing UI; interaction with the SPA shell (WebSocket reconnect across navigation, unsaved-edit guard via `zetl:before-navigate.preventDefault()`) needs a brief compatibility note before `approved`. Proposed: the editor registers a `zetl:before-navigate` listener that cancels navigation when there are unsaved CRDT deltas and prompts the user — no structural change to this spec.
+6. **SPA shell in `serve` collab mode.** Collab mode injects live-editing UI; interaction with the SPA shell (WebSocket reconnect across navigation, unsaved-edit guard via `ztl:before-navigate.preventDefault()`) needs a brief compatibility note before `approved`. Proposed: the editor registers a `ztl:before-navigate` listener that cancels navigation when there are unsaved CRDT deltas and prompts the user — no structural change to this spec.
 7. **Assets in swapped content.** `<script>` tags in swapped content don't execute after DOM replace; `<link rel="stylesheet">` does but causes a repaint. Proposed: the SPA shell re-runs `<script>` tags after swap (standard technique) and hoists common stylesheets to `base.html` — documented in the theme authoring guide.
 8. **Shared page registry (deferred to SPEC-029).** `graph-index.json`, the inline `search_index` template variable, and `history-index.json` each carry overlapping per-page metadata (title, slug; and in graph's case also tags, counts, dead flag). The overlap with `search_index` alone is narrow (title + slug), and dropping `label` from graph nodes saves only ~10% of the graph payload because edges dominate. A cleaner long-term factoring is to extract a single `pages-index.json` carrying all presentation metadata, with `search_index`, `graph-index`, and `history-index` pointing into it by slug.
 
@@ -813,7 +813,7 @@ No change to `/api/graph` — it stays as the authenticated, richer JSON API for
 
 - [ ] All REQ-### have at least one TEST-### (traceability matrix complete).
 - [ ] Default theme renders `/_graph` and per-page panel on the demo vault without console errors.
-- [ ] `zetl build` on the demo vault emits `graph-index.json` and `_graph.html`; deploying `dist/` to a static host reproduces the serve-mode experience.
+- [ ] `ztl build` on the demo vault emits `graph-index.json` and `_graph.html`; deploying `dist/` to a static host reproduces the serve-mode experience.
 - [ ] NFR-101..105 pass on CI-sized vault fixtures.
 - [ ] Vendor bundle size within NFR-103 budget.
 - [ ] Theme authoring reference in `README.md` updated with `graph_index_url`, `graph_index`, and the `_graph.html` partial.

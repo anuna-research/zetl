@@ -424,7 +424,7 @@ mod tests {
         let header = r#"{"alg":"EdDSA","typ":"JWT"}"#;
         let claims = DelegateClaims {
             iss: "test-issuer".into(),
-            sub: "zetl-mcp".into(),
+            sub: "ztl-mcp".into(),
             aud: "my-vault".into(),
             iat: 1_000_000,
             exp: 0, // no expiry

@@ -5,12 +5,12 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 #[derive(Args, Debug, Clone, Default)]
 pub struct ScanArgs {
     /// Gitignore-syntax pattern to exclude from the vault scan. Repeatable.
-    /// Combines with `.zetlignore` and the default dotdir exclusion.
+    /// Combines with `.ztlignore` and the default dotdir exclusion.
     #[arg(long = "exclude", value_name = "PATTERN", action = clap::ArgAction::Append)]
     pub exclude: Vec<String>,
 
     /// Disable the default exclusion of dotdirs (`.claude/`, `.obsidian/`, etc.).
-    /// `.git/`, `.zetl/`, and `node_modules/` are still excluded.
+    /// `.git/`, `.ztl/`, and `node_modules/` are still excluded.
     #[arg(long)]
     pub include_hidden: bool,
 }
@@ -47,10 +47,10 @@ impl Cli {
 
 #[derive(Parser)]
 #[command(
-    name = "zetl",
+    name = "ztl",
     version,
     about = "Bi-directional wikilink graph CLI for knowledge management, solo or team",
-    after_help = "Examples:\n  zetl list                    List all pages\n  zetl links \"My Page\"         Show forward links\n  zetl search \"query\"          Search vault contents\n  zetl check                   Validate vault health\n  zetl serve                   Start local web server\n  zetl serve --collab          Start with multi-user auth\n\nLearn more: https://codeberg.org/anuna/zetl"
+    after_help = "Examples:\n  ztl list                    List all pages\n  ztl links \"My Page\"         Show forward links\n  ztl search \"query\"          Search vault contents\n  ztl check                   Validate vault health\n  ztl serve                   Start local web server\n  ztl serve --collab          Start with multi-user auth\n\nLearn more: https://codeberg.org/anuna/ztl"
 )]
 pub struct Cli {
     /// Vault root directory
@@ -58,7 +58,7 @@ pub struct Cli {
         short = 'd',
         long,
         default_value = ".",
-        env = "ZETL_DIR",
+        env = "ztl_DIR",
         global = true
     )]
     pub dir: String,
@@ -68,7 +68,7 @@ pub struct Cli {
         short = 'f',
         long,
         default_value = "auto",
-        env = "ZETL_FORMAT",
+        env = "ztl_FORMAT",
         global = true
     )]
     pub format: OutputFormat,
@@ -78,7 +78,7 @@ pub struct Cli {
     pub json: bool,
 
     /// Force full rescan, ignore cached index
-    #[arg(long, env = "ZETL_NO_CACHE", global = true)]
+    #[arg(long, env = "ztl_NO_CACHE", global = true)]
     pub no_cache: bool,
 
     /// Disable colored output
@@ -125,7 +125,7 @@ pub enum Command {
 
     /// Query forward links from a page
     #[command(
-        after_help = "Examples:\n  zetl links \"My Page\"              Direct links\n  zetl links \"My Page\" --depth 2    Two hops deep"
+        after_help = "Examples:\n  ztl links \"My Page\"              Direct links\n  ztl links \"My Page\" --depth 2    Two hops deep"
     )]
     Links {
         /// Page name (case-insensitive)
@@ -164,7 +164,7 @@ pub enum Command {
 
     /// Validate: report dead links, orphans, syntax errors, and SPL diagnostics
     #[command(
-        after_help = "Examples:\n  zetl check                   Full vault health check\n  zetl check --dead-links      Show only broken links\n  zetl check --orphans          Show only unlinked pages"
+        after_help = "Examples:\n  ztl check                   Full vault health check\n  ztl check --dead-links      Show only broken links\n  ztl check --orphans          Show only unlinked pages"
     )]
     Check {
         /// Show only dead links
@@ -185,7 +185,7 @@ pub enum Command {
         /// Exit non-zero if issues at level
         #[arg(long, default_value = "error")]
         fail_on: FailLevel,
-        /// Theme name for hook discovery (looks in .zetl/themes/<name>/hooks/)
+        /// Theme name for hook discovery (looks in .ztl/themes/<name>/hooks/)
         #[arg(long, default_value = "default")]
         theme: String,
     },
@@ -204,7 +204,7 @@ pub enum Command {
 
     /// Search vault file contents for text
     #[command(
-        after_help = "Examples:\n  zetl search \"wikilink\"                 Basic search\n  zetl search \"API\" --near \"Backend\"     Search near a page\n  zetl search \"TODO\" --case-sensitive    Exact case match"
+        after_help = "Examples:\n  ztl search \"wikilink\"                 Basic search\n  ztl search \"API\" --near \"Backend\"     Search near a page\n  ztl search \"TODO\" --case-sensitive    Exact case match"
     )]
     Search {
         /// Search string
@@ -249,7 +249,7 @@ pub enum Command {
 
     /// Find shortest link path between two pages
     #[command(
-        after_help = "Examples:\n  zetl path \"Page A\" \"Page B\"           Find shortest path\n  zetl path \"Page A\" \"Page B\" --max-depth 5"
+        after_help = "Examples:\n  ztl path \"Page A\" \"Page B\"           Find shortest path\n  ztl path \"Page A\" \"Page B\" --max-depth 5"
     )]
     Path {
         /// Source page name
@@ -278,13 +278,13 @@ pub enum Command {
 
     /// Start local web server to browse the vault
     #[command(
-        after_help = "Examples:\n  zetl serve                                        Single-user web UI\n  zetl serve --collab --init-owner --owner-name Jo   First-time collab setup\n  zetl serve --collab                                Multi-user mode\n  zetl serve --port 8080 --theme dark                Custom port and theme"
+        after_help = "Examples:\n  ztl serve                                        Single-user web UI\n  ztl serve --collab --init-owner --owner-name Jo   First-time collab setup\n  ztl serve --collab                                Multi-user mode\n  ztl serve --port 8080 --theme dark                Custom port and theme"
     )]
     Serve {
         /// Port to listen on
         #[arg(short, long, default_value = "3000")]
         port: u16,
-        /// Theme name (looks in .zetl/themes/<name>/)
+        /// Theme name (looks in .ztl/themes/<name>/)
         #[arg(long, default_value = "default")]
         theme: String,
         /// Public directory whose files override generated pages (served first)
@@ -300,14 +300,14 @@ pub enum Command {
         #[arg(long, default_value = "Owner", requires = "init_owner")]
         owner_name: String,
         /// Public hostname for WebAuthn relying party (e.g. "mysite.fly.dev").
-        /// Defaults to "localhost". Can also be set via ZETL_HOSTNAME env var.
+        /// Defaults to "localhost". Can also be set via ztl_HOSTNAME env var.
         /// Requires --collab.
-        #[arg(long, requires = "collab", env = "ZETL_HOSTNAME")]
+        #[arg(long, requires = "collab", env = "ztl_HOSTNAME")]
         hostname: Option<String>,
         /// BIP39 mnemonic (12 words) to deterministically derive the server key.
         /// Useful for containerised deployments where the filesystem is ephemeral.
-        /// Can also be set via ZETL_SERVER_KEY_SEED env var. Requires --collab.
-        #[arg(long, requires = "collab", env = "ZETL_SERVER_KEY_SEED")]
+        /// Can also be set via ztl_SERVER_KEY_SEED env var. Requires --collab.
+        #[arg(long, requires = "collab", env = "ztl_SERVER_KEY_SEED")]
         server_key_seed: Option<String>,
         /// Git HEAD poll interval for detecting external commits (e.g. "30s", "1m").
         /// Set to "0" to disable. Requires --collab.
@@ -324,7 +324,7 @@ pub enum Command {
 
     /// Generate an invitation token for a new collaborator
     #[command(
-        after_help = "Examples:\n  zetl invite --as alice --role editor\n  zetl invite --as alice --role reader --pages \"projects/*\"\n  zetl invite --as alice --role editor --expires 24h"
+        after_help = "Examples:\n  ztl invite --as alice --role editor\n  ztl invite --as alice --role reader --pages \"projects/*\"\n  ztl invite --as alice --role editor --expires 24h"
     )]
     Invite {
         /// Your username (inviter)
@@ -348,7 +348,7 @@ pub enum Command {
     },
 
     /// Derive an agent token from a BIP39 mnemonic for headless API authentication
-    #[command(after_help = "Examples:\n  zetl agent-token --mnemonic \"word1 word2 ... word12\"")]
+    #[command(after_help = "Examples:\n  ztl agent-token --mnemonic \"word1 word2 ... word12\"")]
     AgentToken {
         /// BIP39 mnemonic phrase (12 words)
         #[arg(long)]
@@ -359,11 +359,11 @@ pub enum Command {
     /// Useful for containerised deployments where a single seed phrase provides
     /// both the server key and the git SSH key.
     #[command(
-        after_help = "Examples:\n  zetl derive-ssh-key --mnemonic \"word1 word2 ... word12\" --out /root/.ssh/id_ed25519"
+        after_help = "Examples:\n  ztl derive-ssh-key --mnemonic \"word1 word2 ... word12\" --out /root/.ssh/id_ed25519"
     )]
     DeriveSshKey {
         /// BIP39 mnemonic phrase (12 words)
-        #[arg(long, env = "ZETL_SERVER_KEY_SEED")]
+        #[arg(long, env = "ztl_SERVER_KEY_SEED")]
         mnemonic: String,
         /// Output path for the private key (default: stdout)
         #[arg(long)]
@@ -375,7 +375,7 @@ pub enum Command {
         /// Output directory
         #[arg(short = 'o', long, alias = "out", default_value = "dist")]
         out_dir: String,
-        /// Theme name (looks in .zetl/themes/<name>/)
+        /// Theme name (looks in .ztl/themes/<name>/)
         #[arg(long, default_value = "default")]
         theme: String,
         /// Public directory whose contents are copied over the output root (overrides generated pages)
@@ -429,16 +429,16 @@ pub enum Command {
 
     /// Plugin-ecosystem introspection (Pandoc filters, mdBook preprocessors, remark plugins)
     #[command(
-        after_help = "Examples:\n  zetl ecosystem check               Report runtimes + configured hooks\n  zetl ecosystem check --json        Machine-readable report for CI pre-flight"
+        after_help = "Examples:\n  ztl ecosystem check               Report runtimes + configured hooks\n  ztl ecosystem check --json        Machine-readable report for CI pre-flight"
     )]
     Ecosystem {
         #[command(subcommand)]
         command: EcosystemCommand,
     },
 
-    /// Inspect the zetl-ext AST for a page or diff two AST documents
+    /// Inspect the ztl-ext AST for a page or diff two AST documents
     #[command(
-        after_help = "Examples:\n  zetl ast sample notes/page.md                  Print canonical AST JSON\n  zetl ast sample notes/page.md --stage pre-parse  Print raw markdown input\n  zetl ast diff before.json after.json           Tree diff of two AST files"
+        after_help = "Examples:\n  ztl ast sample notes/page.md                  Print canonical AST JSON\n  ztl ast sample notes/page.md --stage pre-parse  Print raw markdown input\n  ztl ast diff before.json after.json           Tree diff of two AST files"
     )]
     Ast {
         #[command(subcommand)]
@@ -516,7 +516,7 @@ pub enum Command {
         /// BIP39 mnemonic (fallback if identity key not stored)
         #[arg(long)]
         mnemonic: Option<String>,
-        /// Save derived key to ~/.config/zetl/identity.key
+        /// Save derived key to ~/.config/ztl/identity.key
         #[arg(long)]
         save_key: bool,
     },
@@ -528,7 +528,7 @@ pub enum Command {
         _args: Vec<String>,
     },
 
-    /// Start an MCP server exposing zetl tools
+    /// Start an MCP server exposing ztl tools
     #[cfg(feature = "mcp")]
     Mcp {
         /// Transport mode
@@ -575,7 +575,7 @@ pub enum Command {
     },
 }
 
-/// Subcommands for `zetl cap` (SPEC-034 REQ-3416 capability-URL
+/// Subcommands for `ztl cap` (SPEC-034 REQ-3416 capability-URL
 /// static-distribution mode).
 ///
 /// The CLI surface is the full set of verbs called out in REQ-3416;
@@ -587,13 +587,13 @@ pub enum CapCommand {
     /// Generate both the content-encryption secret and the vault-signing
     /// keypair. Emits to stdout exactly once — see SPEC-034 REQ-3419.
     #[command(
-        after_help = "Examples:\n  zetl cap genkey                             Print ZETL_CAP_SECRET + signing key\n\nSee SPEC-034 REQ-3419 / ADR-3405 for storage guidance."
+        after_help = "Examples:\n  ztl cap genkey                             Print ztl_CAP_SECRET + signing key\n\nSee SPEC-034 REQ-3419 / ADR-3405 for storage guidance."
     )]
     Genkey,
 
     /// Issue an invitation grant for a new reader.
     #[command(
-        after_help = "Examples:\n  zetl cap invite alice --cohort eng --site-url https://wiki.example\n  zetl cap invite bob --cohort ops --expires 7d --pages 'projects/*' --site-url https://wiki.example\n  zetl cap invite carol --cohort eng --recipient age-recipient-v1:...   # hardened mode\n  zetl cap invite dan --cohort eng --via enrol-page --site-url https://wiki.example\n\nSee SPEC-034 REQ-3416 / REQ-3410."
+        after_help = "Examples:\n  ztl cap invite alice --cohort eng --site-url https://wiki.example\n  ztl cap invite bob --cohort ops --expires 7d --pages 'projects/*' --site-url https://wiki.example\n  ztl cap invite carol --cohort eng --recipient age-recipient-v1:...   # hardened mode\n  ztl cap invite dan --cohort eng --via enrol-page --site-url https://wiki.example\n\nSee SPEC-034 REQ-3416 / REQ-3410."
     )]
     Invite {
         /// Human-readable invitee label (stored in grants.toml).
@@ -620,8 +620,8 @@ pub enum CapCommand {
         #[arg(long)]
         split_key: bool,
         /// Canonical site URL (scheme + host) used to render the invite
-        /// URL. Falls back to the `ZETL_CAP_SITE_URL` env var.
-        #[arg(long, value_name = "URL", env = "ZETL_CAP_SITE_URL")]
+        /// URL. Falls back to the `ztl_CAP_SITE_URL` env var.
+        #[arg(long, value_name = "URL", env = "ztl_CAP_SITE_URL")]
         site_url: Option<String>,
         /// Landing slug the invite URL points at (the reader's first
         /// page). Defaults to `welcome`; operators rename their landing
@@ -632,7 +632,7 @@ pub enum CapCommand {
 
     /// List all issued grants.
     #[command(
-        after_help = "Examples:\n  zetl cap list\n  zetl cap list --cohort eng\n  zetl cap list --output json"
+        after_help = "Examples:\n  ztl cap list\n  ztl cap list --cohort eng\n  ztl cap list --output json"
     )]
     List {
         /// Restrict output to one cohort.
@@ -645,7 +645,7 @@ pub enum CapCommand {
 
     /// Revoke an issued grant by id.
     Revoke {
-        /// Grant id to revoke (see `zetl cap list`).
+        /// Grant id to revoke (see `ztl cap list`).
         grant_id: String,
     },
 
@@ -696,7 +696,7 @@ pub enum CapCommand {
     ///
     ///   * **Grantor** (`--grantor`, the default): generate a fresh
     ///     4-word BIP39 phrase, refuse reuse within 30 days (tracked
-    ///     in `.zetl/caps/.pair-nonces`), start SPAKE2, print phrase +
+    ///     in `.ztl/caps/.pair-nonces`), start SPAKE2, print phrase +
     ///     outbound handshake, then BLOCK reading three lines from
     ///     stdin — peer handshake, peer pubkey (base64), peer HMAC
     ///     tag (base64). Verifies the HMAC and prints the authenticated
@@ -712,7 +712,7 @@ pub enum CapCommand {
     /// differs on the two sides, SPAKE2 derives different keys and the
     /// HMAC verification fails.
     #[command(
-        after_help = "Examples:\n  zetl cap pair --grantor\n                                              Start a new pairing (interactive — reads stdin)\n  zetl cap pair --grantee --peer <handshake> --phrase <4-words> --pubkey <b64>\n                                              Complete the pairing as the grantee\n\nSee SPEC-034 REQ-3408 (CLI) / CON-3407."
+        after_help = "Examples:\n  ztl cap pair --grantor\n                                              Start a new pairing (interactive — reads stdin)\n  ztl cap pair --grantee --peer <handshake> --phrase <4-words> --pubkey <b64>\n                                              Complete the pairing as the grantee\n\nSee SPEC-034 REQ-3408 (CLI) / CON-3407."
     )]
     Pair {
         /// Run the grantor side (default if neither flag is set).
@@ -725,14 +725,14 @@ pub enum CapCommand {
         grantee: bool,
 
         /// Peer's base64 SPAKE2 outbound message (grantor's handshake,
-        /// from stdout of `zetl cap pair --grantor`). Required by
+        /// from stdout of `ztl cap pair --grantor`). Required by
         /// `--grantee`.
         #[arg(long, value_name = "HANDSHAKE")]
         peer: Option<String>,
         /// 4-word BIP39 pairing phrase. Required by `--grantee`;
         /// optional for `--grantor` (test hook — seeds reuse a pinned
         /// phrase rather than drawing from the RNG).
-        #[arg(long, value_name = "PHRASE", env = "ZETL_CAP_PAIR_PHRASE")]
+        #[arg(long, value_name = "PHRASE", env = "ztl_CAP_PAIR_PHRASE")]
         phrase: Option<String>,
         /// 32-byte raw pubkey as base64 (standard, no padding).
         /// Required by `--grantee` — the pubkey being authenticated
@@ -743,7 +743,7 @@ pub enum CapCommand {
 
     /// Scan a vault diff for malicious-content patterns
     #[command(
-        after_help = "Examples:\n  zetl cap audit-diff main HEAD                Scan changes since main\n  zetl cap audit-diff --corpus tools/audit-diff-corpus/fixtures/001-*\n                                              Run against a single corpus fixture\n  zetl cap audit-diff --corpus-root tools/audit-diff-corpus\n                                              Walk every fixture under the corpus root"
+        after_help = "Examples:\n  ztl cap audit-diff main HEAD                Scan changes since main\n  ztl cap audit-diff --corpus tools/audit-diff-corpus/fixtures/001-*\n                                              Run against a single corpus fixture\n  ztl cap audit-diff --corpus-root tools/audit-diff-corpus\n                                              Walk every fixture under the corpus root"
     )]
     AuditDiff {
         /// Git ref for the baseline vault state
@@ -795,7 +795,7 @@ pub enum ThemeCommand {
         /// Theme name to remove
         name: String,
     },
-    /// Export a bundled theme to .zetl/themes/ for customisation
+    /// Export a bundled theme to .ztl/themes/ for customisation
     Export {
         /// Bundled theme name to export
         name: String,
@@ -809,7 +809,7 @@ pub enum ThemeCommand {
 pub enum HookCommand {
     /// List all active hooks for the current vault and theme
     List {
-        /// Theme name (looks in .zetl/themes/<name>/hooks/)
+        /// Theme name (looks in .ztl/themes/<name>/hooks/)
         #[arg(long, default_value = "default")]
         theme: String,
     },
@@ -817,7 +817,7 @@ pub enum HookCommand {
     Run {
         /// Hook lifecycle name (e.g. post-build, pre-build)
         name: String,
-        /// Theme name (looks in .zetl/themes/<name>/hooks/)
+        /// Theme name (looks in .ztl/themes/<name>/hooks/)
         #[arg(long, default_value = "default")]
         theme: String,
         /// Extra JSON fields merged into the context (after --)
@@ -827,12 +827,12 @@ pub enum HookCommand {
     /// Scaffold a new render-pipeline hook (skeleton + manifest + fixture).
     ///
     /// Writes the persistent-mode skeleton at
-    /// `.zetl/hooks/<stage>.d/<name>.<ext>` and the sidecar manifest at
-    /// `.zetl/hooks/<stage>.d/<name>.<ext>.toml` (the canonical form
+    /// `.ztl/hooks/<stage>.d/<name>.<ext>` and the sidecar manifest at
+    /// `.ztl/hooks/<stage>.d/<name>.<ext>.toml` (the canonical form
     /// composition reads — do not rename to `<name>.toml`).
     /// SPEC-032 REQ-3225.
     #[command(
-        after_help = "Examples:\n  zetl hook new transform callouts\n  zetl hook new pre-parse prelude --lang sh\n  zetl hook new post-render banner --lang js\n  zetl hook new transform smallcaps --ecosystem pandoc"
+        after_help = "Examples:\n  ztl hook new transform callouts\n  ztl hook new pre-parse prelude --lang sh\n  ztl hook new post-render banner --lang js\n  ztl hook new transform smallcaps --ecosystem pandoc"
     )]
     New {
         /// Hook pipeline stage (pre-parse, transform, or post-render).
@@ -858,7 +858,7 @@ pub enum HookCommand {
     /// SPEC-032 REQ-3225 / TEST-3225.
     Test {
         /// Hook extension id to test. Looks for the hook under
-        /// `.zetl/hooks/<stage>.d/<name>.*` and its fixture at
+        /// `.ztl/hooks/<stage>.d/<name>.*` and its fixture at
         /// `tests/hook-fixtures/<name>/`.
         name: String,
         /// Regenerate the golden from the hook's current output instead
@@ -889,10 +889,10 @@ pub enum HookCommand {
     /// current vault if no build coverage has been persisted.
     /// SPEC-032 REQ-3208 / CON-3208.
     #[command(
-        after_help = "Examples:\n  zetl hook coverage\n  zetl hook coverage --json\n  zetl hook coverage --stage transform"
+        after_help = "Examples:\n  ztl hook coverage\n  ztl hook coverage --json\n  ztl hook coverage --stage transform"
     )]
     Coverage {
-        /// Theme name (looks in .zetl/themes/<name>/hooks/).
+        /// Theme name (looks in .ztl/themes/<name>/hooks/).
         #[arg(long, default_value = "default")]
         theme: String,
         /// Restrict the report to a single stage.
@@ -904,7 +904,7 @@ pub enum HookCommand {
     /// zero match. SPEC-032 REQ-3209.
     #[command(
         name = "dry-run",
-        after_help = "Examples:\n  zetl hook dry-run transform/callouts\n  zetl hook dry-run pre-parse/prelude --limit 100\n  zetl -d demo-vault hook dry-run transform/callouts"
+        after_help = "Examples:\n  ztl hook dry-run transform/callouts\n  ztl hook dry-run pre-parse/prelude --limit 100\n  ztl -d demo-vault hook dry-run transform/callouts"
     )]
     DryRun {
         /// Hook selector in the form `<stage>/<name>`. `<stage>` is one of
@@ -912,7 +912,7 @@ pub enum HookCommand {
         /// hook's extension_id (filename stem minus any leading `\d+-`
         /// ordering prefix).
         spec: String,
-        /// Theme name (looks in .zetl/themes/<name>/hooks/).
+        /// Theme name (looks in .ztl/themes/<name>/hooks/).
         #[arg(long, default_value = "default")]
         theme: String,
         /// Maximum number of matched pages to print.
@@ -925,10 +925,10 @@ pub enum HookCommand {
     /// Each hook is spawned, asked for its capability probe, and shut
     /// down cleanly. Non-zero exit when any hook's probe fails.
     #[command(
-        after_help = "Examples:\n  zetl hook capabilities\n  zetl hook capabilities --json\n  zetl hook capabilities --stage transform"
+        after_help = "Examples:\n  ztl hook capabilities\n  ztl hook capabilities --json\n  ztl hook capabilities --stage transform"
     )]
     Capabilities {
-        /// Theme name (looks in .zetl/themes/<name>/hooks/).
+        /// Theme name (looks in .ztl/themes/<name>/hooks/).
         #[arg(long, default_value = "default")]
         theme: String,
         /// Restrict the report to a single stage.
@@ -937,7 +937,7 @@ pub enum HookCommand {
     },
 }
 
-/// Subcommands for `zetl ecosystem`.
+/// Subcommands for `ztl ecosystem`.
 #[derive(Subcommand)]
 pub enum EcosystemCommand {
     /// Probe every registered ecosystem's runtime and report per-ecosystem
@@ -948,7 +948,7 @@ pub enum EcosystemCommand {
     /// missing or below the minimum version. The zero-configured state
     /// always exits 0.
     Check {
-        /// Theme name (looks in `.zetl/themes/<name>/hooks/`).
+        /// Theme name (looks in `.ztl/themes/<name>/hooks/`).
         #[arg(long, default_value = "default")]
         theme: String,
         /// Emit machine-readable JSON instead of the table. Equivalent to
@@ -959,7 +959,7 @@ pub enum EcosystemCommand {
     },
 }
 
-/// Stage for `zetl hook new`. Matches the three on-disk `<stage>.d/`
+/// Stage for `ztl hook new`. Matches the three on-disk `<stage>.d/`
 /// directory names from SPEC-032 REQ-3201.
 #[derive(Clone, ValueEnum, PartialEq, Eq, Debug)]
 pub enum AuthoringStage {
@@ -980,7 +980,7 @@ impl AuthoringStage {
     }
 }
 
-/// Language selection for `zetl hook new`. The scaffolder writes a
+/// Language selection for `ztl hook new`. The scaffolder writes a
 /// persistent-mode skeleton in the chosen language with a shebang so
 /// `chmod +x` suffices to make it runnable.
 #[derive(Clone, ValueEnum, PartialEq, Eq, Debug)]
@@ -1007,7 +1007,7 @@ impl HookLang {
 ///   plus a starter identity Lua filter on disk at that path.
 /// - `mdbook` — `ecosystem = "mdbook"` + `exec = "mdbook-<name>"` +
 ///   `scope = "page"`. Place the preprocessor binary on PATH (or rename
-///   `exec`) before `zetl build`.
+///   `exec`) before `ztl build`.
 /// - `remark` — `ecosystem = "remark"` + `package = "remark-<name>"`.
 ///   Install the npm package under the vault's `node_modules/`.
 ///
@@ -1029,9 +1029,9 @@ impl HookEcosystem {
     }
 }
 
-/// Pipeline stage at whose *input* boundary `zetl ast sample` emits a view
+/// Pipeline stage at whose *input* boundary `ztl ast sample` emits a view
 /// of the page. `pre-parse` prints the raw markdown text (frontmatter
-/// stripped); `transform` prints the zetl-ext AST JSON; `post-render` prints
+/// stripped); `transform` prints the ztl-ext AST JSON; `post-render` prints
 /// the rendered HTML fragment.
 #[derive(Clone, ValueEnum, PartialEq, Eq, Debug, Default)]
 pub enum AstStage {
@@ -1045,7 +1045,7 @@ pub enum AstStage {
 
 #[derive(Subcommand)]
 pub enum AstCommand {
-    /// Print the canonical zetl-ext AST (or pre-parse text / post-render
+    /// Print the canonical ztl-ext AST (or pre-parse text / post-render
     /// HTML) for a page file.
     Sample {
         /// Path to a Markdown file. Relative paths resolve against the
@@ -1057,7 +1057,7 @@ pub enum AstCommand {
         #[arg(long, value_enum, default_value_t = AstStage::default())]
         stage: AstStage,
     },
-    /// Tree-aware structural diff of two zetl-ext AST JSON documents.
+    /// Tree-aware structural diff of two ztl-ext AST JSON documents.
     /// Exits non-zero when the diff is non-empty.
     Diff {
         /// Path to the *before* AST JSON file.
@@ -1071,12 +1071,12 @@ pub enum AstCommand {
 pub enum AgentCommand {
     /// Run an on-agent hook with task context (REQ-020-023)
     #[command(
-        after_help = "Examples:\n  zetl agent run link-checker\n  zetl agent run summariser --pages \"Note A\" \"Note B\" --budget 4000"
+        after_help = "Examples:\n  ztl agent run link-checker\n  ztl agent run summariser --pages \"Note A\" \"Note B\" --budget 4000"
     )]
     Run {
         /// Agent task name
         name: String,
-        /// Theme name (looks in .zetl/themes/<name>/hooks/)
+        /// Theme name (looks in .ztl/themes/<name>/hooks/)
         #[arg(long, default_value = "default")]
         theme: String,
         /// Target pages for the agent (empty = vault-wide)
@@ -1221,7 +1221,7 @@ pub enum McpTransport {
     Http,
 }
 
-/// Category filter for `zetl diff`.
+/// Category filter for `ztl diff`.
 #[derive(Clone, ValueEnum)]
 pub enum DiffFilter {
     Pages,
@@ -1231,7 +1231,7 @@ pub enum DiffFilter {
     DeadLinks,
 }
 
-/// Subcommands for `zetl history` (requires --features history).
+/// Subcommands for `ztl history` (requires --features history).
 #[cfg(feature = "history")]
 #[derive(Subcommand)]
 pub enum HistoryCommand {

@@ -7,7 +7,7 @@ use rmcp::model::{
 };
 
 /// URI prefix for vault page resources.
-const PAGE_URI_PREFIX: &str = "zetl://vault/pages/";
+const PAGE_URI_PREFIX: &str = "ztl://vault/pages/";
 
 /// Build a `Resource` entry for a single vault page.
 fn page_resource(page_name: &str) -> Resource {
@@ -32,7 +32,7 @@ pub fn list_resources(page_names: &[String]) -> ListResourcesResult {
     ListResourcesResult::with_all_items(resources)
 }
 
-/// Read a single page resource by its `zetl://vault/pages/<name>` URI.
+/// Read a single page resource by its `ztl://vault/pages/<name>` URI.
 ///
 /// Returns the raw Markdown content of the page, or an error if the URI
 /// is unrecognised or the page doesn't exist on disk.
@@ -111,7 +111,7 @@ mod tests {
         assert!(result.resources[0]
             .raw
             .uri
-            .starts_with("zetl://vault/pages/"));
+            .starts_with("ztl://vault/pages/"));
         assert_eq!(result.resources[1].raw.name, "Architecture");
     }
 
@@ -138,7 +138,7 @@ mod tests {
     fn read_resource_page_not_found() {
         let file_index = vec![("README".to_string(), PathBuf::from("README.md"))];
         let err = read_resource(
-            "zetl://vault/pages/Nonexistent",
+            "ztl://vault/pages/Nonexistent",
             &file_index,
             std::path::Path::new("/tmp"),
         );
@@ -152,7 +152,7 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
         std::fs::write(dir.path().join("README.md"), "# Hello\n").unwrap();
         let file_index = vec![("README".to_string(), PathBuf::from("README.md"))];
-        let result = read_resource("zetl://vault/pages/README", &file_index, dir.path());
+        let result = read_resource("ztl://vault/pages/README", &file_index, dir.path());
         assert!(result.is_ok());
         let res = result.unwrap();
         assert_eq!(res.contents.len(), 1);

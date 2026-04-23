@@ -2,7 +2,7 @@
 //! REQ-3302 / CON-3302 / TEST-3302).
 //!
 //! This file is the public-facing conformance harness — it exercises
-//! the trait through the `zetl::ecosystems` surface rather than the
+//! the trait through the `ztl::ecosystems` surface rather than the
 //! module-local imports used by the unit tests next to
 //! `src/ecosystems/adapter.rs`. The harness here is the pattern
 //! downstream adapter tasks follow (task-pandoc-adapter,
@@ -14,17 +14,17 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use zetl::ecosystems::{
+use ztl::ecosystems::{
     adapter::{
         run_conformance, CheckOutcome, EcosystemAdapter, HookContext, MockEcosystemAdapter,
         PluginManifest, PluginResponse, RuntimeStatus, StageInput, StageOutput,
     },
     default_fixtures,
 };
-use zetl::hooks::ast::Document;
-use zetl::hooks::build_context::{BuildContext, BuildMode, PageMeta};
-use zetl::hooks::pipeline::Stage;
-use zetl::hooks::translators::{AstType, TranslationError};
+use ztl::hooks::ast::Document;
+use ztl::hooks::build_context::{BuildContext, BuildMode, PageMeta};
+use ztl::hooks::pipeline::Stage;
+use ztl::hooks::translators::{AstType, TranslationError};
 
 fn mock_build_context() -> BuildContext {
     BuildContext::new(
@@ -67,7 +67,7 @@ fn test_3302_mock_adapter_passes_conformance_suite() {
 
 #[test]
 fn test_3302_conformance_covers_every_canonical_fixture() {
-    // The default corpus is the zetl-ext baseline every adapter must
+    // The default corpus is the ztl-ext baseline every adapter must
     // carry across the foreign boundary (empty / paragraph / wikilink).
     // Pin the shape so downstream contributors adding a fixture here
     // notice that every adapter's round-trip logic gets re-exercised.
@@ -89,14 +89,14 @@ fn mock_adapter_exposes_con_3302_surface() {
     // drifts at compile time this test fails to link.
     let mut adapter: Box<dyn EcosystemAdapter> = Box::new(MockEcosystemAdapter::default());
     assert_eq!(adapter.id(), "mock");
-    assert_eq!(adapter.ast_type(), AstType::ZetlExt);
+    assert_eq!(adapter.ast_type(), AstType::ztlExt);
     assert!(adapter.probe().is_available());
     assert_eq!(adapter.supported_stages(), &[Stage::Transform]);
 
     let doc = Document {
         ast_version: "1.0".into(),
-        kind: zetl::hooks::ast::DocumentKind::Document,
-        position: zetl::hooks::ast::Position::origin(),
+        kind: ztl::hooks::ast::DocumentKind::Document,
+        position: ztl::hooks::ast::Position::origin(),
         frontmatter: None,
         children: vec![],
     };
@@ -201,17 +201,17 @@ fn mock_adapter_configurable_stages_round_trip() {
 /// will follow: wrap whatever transport the adapter owns (subprocess
 /// spawn, in-process harness, …) behind the trait and call
 /// `run_conformance`.
-struct IdentityZetlAdapter {
+struct IdentityztlAdapter {
     stages: Vec<Stage>,
 }
 
-impl EcosystemAdapter for IdentityZetlAdapter {
+impl EcosystemAdapter for IdentityztlAdapter {
     fn id(&self) -> &str {
-        "identity-zetl"
+        "identity-ztl"
     }
 
     fn ast_type(&self) -> AstType {
-        AstType::ZetlExt
+        AstType::ztlExt
     }
 
     fn probe(&mut self) -> RuntimeStatus {
@@ -227,7 +227,7 @@ impl EcosystemAdapter for IdentityZetlAdapter {
 
     fn translate_to_foreign(&self, doc: &Document) -> Result<serde_json::Value, TranslationError> {
         serde_json::to_value(doc)
-            .map_err(|e| TranslationError::to_foreign(AstType::ZetlExt, e.to_string()))
+            .map_err(|e| TranslationError::to_foreign(AstType::ztlExt, e.to_string()))
     }
 
     fn translate_from_foreign(
@@ -235,7 +235,7 @@ impl EcosystemAdapter for IdentityZetlAdapter {
         foreign: serde_json::Value,
     ) -> Result<Document, TranslationError> {
         serde_json::from_value(foreign)
-            .map_err(|e| TranslationError::from_foreign(AstType::ZetlExt, e.to_string()))
+            .map_err(|e| TranslationError::from_foreign(AstType::ztlExt, e.to_string()))
     }
 
     fn invoke_plugin(
@@ -255,7 +255,7 @@ impl EcosystemAdapter for IdentityZetlAdapter {
 
 #[test]
 fn custom_identity_adapter_passes_conformance() {
-    let mut adapter = IdentityZetlAdapter {
+    let mut adapter = IdentityztlAdapter {
         stages: vec![Stage::Transform],
     };
     let fixtures = default_fixtures();
@@ -265,5 +265,5 @@ fn custom_identity_adapter_passes_conformance() {
         "identity adapter should pass conformance; failures: {:?}",
         report.failures()
     );
-    assert_eq!(report.adapter_id, "identity-zetl");
+    assert_eq!(report.adapter_id, "identity-ztl");
 }

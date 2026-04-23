@@ -74,7 +74,7 @@ pub const fn round_trip_budget_for(ecosystem: Ecosystem) -> Duration {
 /// release binary's stripped size. Measured via
 /// `cargo build --release --features ecosystem-<id>` minus the no-
 /// feature baseline; the test harness reads the resulting artefact
-/// from `target/release/zetl` and compares against this constant.
+/// from `target/release/ztl` and compares against this constant.
 pub const PER_FEATURE_SIZE_BUDGET_BYTES: u64 = 2 * 1024 * 1024;
 
 /// Returns `true` iff `delta_bytes` clears the NFR-3304 ceiling. Pure
@@ -106,7 +106,7 @@ pub fn round_trip_fidelity_holds(ast_type: AstType, lhs: &Document, rhs: &Docume
 /// NFR-3306: spec scope tag — `adapter-and-translator-layer`.
 ///
 /// Pinned as a constant so a downstream module that surfaces the gate
-/// in `zetl ecosystem check` (or a future `--strict-determinism`
+/// in `ztl ecosystem check` (or a future `--strict-determinism`
 /// mode) reads the same scope-string the spec quotes. Plugin-internal
 /// non-determinism is explicitly out of scope per spec; users wanting
 /// stricter end-to-end determinism are routed to the matrix-pin /
@@ -120,7 +120,7 @@ pub const DETERMINISM_SCOPE: &str = "adapter-and-translator-layer";
 /// One row per ecosystem, ordered to match the spec's bullet list. The
 /// resident-memory cap is the headline ceiling each ecosystem's adapter
 /// enforces (Pandoc filters per persistent process, mdBook
-/// preprocessors per spawn, the remark harness as one process per zetl
+/// preprocessors per spawn, the remark harness as one process per ztl
 /// run).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProcessLifecycle {
@@ -155,7 +155,7 @@ pub const PROCESS_MEMORY_CEILINGS: &[ProcessLifecycle] = &[
     },
     ProcessLifecycle {
         ecosystem: Ecosystem::Remark,
-        // Single Node harness per zetl process — the larger ceiling
+        // Single Node harness per ztl process — the larger ceiling
         // reflects V8 + harness + plugin module footprints.
         max_resident_bytes: 256 * 1024 * 1024,
         persistent_default: true,
@@ -265,7 +265,7 @@ mod tests {
             frontmatter: None,
             children: vec![],
         };
-        for ast_type in [AstType::ZetlExt, AstType::MdastExt, AstType::PandocExt] {
+        for ast_type in [AstType::ztlExt, AstType::MdastExt, AstType::PandocExt] {
             assert!(
                 round_trip_fidelity_holds(ast_type, &doc, &doc),
                 "identity must always satisfy NFR-3305 for {ast_type}"

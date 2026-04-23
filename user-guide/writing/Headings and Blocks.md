@@ -6,7 +6,7 @@ tags: [writing, links, blocks, headings]
 # Headings and Blocks
 
 A plain wikilink takes a reader to a page. On a long page, that's a coarse
-target — you may have wanted to point at one section, or one sentence. zetl
+target — you may have wanted to point at one section, or one sentence. ztl
 supports both.
 
 ## Heading links
@@ -76,8 +76,8 @@ id like `^alice-crdt-comment` and every downstream note can cite it.
 ## Stable under edits
 
 Block ids are stable even if the block's surrounding page changes. Under the
-hood, zetl assigns each block a content-addressed identity by hashing its
-text into a Merkle tree (see [[Blocks]]). When you add a block id, zetl
+hood, ztl assigns each block a content-addressed identity by hashing its
+text into a Merkle tree (see [[Blocks]]). When you add a block id, ztl
 anchors future links to that block's identity — reorder the page, add new
 paragraphs, rewrite the intro, and `[[Seeing Like a State^legibility-def]]`
 still resolves to the same block.
@@ -85,14 +85,14 @@ still resolves to the same block.
 You can list a page's blocks (with their hashes) using:
 
 ```bash
-zetl blocks "Seeing Like a State"
-zetl blocks "Seeing Like a State" --type blockquote
+ztl blocks "Seeing Like a State"
+ztl blocks "Seeing Like a State" --type blockquote
 ```
 
 And resolve a block by hash prefix:
 
 ```bash
-zetl blocks --resolve 7a3f9c
+ztl blocks --resolve 7a3f9c
 ```
 
 Useful when you're debugging a transclusion or writing a reasoning rule
@@ -102,7 +102,7 @@ Useful when you're debugging a transclusion or writing a reasoning rule
 
 A block id wins if the page has both. Link to the heading for "this section,"
 to the block id for "this specific passage." Don't try to combine them
-(`Page#Section^id`) — zetl parses one or the other.
+(`Page#Section^id`) — ztl parses one or the other.
 
 ## Related
 

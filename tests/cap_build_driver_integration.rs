@@ -1,8 +1,8 @@
 //! Capability-mode build driver — end-to-end integration tests
 //! (SPEC-034 REQ-3401, REQ-3403, REQ-3418, OBS-3401).
 //!
-//! Exercises `zetl::cap::build::run_capability_build` through the
-//! same public API the CLI bridge (`zetl build --capability`) will
+//! Exercises `ztl::cap::build::run_capability_build` through the
+//! same public API the CLI bridge (`ztl build --capability`) will
 //! call:
 //!
 //! - multi-cohort vault ⇒ each cohort gets its own `/c/<path-cap>/`
@@ -22,13 +22,13 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use tempfile::TempDir;
 
-use zetl::cap::build::{run_capability_build, BuildConfig, BuildSummary, PageInput, Visibility};
-use zetl::cap::genkey::{build_secret, decode_secret, encode_secret, SECRET_VERSION_V1};
-use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
-use zetl::cap::recipients::parsing::{
+use ztl::cap::build::{run_capability_build, BuildConfig, BuildSummary, PageInput, Visibility};
+use ztl::cap::genkey::{build_secret, decode_secret, encode_secret, SECRET_VERSION_V1};
+use ztl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
+use ztl::cap::recipients::parsing::{
     Cohort, CohortMode, RecipientsFile, VaultSection, AGE_RECIPIENT_V1_PREFIX,
 };
-use zetl::cap::sign::{parse_envelope, VaultSigningKey};
+use ztl::cap::sign::{parse_envelope, VaultSigningKey};
 
 fn pubkey_from_age1(s: &str) -> [u8; 32] {
     let (hrp, data) = bech32::decode(s).expect("valid bech32");
@@ -50,7 +50,7 @@ fn fresh_identity_pair() -> (x25519::Identity, [u8; 32]) {
     (id, pk)
 }
 
-fn sample_secret() -> zetl::cap::genkey::ParsedSecret {
+fn sample_secret() -> ztl::cap::genkey::ParsedSecret {
     let random = [0x5Au8; 32];
     let bytes = build_secret(SECRET_VERSION_V1, &random);
     let encoded = encode_secret(&bytes);
@@ -116,7 +116,7 @@ fn build_cfg(out: &std::path::Path) -> BuildConfig {
         now_unix: 1_745_149_200,
         path_cap_bits: 64,
         visibility: Visibility::Private,
-        access: zetl::cap::scoping::access_config::AccessConfig::default(),
+        access: ztl::cap::scoping::access_config::AccessConfig::default(),
         shim_integrity: None,
         enroll_integrity: None,
         vault_name: "test-vault".to_string(),
@@ -342,7 +342,7 @@ fn obs_3401_stderr_line_carries_counter_keys() {
     assert!(line.contains("ciphertext_bytes="));
     assert!(line.contains("envelope_bytes="));
     assert!(line.contains("duration_ms="));
-    assert!(line.starts_with("[zetl] cap build:"));
+    assert!(line.starts_with("[ztl] cap build:"));
 }
 
 /// REQ-3402 stability: identical inputs produce identical path-caps

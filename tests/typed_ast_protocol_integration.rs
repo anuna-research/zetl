@@ -9,13 +9,13 @@
 //!   translator based on the hook's declared ast_type.
 //! - A mixed pipeline — two transform hooks at the same stage with
 //!   different ast_types — keeps each hook's view in its declared
-//!   format while the pipeline always holds canonical zetl-ext between
+//!   format while the pipeline always holds canonical ztl-ext between
 //!   hooks (REQ-3221 mixed-pipeline paragraph).
 //! - Marker-strip detection surfaces the REQ-3221 warning when a
 //!   foreign-ext hook drops a preserved node type.
 //! - Unknown ast_type in a manifest is a parse error at load-time
 //!   (REQ-3313 ecosystem-not-compiled path — covered via the
-//!   `zetl_only` registry).
+//!   `ztl_only` registry).
 //!
 //! Transport is stubbed via a closure: the real persistent-mode
 //! protocol (SPEC-032 CON-3201) is covered by the separate
@@ -24,12 +24,12 @@
 
 use serde_json::Value;
 
-use zetl::hooks::ast::{
+use ztl::hooks::ast::{
     Block, Document, DocumentKind, Inline, Paragraph, Position, Text, Wikilink, AST_VERSION,
 };
-use zetl::hooks::composition::compose_stage;
-use zetl::hooks::pipeline::Stage;
-use zetl::hooks::translators::{dispatch_transform, AstType, DispatchError, TranslatorRegistry};
+use ztl::hooks::composition::compose_stage;
+use ztl::hooks::pipeline::Stage;
+use ztl::hooks::translators::{dispatch_transform, AstType, DispatchError, TranslatorRegistry};
 
 fn pos() -> Position {
     Position::origin()
@@ -89,7 +89,7 @@ fn hook_with_ast_type_mdast_sees_translated_ast() {
 
     let tmp = TempDir::new().unwrap();
     let vault_root = tmp.path().join("vault");
-    let tx = vault_root.join(".zetl").join("hooks").join("transform.d");
+    let tx = vault_root.join(".ztl").join("hooks").join("transform.d");
     fs::create_dir_all(&tx).unwrap();
 
     // Hook stub (never actually spawned — we use dispatch_transform
@@ -123,7 +123,7 @@ preserves = ["Wikilink"]
     // The run closure simulates a mdast-filter hook: it receives the
     // mdast-shape JSON, asserts the shape, and echoes it back. This
     // proves the dispatch surface is actually translating (not just
-    // passing through zetl-ext bytes).
+    // passing through ztl-ext bytes).
     let received: std::cell::RefCell<Option<Value>> = Default::default();
     let outcome = dispatch_transform(
         &registry,
@@ -132,7 +132,7 @@ preserves = ["Wikilink"]
         &hook.preserves,
         input.clone(),
         |foreign| {
-            // The hook sees mdast, not zetl-ext — `root` not `Document`.
+            // The hook sees mdast, not ztl-ext — `root` not `Document`.
             assert_eq!(foreign["type"], "root");
             assert_eq!(foreign["children"][0]["type"], "paragraph");
             assert_eq!(foreign["children"][0]["children"][1]["type"], "wikiLink");
@@ -142,7 +142,7 @@ preserves = ["Wikilink"]
     )
     .unwrap();
 
-    // And the pipeline retrieves canonical zetl-ext bytes back out.
+    // And the pipeline retrieves canonical ztl-ext bytes back out.
     assert_eq!(outcome.output, input);
     assert!(outcome.warnings.is_empty());
     assert!(received.borrow().is_some(), "run closure was not invoked");
@@ -152,7 +152,7 @@ preserves = ["Wikilink"]
 
 /// REQ-3221: two hooks at the same stage may declare different
 /// `ast_type`s. Each hook sees its own declared shape; between hooks
-/// the pipeline holds canonical zetl-ext.
+/// the pipeline holds canonical ztl-ext.
 ///
 /// Simulates a transform-stage pipeline with a `mdast-ext` hook
 /// followed by a `pandoc-ext` hook. The fake hook closures assert the
@@ -198,7 +198,7 @@ fn mixed_pipeline_each_hook_sees_declared_format() {
     )
     .unwrap();
 
-    // End-to-end identity: the pipeline's canonical form is zetl-ext,
+    // End-to-end identity: the pipeline's canonical form is ztl-ext,
     // and both hooks were identity operators, so the original document
     // round-trips through both translators unchanged.
     let expected = doc_with(vec![para(vec![text("hello")])]);
@@ -222,13 +222,13 @@ fn dropped_wikilinks_surface_as_warnings_not_errors() {
         wikilink("B"),
     ])]);
 
-    // Pandoc-filter that returns a document with no Span (zetl-wikilink)
+    // Pandoc-filter that returns a document with no Span (ztl-wikilink)
     // nodes. Post-translation this lands as a paragraph with just
-    // text and the translator's zetl-wikilink inlines gone.
+    // text and the translator's ztl-wikilink inlines gone.
     let run = |_foreign: Value| -> Result<Value, DispatchError> {
         Ok(serde_json::json!({
             "pandoc-api-version": [1, 23, 1, 0],
-            "meta": {"zetl-ast-version": {"t":"MetaInlines","c":[{"t":"Str","c":"1.0"}]}},
+            "meta": {"ztl-ast-version": {"t":"MetaInlines","c":[{"t":"Str","c":"1.0"}]}},
             "blocks": [
                 {
                     "t": "Para",
@@ -263,13 +263,13 @@ fn dropped_wikilinks_surface_as_warnings_not_errors() {
 
 // ── REQ-3313 ecosystem-not-compiled path ─────────────────────────────────
 
-/// A v1 binary registering only `zetl-ext` rejects a hook manifest
+/// A v1 binary registering only `ztl-ext` rejects a hook manifest
 /// declaring a foreign `ast_type` at load-time (REQ-3313). The typed
 /// error carries the actionable hint pointing at
-/// `zetl ecosystem check`.
+/// `ztl ecosystem check`.
 #[test]
-fn zetl_only_binary_rejects_foreign_ast_type_with_hint() {
-    let registry = TranslatorRegistry::zetl_only();
+fn ztl_only_binary_rejects_foreign_ast_type_with_hint() {
+    let registry = TranslatorRegistry::ztl_only();
     let err = dispatch_transform(
         &registry,
         AstType::PandocExt,
@@ -288,10 +288,10 @@ fn zetl_only_binary_rejects_foreign_ast_type_with_hint() {
         } => {
             assert_eq!(ast_type, AstType::PandocExt);
             assert_eq!(hook_id, "needs-pandoc");
-            assert!(hint.contains("zetl ecosystem check"));
+            assert!(hint.contains("ztl ecosystem check"));
             // The hint names the registered ast_types so users know
             // which ecosystems their binary CAN speak.
-            assert!(hint.contains("zetl-ext"));
+            assert!(hint.contains("ztl-ext"));
         }
         other => panic!("expected EcosystemNotCompiled, got {other}"),
     }

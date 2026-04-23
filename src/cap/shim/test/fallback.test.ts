@@ -10,9 +10,9 @@
 //     URL fragment)
 //   * `history.replaceState` MUST NOT run — the fragment must stay
 //     in the URL so the reader can bookmark / reload
-//   * a `[data-zetl-fallback]` banner is appended to the capability
+//   * a `[data-ztl-fallback]` banner is appended to the capability
 //     host with a deep-link to `/reader.html#fallback-prf-unavailable`
-//   * `performance.mark("zetl:cap:fallback-prf-unavailable")` fires
+//   * `performance.mark("ztl:cap:fallback-prf-unavailable")` fires
 //     (OBS-3412)
 //
 // These tests exercise the pipeline under an injected probe stub so
@@ -71,7 +71,7 @@ before(() => {
 });
 
 beforeEach(() => {
-  document.body.innerHTML = `<main data-zetl-capability></main>`;
+  document.body.innerHTML = `<main data-ztl-capability></main>`;
   // Clear any perf marks left over from earlier tests so
   // `getEntriesByName` assertions stay local.
   if (typeof performance !== "undefined" && typeof performance.clearMarks === "function") {
@@ -136,12 +136,12 @@ async function buildFixture(): Promise<BuiltFixture> {
   const sigB64 = b64urlEncode(signature);
 
   const headerText =
-    "Zetl-Schema: v4\n" +
-    "Zetl-Cohort-Id: engineering\n" +
-    "Zetl-Cohort-Mode: delegated-url\n" +
-    "Zetl-Slug: onboarding\n" +
-    "Zetl-Build-Epoch: 2026-04-21T10:15:00Z\n" +
-    `Zetl-Signature: ${sigB64}\n`;
+    "ztl-Schema: v4\n" +
+    "ztl-Cohort-Id: engineering\n" +
+    "ztl-Cohort-Mode: delegated-url\n" +
+    "ztl-Slug: onboarding\n" +
+    "ztl-Build-Epoch: 2026-04-21T10:15:00Z\n" +
+    `ztl-Signature: ${sigB64}\n`;
   const headerBytes = new TextEncoder().encode(headerText);
   const envelope = new Uint8Array(headerBytes.length + 1 + ciphertext.length);
   envelope.set(headerBytes, 0);
@@ -198,10 +198,10 @@ test("TEST-3412 PRF available → no banner, fragment scrubbed, no OBS-3412 mark
   assert.equal(trace.fallbackActive, false);
   assert.ok(trace.phases.includes(Phase.Rendered));
 
-  const host = document.querySelector("main[data-zetl-capability]");
+  const host = document.querySelector("main[data-ztl-capability]");
   assert.ok(host);
   assert.equal(
-    host!.querySelector("[data-zetl-fallback]"),
+    host!.querySelector("[data-ztl-fallback]"),
     null,
     "banner MUST NOT be rendered on the happy path",
   );
@@ -229,14 +229,14 @@ test("TEST-3412 PRF unavailable → banner rendered, fragment NOT scrubbed, OBS-
   assert.ok(trace.phases.includes(Phase.Rendered));
 
   // Banner is inside the capability host and carries the exact copy.
-  const host = document.querySelector("main[data-zetl-capability]");
-  const banner = host!.querySelector("[data-zetl-fallback]");
+  const host = document.querySelector("main[data-ztl-capability]");
+  const banner = host!.querySelector("[data-ztl-fallback]");
   assert.ok(banner, "fallback banner is present");
-  assert.equal(banner!.getAttribute("data-zetl-fallback-reason"), "caps-prf-false");
+  assert.equal(banner!.getAttribute("data-ztl-fallback-reason"), "caps-prf-false");
   assert.equal(banner!.getAttribute("role"), "status");
-  const summary = banner!.querySelector("[data-zetl-fallback-summary]");
+  const summary = banner!.querySelector("[data-ztl-fallback-summary]");
   assert.equal(summary!.textContent, FALLBACK_COPY);
-  const help = banner!.querySelector("[data-zetl-fallback-help] a");
+  const help = banner!.querySelector("[data-ztl-fallback-help] a");
   assert.equal(help!.getAttribute("href"), `/reader.html#${FALLBACK_DOC_ANCHOR}`);
   assert.equal(help!.getAttribute("rel"), "noopener noreferrer");
 
@@ -377,13 +377,13 @@ test("emitFallbackMark without reason still writes the mark name", () => {
 // ── renderFallbackNotice is idempotent ────────────────────────────────
 
 test("renderFallbackNotice replaces rather than stacks on repeat calls", () => {
-  const host = document.querySelector("main[data-zetl-capability]")!;
+  const host = document.querySelector("main[data-ztl-capability]")!;
   renderFallbackNotice(host, "caps-prf-false");
   renderFallbackNotice(host, "no-public-key-credential");
-  const banners = host.querySelectorAll("[data-zetl-fallback]");
+  const banners = host.querySelectorAll("[data-ztl-fallback]");
   assert.equal(banners.length, 1, "only one banner at a time");
   assert.equal(
-    banners[0]!.getAttribute("data-zetl-fallback-reason"),
+    banners[0]!.getAttribute("data-ztl-fallback-reason"),
     "no-public-key-credential",
     "second call's reason wins",
   );

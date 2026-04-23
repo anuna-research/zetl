@@ -9,7 +9,7 @@
 //! Scope:
 //! - End-to-end init / run / finalise / shutdown round-trip with a
 //!   typed AST payload (the `transform`-stage surface).
-//! - NFR-3207 perf smoke — the zetl-side round-trip for a 500-node AST
+//! - NFR-3207 perf smoke — the ztl-side round-trip for a 500-node AST
 //!   is below the task's internal 1.5 ms budget P95 on a realistic
 //!   loopback hook. Marked `#[ignore]` because host-dependent perf
 //!   assertions don't belong in the default gate; run manually with
@@ -28,11 +28,11 @@ use std::time::{Duration, Instant};
 use serde_json::json;
 use tempfile::TempDir;
 
-use zetl::hooks::ast::{
+use ztl::hooks::ast::{
     Block, Document, DocumentKind, Inline, Paragraph, Position, Text, AST_VERSION,
 };
-use zetl::hooks::persistent::{HookMessage, PersistentHook, ProtocolError, DEFAULT_SHUTDOWN_GRACE};
-use zetl::hooks::pipeline::Stage;
+use ztl::hooks::persistent::{HookMessage, PersistentHook, ProtocolError, DEFAULT_SHUTDOWN_GRACE};
+use ztl::hooks::pipeline::Stage;
 
 fn python3_available() -> bool {
     Command::new("python3")
@@ -81,7 +81,7 @@ where
 /// Round-trip-fidelity hook: echoes the AST payload back unchanged.
 const ECHO_AST_BODY: &str = r#"
 import json, sys
-sys.stdout.write('{"zetl_ast":1,"hook":"echo-ast","version":"0.1.0","ready":true}\n')
+sys.stdout.write('{"ztl_ast":1,"hook":"echo-ast","version":"0.1.0","ready":true}\n')
 sys.stdout.flush()
 for line in sys.stdin:
     try:
@@ -249,7 +249,7 @@ fn build_loop_leaves_zero_orphan_processes() {
         "stubborn.py",
         r#"
 import sys, signal, time
-sys.stdout.write('{"zetl_ast":1,"hook":"stubborn","version":"0","ready":true}\n')
+sys.stdout.write('{"ztl_ast":1,"hook":"stubborn","version":"0","ready":true}\n')
 sys.stdout.flush()
 signal.signal(signal.SIGPIPE, signal.SIG_IGN)
 while True:
@@ -285,9 +285,9 @@ while True:
 }
 
 /// REQ-3215 dual-version exposure: a persistent-mode hook should see
-/// both `zetl_version` and `ast_schema_version` as top-level fields in
+/// both `ztl_version` and `ast_schema_version` as top-level fields in
 /// the init payload. The echo-init fixture returns the values it
-/// observed; we assert they match zetl's advertised constants. This is
+/// observed; we assert they match ztl's advertised constants. This is
 /// the wire-level complement to `BuildContext::env_vars` — same promise,
 /// the other delivery surface REQ-3215 names.
 #[test]
@@ -300,7 +300,7 @@ fn init_payload_exposes_both_versions() {
     let tmp = TempDir::new().unwrap();
     let hook_body = r#"
 import json, sys
-sys.stdout.write('{"zetl_ast":1,"hook":"echo-init","version":"0.1.0","ready":true}\n')
+sys.stdout.write('{"ztl_ast":1,"hook":"echo-init","version":"0.1.0","ready":true}\n')
 sys.stdout.flush()
 for line in sys.stdin:
     try:
@@ -314,7 +314,7 @@ for line in sys.stdin:
         resp = {
             "type": "result",
             "payload": {
-                "seen_zetl_version": msg.get("zetl_version"),
+                "seen_ztl_version": msg.get("ztl_version"),
                 "seen_ast_schema_version": msg.get("ast_schema_version"),
             },
         }
@@ -333,7 +333,7 @@ for line in sys.stdin:
     match init {
         HookMessage::Result { payload, .. } => {
             assert_eq!(
-                payload["seen_zetl_version"],
+                payload["seen_ztl_version"],
                 json!(env!("CARGO_PKG_VERSION")),
                 "init payload must carry the binary version"
             );
@@ -344,7 +344,7 @@ for line in sys.stdin:
             );
             // REQ-3215 decouples the two — they are two distinct strings.
             assert_ne!(
-                payload["seen_zetl_version"],
+                payload["seen_ztl_version"],
                 payload["seen_ast_schema_version"]
             );
         }
@@ -367,7 +367,7 @@ fn typed_error_allows_reuse_of_the_hook() {
         "partial.py",
         r#"
 import json, sys
-sys.stdout.write('{"zetl_ast":1,"hook":"partial","version":"0","ready":true}\n')
+sys.stdout.write('{"ztl_ast":1,"hook":"partial","version":"0","ready":true}\n')
 sys.stdout.flush()
 count = 0
 for line in sys.stdin:

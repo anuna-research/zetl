@@ -1,6 +1,6 @@
 //! Ecosystem registry (SPEC-033 REQ-3301 / CON-3301).
 //!
-//! Enumerates the plugin ecosystems this zetl binary knows about — v1
+//! Enumerates the plugin ecosystems this ztl binary knows about — v1
 //! ships three: Pandoc filters, mdBook preprocessors, remark plugins.
 //! The registry is a `const` table: adding an ecosystem is adding an
 //! entry here plus the adapter module (task-adapter-trait wires
@@ -19,7 +19,7 @@
 //!   doesn't declare one explicitly (Pandoc → `transform`, mdBook →
 //!   `pre-parse`, remark → `transform`);
 //! - the cargo feature flag that gates the adapter's compilation, so
-//!   users building a minimal zetl binary can drop whole ecosystems;
+//!   users building a minimal ztl binary can drop whole ecosystems;
 //! - the set of [`Stage`]s this ecosystem's plugins may participate in;
 //! - the set of [`AstType`]s this ecosystem's adapter translates to and
 //!   from.
@@ -27,7 +27,7 @@
 //! ## Matrix-lint contract (task-eco-registry acceptance)
 //!
 //! Every ecosystem id in [`ECOSYSTEMS`] must have a section in
-//! `tools/zetl-ecosystem-matrix.toml` of the form `[ecosystem.<id>]`.
+//! `tools/ztl-ecosystem-matrix.toml` of the form `[ecosystem.<id>]`.
 //! That gate lives in the integration tests beside this module.
 //! Adding a new ecosystem here without a matrix entry fails the lint;
 //! adding a matrix section for an unknown ecosystem fails too. Plugin
@@ -38,7 +38,7 @@
 use crate::hooks::pipeline::Stage;
 use crate::hooks::translators::AstType;
 
-/// The plugin ecosystems zetl knows about in v1 (SPEC-033 REQ-3301).
+/// The plugin ecosystems ztl knows about in v1 (SPEC-033 REQ-3301).
 ///
 /// Each variant has exactly one corresponding row in [`ECOSYSTEMS`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -97,7 +97,7 @@ impl std::str::FromStr for Ecosystem {
 
 /// Returned when a manifest's `ecosystem = "..."` value isn't in the
 /// registry. Distinct from the adapter's runtime-missing diagnostic
-/// (SPEC-033 REQ-3313) — that one means zetl knows the ecosystem but
+/// (SPEC-033 REQ-3313) — that one means ztl knows the ecosystem but
 /// can't find its binary; this one means the id doesn't resolve at all.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnknownEcosystem(pub String);
@@ -121,7 +121,7 @@ impl std::error::Error for UnknownEcosystem {}
 /// The adapter probes `binary --version` at startup, parses the version,
 /// and compares against `min_version`. A version below minimum or a
 /// missing binary surfaces as a disabled adapter plus an actionable
-/// `zetl ecosystem check` hint — not a build failure.
+/// `ztl ecosystem check` hint — not a build failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RuntimeDep {
     /// Executable looked up on `PATH`.
@@ -142,7 +142,7 @@ pub struct EcosystemEntry {
     /// stored here so `&EcosystemEntry` carries everything callers need
     /// without a back-reference.
     pub id: &'static str,
-    /// Human-readable display name for diagnostics and `zetl ecosystem
+    /// Human-readable display name for diagnostics and `ztl ecosystem
     /// check` output.
     pub name: &'static str,
     /// External runtime the adapter probes at startup.
@@ -165,7 +165,7 @@ pub struct EcosystemEntry {
 
 /// The complete v1 registry (SPEC-033 REQ-3301 / CON-3301).
 ///
-/// Ordering is the canonical display order used by `zetl ecosystem
+/// Ordering is the canonical display order used by `ztl ecosystem
 /// check` and diagnostics: pandoc first, mdBook second, remark third.
 /// Integration tests (TEST-3301) enforce integrity: unique ids,
 /// non-empty supported_stages, non-empty supported_ast_types,
@@ -198,9 +198,9 @@ pub const ECOSYSTEMS: &[EcosystemEntry] = &[
         supported_stages: &[Stage::PreParse],
         // mdBook preprocessors operate on raw Markdown strings inside a
         // `{context, book}` envelope, not on a typed AST. They share
-        // zetl-ext as their boundary shape because the pre-parse stage
+        // ztl-ext as their boundary shape because the pre-parse stage
         // exchange is text, not AST.
-        supported_ast_types: &[AstType::ZetlExt],
+        supported_ast_types: &[AstType::ztlExt],
     },
     EcosystemEntry {
         ecosystem: Ecosystem::Remark,
@@ -222,7 +222,7 @@ pub fn by_id(id: &str) -> Option<&'static EcosystemEntry> {
     ECOSYSTEMS.iter().find(|e| e.id == id)
 }
 
-/// The full registry as a slice for iteration (`zetl ecosystem check`
+/// The full registry as a slice for iteration (`ztl ecosystem check`
 /// and tests walk the list in canonical order).
 pub fn all() -> &'static [EcosystemEntry] {
     ECOSYSTEMS
@@ -370,7 +370,7 @@ mod tests {
 
     #[test]
     fn canonical_ordering_is_pandoc_mdbook_remark() {
-        // The canonical order surfaces in `zetl ecosystem check` and
+        // The canonical order surfaces in `ztl ecosystem check` and
         // diagnostics — lock it in so output stays stable.
         let ids: Vec<&str> = ECOSYSTEMS.iter().map(|e| e.id).collect();
         assert_eq!(ids, vec!["pandoc", "mdbook", "remark"]);

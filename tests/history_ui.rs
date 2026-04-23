@@ -25,9 +25,9 @@ fn write(root: &Path, rel: &str, body: &str) {
 /// the same tag. `build_template_page_history_context` needs both the jj
 /// commit AND the cache entry to return `Some(_)`.
 fn take_snapshot(root: &Path, tag: &str) {
-    let files = zetl::scanner::scan_vault(root, &zetl::scanner::ScanOptions::default()).unwrap();
-    zetl::history::auto_snapshot(root, Some(tag)).unwrap();
-    let cache = zetl::history::cache::HistoricalIndexCache::with_default_capacity();
+    let files = ztl::scanner::scan_vault(root, &ztl::scanner::ScanOptions::default()).unwrap();
+    ztl::history::auto_snapshot(root, Some(tag)).unwrap();
+    let cache = ztl::history::cache::HistoricalIndexCache::with_default_capacity();
     cache.store(root, tag, &files).unwrap();
 }
 
@@ -67,41 +67,41 @@ async fn test_300_304_metadata_strip_and_recent_changes_link() {
     use axum::routing::get;
     use axum::Router;
     use tower::ServiceExt as _;
-    use zetl::scanner::ScanOptions;
-    use zetl::search_index::SearchIndex;
-    use zetl::web::routes::page_handler;
-    use zetl::web::WebState;
+    use ztl::scanner::ScanOptions;
+    use ztl::search_index::SearchIndex;
+    use ztl::web::routes::page_handler;
+    use ztl::web::WebState;
 
     let (tmp, _slug) = setup_two_snapshot_vault();
     let root = tmp.path();
 
-    let data = zetl::web::reindex_with(root, &ScanOptions::default()).unwrap();
+    let data = ztl::web::reindex_with(root, &ScanOptions::default()).unwrap();
     let search_index = SearchIndex::build(root, &data.files).unwrap();
     let state = WebState {
         data: Arc::new(std::sync::RwLock::new(data)),
         vault_root: Arc::new(root.to_path_buf()),
         search_index: Arc::new(search_index),
-        engine: Arc::new(zetl::web::engine::TemplateEngine::new(
+        engine: Arc::new(ztl::web::engine::TemplateEngine::new(
             root, "default", true, false,
         )),
         theme: "default".into(),
         verbose: false,
-        sessions: zetl::web::session::SessionStore::new(),
-        recovery_challenges: Arc::new(zetl::user::recovery::RecoveryChallengeStore::new()),
+        sessions: ztl::web::session::SessionStore::new(),
+        recovery_challenges: Arc::new(ztl::user::recovery::RecoveryChallengeStore::new()),
         mnemonic_shown: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
         bootstrap_used: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        rate_limiters: zetl::web::rate_limit::AuthRateLimiters::new(),
+        rate_limiters: ztl::web::rate_limit::AuthRateLimiters::new(),
         collab: false,
         tls: false,
         trust_proxy: false,
         #[cfg(feature = "reason")]
-        acl_cache: Arc::new(std::sync::Mutex::new(zetl::web::AclCache::new())),
+        acl_cache: Arc::new(std::sync::Mutex::new(ztl::web::AclCache::new())),
         git_commit_lock: None,
-        ws_hub: zetl::web::ws::WsHub::new(),
-        ticket_store: zetl::web::ws::TicketStore::new(),
-        crdt_store: zetl::web::ws::CrdtDocStore::new(Arc::new(root.to_path_buf())),
-        wal_store: Arc::new(zetl::web::wal::WalStore::new(root)),
-        pending_writes: zetl::web::fs_watch::PendingWrites::new(),
+        ws_hub: ztl::web::ws::WsHub::new(),
+        ticket_store: ztl::web::ws::TicketStore::new(),
+        crdt_store: ztl::web::ws::CrdtDocStore::new(Arc::new(root.to_path_buf())),
+        wal_store: Arc::new(ztl::web::wal::WalStore::new(root)),
+        pending_writes: ztl::web::fs_watch::PendingWrites::new(),
         passkey_mgr: None,
         public_dir: None,
         scan_options: ScanOptions::default(),
@@ -155,43 +155,43 @@ async fn test_305_graceful_absence_no_history() {
     use axum::routing::get;
     use axum::Router;
     use tower::ServiceExt as _;
-    use zetl::scanner::ScanOptions;
-    use zetl::search_index::SearchIndex;
-    use zetl::web::routes::page_handler;
-    use zetl::web::WebState;
+    use ztl::scanner::ScanOptions;
+    use ztl::search_index::SearchIndex;
+    use ztl::web::routes::page_handler;
+    use ztl::web::WebState;
 
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();
     write(root, "note-a.md", "# A\n");
     // No snapshot taken → page.history is null.
 
-    let data = zetl::web::reindex_with(root, &ScanOptions::default()).unwrap();
+    let data = ztl::web::reindex_with(root, &ScanOptions::default()).unwrap();
     let search_index = SearchIndex::build(root, &data.files).unwrap();
     let state = WebState {
         data: Arc::new(std::sync::RwLock::new(data)),
         vault_root: Arc::new(root.to_path_buf()),
         search_index: Arc::new(search_index),
-        engine: Arc::new(zetl::web::engine::TemplateEngine::new(
+        engine: Arc::new(ztl::web::engine::TemplateEngine::new(
             root, "default", true, false,
         )),
         theme: "default".into(),
         verbose: false,
-        sessions: zetl::web::session::SessionStore::new(),
-        recovery_challenges: Arc::new(zetl::user::recovery::RecoveryChallengeStore::new()),
+        sessions: ztl::web::session::SessionStore::new(),
+        recovery_challenges: Arc::new(ztl::user::recovery::RecoveryChallengeStore::new()),
         mnemonic_shown: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
         bootstrap_used: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        rate_limiters: zetl::web::rate_limit::AuthRateLimiters::new(),
+        rate_limiters: ztl::web::rate_limit::AuthRateLimiters::new(),
         collab: false,
         tls: false,
         trust_proxy: false,
         #[cfg(feature = "reason")]
-        acl_cache: Arc::new(std::sync::Mutex::new(zetl::web::AclCache::new())),
+        acl_cache: Arc::new(std::sync::Mutex::new(ztl::web::AclCache::new())),
         git_commit_lock: None,
-        ws_hub: zetl::web::ws::WsHub::new(),
-        ticket_store: zetl::web::ws::TicketStore::new(),
-        crdt_store: zetl::web::ws::CrdtDocStore::new(Arc::new(root.to_path_buf())),
-        wal_store: Arc::new(zetl::web::wal::WalStore::new(root)),
-        pending_writes: zetl::web::fs_watch::PendingWrites::new(),
+        ws_hub: ztl::web::ws::WsHub::new(),
+        ticket_store: ztl::web::ws::TicketStore::new(),
+        crdt_store: ztl::web::ws::CrdtDocStore::new(Arc::new(root.to_path_buf())),
+        wal_store: Arc::new(ztl::web::wal::WalStore::new(root)),
+        pending_writes: ztl::web::fs_watch::PendingWrites::new(),
         passkey_mgr: None,
         public_dir: None,
         scan_options: ScanOptions::default(),
@@ -221,7 +221,7 @@ async fn test_305_graceful_absence_no_history() {
     );
 }
 
-/// TEST-302: `zetl build` writes `pages/<slug>/_history.html` for each
+/// TEST-302: `ztl build` writes `pages/<slug>/_history.html` for each
 /// page with history, AND the root `_history.html` for the vault view.
 #[test]
 fn test_302_303_build_emits_history_html() {
@@ -230,8 +230,8 @@ fn test_302_303_build_emits_history_html() {
     let out = tmp.path().join("dist");
     fs::create_dir_all(&out).unwrap();
 
-    let data = zetl::web::reindex_with(root, &zetl::scanner::ScanOptions::default()).unwrap();
-    zetl::web::build::build_static(
+    let data = ztl::web::reindex_with(root, &ztl::scanner::ScanOptions::default()).unwrap();
+    ztl::web::build::build_static(
         &data,
         root,
         out.to_str().unwrap(),
@@ -284,40 +284,40 @@ async fn test_serve_vault_history_populates_body_with_snapshots() {
     use axum::routing::get;
     use axum::Router;
     use tower::ServiceExt as _;
-    use zetl::scanner::ScanOptions;
-    use zetl::search_index::SearchIndex;
-    use zetl::web::routes::page_handler;
-    use zetl::web::WebState;
+    use ztl::scanner::ScanOptions;
+    use ztl::search_index::SearchIndex;
+    use ztl::web::routes::page_handler;
+    use ztl::web::WebState;
 
     let (tmp, _slug) = setup_two_snapshot_vault();
     let root = tmp.path();
-    let data = zetl::web::reindex_with(root, &ScanOptions::default()).unwrap();
+    let data = ztl::web::reindex_with(root, &ScanOptions::default()).unwrap();
     let search_index = SearchIndex::build(root, &data.files).unwrap();
     let state = WebState {
         data: Arc::new(std::sync::RwLock::new(data)),
         vault_root: Arc::new(root.to_path_buf()),
         search_index: Arc::new(search_index),
-        engine: Arc::new(zetl::web::engine::TemplateEngine::new(
+        engine: Arc::new(ztl::web::engine::TemplateEngine::new(
             root, "default", true, false,
         )),
         theme: "default".into(),
         verbose: false,
-        sessions: zetl::web::session::SessionStore::new(),
-        recovery_challenges: Arc::new(zetl::user::recovery::RecoveryChallengeStore::new()),
+        sessions: ztl::web::session::SessionStore::new(),
+        recovery_challenges: Arc::new(ztl::user::recovery::RecoveryChallengeStore::new()),
         mnemonic_shown: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
         bootstrap_used: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        rate_limiters: zetl::web::rate_limit::AuthRateLimiters::new(),
+        rate_limiters: ztl::web::rate_limit::AuthRateLimiters::new(),
         collab: false,
         tls: false,
         trust_proxy: false,
         #[cfg(feature = "reason")]
-        acl_cache: Arc::new(std::sync::Mutex::new(zetl::web::AclCache::new())),
+        acl_cache: Arc::new(std::sync::Mutex::new(ztl::web::AclCache::new())),
         git_commit_lock: None,
-        ws_hub: zetl::web::ws::WsHub::new(),
-        ticket_store: zetl::web::ws::TicketStore::new(),
-        crdt_store: zetl::web::ws::CrdtDocStore::new(Arc::new(root.to_path_buf())),
-        wal_store: Arc::new(zetl::web::wal::WalStore::new(root)),
-        pending_writes: zetl::web::fs_watch::PendingWrites::new(),
+        ws_hub: ztl::web::ws::WsHub::new(),
+        ticket_store: ztl::web::ws::TicketStore::new(),
+        crdt_store: ztl::web::ws::CrdtDocStore::new(Arc::new(root.to_path_buf())),
+        wal_store: Arc::new(ztl::web::wal::WalStore::new(root)),
+        pending_writes: ztl::web::fs_watch::PendingWrites::new(),
         passkey_mgr: None,
         public_dir: None,
         scan_options: ScanOptions::default(),
@@ -357,20 +357,20 @@ async fn test_serve_vault_history_populates_body_with_snapshots() {
 /// across repeated calls — required for reproducible static builds.
 #[test]
 fn test_build_recent_changes_deterministic() {
-    use zetl::history::jj_backend::VcsBackend as _;
+    use ztl::history::jj_backend::VcsBackend as _;
 
     let (tmp, _) = setup_two_snapshot_vault();
     let root = tmp.path();
-    let backend = zetl::history::open_history(root).unwrap();
+    let backend = ztl::history::open_history(root).unwrap();
     let snapshots = backend.list_changes(10_000).unwrap();
 
-    let a = zetl::history::core::build_recent_changes(&snapshots, root, 50).unwrap();
-    let b = zetl::history::core::build_recent_changes(&snapshots, root, 50).unwrap();
-    let c = zetl::history::core::build_recent_changes(&snapshots, root, 50).unwrap();
+    let a = ztl::history::core::build_recent_changes(&snapshots, root, 50).unwrap();
+    let b = ztl::history::core::build_recent_changes(&snapshots, root, 50).unwrap();
+    let c = ztl::history::core::build_recent_changes(&snapshots, root, 50).unwrap();
 
     // BTreeMap iteration makes the order stable; assert all three runs
     // produce identical sequences (page_title, change_kind, changed_at).
-    let tuples = |v: &[zetl::history::core::RecentChangeEntry]| {
+    let tuples = |v: &[ztl::history::core::RecentChangeEntry]| {
         v.iter()
             .map(|e| {
                 (
@@ -391,23 +391,23 @@ fn test_build_recent_changes_deterministic() {
 /// never mid-snapshot between Added/Modified and Removed.
 #[test]
 fn test_build_recent_changes_respects_limit_without_midsnap_cutoff() {
-    use zetl::history::jj_backend::VcsBackend as _;
+    use ztl::history::jj_backend::VcsBackend as _;
 
     let (tmp, _) = setup_two_snapshot_vault();
     let root = tmp.path();
-    let backend = zetl::history::open_history(root).unwrap();
+    let backend = ztl::history::open_history(root).unwrap();
     let snapshots = backend.list_changes(10_000).unwrap();
 
     // Known: setup_two_snapshot_vault produces ≥2 changes between the two
     // cache-enabled snapshots (note-a modified + note-b added).
-    let all = zetl::history::core::build_recent_changes(&snapshots, root, 50).unwrap();
+    let all = ztl::history::core::build_recent_changes(&snapshots, root, 50).unwrap();
     assert!(
         all.len() >= 2,
         "expected ≥2 candidate changes; got {}",
         all.len()
     );
 
-    let limited = zetl::history::core::build_recent_changes(&snapshots, root, 1).unwrap();
+    let limited = ztl::history::core::build_recent_changes(&snapshots, root, 1).unwrap();
     assert!(
         limited.len() <= 1,
         "limit=1 must cap output at 1; got {}",
@@ -424,7 +424,7 @@ fn test_307_theme_override_falls_back_to_bundled_vault_history() {
     let root = tmp.path();
 
     // Custom theme dir with ONLY page.html overridden.
-    let theme_dir = root.join(".zetl/themes/custom");
+    let theme_dir = root.join(".ztl/themes/custom");
     fs::create_dir_all(&theme_dir).unwrap();
     fs::write(
         theme_dir.join("theme.toml"),
@@ -440,8 +440,8 @@ fn test_307_theme_override_falls_back_to_bundled_vault_history() {
 
     let out = tmp.path().join("dist-custom");
     fs::create_dir_all(&out).unwrap();
-    let data = zetl::web::reindex_with(root, &zetl::scanner::ScanOptions::default()).unwrap();
-    zetl::web::build::build_static(
+    let data = ztl::web::reindex_with(root, &ztl::scanner::ScanOptions::default()).unwrap();
+    ztl::web::build::build_static(
         &data,
         root,
         out.to_str().unwrap(),
@@ -484,8 +484,8 @@ fn test_nfr_301_vault_history_semantic_markup() {
     let out = tmp.path().join("dist");
     fs::create_dir_all(&out).unwrap();
 
-    let data = zetl::web::reindex_with(root, &zetl::scanner::ScanOptions::default()).unwrap();
-    zetl::web::build::build_static(
+    let data = ztl::web::reindex_with(root, &ztl::scanner::ScanOptions::default()).unwrap();
+    ztl::web::build::build_static(
         &data,
         root,
         out.to_str().unwrap(),
@@ -535,7 +535,7 @@ fn test_humanise_days_filter_registered_in_template_env() {
     // that DOES use it.
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();
-    let theme_dir = root.join(".zetl/themes/probe");
+    let theme_dir = root.join(".ztl/themes/probe");
     fs::create_dir_all(&theme_dir).unwrap();
     fs::write(
         theme_dir.join("theme.toml"),
@@ -561,8 +561,8 @@ fn test_humanise_days_filter_registered_in_template_env() {
     fs::write(root.join("x.md"), "# X").unwrap();
     let out = tmp.path().join("dist");
     fs::create_dir_all(&out).unwrap();
-    let data = zetl::web::reindex_with(root, &zetl::scanner::ScanOptions::default()).unwrap();
-    zetl::web::build::build_static(
+    let data = ztl::web::reindex_with(root, &ztl::scanner::ScanOptions::default()).unwrap();
+    ztl::web::build::build_static(
         &data,
         root,
         out.to_str().unwrap(),
@@ -616,10 +616,10 @@ fn test_nfr_300_build_under_smoke_budget() {
 
     let out = tmp.path().join("dist");
     fs::create_dir_all(&out).unwrap();
-    let data = zetl::web::reindex_with(root, &zetl::scanner::ScanOptions::default()).unwrap();
+    let data = ztl::web::reindex_with(root, &ztl::scanner::ScanOptions::default()).unwrap();
 
     let start = std::time::Instant::now();
-    zetl::web::build::build_static(
+    ztl::web::build::build_static(
         &data,
         root,
         out.to_str().unwrap(),
@@ -653,8 +653,8 @@ fn test_303_build_vault_history_graceful_when_no_snapshots() {
     let out = tmp.path().join("dist");
     fs::create_dir_all(&out).unwrap();
 
-    let data = zetl::web::reindex_with(root, &zetl::scanner::ScanOptions::default()).unwrap();
-    zetl::web::build::build_static(
+    let data = ztl::web::reindex_with(root, &ztl::scanner::ScanOptions::default()).unwrap();
+    ztl::web::build::build_static(
         &data,
         root,
         out.to_str().unwrap(),

@@ -32,7 +32,7 @@ const COPY: Record<ErrorKind, string> = {
   "lock-unavailable":
     "Your browser does not support the concurrency lock this shim requires (navigator.locks). Use a recent Chromium- or Firefox-based browser.",
   "host-missing":
-    "Capability-mode mount point <main data-zetl-capability> is missing from the HTML shell.",
+    "Capability-mode mount point <main data-ztl-capability> is missing from the HTML shell.",
   "internal":
     "An internal error occurred while rendering this page. Reload; if the problem persists, contact your wiki operator.",
 };
@@ -52,7 +52,7 @@ export function helpHrefFor(kind: ErrorKind): string {
   return `${READER_DOC_BASE}#err-${kind}`;
 }
 
-/// Render a user-visible error page and stamp a `data-zetl-error=<kind>`
+/// Render a user-visible error page and stamp a `data-ztl-error=<kind>`
 /// attribute the Playwright suite keys off for assertions.
 export function renderError(kind: ErrorKind, detail?: string): void {
   const body = document.body ?? document.documentElement;
@@ -62,20 +62,20 @@ export function renderError(kind: ErrorKind, detail?: string): void {
   // installing only freshly-constructed DOM nodes below.
   body.replaceChildren();
   const host =
-    document.querySelector("main[data-zetl-capability]") ??
+    document.querySelector("main[data-ztl-capability]") ??
     document.createElement("main");
-  host.setAttribute("data-zetl-capability", "");
-  host.setAttribute("data-zetl-error", kind);
+  host.setAttribute("data-ztl-capability", "");
+  host.setAttribute("data-ztl-error", kind);
   host.textContent = "";
 
   const p = document.createElement("p");
-  p.setAttribute("data-zetl-error-summary", "");
+  p.setAttribute("data-ztl-error-summary", "");
   p.textContent = COPY[kind];
   host.appendChild(p);
 
   if (detail !== undefined && detail.length > 0) {
     const small = document.createElement("p");
-    small.setAttribute("data-zetl-error-detail", "");
+    small.setAttribute("data-ztl-error-detail", "");
     small.style.opacity = "0.7";
     small.textContent = detail;
     host.appendChild(small);
@@ -85,9 +85,9 @@ export function renderError(kind: ErrorKind, detail?: string): void {
   // troubleshooting doc. The summary element above is kept textContent-
   // only so REQ-3427's byte-stable copy assertion stays green; this
   // link is a separate sibling the Playwright suite can query by the
-  // `data-zetl-error-help` attribute without affecting the summary.
+  // `data-ztl-error-help` attribute without affecting the summary.
   const help = document.createElement("p");
-  help.setAttribute("data-zetl-error-help", "");
+  help.setAttribute("data-ztl-error-help", "");
   const a = document.createElement("a");
   a.setAttribute("href", helpHrefFor(kind));
   // Belt-and-braces: the enclosing shell already sets a document-level

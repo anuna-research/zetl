@@ -4,8 +4,8 @@
 //! The unit tests beside the module in `src/parsers/mod.rs` cover
 //! individual function contracts (config parsing, resolver precedence,
 //! registry lookup); this file is the public-facing gate that exercises
-//! the full `zetl::parsers` surface as downstream code would — loading
-//! `.zetl/config.toml` from a real tempdir, extracting frontmatter, and
+//! the full `ztl::parsers` surface as downstream code would — loading
+//! `.ztl/config.toml` from a real tempdir, extracting frontmatter, and
 //! walking the TEST-3306 matrix end-to-end.
 
 use std::path::Path;
@@ -13,15 +13,15 @@ use std::path::Path;
 use serde_json::json;
 use tempfile::TempDir;
 
-use zetl::hooks::ast::Frontmatter;
-use zetl::parsers::{select_parser_name, ParseConfig, ParseError, ParserRegistry, DEFAULT_PARSER};
+use ztl::hooks::ast::Frontmatter;
+use ztl::parsers::{select_parser_name, ParseConfig, ParseError, ParserRegistry, DEFAULT_PARSER};
 
-/// Build a tempdir-backed vault with an optional `.zetl/config.toml`.
+/// Build a tempdir-backed vault with an optional `.ztl/config.toml`.
 fn make_vault(config_toml: Option<&str>) -> TempDir {
     let tmp = TempDir::new().expect("tempdir");
     if let Some(body) = config_toml {
-        let dir = tmp.path().join(".zetl");
-        std::fs::create_dir_all(&dir).expect("mkdir .zetl");
+        let dir = tmp.path().join(".ztl");
+        std::fs::create_dir_all(&dir).expect("mkdir .ztl");
         std::fs::write(dir.join("config.toml"), body).expect("write config.toml");
     }
     tmp
@@ -162,7 +162,7 @@ fn selecting_commonmark_produces_a_valid_document() {
     let doc = parser
         .parse("---\ntitle: Hello\n---\n\n# Greetings\n\nHi there.\n")
         .unwrap();
-    assert_eq!(doc.ast_version, zetl::hooks::ast::AST_VERSION);
+    assert_eq!(doc.ast_version, ztl::hooks::ast::AST_VERSION);
     assert!(doc.frontmatter.is_some(), "frontmatter should be parsed");
     assert!(!doc.children.is_empty());
 }
@@ -170,7 +170,7 @@ fn selecting_commonmark_produces_a_valid_document() {
 #[test]
 fn selecting_pandoc_stub_surfaces_runtime_unavailable_hint() {
     // The pandoc adapter isn't wired yet, so selecting pandoc must
-    // return a typed RuntimeUnavailable error pointing at `zetl
+    // return a typed RuntimeUnavailable error pointing at `ztl
     // ecosystem check` — per REQ-3306 the registry slot exists so
     // selection resolves, but invocation surfaces the actionable
     // diagnostic until task-pandoc-adapter lands.
@@ -196,7 +196,7 @@ default = "pandoc"
     match err {
         ParseError::RuntimeUnavailable { parser, hint } => {
             assert_eq!(parser, "pandoc");
-            assert!(hint.contains("zetl ecosystem check"));
+            assert!(hint.contains("ztl ecosystem check"));
         }
         other => panic!("expected RuntimeUnavailable, got {other:?}"),
     }
@@ -205,7 +205,7 @@ default = "pandoc"
 // ── Config loading edges ────────────────────────────────────────────────────
 
 #[test]
-fn vault_without_zetl_dir_yields_empty_config() {
+fn vault_without_ztl_dir_yields_empty_config() {
     let vault = make_vault(None);
     let cfg = ParseConfig::load_from_vault(vault.path()).unwrap();
     assert!(cfg.default.is_none());

@@ -2,7 +2,7 @@
 //!
 //! For each built page we render a 1200×630 PNG containing the page title
 //! and vault name. A user-supplied background PNG (dropped at
-//! `.zetl/static/og-background.png` in the vault, or at the equivalent path
+//! `.ztl/static/og-background.png` in the vault, or at the equivalent path
 //! inside a custom theme) is composited underneath when present; otherwise
 //! a flat dark background is used.
 //!
@@ -49,7 +49,7 @@ pub fn render_og_png(
     // Layout:
     //   subtitle (vault name) at 48px, positioned at y=360
     //   title at 88px bold, wrapped, starting at y=410
-    //   a small "zetl" wordmark at bottom-right
+    //   a small "ztl" wordmark at bottom-right
     let margin_x: i32 = 72;
     let subtitle_scale = PxScale::from(42.0);
     let title_scale = PxScale::from(88.0);
@@ -93,7 +93,7 @@ pub fn render_og_png(
     }
 
     // Wordmark bottom-right.
-    let wordmark = "zetl";
+    let wordmark = "ztl";
     let wordmark_width = text_width(wordmark, &font_bold, wordmark_scale);
     draw_text_mut(
         &mut img,
@@ -114,11 +114,11 @@ pub fn render_og_png(
 }
 
 /// Load the user-supplied background from disk if present. Searches, in
-/// order: `<theme_static>/og-background.png`, `<vault>/.zetl/static/og-background.png`.
+/// order: `<theme_static>/og-background.png`, `<vault>/.ztl/static/og-background.png`.
 pub fn load_background(vault_root: &Path, theme_static_dir: Option<&Path>) -> Option<RgbaImage> {
     let candidates = [
         theme_static_dir.map(|d| d.join("og-background.png")),
-        Some(vault_root.join(".zetl/static/og-background.png")),
+        Some(vault_root.join(".ztl/static/og-background.png")),
     ];
     for path in candidates.into_iter().flatten() {
         if path.is_file() {

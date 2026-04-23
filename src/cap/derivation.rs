@@ -36,14 +36,14 @@ pub const PATH_CAP_MAX_BITS: u32 = 128;
 /// Fixed HKDF `info` prefix for path-cap derivation. CON-3401 pins the
 /// exact string, including the version marker; any change to this
 /// constant is a wire-format break.
-pub const PATH_CAP_INFO_PREFIX: &str = "zetl/path-cap/v1/";
+pub const PATH_CAP_INFO_PREFIX: &str = "ztl/path-cap/v1/";
 
 /// Fixed HKDF `info` for the TOFU wrap-key (CON-3409).
-pub const TOFU_WRAP_INFO: &[u8] = b"zetl/tofu-wrap/v1";
+pub const TOFU_WRAP_INFO: &[u8] = b"ztl/tofu-wrap/v1";
 
 /// Fixed HKDF `info` for the hardened-mode X25519 identity seed
 /// (Tier-2 review S1-03 recommendation).
-pub const HARDENED_IDENTITY_INFO: &[u8] = b"zetl/hardened-identity/v1";
+pub const HARDENED_IDENTITY_INFO: &[u8] = b"ztl/hardened-identity/v1";
 
 /// Errors returned by the derivation routines. The enum is
 /// intentionally small: the only way to misuse a pure HKDF routine is
@@ -68,7 +68,7 @@ pub enum DerivationError {
 
 /// CON-3401 path-cap derivation.
 ///
-/// `cohort_secret` is `ZETL_CAP_SECRET` (48 bytes per REQ-3419, but the
+/// `cohort_secret` is `ztl_CAP_SECRET` (48 bytes per REQ-3419, but the
 /// derivation does not care about length — HKDF-Extract absorbs any
 /// IKM). `cohort_salt_stable` is the cohort's stable path-salt; it is
 /// held separate from the content-key salt so rotating content keys
@@ -93,7 +93,7 @@ pub fn derive_path_cap(
     }
     let byte_len = (path_cap_bits / 8) as usize;
 
-    // Build the info string: "zetl/path-cap/v1/" || cohort_id || "/" || slug
+    // Build the info string: "ztl/path-cap/v1/" || cohort_id || "/" || slug
     // matches CON-3401 exactly. Callers that pass slashes or other
     // delimiters in cohort_id/slug are responsible for escaping upstream;
     // the validator in `cap::grants::validation` restricts cohort_id to
@@ -114,7 +114,7 @@ pub fn derive_path_cap(
 }
 
 /// CON-3409 TOFU wrap-key derivation: `HKDF-SHA256(prf_output, "",
-/// "zetl/tofu-wrap/v1", 32)`.
+/// "ztl/tofu-wrap/v1", 32)`.
 ///
 /// The salt is empty (HKDF treats the empty salt as `[0u8; 32]`) and
 /// the output length is fixed at 32 bytes so the caller can feed the
@@ -131,7 +131,7 @@ pub fn derive_tofu_wrap_key(prf_output: &[u8]) -> [u8; 32] {
 }
 
 /// Hardened-mode X25519 identity-seed derivation, per Tier-2 review
-/// S1-03: `HKDF-SHA256(prf_output, "", "zetl/hardened-identity/v1",
+/// S1-03: `HKDF-SHA256(prf_output, "", "ztl/hardened-identity/v1",
 /// 32)`.
 ///
 /// The result is a 32-byte seed that becomes an X25519 private key

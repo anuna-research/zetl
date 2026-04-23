@@ -1,11 +1,11 @@
-;; TEST-user-testing.spl — Comprehensive user testing of zetl
+;; TEST-user-testing.spl — Comprehensive user testing of ztl
 ;; Following USDD Agent Protocol for synthetic user testing
 
 (meta plan
   (id "TEST-USER")
-  (title "Comprehensive User Testing of zetl")
+  (title "Comprehensive User Testing of ztl")
   (status "active")
-  (description "Systematic user testing of all zetl features against zetl-vault, documenting bugs, improvements, and findings per USDD protocol"))
+  (description "Systematic user testing of all ztl features against ztl-vault, documenting bugs, improvements, and findings per USDD protocol"))
 
 ;; ── Agents ──────────────────────────────────────────────────────
 (given agent-claude-available)
@@ -70,7 +70,7 @@
 ;; ── T5: View TUI ────────────────────────────────────────────────
 (given task-T5)
 (meta task-T5
-  (description "Test zetl view: page rendering, context cards, navigation, help overlay")
+  (description "Test ztl view: page rendering, context cards, navigation, help overlay")
   (acceptance "View TUI tested for rendering correctness"))
 
 (normally r-ready-T5
@@ -84,7 +84,7 @@
 ;; ── T6: TUI dashboard ───────────────────────────────────────────
 (given task-T6)
 (meta task-T6
-  (description "Test zetl tui: tabs, navigation, search, diagnostics, page view")
+  (description "Test ztl tui: tabs, navigation, search, diagnostics, page view")
   (acceptance "TUI dashboard tested across all tabs"))
 
 (normally r-ready-T6
@@ -98,7 +98,7 @@
 ;; ── T7: Web serve and build ─────────────────────────────────────
 (given task-T7)
 (meta task-T7
-  (description "Test zetl serve and build: web UI, API endpoints, themes, static export")
+  (description "Test ztl serve and build: web UI, API endpoints, themes, static export")
   (acceptance "Web serve and build tested, findings documented"))
 
 (normally r-ready-T7

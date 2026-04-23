@@ -37,56 +37,56 @@ related:
 
 ## 1. Overview
 
-`zetl` already ships a lifecycle hook system — executable scripts at `pre-build`, `post-build`, `post-index`, `on-save`, and others, receiving JSON context on stdin. What it does *not* have is a per-page, per-render extension surface: a way for users (or first-party canonical extensions shipped with the default theme) to transform a page's content during rendering, not after it. This gap is what users ask for when they ask for "Obsidian plugin support" — the *published output* of post-processor plugins like Callouts, Tasks, and Admonition.
+`ztl` already ships a lifecycle hook system — executable scripts at `pre-build`, `post-build`, `post-index`, `on-save`, and others, receiving JSON context on stdin. What it does *not* have is a per-page, per-render extension surface: a way for users (or first-party canonical extensions shipped with the default theme) to transform a page's content during rendering, not after it. This gap is what users ask for when they ask for "Obsidian plugin support" — the *published output* of post-processor plugins like Callouts, Tasks, and Admonition.
 
 SPEC-031 explored running actual Obsidian plugins under an embedded JavaScript runtime. A top-50 community plugin scan (2026-04-19) showed that bet was worse than it looked: zero top-50 plugins are pure `MarkdownPostProcessor` (the only class a bounded v1 shim could render), 24% are hybrids whose post-processor is entangled with editor extensions, and 76% are unusable in any shim. The engineering cost (3–6 months, QuickJS supply chain, shim surface chasing a moving API) did not justify the coverage.
 
-This spec takes the opposite direction: zetl defines its own render-pipeline extension contract, keeps Obsidian compatibility as a matter of *visual parity for canonical patterns* rather than *code execution*, and ships the patterns users actually want (Callouts, Tasks, Admonition) as first-party extensions against that contract.
+This spec takes the opposite direction: ztl defines its own render-pipeline extension contract, keeps Obsidian compatibility as a matter of *visual parity for canonical patterns* rather than *code execution*, and ships the patterns users actually want (Callouts, Tasks, Admonition) as first-party extensions against that contract.
 
 The contract has three stages, each with a different data shape reflecting the stage's responsibility:
 
 | Stage         | Data in            | Data out           | Typical use                                          |
 | ------------- | ------------------ | ------------------ | ---------------------------------------------------- |
 | `pre-parse`   | raw Markdown text  | raw Markdown text  | Templater-style preprocessing, includes, variables   |
-| `transform`   | zetl-AST JSON      | zetl-AST JSON      | Callouts, Tasks, Admonition, Dataview-subset         |
+| `transform`   | ztl-AST JSON      | ztl-AST JSON      | Callouts, Tasks, Admonition, Dataview-subset         |
 | `post-render` | HTML fragment      | HTML fragment      | DOM injection, analytics, external-CSS-class fixups  |
 
-Each stage supports composition via directory-of-drop-ins, theme-then-vault precedence, and local failure scoping. **File selection is first-class**: every hook declares a selector (path globs, frontmatter predicates, cheap content probes) that zetl evaluates before invoking the hook, so extensions skip the pages they don't care about without paying serialisation cost or process-spawn overhead.
+Each stage supports composition via directory-of-drop-ins, theme-then-vault precedence, and local failure scoping. **File selection is first-class**: every hook declares a selector (path globs, frontmatter predicates, cheap content probes) that ztl evaluates before invoking the hook, so extensions skip the pages they don't care about without paying serialisation cost or process-spawn overhead.
 
 ### 1.1 Motivation
 
-- **The Obsidian-migrant user (SPEC-031 Profile 2.1) still needs answering.** They want Callouts, Tasks, Admonition rendering when they publish their vault with `zetl build`. The scan showed those patterns are small, tractable, and author-able in under 200 lines each.
+- **The Obsidian-migrant user (SPEC-031 Profile 2.1) still needs answering.** They want Callouts, Tasks, Admonition rendering when they publish their vault with `ztl build`. The scan showed those patterns are small, tractable, and author-able in under 200 lines each.
 - **Operate on the right abstraction.** Text hooks (SPEC-031 ADR-3102 alternative) get fooled by code blocks and quoted prose. HTML hooks fight the renderer. AST hooks match the *structure* we mean — BlockQuote-whose-first-paragraph-starts-with-`[!note]` — making extensions reliable across renderer changes.
 - **First-class selection = real performance.** In a 2,000-page vault with 10 enabled extensions, running every extension on every page is 20,000 invocations. Most of those are pages the extension doesn't touch. A declared selector evaluated cheaply (path match → frontmatter probe → content substring probe) reduces that to the actual working set, often 100× smaller.
 - **Selection is also semantics.** "This folder runs the Tasks extension, that folder doesn't" is a real governance boundary in team vaults. Per-file frontmatter opt-out (`extensions.callouts: false`) is how users escape-hatch individual pages. Both are user-visible contracts, not implementation details.
 - **Protocol stability, not shim stability.** Defining our own versioned AST JSON schema couples us to CommonMark (stable) rather than Obsidian's API (moving). Maintenance cost is in a schema we control.
-- **Out-of-process is ergonomic for hook authors.** Python, Node, Ruby, Go, Rust — any language with a JSON library and an HTTP-stream-of-consciousness mental model can author a hook. No cargo feature flag, no QuickJS upgrade risk. First-party helper libraries (`zetl-ast-py`, `zetl-ast-js`) close most of the ergonomic gap with in-process APIs.
+- **Out-of-process is ergonomic for hook authors.** Python, Node, Ruby, Go, Rust — any language with a JSON library and an HTTP-stream-of-consciousness mental model can author a hook. No cargo feature flag, no QuickJS upgrade risk. First-party helper libraries (`ztl-ast-py`, `ztl-ast-js`) close most of the ergonomic gap with in-process APIs.
 
 ### 1.2 Design Principles
 
 1. **Operate on the right stage.** Text for preprocessing (where the AST doesn't exist yet), AST for structural transforms (the abstraction we mean), HTML for DOM-level concerns (analytics, external-tool classnames). Refuse to collapse them into one.
 2. **Selection is first-class.** Every hook has a selector. Zero-selector (runs on everything) is explicit and warned, not the default. Selectors are declarative, file-based, and evaluable without invoking the hook.
-3. **Declarative over imperative.** Manifests describe stage, selector, mode, budget. Zetl orchestrates; hooks transform.
+3. **Declarative over imperative.** Manifests describe stage, selector, mode, budget. ztl orchestrates; hooks transform.
 4. **Versioned contracts, not best-effort APIs.** The AST JSON schema has a semver. Helper libraries pin a major. Breaking changes require a major bump and a migration path.
-5. **Out-of-process by default.** Hook failures, OOM, and crashes cannot damage `zetl`'s process. The ergonomic gap is closed by helper libraries, not by in-process execution.
+5. **Out-of-process by default.** Hook failures, OOM, and crashes cannot damage `ztl`'s process. The ergonomic gap is closed by helper libraries, not by in-process execution.
 6. **Composition by piping, not by coordination.** Each hook is a filter. Failures are scoped to one hook; the chain continues. No hook-to-hook communication primitives in v1.
 7. **Theme-shipped extensions are first-class.** The default theme ships canonical extensions (Callouts, Tasks, Admonition) in `themes/default/hooks/`. Users override by filename collision or disable by empty file. Same mechanism as existing theme-bundled hooks.
-8. **Build/serve parity.** A page rendered under `zetl build` at time T with a fixed extension set produces the same HTML as `zetl serve` rendering that same page at time T with the same extension set. Extensions must be deterministic; the render pipeline is.
-9. **Obsidian compatibility is a by-product, not a goal.** The three stages are designed for zetl's own extension needs. That the same architecture happens to re-implement the Obsidian patterns users want is confirmation, not constraint.
+8. **Build/serve parity.** A page rendered under `ztl build` at time T with a fixed extension set produces the same HTML as `ztl serve` rendering that same page at time T with the same extension set. Extensions must be deterministic; the render pipeline is.
+9. **Obsidian compatibility is a by-product, not a goal.** The three stages are designed for ztl's own extension needs. That the same architecture happens to re-implement the Obsidian patterns users want is confirmation, not constraint.
 
 ### 1.3 Scope
 
 **In scope:**
 
 - Three new hook stages: `pre-parse`, `transform`, `post-render`, each with one-shot and persistent execution modes.
-- A zetl-AST JSON schema: CommonMark subset + wikilink/embed/SPL-block extensions + frontmatter + source positions. Versioned.
-- Helper libraries for Python (`zetl-ast-py`) and JavaScript/TypeScript (`zetl-ast-js`), published alongside the zetl release, pinned to the AST schema major.
+- A ztl-AST JSON schema: CommonMark subset + wikilink/embed/SPL-block extensions + frontmatter + source positions. Versioned.
+- Helper libraries for Python (`ztl-ast-py`) and JavaScript/TypeScript (`ztl-ast-js`), published alongside the ztl release, pinned to the AST schema major.
 - A hook manifest format (`<hook-path>.toml`) declaring stage, selector, mode, timeout, memory limit.
 - Selector DSL: path globs (include/exclude), frontmatter predicates (dotted-path plus operator), content probes (substring or regex on raw text), with a defined precedence for cheap-to-expensive evaluation.
 - Composition: `.d/` directory discovery, filename-sorted piping, theme-then-vault precedence, user-overrides-theme by filename collision.
 - Persistent-mode line-delimited JSON protocol (spec'd in CON-3201).
-- Subcommand `zetl hook dry-run <stage>/<name> [--vault PATH]` — evaluates the selector, prints matched pages, does not invoke the hook. For authoring iteration.
-- Subcommand `zetl hook coverage [--vault PATH] [--json]` — reports, for the last build, which hooks matched which pages, average latency, failure counts.
+- Subcommand `ztl hook dry-run <stage>/<name> [--vault PATH]` — evaluates the selector, prints matched pages, does not invoke the hook. For authoring iteration.
+- Subcommand `ztl hook coverage [--vault PATH] [--json]` — reports, for the last build, which hooks matched which pages, average latency, failure counts.
 - Failure semantics: local to one hook, chain continues with previous hook's output.
 - Three first-party canonical extensions shipped with the default theme: `callouts`, `tasks`, `admonition`. Each has a golden-HTML test and a published selector.
 - Documentation: new README section, theme-authoring updates, AST schema reference, helper-library quickstart, migration guide from existing hooks to the new stages.
@@ -95,7 +95,7 @@ Each stage supports composition via directory-of-drop-ins, theme-then-vault prec
 **Out of scope:**
 
 - In-process execution (embedded scripting language). Reserve for a successor spec if live-hackability becomes a product goal.
-- AST-level hooks with parser-native formats (pulldown-cmark events, rustdoc-markdown, etc.). The zetl-AST JSON is a stable contract; the underlying parser may change.
+- AST-level hooks with parser-native formats (pulldown-cmark events, rustdoc-markdown, etc.). The ztl-AST JSON is a stable contract; the underlying parser may change.
 - Hook-to-hook communication / shared state. Each hook is a pure filter.
 - Automatic helper-library generation for languages beyond Python and JS in v1. Ruby, Go, Rust-as-host-language bindings can be community contributions.
 - A plugin marketplace or community-extension registry. Hooks live in users' vaults or themes.
@@ -131,21 +131,21 @@ SPEC-032's three-stage render-hook system sits squarely inside a well-establishe
 
 ### 2.1 User: Obsidian migrant publishing a static site
 
-**Role:** Existing Obsidian user with a 500-page vault using Callouts, Tasks, and Admonition syntax. Wants to publish via `zetl build`.
+**Role:** Existing Obsidian user with a 500-page vault using Callouts, Tasks, and Admonition syntax. Wants to publish via `ztl build`.
 **Goal:** Published HTML visually matches what they see in Obsidian Publish for those three features.
 **Constraints:** No willingness to edit Markdown source; CI pipeline; prefers zero configuration.
 
 **Happy path:**
 
-1. User runs `zetl build --out-dir dist --theme default`.
+1. User runs `ztl build --out-dir dist --theme default`.
 2. Default theme ships `themes/default/hooks/transform.d/10-callouts.py`, `20-tasks.py`, `30-admonition.py` with selectors pre-configured (Callouts runs on any page containing `> [!`; Tasks runs on any page with a `tasks` fenced block; Admonition on any with `ad-*` fenced blocks).
 3. Output renders visually equivalent to Obsidian Publish for these three patterns. `dist/obsidian-diagnostics.json` records per-extension match counts.
-4. `zetl hook coverage --vault .` confirms coverage: `callouts matched 87/500, tasks matched 12/500, admonition matched 4/500`.
+4. `ztl hook coverage --vault .` confirms coverage: `callouts matched 87/500, tasks matched 12/500, admonition matched 4/500`.
 
 **Failure modes:**
 
 - A page has malformed callout syntax → callouts extension leaves the block unchanged, diagnostic logged, build continues.
-- User has vault-level opt-out of a canonical extension → they create an empty `.zetl/hooks/transform.d/10-callouts.py` which shadows (by filename collision) the theme-shipped one; that extension is effectively disabled.
+- User has vault-level opt-out of a canonical extension → they create an empty `.ztl/hooks/transform.d/10-callouts.py` which shadows (by filename collision) the theme-shipped one; that extension is effectively disabled.
 
 ### 2.2 User: Vault author writing a custom transform
 
@@ -155,25 +155,25 @@ SPEC-032's three-stage render-hook system sits squarely inside a well-establishe
 
 **Happy path:**
 
-1. User writes `.zetl/hooks/transform.d/citations.py` using `zetl-ast-py`:
+1. User writes `.ztl/hooks/transform.d/citations.py` using `ztl-ast-py`:
    ```python
-   from zetl_ast import run, walk, Text
+   from ztl_ast import run, walk, Text
    def transform(ast, context):
        for node in walk(ast, type=Text):
            node.text = expand_cites(node.text, context.frontmatter["bibliography"])
        return ast
    run(transform)
    ```
-2. User writes `.zetl/hooks/transform.d/citations.toml`:
+2. User writes `.ztl/hooks/transform.d/citations.toml`:
    ```toml
    stage = "transform"
    frontmatter_where = "bibliography != null"
    mode = "persistent"
    timeout_ms = 200
    ```
-3. `zetl hook dry-run transform/citations` prints 23 pages matched, zero invocations (selector only).
-4. `zetl build` invokes the hook only on those 23 pages.
-5. User iterates by editing Python; persistent-mode restart is automatic on file change in `zetl serve`.
+3. `ztl hook dry-run transform/citations` prints 23 pages matched, zero invocations (selector only).
+4. `ztl build` invokes the hook only on those 23 pages.
+5. User iterates by editing Python; persistent-mode restart is automatic on file change in `ztl serve`.
 
 **Failure modes:**
 
@@ -182,30 +182,30 @@ SPEC-032's three-stage render-hook system sits squarely inside a well-establishe
 
 ### 2.3 User: Theme author
 
-**Role:** Customising `.zetl/themes/scholar/` for an academic vault.
+**Role:** Customising `.ztl/themes/scholar/` for an academic vault.
 **Goal:** Ship a theme that includes citation rendering, disables Tasks (academic vaults don't need task dashboards), and modifies Callouts styling.
-**Constraints:** Only edits files inside `.zetl/themes/scholar/`; no Rust.
+**Constraints:** Only edits files inside `.ztl/themes/scholar/`; no Rust.
 
 **Happy path:**
 
 1. Theme ships `themes/scholar/hooks/transform.d/10-callouts.py` (copied from default theme, restyled).
 2. Theme ships empty `themes/scholar/hooks/transform.d/20-tasks.py` (empty file = disabled).
 3. Theme ships `themes/scholar/hooks/transform.d/15-citations.py` (new extension between callouts and tasks-would-be).
-4. User of this theme runs `zetl build --theme scholar`; citations run, tasks doesn't, callouts runs with scholar's styling.
+4. User of this theme runs `ztl build --theme scholar`; citations run, tasks doesn't, callouts runs with scholar's styling.
 
 **Failure modes:**
 
-- Theme's Python script errors on an edge case → per-page diagnostic; theme author iterates using `zetl hook dry-run --theme scholar`.
+- Theme's Python script errors on an edge case → per-page diagnostic; theme author iterates using `ztl hook dry-run --theme scholar`.
 
 ### 2.4 User: CI operator enforcing extension coverage
 
-**Role:** Team running `zetl build` in CI for a collaboratively-maintained vault.
-**Goal:** Fail the build if any enabled canonical extension (Callouts, Tasks, Admonition) crashes, even if zetl's default is to soft-fail with diagnostic.
+**Role:** Team running `ztl build` in CI for a collaboratively-maintained vault.
+**Goal:** Fail the build if any enabled canonical extension (Callouts, Tasks, Admonition) crashes, even if ztl's default is to soft-fail with diagnostic.
 **Constraints:** Strict build semantics; wants to gate merges on extension health.
 
 **Happy path:**
 
-1. CI invokes `zetl build --hook-fail-on error` (new flag).
+1. CI invokes `ztl build --hook-fail-on error` (new flag).
 2. Build fails with exit code 2 if any hook exits non-zero; the diagnostic page list is printed to stderr.
 3. CI operator receives actionable output: `hook callouts failed on pages: projects/q2-review.md, notes/daily-2026-04-18.md`.
 
@@ -222,7 +222,7 @@ SPEC-032's three-stage render-hook system sits squarely inside a well-establishe
 The system SHALL expose three new hook stages in the render pipeline:
 
 - **`pre-parse`** — invoked after the raw Markdown source is read from disk, before frontmatter parsing or Markdown AST construction. Input/output: UTF-8 Markdown text.
-- **`transform`** — invoked after Markdown parsing produces the zetl-AST, before AST-to-HTML rendering. Input/output: zetl-AST JSON.
+- **`transform`** — invoked after Markdown parsing produces the ztl-AST, before AST-to-HTML rendering. Input/output: ztl-AST JSON.
 - **`post-render`** — invoked after AST-to-HTML rendering produces the per-page content fragment, before Minijinja template composition into the full page. Input/output: HTML fragment string.
 
 Stage ordering within a single page render is fixed: `pre-parse` → parse → `transform` → render → `post-render` → template compose.
@@ -239,10 +239,10 @@ When in doubt, authors should prefer `transform` stage — it operates on the pa
 ADR-3303) because mdBook's contract operates on raw chapter text. Those
 preprocessors are authored under mdBook's own semantics and often use
 regex-level substitution (e.g. `mdbook-mermaid` replaces `` ```mermaid ``
-fences with inline SVG). Zetl inherits mdBook's safety posture at that
+fences with inline SVG). ztl inherits mdBook's safety posture at that
 stage — the caveat above is a property of Markdown-as-string processing,
 not a defect in either ecosystem. Authors targeting mdBook ecosystem see
-it through mdBook's docs; authors writing native zetl pre-parse hooks
+it through mdBook's docs; authors writing native ztl pre-parse hooks
 see it above. Same risk surface, two documentation paths.
 
 Trace:
@@ -250,24 +250,24 @@ Trace:
 - CON-3201
 - SPEC-033 ADR-3303 (mdBook stage placement)
 
-### REQ-3202: zetl-AST JSON Schema
+### REQ-3202: ztl-AST JSON Schema
 
-The system SHALL define and publish a versioned JSON schema (`zetl-ast-schema`) for the intermediate AST representation used by the `transform` stage. The schema SHALL cover:
+The system SHALL define and publish a versioned JSON schema (`ztl-ast-schema`) for the intermediate AST representation used by the `transform` stage. The schema SHALL cover:
 
 - All CommonMark block types: `Document`, `Heading`, `Paragraph`, `BlockQuote`, `List`, `ListItem`, `CodeBlock` (fenced and indented), `ThematicBreak`, `HtmlBlock`.
 - All CommonMark inline types: `Text`, `Emphasis`, `Strong`, `Code`, `Link`, `Image`, `LineBreak`, `SoftBreak`, `HtmlInline`.
-- zetl extensions: `Wikilink` (with target, alias, heading, block-id fields), `Embed` (for `![[...]]` transclusions), `SplBlock` (for `spl` fenced code blocks, if any are to be treated specially), `FrontMatter` (parsed YAML as JSON object at the document root).
+- ztl extensions: `Wikilink` (with target, alias, heading, block-id fields), `Embed` (for `![[...]]` transclusions), `SplBlock` (for `spl` fenced code blocks, if any are to be treated specially), `FrontMatter` (parsed YAML as JSON object at the document root).
 - Source positions: every node has `start_line`, `start_col`, `end_line`, `end_col`.
-- Schema version: every document declares `ast_version: "<major>.<minor>"` at the root. This is an **exact** two-component version string emitted by zetl (e.g., `"1.0"`, `"1.2"`). In a hook *manifest* (REQ-3203), the same key accepts an **npm-style semver range** (e.g., `">=1.0 <2"`) interpreted against the schema version above — see REQ-3215 for the version-drift policy. The dual meaning is intentional: the schema emits a point version; manifests declare compatible ranges.
+- Schema version: every document declares `ast_version: "<major>.<minor>"` at the root. This is an **exact** two-component version string emitted by ztl (e.g., `"1.0"`, `"1.2"`). In a hook *manifest* (REQ-3203), the same key accepts an **npm-style semver range** (e.g., `">=1.0 <2"`) interpreted against the schema version above — see REQ-3215 for the version-drift policy. The dual meaning is intentional: the schema emits a point version; manifests declare compatible ranges.
 
-The schema SHALL be published at `tools/zetl-ast-schema-v1.json` in JSON Schema Draft 2020-12 format, and SHALL be used by the helper libraries (REQ-3210) as the source of truth.
+The schema SHALL be published at `tools/ztl-ast-schema-v1.json` in JSON Schema Draft 2020-12 format, and SHALL be used by the helper libraries (REQ-3210) as the source of truth.
 
-**Human-readable reference:** `docs/zetl-ast-reference.md` SHALL be
+**Human-readable reference:** `docs/ztl-ast-reference.md` SHALL be
 auto-generated from the schema at CI time, with one section per
 node type covering shape, attrs, canonical example, and
 HTML-rendering expectations. Plugin authors should not have to
 read a JSON Schema file to learn the AST. The generator lives at
-`tools/zetl-ast-reference-gen/` (Rust) and runs in CI; a
+`tools/ztl-ast-reference-gen/` (Rust) and runs in CI; a
 discrepancy between schema and generated reference is a CI
 failure.
 
@@ -281,12 +281,12 @@ Trace:
 Every hook executable in a `<stage>.d/` directory SHALL have an optional sibling manifest file named `<executable>.toml`. The manifest declares stage metadata, selector, execution mode, and budgets:
 
 ```toml
-# .zetl/hooks/transform.d/tasks.toml
+# .ztl/hooks/transform.d/tasks.toml
 stage = "transform"                 # enum: "pre-parse" | "transform" | "post-render"
 mode = "persistent"                 # enum: "one-shot" | "persistent"; default "one-shot"
 timeout_ms = 100                    # int; default 100
 memory_mib = 64                     # int; default 64
-ast_type = "zetl-ext"               # enum: "zetl-ext" | "pandoc-ext" | "mdast-ext"; default "zetl-ext"
+ast_type = "ztl-ext"               # enum: "ztl-ext" | "pandoc-ext" | "mdast-ext"; default "ztl-ext"
 ast_version = ">=1.0 <2"            # semver range; schema version for the declared ast_type
 
 [select]
@@ -297,7 +297,7 @@ content_probe = []                  # array of regex or substring probes; option
 require_probe_match = "any"         # enum: "any" | "all"; default "any"
 ```
 
-A hook with no manifest MUST still work — zetl treats missing manifest as all defaults and `select.include = ["**/*.md"]`. Hooks without a manifest SHALL emit a warning recommending one.
+A hook with no manifest MUST still work — ztl treats missing manifest as all defaults and `select.include = ["**/*.md"]`. Hooks without a manifest SHALL emit a warning recommending one.
 
 Trace:
 - TEST-3203
@@ -313,7 +313,7 @@ For each page, the system SHALL evaluate each enabled hook's selector in the fol
 4. **Stage-specific data materialisation** — only if all above pass: parse to AST (for `transform`) or run preceding pipeline stages (for `post-render`).
 5. **Hook invocation** — dispatch the (possibly persistent) process.
 
-Selection results SHALL be recorded for the `zetl hook coverage` report (REQ-3208) regardless of whether the hook was subsequently invoked.
+Selection results SHALL be recorded for the `ztl hook coverage` report (REQ-3208) regardless of whether the hook was subsequently invoked.
 
 Trace:
 - TEST-3204
@@ -349,7 +349,7 @@ Trace:
 
 For each stage, the system SHALL discover hook executables from (in precedence order, highest first for tie-breaking by filename collision):
 
-1. `<vault>/.zetl/hooks/<stage>.d/*` (vault hooks)
+1. `<vault>/.ztl/hooks/<stage>.d/*` (vault hooks)
 2. `<theme-dir>/hooks/<stage>.d/*` (theme-bundled hooks)
 
 Executables within each directory SHALL be sorted by filename (lexicographic), and the combined list SHALL be the pipeline order. A vault hook with the same filename as a theme hook SHALL replace the theme hook (not merge).
@@ -368,7 +368,7 @@ does nothing useful). The probe-based check in (3) is the robust
 signal; (1) and (2) are cheap pre-probe filters that avoid even
 starting the hook process.
 
-Single-file hooks at `.zetl/hooks/<stage>` (not in a `.d/` directory) SHALL continue to work — treated as a one-entry `.d/` directory.
+Single-file hooks at `.ztl/hooks/<stage>` (not in a `.d/` directory) SHALL continue to work — treated as a one-entry `.d/` directory.
 
 Trace:
 - TEST-3206
@@ -383,23 +383,23 @@ For a given page and stage, when hook `H_k` in the ordered pipeline fails (non-z
 - Pass `H_k`'s **input** to `H_{k+1}` (i.e., the output of `H_{k-1}`, or the stage input if `k == 0`).
 - Continue the pipeline. One hook's failure does not cascade.
 
-Under `zetl build --hook-fail-on error`, the build SHALL exit non-zero after rendering is complete if any hook failed, with an actionable summary to stderr. Default behaviour SHALL be `--hook-fail-on never`.
+Under `ztl build --hook-fail-on error`, the build SHALL exit non-zero after rendering is complete if any hook failed, with an actionable summary to stderr. Default behaviour SHALL be `--hook-fail-on never`.
 
 Trace:
 - TEST-3207
 - CON-3207
 - OBS-3205
 
-### REQ-3208: `zetl hook coverage` Subcommand
+### REQ-3208: `ztl hook coverage` Subcommand
 
-The system SHALL provide `zetl hook coverage [--vault PATH] [--json] [--stage STAGE]` that, for the most-recent build (or a fresh dry-run if none exists), reports per hook:
+The system SHALL provide `ztl hook coverage [--vault PATH] [--json] [--stage STAGE]` that, for the most-recent build (or a fresh dry-run if none exists), reports per hook:
 
 - Stage, manifest path, matched-page count, invoked-page count (may differ if selector passed but hook failed early), latency P50/P95, failure count, last failure reason.
 
 Output defaults to table; `--json` emits structured output.
 
 **Persistence semantics:** `hook-coverage.json` is **replaced** (not
-merged) on each `zetl build` invocation — a build records its own
+merged) on each `ztl build` invocation — a build records its own
 pass only. CI sees exactly the current run's coverage. Serve-mode
 coverage is in-memory and cleared on restart.
 
@@ -410,21 +410,21 @@ Trace:
 - TEST-3208
 - CON-3208
 
-### REQ-3209: `zetl hook dry-run` Subcommand
+### REQ-3209: `ztl hook dry-run` Subcommand
 
-The system SHALL provide `zetl hook dry-run <stage>/<name> [--vault PATH] [--limit N]` that evaluates the hook's selector against the vault and prints the matched page list (up to `--limit`, default 50). The hook itself SHALL NOT be invoked. Exit code 0 if any pages matched; 1 if zero matched (to aid CI "is this selector reachable" checks).
+The system SHALL provide `ztl hook dry-run <stage>/<name> [--vault PATH] [--limit N]` that evaluates the hook's selector against the vault and prints the matched page list (up to `--limit`, default 50). The hook itself SHALL NOT be invoked. Exit code 0 if any pages matched; 1 if zero matched (to aid CI "is this selector reachable" checks).
 
 Trace:
 - TEST-3209
 
 ### REQ-3210: Helper Libraries
 
-The system SHALL publish two first-party helper libraries alongside each zetl release:
+The system SHALL publish two first-party helper libraries alongside each ztl release:
 
-- **`zetl-ast-py`** — Python 3.9+ package on PyPI. Provides `run(transform_fn)` entry point, typed node classes (`Document`, `Paragraph`, `BlockQuote`, `Wikilink`, …), `walk(ast, type=Foo)` iterator, and a `context` object exposing page metadata.
-- **`zetl-ast-js`** — npm package (Node 18+ and Deno). Equivalent API.
+- **`ztl-ast-py`** — Python 3.9+ package on PyPI. Provides `run(transform_fn)` entry point, typed node classes (`Document`, `Paragraph`, `BlockQuote`, `Wikilink`, …), `walk(ast, type=Foo)` iterator, and a `context` object exposing page metadata.
+- **`ztl-ast-js`** — npm package (Node 18+ and Deno). Equivalent API.
 
-Both libraries SHALL pin to a specific AST schema major and SHALL refuse to run against a mismatched zetl version (fail fast with a clear error). The `run()` entry point SHALL handle both one-shot (stdin→stdout→exit) and persistent (line-delimited JSON loop) modes, transparently, so hook authors write the same code for both.
+Both libraries SHALL pin to a specific AST schema major and SHALL refuse to run against a mismatched ztl version (fail fast with a clear error). The `run()` entry point SHALL handle both one-shot (stdin→stdout→exit) and persistent (line-delimited JSON loop) modes, transparently, so hook authors write the same code for both.
 
 Trace:
 - TEST-3210
@@ -445,7 +445,7 @@ extensions:
 
 - Boolean `false` disables the extension for that page.
 - Boolean `true` (the default) or absent leaves the extension enabled.
-- Object values are passed to the extension as page-level configuration (opaque to zetl; extension-specific semantics).
+- Object values are passed to the extension as page-level configuration (opaque to ztl; extension-specific semantics).
 
 The baseline check (`frontmatter.extensions.<name> != false`) SHALL be part of the extension's default selector; theme authors replacing an extension MUST preserve this opt-out to remain behaviour-compatible.
 
@@ -460,7 +460,7 @@ Trace:
 The default theme SHALL ship **theme-layer CSS + template partials** for
 three canonical patterns (Callouts, Tasks, Admonition) without shipping
 their transformation code. The transform is delegated to an ecosystem
-plugin (SPEC-033) declared in the default theme's `.zetl/hooks/` manifests:
+plugin (SPEC-033) declared in the default theme's `.ztl/hooks/` manifests:
 
 - **`callouts`** — recognises `> [!TYPE] Title` blockquotes. Default theme
   ships `themes/default/static/callouts.css` (colour palette, icon
@@ -480,10 +480,10 @@ plugin (SPEC-033) declared in the default theme's `.zetl/hooks/` manifests:
 
 **Why stubs, not implementations:** SPEC-033 empirically established
 that ecosystem plugins cover these patterns with stronger maintenance
-signals and wider reach than any code zetl could ship. The theme owns
+signals and wider reach than any code ztl could ship. The theme owns
 *design*; the ecosystem owns *transformation*. This resolves
 SPEC-033 §13 Q1 and removes the Python/Node runtime dependency the
-prior text imposed on every `zetl build` (see ADR-3204 for the
+prior text imposed on every `ztl build` (see ADR-3204 for the
 decision trail).
 
 Each stub SHALL have a matrix entry recording (a) its CSS/template
@@ -499,7 +499,7 @@ Trace:
 
 ### REQ-3213: Canonical Extension Matrix
 
-The system SHALL ship `tools/zetl-extension-matrix.toml` recording, for each first-party extension: name, tier (`supported`, `partial`, `experimental`), pinned AST schema version, selector, golden-fixture path, and notes. CI SHALL gate changes that downgrade tier or remove a fixture without an accompanying rationale.
+The system SHALL ship `tools/ztl-extension-matrix.toml` recording, for each first-party extension: name, tier (`supported`, `partial`, `experimental`), pinned AST schema version, selector, golden-fixture path, and notes. CI SHALL gate changes that downgrade tier or remove a fixture without an accompanying rationale.
 
 Trace:
 - TEST-3213
@@ -510,22 +510,22 @@ Every hook response (all three stages) MAY include an optional `template_vars` f
 
 **Namespace rules:**
 
-- **Reserved root.** `page.ext` is reserved for extensions. Zetl itself SHALL NOT write into this root in any present or future release without a contract major bump (matches SPEC-028's theme contract convention). Themes and extensions can rely on it as their exclusive surface.
+- **Reserved root.** `page.ext` is reserved for extensions. ztl itself SHALL NOT write into this root in any present or future release without a contract major bump (matches SPEC-028's theme contract convention). Themes and extensions can rely on it as their exclusive surface.
 - **`<extension_id>` default.** Defaults to the hook's filename without extension (e.g., `tasks.py` → `tasks`) AND without any leading numeric-plus-dash ordering prefix (so `20-tasks.py` → `tasks`, not `20-tasks`). This keeps the template-readable name stable across re-ordering.
 - **Manifest override.** A hook's manifest MAY declare `extension_id = "..."` to override the default. Useful when multiple hooks cooperate under one conceptual name, or when the filename would produce an undesirable id.
 - **Collision-on-filename resolution.** When a vault hook replaces a theme hook via the REQ-3206 filename-collision rule, the replacement takes over the same `page.ext.<extension_id>`. The theme's templates reading `page.ext.tasks.completed` continue to work — the vault author is obligated to emit the same-shaped data if they want existing theme templates to render correctly. This is the design contract, not a constraint.
-- **No cross-namespace writes.** Extensions cannot write under another extension's `page.ext.<id>`. Zetl enforces this at the protocol layer by keying the merge on the invoked hook's id, not on any hook-supplied key.
+- **No cross-namespace writes.** Extensions cannot write under another extension's `page.ext.<id>`. ztl enforces this at the protocol layer by keying the merge on the invoked hook's id, not on any hook-supplied key.
 - **Cross-extension coordination via shared `extension_id`.** Two cooperating hooks can share an `extension_id` (declared in both manifests) to coalesce into one namespace; in that case, pipeline-order wins (later hook's emission replaces earlier, with a warning logged).
 
 **Semantic rules:**
 
 - **Multi-stage emissions by the same hook:** If the same hook runs at multiple stages and emits vars at each, the later stage's vars replace the earlier stage's (with a warning logged). Within a single stage's response, the emitted object is final.
-- **Shape:** Any valid JSON value (object, array, string, number, bool, null). Zetl validates size ≤ 1 MiB per hook per page; oversize payloads are dropped with a warning, but the AST/HTML payload is still used.
+- **Shape:** Any valid JSON value (object, array, string, number, bool, null). ztl validates size ≤ 1 MiB per hook per page; oversize payloads are dropped with a warning, but the AST/HTML payload is still used.
 - **Autoescape:** String values emitted into templates go through the standard Minijinja autoescape path. No new XSS surface.
 - **Opt-in at author time, opt-in at theme time:** Extensions choose whether to emit; themes choose whether to read. Absent vars resolve to `undefined` in Minijinja (no error).
 - **Build/serve parity:** Both modes expose the same `page.ext.<id>` namespace with identical semantics.
 
-Example: a hook at `.zetl/hooks/transform.d/20-tasks.py` returning `{"template_vars": {"total": 12, "completed": 7}}` makes `{{ page.ext.tasks.total }}` and `{{ page.ext.tasks.completed }}` available in all templates that render that page. A sibling manifest declaring `extension_id = "my_tasks"` would surface the same data at `page.ext.my_tasks.*` instead.
+Example: a hook at `.ztl/hooks/transform.d/20-tasks.py` returning `{"template_vars": {"total": 12, "completed": 7}}` makes `{{ page.ext.tasks.total }}` and `{{ page.ext.tasks.completed }}` available in all templates that render that page. A sibling manifest declaring `extension_id = "my_tasks"` would surface the same data at `page.ext.my_tasks.*` instead.
 
 Vault-level aggregation (`vault.ext.<extension_id>`) is explicitly out of scope for v1 — see §13 Open Questions.
 
@@ -536,7 +536,7 @@ Trace:
 
 ### REQ-3215: Dual-Version Exposure (Binary and AST Schema)
 
-The system SHALL expose two distinct version strings to every hook invocation: `ZETL_VERSION` (the binary semver, changes every release) and `ZETL_AST_VERSION` (the JSON-schema semver, changes only when the AST shape changes). Both SHALL be available as environment variables at hook start AND as top-level fields in the persistent-mode handshake message (`{"zetl_version": "...", "ast_version": "1.2"}`).
+The system SHALL expose two distinct version strings to every hook invocation: `ztl_VERSION` (the binary semver, changes every release) and `ztl_AST_VERSION` (the JSON-schema semver, changes only when the AST shape changes). Both SHALL be available as environment variables at hook start AND as top-level fields in the persistent-mode handshake message (`{"ztl_version": "...", "ast_version": "1.2"}`).
 
 Hooks declare their required AST-schema range in the manifest:
 
@@ -544,13 +544,13 @@ Hooks declare their required AST-schema range in the manifest:
 ast_version = ">=1.0 <2"   # npm-style range; default ">=1.0 <2" for v1
 ```
 
-At zetl startup, the system SHALL compute the effective `ZETL_AST_VERSION` and compare against each hook's declared range. Version-drift policy (REQ-3215.1):
+At ztl startup, the system SHALL compute the effective `ztl_AST_VERSION` and compare against each hook's declared range. Version-drift policy (REQ-3215.1):
 
-- **Incompatible range** (hook demands >=2.0 on a 1.x binary, or vice versa): hook is disabled with a typed error; log line `[zetl] hook incompatible: <id> requires ast_version=<range>, have <version>`. Build continues.
+- **Incompatible range** (hook demands >=2.0 on a 1.x binary, or vice versa): hook is disabled with a typed error; log line `[ztl] hook incompatible: <id> requires ast_version=<range>, have <version>`. Build continues.
 - **Compatible but minor mismatch** (hook wrote against 1.0, binary offers 1.2): hook runs; warning logged once per hook per session.
 - **Exact match**: silent success.
 
-Rationale: follows Pandoc's `PANDOC_API_VERSION` / `PANDOC_VERSION` split ([filters.html](https://pandoc.org/filters.html)). Decouples AST-breaking changes from zetl's normal release cadence. Hooks authored against AST v1.0 survive zetl binary releases 1.x.y → 1.y.z so long as the AST schema remains backwards-compatible (NFR-3206).
+Rationale: follows Pandoc's `PANDOC_API_VERSION` / `PANDOC_VERSION` split ([filters.html](https://pandoc.org/filters.html)). Decouples AST-breaking changes from ztl's normal release cadence. Hooks authored against AST v1.0 survive ztl binary releases 1.x.y → 1.y.z so long as the AST schema remains backwards-compatible (NFR-3206).
 
 Trace:
 - TEST-3215
@@ -564,7 +564,7 @@ The system SHALL invoke every hook in **probe mode** once at pipeline initialisa
 ```json
 {
   "type": "probe_result",
-  "zetl_ast": "1.0",
+  "ztl_ast": "1.0",
   "hook": "callouts",
   "version": "1.0.3",
   "stages": ["transform"],
@@ -576,10 +576,10 @@ The system SHALL invoke every hook in **probe mode** once at pipeline initialisa
 Semantics:
 
 - `stages` — the stages this hook handles. A one-shot hook appearing in `transform.d/` but reporting `stages: ["post-render"]` is a manifest/probe mismatch and the hook SHALL be disabled with a diagnostic.
-- `applies_when` — optional; allows a hook to exclude itself from e.g. `zetl serve` (build-only hooks) or specific themes. When absent, defaults to applies-always.
+- `applies_when` — optional; allows a hook to exclude itself from e.g. `ztl serve` (build-only hooks) or specific themes. When absent, defaults to applies-always.
 - `ready: false` — hook explicitly declines to run; no error, diagnostic logged with optional `reason` field.
 
-Probe failures (non-zero exit, malformed response, timeout > 5s) SHALL disable the hook for the current session with an actionable diagnostic. `zetl hooks check` (new subcommand) SHALL run every hook's probe and report status without running the build.
+Probe failures (non-zero exit, malformed response, timeout > 5s) SHALL disable the hook for the current session with an actionable diagnostic. `ztl hooks check` (new subcommand) SHALL run every hook's probe and report status without running the build.
 
 Rationale: follows mdBook's `supports <renderer>` pattern ([mdBook dev guide](https://rust-lang.github.io/mdBook/for_developers/preprocessors.html)). Cheap self-disablement and diagnostic surface without the cost of full-pipeline invocation.
 
@@ -597,7 +597,7 @@ after = ["callouts"]          # run after these
 optional = true               # missing hook executable downgrades to warning, not error
 ```
 
-**Resolution algorithm:** zetl performs a topological sort over the hook set for each stage, respecting `before`/`after` constraints, with filename order as the tiebreaker for unordered hooks. Cycles (A before B, B before A) SHALL be reported as a build error with the cycle path in the diagnostic.
+**Resolution algorithm:** ztl performs a topological sort over the hook set for each stage, respecting `before`/`after` constraints, with filename order as the tiebreaker for unordered hooks. Cycles (A before B, B before A) SHALL be reported as a build error with the cycle path in the diagnostic.
 
 **Optional:** A hook marked `optional = true` whose executable is missing, non-executable, or whose probe fails SHALL emit a warning and be skipped, but SHALL NOT fail the build or abort pipeline construction. Default is `optional = false`.
 
@@ -609,11 +609,11 @@ Trace:
 
 ### REQ-3218: Declarative Node-Type Dispatch in Helper Libraries
 
-The system's helper libraries (`zetl-ast-py`, `zetl-ast-js`) SHALL provide a `dispatch` entry point that takes a table (dict/object) keyed by AST node type and invokes the corresponding function for each matching node as zetl walks the tree. Reserved keys: `Inline` matches any inline node not otherwise covered; `Block` matches any block node; `_fallback` matches any node (was `*` in an earlier draft; `*` is easy to typo as empty-string and grep-hostile).
+The system's helper libraries (`ztl-ast-py`, `ztl-ast-js`) SHALL provide a `dispatch` entry point that takes a table (dict/object) keyed by AST node type and invokes the corresponding function for each matching node as ztl walks the tree. Reserved keys: `Inline` matches any inline node not otherwise covered; `Block` matches any block node; `_fallback` matches any node (was `*` in an earlier draft; `*` is easy to typo as empty-string and grep-hostile).
 
 Python API:
 ```python
-from zetl_ast import dispatch
+from ztl_ast import dispatch
 
 def transform(ast, ctx):
     return dispatch(ast, ctx, {
@@ -637,9 +637,9 @@ Trace:
 
 The system SHALL expose a build-scoped, hook-writable key/value store accessible to every hook at every stage during a single build or page render. The store is:
 
-- **Read-only from the hook's perspective at invocation time** — zetl injects the current store snapshot into the context passed to the hook; hook-requested writes are returned in the response.
-- **Hook-requested writes merged by zetl** — a hook returning `{"build_data": {"unresolved_links": [...]}}` writes into the next hook's snapshot. Writes are namespaced by writing-hook's `extension_id` to avoid collisions (`build_data[extension_id][key] = value`).
-- **Build-scoped**: cleared between builds (`zetl build`) or between page renders (`zetl serve`).
+- **Read-only from the hook's perspective at invocation time** — ztl injects the current store snapshot into the context passed to the hook; hook-requested writes are returned in the response.
+- **Hook-requested writes merged by ztl** — a hook returning `{"build_data": {"unresolved_links": [...]}}` writes into the next hook's snapshot. Writes are namespaced by writing-hook's `extension_id` to avoid collisions (`build_data[extension_id][key] = value`).
+- **Build-scoped**: cleared between builds (`ztl build`) or between page renders (`ztl serve`).
 - **Size-capped**: 16 MiB total per build; oversize writes dropped with a warning.
 
 Access in hook:
@@ -651,7 +651,7 @@ def transform(ast, ctx):
     return ast
 ```
 
-Rationale: unified's `processor.data()` ([unified](https://github.com/unifiedjs/unified)) and markdown-it's `env` parameter ([markdown-it architecture](https://github.com/markdown-it/markdown-it/blob/master/docs/architecture.md)) both exist because cross-hook coordination through frontmatter is fragile. Zetl's `page.ext` namespace is one-way (hook → template); `build_data` is two-way (hook → hook).
+Rationale: unified's `processor.data()` ([unified](https://github.com/unifiedjs/unified)) and markdown-it's `env` parameter ([markdown-it architecture](https://github.com/markdown-it/markdown-it/blob/master/docs/architecture.md)) both exist because cross-hook coordination through frontmatter is fragile. ztl's `page.ext` namespace is one-way (hook → template); `build_data` is two-way (hook → hook).
 
 Trace:
 - TEST-3219
@@ -661,14 +661,14 @@ Trace:
 
 The system SHALL expose the following context to every hook invocation, available both as environment variables and as fields in the invocation JSON payload:
 
-- `ZETL_MODE` — `"build"` or `"serve"`.
-- `ZETL_THEME` — active theme name.
-- `ZETL_VAULT_ROOT` — absolute path to the vault.
-- `ZETL_OUT_DIR` — build output directory (null under serve).
-- `ZETL_VERBOSE` — `"true"` / `"false"`.
-- `ZETL_AT` — historical-build timestamp if `--at` is used, else absent.
-- `ZETL_HOOK_PATH` — absolute path of the hook's own executable, for resolving sibling resources (equivalent to Pandoc's `PANDOC_SCRIPT_FILE`).
-- `ZETL_EXTENSION_ID` — the extension_id zetl resolved for this hook (manifest override or filename default).
+- `ztl_MODE` — `"build"` or `"serve"`.
+- `ztl_THEME` — active theme name.
+- `ztl_VAULT_ROOT` — absolute path to the vault.
+- `ztl_OUT_DIR` — build output directory (null under serve).
+- `ztl_VERBOSE` — `"true"` / `"false"`.
+- `ztl_AT` — historical-build timestamp if `--at` is used, else absent.
+- `ztl_HOOK_PATH` — absolute path of the hook's own executable, for resolving sibling resources (equivalent to Pandoc's `PANDOC_SCRIPT_FILE`).
+- `ztl_EXTENSION_ID` — the extension_id ztl resolved for this hook (manifest override or filename default).
 
 Rationale: Pandoc's `PANDOC_READER_OPTIONS`, `PANDOC_WRITER_OPTIONS`, `PANDOC_SCRIPT_FILE` ([filters.html](https://pandoc.org/filters.html), [lua-filters.html](https://pandoc.org/lua-filters.html)). Without a canonical exposure mechanism, hooks reinvent detection via filesystem introspection and side-channels.
 
@@ -681,18 +681,18 @@ Trace:
 The system SHALL support multiple AST formats at the `transform` stage via
 a declared `ast_type` on the hook manifest. The `ast_type` field identifies
 which ecosystem's AST shape and invocation conventions the hook expects;
-zetl translates between its internal representation and the declared type
+ztl translates between its internal representation and the declared type
 at the protocol boundary.
 
 This REQ defines the **protocol surface**: the obligations any ast_type
 value must satisfy. The concrete set of supported ast_type values for v1
-(`zetl-ext`, `pandoc-ext`, `mdast-ext`) and their instance-specific marker
+(`ztl-ext`, `pandoc-ext`, `mdast-ext`) and their instance-specific marker
 tables are defined in **SPEC-033** — adding a new ecosystem is an
 SPEC-033 amendment, not a SPEC-032 one.
 
 **Built-in default:**
 
-- **`zetl-ext`** (default) — zetl's native AST JSON (REQ-3202 / CON-3202).
+- **`ztl-ext`** (default) — ztl's native AST JSON (REQ-3202 / CON-3202).
   CommonMark subset + wikilink, embed, SPL-block, and frontmatter
   extensions. Required for v1 conformance and provided by this spec.
 
@@ -700,7 +700,7 @@ SPEC-033 amendment, not a SPEC-032 one.
 
 A hook manifest SHALL accept any ast_type registered in the binary's
 ecosystem registry (SPEC-033 REQ-3301). Unknown values are a manifest
-parse error. v1 binaries registering only `zetl-ext` SHALL reject
+parse error. v1 binaries registering only `ztl-ext` SHALL reject
 `pandoc-ext` / `mdast-ext` manifests with a typed "ecosystem-not-compiled"
 error and an actionable hint (SPEC-033 REQ-3313).
 
@@ -709,17 +709,17 @@ error and an actionable hint (SPEC-033 REQ-3313).
 For any registered non-default ast_type, the binary SHALL ship a
 bidirectional translator with:
 
-- A **marker-convention table** mapping zetl-ext concepts (Wikilink,
+- A **marker-convention table** mapping ztl-ext concepts (Wikilink,
   Embed, SPL block, FrontMatter, position info) to the foreign AST's
   extension-point shape. Full tables live in SPEC-033 per ast_type and
   in `docs/ecosystems/<type>-translation.md` auto-generated from
   translator source.
-- A **round-trip invariant**: for any zetl-ext AST *A* and any identity
-  foreign-ext filter *I*, `foreign_to_zetl(I(zetl_to_foreign(A)))`
+- A **round-trip invariant**: for any ztl-ext AST *A* and any identity
+  foreign-ext filter *I*, `foreign_to_ztl(I(ztl_to_foreign(A)))`
   equals *A* under the canonical-form equivalence relation defined in
   SPEC-033 NFR-3305.
 - **Marker-strip detection**: after each foreign-ext hook invocation,
-  zetl SHALL count instances of each node type listed in the hook's
+  ztl SHALL count instances of each node type listed in the hook's
   `contract.preserves` declaration (REQ-3224) in input vs output; a
   net decrease SHALL be logged as a warning
   (`"<plugin> dropped <N> <NodeType> on <page>"`), pipeline
@@ -729,22 +729,22 @@ bidirectional translator with:
   matches the earlier hard-coded scope. Users wanting stricter
   guarantees extend their manifest's `contract.preserves`.
 
-**Protocol-convention emulation:** When zetl invokes a non-default-ast_type
+**Protocol-convention emulation:** When ztl invokes a non-default-ast_type
 hook, the hook sees the ecosystem's native invocation contract
 (env vars, argv, handshake shape) as specified in SPEC-033's per-ecosystem
-CONs (e.g. CON-3303 for pandoc). When it invokes a `zetl-ext` hook, it
-sees zetl's contract (REQ-3220's `ZETL_*` env vars).
+CONs (e.g. CON-3303 for pandoc). When it invokes a `ztl-ext` hook, it
+sees ztl's contract (REQ-3220's `ztl_*` env vars).
 
 **Version compatibility per type:** `ast_version` in the manifest is a
 semver range interpreted against the declared `ast_type`'s version scheme
 — `>=1.22 <2` for `pandoc-ext` means pandoc-types v1.22+ below v2, not
-zetl-ext v1.22+. Zetl maintains a compat matrix
-(`tools/zetl-ecosystem-matrix.toml`, SPEC-033 REQ-3311) mapping each
+ztl-ext v1.22+. ztl maintains a compat matrix
+(`tools/ztl-ecosystem-matrix.toml`, SPEC-033 REQ-3311) mapping each
 ast_type and version to the ones the current binary supports.
 
 **Mixed pipelines:** Two hooks in the same stage may declare different
-`ast_type`s. Zetl translates the prior hook's output back to its internal
-representation (zetl-ext), then serialises anew for the next hook's
+`ast_type`s. ztl translates the prior hook's output back to its internal
+representation (ztl-ext), then serialises anew for the next hook's
 declared type. No hook sees another hook's AST in a format it didn't
 request.
 
@@ -760,7 +760,7 @@ REQ-3201's pre-parse caveat is advisory — authors are told regex-over-
 Markdown is risky, but nothing detects the breakage. The system SHALL
 provide a structural-safety check driven by the hook's behavioural
 contract (REQ-3224): a pre-parse hook declaring `contract.may_restructure
-= false` (the default) triggers a zetl-side comparison of the block-tree
+= false` (the default) triggers a ztl-side comparison of the block-tree
 shape of the hook's input vs output (same parser, same extensions,
 different text). A warning SHALL be emitted if the block tree changed
 (different number of top-level blocks, different block types at the
@@ -786,31 +786,31 @@ ecosystem plugins). Themes today don't execute code; after SPEC-032/033
 themes may. The system SHALL provide two affordances to keep users in
 control of what they consent to running:
 
-**Safe-mode flag** — `zetl build --no-hooks` SHALL:
+**Safe-mode flag** — `ztl build --no-hooks` SHALL:
 
 - Skip every hook in every stage, regardless of source (vault,
   theme-bundled, ecosystem adapter).
 - Emit one log line per suppressed hook on stderr:
-  `[zetl] --no-hooks: skipped <stage>/<extension_id> from <source>`.
+  `[ztl] --no-hooks: skipped <stage>/<extension_id> from <source>`.
 - Complete the build with plain pipeline output (parse → render →
   template compose, nothing else). Exit code 0 on success.
 
-`zetl serve --no-hooks` has identical semantics and is intended as
+`ztl serve --no-hooks` has identical semantics and is intended as
 an audit / hostile-theme-inspection surface.
 
 **Theme hook declaration** — a theme that ships hooks (files under
 `themes/<name>/hooks/`) SHALL list them in `theme.toml` under a
 `[[theme.hooks]]` array of objects with fields `stage`,
 `extension_id`, `ecosystem` (optional), `summary` (one-line
-description), and `contract` (REQ-3224, optional). Zetl SHALL:
+description), and `contract` (REQ-3224, optional). ztl SHALL:
 
 - At theme-selection time, compute the declared-vs-discovered diff
   (hooks on disk not listed in `theme.toml`, or vice versa).
 - Emit a warning on first use of a theme with undeclared hooks:
-  `[zetl] theme <name> ships <N> undeclared hook(s); run`
-  `'zetl theme show <name>' for details, or --no-hooks to suppress`.
+  `[ztl] theme <name> ships <N> undeclared hook(s); run`
+  `'ztl theme show <name>' for details, or --no-hooks to suppress`.
 - Record the theme's hook declarations — including their declared
-  contracts — in `zetl theme show`'s output so users can audit both
+  contracts — in `ztl theme show`'s output so users can audit both
   execution surface (which hooks run) and behaviour surface (what
   each hook promises to do).
 
@@ -827,17 +827,17 @@ Trace:
 
 ### REQ-3224: Behavioural Contract Declarations
 
-Structural contracts (protocol, schema, version compat) tell zetl
-*how* to talk to a hook. Behavioural contracts tell zetl (and users
+Structural contracts (protocol, schema, version compat) tell ztl
+*how* to talk to a hook. Behavioural contracts tell ztl (and users
 auditing a vault or theme) *what properties the hook promises to
 hold* about its transformation. This REQ introduces an opt-in
 `[contract]` table in the hook manifest; REQ-3221 and REQ-3222
 enforcement mechanisms read from it.
 
-**Tier 1 fields (v1, verified by zetl):**
+**Tier 1 fields (v1, verified by ztl):**
 
 ```toml
-# .zetl/hooks/transform.d/callouts.toml
+# .ztl/hooks/transform.d/callouts.toml
 
 [contract]
 preserves = ["Wikilink", "Embed", "CodeBlock", "FrontMatter"]
@@ -846,7 +846,7 @@ may_restructure = false       # pre-parse hooks only; see REQ-3222
 ```
 
 - **`preserves`** (array of AST node type names) — hook declares it
-  does not strip these node types. Zetl counts instances of each
+  does not strip these node types. ztl counts instances of each
   declared type in the hook's input vs output; a net decrease is a
   typed `contract_violation:preserves` diagnostic (REQ-3207 failure
   semantics apply). Generalises REQ-3221's existing wikilink /
@@ -854,7 +854,7 @@ may_restructure = false       # pre-parse hooks only; see REQ-3222
   the set is now per-manifest.
 - **`idempotent`** (bool, default `false`) — hook asserts
   `f(f(x))` is canonical-form-equivalent to `f(x)` under NFR-3305's
-  equivalence relation. Zetl verifies in CI by running the hook
+  equivalence relation. ztl verifies in CI by running the hook
   twice on each matrix fixture page and asserting stability; a
   mismatch is a `contract_violation:idempotent` typed error and
   gates matrix tier (`supported` requires `idempotent = true`
@@ -870,30 +870,30 @@ pure = true                   # reads only stage_input + context; no net/fs/cloc
 expansion_bound = 3.0         # output size ≤ N × input size
 ```
 
-- **`pure`** — in v1 a documentation/trust label; surfaced in `zetl
-  theme show` and `zetl hook coverage`. In v1.1, optional
+- **`pure`** — in v1 a documentation/trust label; surfaced in `ztl
+  theme show` and `ztl hook coverage`. In v1.1, optional
   enforcement under `--sandbox-hooks` via bwrap / Firejail / Docker
   on platforms where those are available.
 - **`expansion_bound`** — v1 reserves the field name; v1.1 enforces
   at the protocol boundary (one `len()` comparison; near-free).
 
 **Default behaviour:** a manifest with no `[contract]` table has an
-empty declaration. Zetl behaves as today — no extra enforcement, no
+empty declaration. ztl behaves as today — no extra enforcement, no
 trust signal. Ecosystem adapters (SPEC-033) MAY populate the table
 on behalf of the plugin using values from the matrix (REQ-3311's
 `contract` column).
 
 **Output surface:**
 
-- `zetl hook coverage` adds a per-hook `contract` column listing
+- `ztl hook coverage` adds a per-hook `contract` column listing
   declared fields.
-- `zetl theme show <theme>` lists each theme-bundled hook's
+- `ztl theme show <theme>` lists each theme-bundled hook's
   contract alongside the REQ-3223 declaration.
 - Ecosystem matrix entries (SPEC-033 REQ-3311) carry a `contract`
   field that maps into the runtime via adapter-owned translation.
 
 **Contract violation → REQ-3207 failure path.** A declared contract
-that zetl detects as violated produces the same failure-scoping
+that ztl detects as violated produces the same failure-scoping
 behaviour as any other hook error: the hook's output is discarded,
 the input is passed to the next hook, a diagnostic with `reason =
 "contract_violation"` and specific sub-reason (`preserves`,
@@ -911,19 +911,19 @@ Trace:
 ### REQ-3225: Hook Authoring CLI
 
 Plugin authoring is a tight iteration loop: write → run → diff →
-fix. Zetl has REQ-3209 `zetl hook dry-run` for selector iteration;
+fix. ztl has REQ-3209 `ztl hook dry-run` for selector iteration;
 nothing else closes the loop. This REQ adds the subcommand surface
 that makes "my first hook" a minutes-not-hours experience and
 makes ongoing iteration feel like `cargo test` for Rust.
 
 The system SHALL provide:
 
-- **`zetl hook new <stage> <name> [--lang py|js|sh] [--ecosystem pandoc|mdbook|remark]`**
+- **`ztl hook new <stage> <name> [--lang py|js|sh] [--ecosystem pandoc|mdbook|remark]`**
   — scaffold a working hook in the current vault. Emits:
-  - `.zetl/hooks/<stage>.d/<name>.<ext>` — executable skeleton with
+  - `.ztl/hooks/<stage>.d/<name>.<ext>` — executable skeleton with
     an identity transform and a comment pointer to the helper
     library docs.
-  - `.zetl/hooks/<stage>.d/<name>.toml` — manifest with sensible
+  - `.ztl/hooks/<stage>.d/<name>.toml` — manifest with sensible
     defaults (mode, timeout, empty `[contract]`, permissive selector).
   - `tests/hook-fixtures/<name>/input.md` + `expected.html` — minimal
     fixture the author can extend.
@@ -932,42 +932,42 @@ The system SHALL provide:
   (SPEC-033 REQ-3303/3304/3305) + a plugin-specific skeleton if
   applicable (e.g., a Lua filter stub for Pandoc).
 
-- **`zetl hook test <hook>`** — run the hook against
+- **`ztl hook test <hook>`** — run the hook against
   `tests/hook-fixtures/<hook>/input.md`, diff against `expected.html`.
   Non-zero exit on mismatch; prints a coloured line-diff. Honours
   `--update` to regenerate the golden (equivalent to `cargo insta
   accept` / `jest --updateSnapshot`).
 
-- **`zetl hook fixture --from <page> --hook <name>`** — capture the
+- **`ztl hook fixture --from <page> --hook <name>`** — capture the
   current vault page's pre-hook input and post-hook output into
   `tests/hook-fixtures/<name>/`. Creates the fixture pair from an
   existing vault rather than requiring the author to synthesise one.
 
-- **`zetl hook watch <hook>`** — file-watch the hook's source;
+- **`ztl hook watch <hook>`** — file-watch the hook's source;
   restart the persistent-mode subprocess on change; stream the
-  hook's stderr to the terminal. Identical to what `zetl serve`
+  hook's stderr to the terminal. Identical to what `ztl serve`
   does internally for hot-reload, lifted as a user-invocable
   command so authors who are not actively serving can still get
   the iteration loop.
 
-- **`zetl ast sample <file.md> [--stage pre-parse|transform|post-render]`**
+- **`ztl ast sample <file.md> [--stage pre-parse|transform|post-render]`**
   — emit the AST JSON (or Markdown text, or HTML fragment) that a
   hook at the given stage would receive as input for the given file.
   The single most useful debugging primitive: authors can see the
   exact bytes their hook will see without instrumenting the hook
   itself.
 
-- **`zetl ast diff <before.json> <after.json>`** — structural diff of
+- **`ztl ast diff <before.json> <after.json>`** — structural diff of
   two AST documents as tree-aware delta (added / removed / modified
   nodes with source positions), not a line-diff of the JSON
-  serialisation. Complements `zetl ast sample` for the
+  serialisation. Complements `ztl ast sample` for the
   "what did my transform change?" workflow.
 
 Exit codes: 0 on success / match, 1 on expected failure (test
 mismatch, hook error), 2 on invalid arguments / missing hook.
 
 **Why this is v1, not v1.1:** the missing authoring loop is the
-single biggest friction to writing a zetl hook today. Shipping
+single biggest friction to writing a ztl hook today. Shipping
 the machinery without the authoring surface means users see the
 power but can't extract it. Each subcommand is under 200 LOC of
 implementation and reuses existing machinery (discovery, manifest
@@ -992,7 +992,7 @@ Trace:
 
 ### NFR-3202: Render Overhead — Canonical Extensions
 
-Under `zetl build` with the three canonical extensions (`callouts`, `tasks`, `admonition`) all enabled on the 2,000-page demo vault, total render time SHALL increase by ≤ 15% relative to a build with `--no-hooks` (new flag). Persistent-mode extensions amortise spawn cost; this is the target after that amortisation.
+Under `ztl build` with the three canonical extensions (`callouts`, `tasks`, `admonition`) all enabled on the 2,000-page demo vault, total render time SHALL increase by ≤ 15% relative to a build with `--no-hooks` (new flag). Persistent-mode extensions amortise spawn cost; this is the target after that amortisation.
 
 Trace:
 - TEST-3202-perf
@@ -1000,14 +1000,14 @@ Trace:
 
 ### NFR-3203: Deterministic Output
 
-Given a fixed vault, fixed extension set, fixed zetl version, and fixed AST schema version, `zetl build` SHALL produce byte-identical HTML output across runs and platforms (macOS aarch64, Linux x86_64, Linux aarch64). Extensions are themselves required to be deterministic; documentation states the contract.
+Given a fixed vault, fixed extension set, fixed ztl version, and fixed AST schema version, `ztl build` SHALL produce byte-identical HTML output across runs and platforms (macOS aarch64, Linux x86_64, Linux aarch64). Extensions are themselves required to be deterministic; documentation states the contract.
 
 Trace:
 - TEST-3203-determinism
 
 ### NFR-3204: Build Failure Isolation
 
-Under default behaviour (`--hook-fail-on never`), `zetl build` exit code SHALL be 0 even when every enabled hook on every page fails. The pipeline degrades gracefully; diagnostics are emitted; the output HTML contains the unmodified content.
+Under default behaviour (`--hook-fail-on never`), `ztl build` exit code SHALL be 0 even when every enabled hook on every page fails. The pipeline degrades gracefully; diagnostics are emitted; the output HTML contains the unmodified content.
 
 Trace:
 - TEST-3207
@@ -1015,14 +1015,14 @@ Trace:
 
 ### NFR-3205: Startup Cost When No Hooks Present
 
-On a vault with no `.zetl/hooks/` directory and a theme with no `hooks/` directory, the additional process startup cost relative to pre-SPEC-032 zetl SHALL be ≤ 5 ms at P95. The feature has zero cost for users who don't use it.
+On a vault with no `.ztl/hooks/` directory and a theme with no `hooks/` directory, the additional process startup cost relative to pre-SPEC-032 ztl SHALL be ≤ 5 ms at P95. The feature has zero cost for users who don't use it.
 
 Trace:
 - TEST-3205-startup
 
 ### NFR-3206: AST Schema Stability
 
-The zetl-AST schema SHALL follow semver. Within a major version: additive changes only (new node types, new optional fields). Breaking changes (removed fields, changed node shapes) require a major bump AND a one-release deprecation window where both majors are emitted behind a flag.
+The ztl-AST schema SHALL follow semver. Within a major version: additive changes only (new node types, new optional fields). Breaking changes (removed fields, changed node shapes) require a major bump AND a one-release deprecation window where both majors are emitted behind a flag.
 
 Trace:
 - Reviewed at every schema change; tracked in CHANGELOG.
@@ -1037,7 +1037,7 @@ Trace:
 
 ### NFR-3208: Memory Containment
 
-Each hook process SHALL have a configurable memory ceiling (default 64 MiB, set via manifest). Exceeding the ceiling SHALL terminate the process; for persistent-mode hooks, zetl SHALL respawn on the next page requiring that hook.
+Each hook process SHALL have a configurable memory ceiling (default 64 MiB, set via manifest). Exceeding the ceiling SHALL terminate the process; for persistent-mode hooks, ztl SHALL respawn on the next page requiring that hook.
 
 Trace:
 - TEST-3208
@@ -1049,15 +1049,15 @@ Trace:
 
 ### CON-3201: Persistent-Mode Wire Protocol
 
-For `mode = "persistent"` hooks, zetl and the hook communicate over line-delimited JSON on stdin/stdout. Stderr is free-form (used for diagnostic logging only; never consumed by zetl as data).
+For `mode = "persistent"` hooks, ztl and the hook communicate over line-delimited JSON on stdin/stdout. Stderr is free-form (used for diagnostic logging only; never consumed by ztl as data).
 
 **Handshake (one message):** On process start, the hook writes a single line:
 ```json
-{"zetl_ast": 1, "hook": "callouts", "version": "1.0.3", "ready": true}
+{"ztl_ast": 1, "hook": "callouts", "version": "1.0.3", "ready": true}
 ```
-Zetl reads this line; if `zetl_ast` major differs from the current schema, zetl disables the hook and logs `ast_version_mismatch`.
+ztl reads this line; if `ztl_ast` major differs from the current schema, ztl disables the hook and logs `ast_version_mismatch`.
 
-**Per-page request (from zetl, one line):**
+**Per-page request (from ztl, one line):**
 ```json
 {"type": "invoke", "page_slug": "projects/q2", "frontmatter": {...},
  "payload": <stage-specific>, "deadline_ms": 100}
@@ -1075,7 +1075,7 @@ Or on error:
 {"type": "error", "reason": "...", "detail": "..."}
 ```
 
-**Shutdown:** Zetl closes stdin. Hook SHOULD exit cleanly within 1 s. Hard-kill on timeout.
+**Shutdown:** ztl closes stdin. Hook SHOULD exit cleanly within 1 s. Hard-kill on timeout.
 
 **Return-type contract (`transform` stage):** The hook's `payload` response field MUST be an AST document whose root is a `Document` node (same shape as the input). For in-tree transformations, every rewritten node MUST have a `type` field; a node of type X may be replaced by a node of type X, a node of a compatible type per the AST schema (e.g., `Paragraph` → `BlockQuote` is valid because both are block-level), or an array of compatible-type nodes (replacing one `Paragraph` with three). Replacing a block-level node with an inline-level node (or vice versa) SHALL be rejected with a typed validation error and the hook's output discarded per REQ-3207. (Follows Pandoc's strict return-type discipline: [lua-filters.html](https://pandoc.org/lua-filters.html) "Pandoc will throw an error if this condition is violated.")
 
@@ -1085,15 +1085,15 @@ Or on error:
 
 **Error surfacing convention:**
 - **stdout**: structured JSON per this protocol. Non-JSON output on stdout is a hook error.
-- **stderr**: free-form human-readable logs; zetl forwards under `--verbose` and includes in failure diagnostics unconditionally.
+- **stderr**: free-form human-readable logs; ztl forwards under `--verbose` and includes in failure diagnostics unconditionally.
 - **Non-zero exit**: aborts the hook's pipeline participation per REQ-3207; build overall continues unless `--hook-fail-on error` OR the hook manifest has `fail_hard = true`.
 
-**Version-drift policy:** Enforced per REQ-3215. The handshake includes `ast_version`; zetl compares against the binary's supported range. Incompatible → hook disabled with typed error. Compatible-but-minor-mismatch → warning, hook runs. Exact match → silent.
+**Version-drift policy:** Enforced per REQ-3215. The handshake includes `ast_version`; ztl compares against the binary's supported range. Incompatible → hook disabled with typed error. Compatible-but-minor-mismatch → warning, hook runs. Exact match → silent.
 
 Implements: REQ-3201, REQ-3210, REQ-3215.
 Verified by: TEST-3201, TEST-3210, TEST-3215.
 
-### CON-3202: zetl-AST JSON Schema (Summary)
+### CON-3202: ztl-AST JSON Schema (Summary)
 
 A canonical example:
 
@@ -1129,9 +1129,9 @@ A canonical example:
 }
 ```
 
-Full JSON Schema (Draft 2020-12) lives at `tools/zetl-ast-schema-v1.json`. The schema is normative; anywhere this document disagrees, the schema file wins.
+Full JSON Schema (Draft 2020-12) lives at `tools/ztl-ast-schema-v1.json`. The schema is normative; anywhere this document disagrees, the schema file wins.
 
-**Default traversal order for `transform`-stage helpers:** zetl helper libraries default to **typewise** traversal (visits all `Inline` nodes, then all `Block` nodes, then `Document`). This matches Pandoc Lua filters' default and is empirically the order most extension authors expect ([lua-filters.html](https://pandoc.org/lua-filters.html) "Traversal order"). Helpers MAY offer a `topdown` mode for extensions that need root-to-leaves iteration; the selection is a flag on the `dispatch`/`walk` call, never on the zetl-side pipeline. Hook authors can override per call:
+**Default traversal order for `transform`-stage helpers:** ztl helper libraries default to **typewise** traversal (visits all `Inline` nodes, then all `Block` nodes, then `Document`). This matches Pandoc Lua filters' default and is empirically the order most extension authors expect ([lua-filters.html](https://pandoc.org/lua-filters.html) "Traversal order"). Helpers MAY offer a `topdown` mode for extensions that need root-to-leaves iteration; the selection is a flag on the `dispatch`/`walk` call, never on the ztl-side pipeline. Hook authors can override per call:
 
 ```python
 dispatch(ast, ctx, handlers, traverse="topdown")   # root-first; Pandoc added this in 2.17
@@ -1144,7 +1144,7 @@ Verified by: TEST-3202.
 
 ### CON-3203: Manifest File Format
 
-See REQ-3203 for the full TOML grammar. Every field is optional except `stage` (required when the manifest is used for a stage-specific behaviour; omitted when zetl infers stage from directory name). Unknown fields SHALL be rejected with a parse error to catch typos; zetl may later add fields, but additions follow the AST schema additive-only rule (NFR-3206).
+See REQ-3203 for the full TOML grammar. Every field is optional except `stage` (required when the manifest is used for a stage-specific behaviour; omitted when ztl infers stage from directory name). Unknown fields SHALL be rejected with a parse error to catch typos; ztl may later add fields, but additions follow the AST schema additive-only rule (NFR-3206).
 
 Implements: REQ-3203.
 Verified by: TEST-3203.
@@ -1176,7 +1176,7 @@ Verified by: TEST-3205.
 
 Vault has:
 ```
-.zetl/hooks/transform.d/
+.ztl/hooks/transform.d/
     20-tasks.py             (vault-authored, custom)
     10-callouts.py          (empty file, disables theme version)
 ```
@@ -1234,10 +1234,10 @@ Verified by: TEST-3208.
 
 ### CON-3210: Helper Library Signatures
 
-Python (`zetl-ast-py`):
+Python (`ztl-ast-py`):
 ```python
-from zetl_ast import run, walk, Node, Document, Paragraph, BlockQuote, Text, Wikilink
-from zetl_ast.context import Context
+from ztl_ast import run, walk, Node, Document, Paragraph, BlockQuote, Text, Wikilink
+from ztl_ast.context import Context
 
 def transform(ast: Document, ctx: Context) -> Document:
     for node in walk(ast, type=BlockQuote):
@@ -1247,9 +1247,9 @@ def transform(ast: Document, ctx: Context) -> Document:
 run(transform)   # handles one-shot and persistent modes transparently
 ```
 
-JavaScript (`zetl-ast-js`):
+JavaScript (`ztl-ast-js`):
 ```javascript
-import { run, walk, Document, BlockQuote, Text } from 'zetl-ast';
+import { run, walk, Document, BlockQuote, Text } from 'ztl-ast';
 run((ast, ctx) => {
     for (const node of walk(ast, { type: BlockQuote })) { ... }
     return ast;
@@ -1270,18 +1270,18 @@ Verified by: TEST-3211.
 
 ### CON-3221: AST Translation Contract
 
-**Invariant:** For every supported `(ast_type, ast_version)` pair, zetl ships a bidirectional translator `zetl_ext ↔ foreign_ext` with the following guarantees:
+**Invariant:** For every supported `(ast_type, ast_version)` pair, ztl ships a bidirectional translator `ztl_ext ↔ foreign_ext` with the following guarantees:
 
-1. **Round-trip identity for zetl-native concepts.** For any zetl-ext AST *A*, `foreign_to_zetl(zetl_to_foreign(A)) == A` byte-for-byte. Tested via property tests on a CommonMark-derived generator.
-2. **Forward preservation of foreign concepts.** For any foreign AST *F*, converting to zetl-ext and back produces a representation that renders identically to the original HTML (semantic round-trip, not byte-identical — foreign AST may have attributes zetl doesn't track).
-3. **Marker conventions for non-native concepts.** Each foreign AST declares a "marker namespace" (e.g., pandoc-ext uses `class="zetl-*"` and attrs on `Span`/`Div`) for zetl concepts it can't represent natively. A foreign-ext hook that strips markers corrupts round-trip but is detectable via REQ-3221's loss-detection logging.
-4. **Protocol-convention table.** Each ast_type's invocation conventions (env vars, argv, handshake shape, error response format) are spelled out in `docs/ast-types/<type>.md` and form part of the zetl contract.
+1. **Round-trip identity for ztl-native concepts.** For any ztl-ext AST *A*, `foreign_to_ztl(ztl_to_foreign(A)) == A` byte-for-byte. Tested via property tests on a CommonMark-derived generator.
+2. **Forward preservation of foreign concepts.** For any foreign AST *F*, converting to ztl-ext and back produces a representation that renders identically to the original HTML (semantic round-trip, not byte-identical — foreign AST may have attributes ztl doesn't track).
+3. **Marker conventions for non-native concepts.** Each foreign AST declares a "marker namespace" (e.g., pandoc-ext uses `class="ztl-*"` and attrs on `Span`/`Div`) for ztl concepts it can't represent natively. A foreign-ext hook that strips markers corrupts round-trip but is detectable via REQ-3221's loss-detection logging.
+4. **Protocol-convention table.** Each ast_type's invocation conventions (env vars, argv, handshake shape, error response format) are spelled out in `docs/ast-types/<type>.md` and form part of the ztl contract.
 
 **Failure modes and diagnostics:**
 
-| Failure                                                   | Detection                              | Zetl response                              |
+| Failure                                                   | Detection                              | ztl response                              |
 | --------------------------------------------------------- | -------------------------------------- | ------------------------------------------ |
-| Hook strips marker attrs on zetl-wikilink spans          | Post-hook scan: count wikilink nodes in pre vs post | Warning with list of lost nodes; hook continues |
+| Hook strips marker attrs on ztl-wikilink spans          | Post-hook scan: count wikilink nodes in pre vs post | Warning with list of lost nodes; hook continues |
 | Hook returns foreign AST that fails to parse              | Foreign-ast deserialise                | REQ-3207 failure; unmodified input passed  |
 | Hook returns foreign AST that fails to translate back     | Translator validation                  | REQ-3207 failure                           |
 | ast_type declared in manifest but not supported by binary | Pipeline init                          | Hook disabled with actionable error        |
@@ -1294,7 +1294,7 @@ Verified by: TEST-3221.
 
 ### CON-3214: Template Variable Semantics
 
-**Lifecycle:** For each page, zetl initialises an empty `page.ext = {}` context object before the pipeline runs. Each hook's response `template_vars` (if present) is deep-merged under `page.ext[hook_id]`. At template render time, Minijinja receives the final `page.ext` dict alongside the existing page variables.
+**Lifecycle:** For each page, ztl initialises an empty `page.ext = {}` context object before the pipeline runs. Each hook's response `template_vars` (if present) is deep-merged under `page.ext[hook_id]`. At template render time, Minijinja receives the final `page.ext` dict alongside the existing page variables.
 
 **Merge semantics within `page.ext[hook_id]`:** Entire replacement (not recursive merge). If a hook emits vars at two stages, the later stage's `template_vars` object wholly replaces the earlier stage's. Rationale: extension authors think in whole-object updates; recursive merging produces surprising outcomes.
 
@@ -1351,8 +1351,8 @@ semantics:
   a single page's pipeline run in order (REQ-3206 / CON-3217). Each
   hook receives the snapshot *including* writes emitted by earlier
   hooks on the same page. Order is deterministic.
-- **Inter-page (across pages during `zetl build`): each page sees a
-  snapshot fixed at its render-start.** When zetl renders pages
+- **Inter-page (across pages during `ztl build`): each page sees a
+  snapshot fixed at its render-start.** When ztl renders pages
   concurrently, every page's pipeline reads from a snapshot frozen
   at the moment that page began rendering. Writes emitted by one
   page's pipeline are *not* visible to another page's pipeline
@@ -1362,7 +1362,7 @@ semantics:
   see *all* pages' writes (e.g., a tag-cloud aggregator) must use the
   finalise mechanism proposed in §13 Q9 (`vault.ext.<id>`) — not
   `build_data`.
-- **Serve mode: store cleared between page renders.** Under `zetl
+- **Serve mode: store cleared between page renders.** Under `ztl
   serve`, each page render starts with an empty `build_data`; the
   one-way-per-build semantics of build mode don't carry over.
 - **Size cap: 16 MiB total per build, enforced on each write.**
@@ -1479,7 +1479,7 @@ input). Under `--hook-fail-on error`, a contract violation fails the
 build.
 
 **Ecosystem-adapter provenance:** when a hook's `ecosystem` field
-names an adapter (SPEC-033), zetl MAY populate `contract` from the
+names an adapter (SPEC-033), ztl MAY populate `contract` from the
 matrix entry (REQ-3311) if the hook's manifest leaves it empty —
 equivalent to "inherit the matrix's declared contract". A manifest
 that declares its own `[contract]` overrides the matrix for that
@@ -1508,7 +1508,7 @@ five-part structure, progressively disclosing detail:
 **Worked example — contract preservation violation:**
 
 ```
-[zetl] hook 'callouts' contract violation on projects/q2-review.md:
+[ztl] hook 'callouts' contract violation on projects/q2-review.md:
   contract.preserves = ["Wikilink", "Embed"]
   observed in input:  12 Wikilink, 3 Embed
   observed in output:  8 Wikilink, 3 Embed
@@ -1516,15 +1516,15 @@ five-part structure, progressively disclosing detail:
 
   Likely cause: the transform strips unrecognised Span classes or
   drops inline nodes whose type it doesn't match.
-  Hint: run `zetl ast diff <before.json> <after.json>` on the fixture
+  Hint: run `ztl ast diff <before.json> <after.json>` on the fixture
   input to locate the removed nodes; see:
-    https://zetl.codeberg.page/docs/hook-authoring/preservation
+    https://ztl.codeberg.page/docs/hook-authoring/preservation
 ```
 
 **Worked example — idempotence violation (CI double-run):**
 
 ```
-[zetl] hook 'tasks' contract violation in CI double-run on
+[ztl] hook 'tasks' contract violation in CI double-run on
        tests/hook-fixtures/tasks/input.md:
   contract.idempotent = true (declared)
   observed: canonicalise(f(f(x))) != canonicalise(f(x))
@@ -1534,21 +1534,21 @@ five-part structure, progressively disclosing detail:
   Likely cause: the transform runs over its own output, wrapping
   already-rendered blocks a second time.
   Hint: detect already-rendered output (e.g. presence of
-  `class="zetl-tasks-rendered"`) and short-circuit, OR declare
+  `class="ztl-tasks-rendered"`) and short-circuit, OR declare
   contract.idempotent = false if nested output is intended.
 ```
 
 **Worked example — manifest parse error:**
 
 ```
-[zetl] hook manifest error at .zetl/hooks/transform.d/foo.toml:
+[ztl] hook manifest error at .ztl/hooks/transform.d/foo.toml:
   unknown field 'ecosystm' (did you mean 'ecosystem'?)
   line 3, column 1
 
   Hint: valid top-level fields: stage, mode, timeout_ms, memory_mib,
   ast_type, ast_version, ecosystem, select, before, after, optional,
   extension_id, contract. See:
-    https://zetl.codeberg.page/docs/hook-authoring/manifest-fields
+    https://ztl.codeberg.page/docs/hook-authoring/manifest-fields
 ```
 
 **Colour and quieting:** diagnostic colouring is honoured per
@@ -1558,7 +1558,7 @@ under `--verbose`, additionally the full stderr of the hook process
 if the failure was a crash or timeout.
 
 **Applicability:** this structure applies to every failure path
-zetl logs from the hook subsystem — manifest parse errors, selector
+ztl logs from the hook subsystem — manifest parse errors, selector
 evaluation failures, contract violations, protocol errors, ecosystem
 runtime absence. Conforming to the structure is a quality-gate item
 (§15) checked against fixture diagnostics.
@@ -1572,21 +1572,21 @@ diagnostic shape).
 
 ## 6. Architecture Decisions
 
-### ADR-3201: Define a zetl-Specific AST JSON Format (Not pulldown-cmark Events)
+### ADR-3201: Define a ztl-Specific AST JSON Format (Not pulldown-cmark Events)
 
-**Context:** The `transform` stage needs a stable data-interchange format. Options: (a) re-use pulldown-cmark's event stream, (b) adopt the unified/remark `mdast` format, (c) define a zetl-specific schema.
+**Context:** The `transform` stage needs a stable data-interchange format. Options: (a) re-use pulldown-cmark's event stream, (b) adopt the unified/remark `mdast` format, (c) define a ztl-specific schema.
 
-**Decision:** Define a zetl-specific schema derived from CommonMark AST conventions, with explicit extensions for wikilinks, embeds, and frontmatter.
+**Decision:** Define a ztl-specific schema derived from CommonMark AST conventions, with explicit extensions for wikilinks, embeds, and frontmatter.
 
 **Rationale:**
 - **Parser independence.** pulldown-cmark's event stream is an iteration protocol, not a stable document format; it serialises awkwardly. If we ever swap parsers, tying hooks to pulldown-cmark's shape is a migration nightmare.
-- **Vault-domain extensions.** `mdast` doesn't cover wikilinks or zetl's `![[...]]` embed syntax natively. We'd need extensions anyway; once you're extending, defining the whole schema is cleaner than patching someone else's.
-- **Versioning control.** A zetl-owned schema means we decide when to bump, what additive changes mean, and how to deprecate. `mdast` evolves at remark's cadence, which doesn't match ours.
+- **Vault-domain extensions.** `mdast` doesn't cover wikilinks or ztl's `![[...]]` embed syntax natively. We'd need extensions anyway; once you're extending, defining the whole schema is cleaner than patching someone else's.
+- **Versioning control.** A ztl-owned schema means we decide when to bump, what additive changes mean, and how to deprecate. `mdast` evolves at remark's cadence, which doesn't match ours.
 - **Serialisation shape.** Nested tree JSON is ergonomic for both Python and JS AST-walking code. Event streams require users to track open/close state — more error-prone.
 
 **Trade-offs accepted:**
 - Schema maintenance burden is ours. Offset by the fact that the schema is small (~20 node types) and CommonMark-stable.
-- Conversion cost: pulldown-cmark events → zetl-AST JSON is a serialise step. Measured overhead is ~0.5 ms for a typical page; negligible.
+- Conversion cost: pulldown-cmark events → ztl-AST JSON is a serialise step. Measured overhead is ~0.5 ms for a typical page; negligible.
 
 **Alternatives considered:**
 - `mdast` — rejected on extension-ergonomics and cadence grounds.
@@ -1603,8 +1603,8 @@ Status: Proposed.
 
 **Rationale:**
 - **Language choice.** Hook authors write in whatever language they know — Python, Node, Ruby, Rust, shell. In-process locks them to one runtime.
-- **Failure isolation.** A buggy hook crashes its process; `zetl` keeps running. In-process embedding makes OOM and panics the host's problem.
-- **Supply chain.** No embedded interpreter = no QuickJS/Steel CVE exposure in `zetl`'s dependency tree.
+- **Failure isolation.** A buggy hook crashes its process; `ztl` keeps running. In-process embedding makes OOM and panics the host's problem.
+- **Supply chain.** No embedded interpreter = no QuickJS/Steel CVE exposure in `ztl`'s dependency tree.
 - **Ergonomics closable via helper libraries.** The gap vs. in-process (fast calls, no serialisation) is real but bridgeable with well-designed Python/JS libraries and persistent-mode pipes.
 
 **Trade-offs accepted:**
@@ -1626,10 +1626,10 @@ Supersedes: SPEC-031 ADR-3101 (QuickJS choice).
 **Decision:** Sidecar manifest (`<executable>.toml`) next to the hook executable.
 
 **Rationale:**
-- **Evaluable without invoking.** Zetl parses the manifest once at startup; selector evaluation per page doesn't require the hook to run. Critical for NFR-3201.
+- **Evaluable without invoking.** ztl parses the manifest once at startup; selector evaluation per page doesn't require the hook to run. Critical for NFR-3201.
 - **Co-located with the executable.** The hook and its selector travel together — themes, version control, distribution archives all move one `(executable, manifest)` pair as a unit.
-- **Discoverable.** Users browsing `.zetl/hooks/transform.d/` see `callouts.py` and `callouts.toml`; the relationship is obvious.
-- **Tool-friendly.** `zetl hook dry-run` parses only the manifest; no need to spawn the hook process just to learn its selector.
+- **Discoverable.** Users browsing `.ztl/hooks/transform.d/` see `callouts.py` and `callouts.toml`; the relationship is obvious.
+- **Tool-friendly.** `ztl hook dry-run` parses only the manifest; no need to spawn the hook process just to learn its selector.
 
 **Trade-offs accepted:**
 - Two files per hook (not one). Mitigated: manifests are optional; hooks without one get sensible defaults with a warning.
@@ -1657,13 +1657,13 @@ default theme's hook manifests.
 - **Leverage over originality.** SPEC-033's ecosystem scan found that
   mature ecosystem plugins (`mdbook-admonish`, Pandoc's div syntax,
   remark-directive) cover these three patterns with years of edge-case
-  fixes. Zetl shipping its own Python/JS implementations duplicates
+  fixes. ztl shipping its own Python/JS implementations duplicates
   that work and takes on the maintenance burden.
 - **No runtime dependency for the default theme.** Earlier draft
   imposed Python 3.9+ as a default-theme dependency. Thin stubs
   require only CSS; the ecosystem plugin is only active when the
   user has installed its runtime (Pandoc / Node / etc.) via SPEC-033.
-  `zetl build` in Alpine CI with plain-Markdown content produces a
+  `ztl build` in Alpine CI with plain-Markdown content produces a
   usable output without installing any extra runtime.
 - **Theme owns design, ecosystem owns transformation.** This is the
   cleanest separation — theme authors restyle by editing CSS;
@@ -1677,7 +1677,7 @@ default theme's hook manifests.
 - Migrant user without any ecosystem plugin installed sees a
   degraded render (plain blockquotes for Callouts). Mitigation: the
   default theme manifest lists the recommended plugin with a clear
-  install hint surfaced by `zetl ecosystem check`.
+  install hint surfaced by `ztl ecosystem check`.
 - Some patterns (e.g., Tasks' query evaluation) don't have a
   ready ecosystem match and are deferred to a separate specification
   rather than shipped here.
@@ -1686,7 +1686,7 @@ default theme's hook manifests.
 - **(a) Native Rust** — rejected on consistency grounds; becomes a
   second extension surface competing with the hook surface.
 - **(b) First-party Python/JS hooks** — rejected because it imposed a
-  runtime dependency on every `zetl build` and replicated what the
+  runtime dependency on every `ztl build` and replicated what the
   ecosystem already does better (SPEC-033 §1.1).
 - **(c) Both** — rejected as over-engineered.
 
@@ -1695,22 +1695,22 @@ earlier variant that picked (b).
 
 ### ADR-3206: Typed AST Protocol (Multiple `ast_type`s) Over Single-Format
 
-**Context:** SPEC-032's transform-stage AST is zetl-ext — our own CommonMark-derived format with wikilink/embed/SPL extensions (ADR-3201). This gives schema control but closes the door on the vast existing ecosystem of Pandoc filters (hundreds of extensions: pandoc-crossref, pandoc-citeproc, pantable, etc.) and unified/remark plugins (thousands). The question is how to open that door without surrendering zetl-ext.
+**Context:** SPEC-032's transform-stage AST is ztl-ext — our own CommonMark-derived format with wikilink/embed/SPL extensions (ADR-3201). This gives schema control but closes the door on the vast existing ecosystem of Pandoc filters (hundreds of extensions: pandoc-crossref, pandoc-citeproc, pantable, etc.) and unified/remark plugins (thousands). The question is how to open that door without surrendering ztl-ext.
 
 Three shapes were considered:
 
-- **(a)** Adopt pandoc-types (or mdast) wholesale as zetl's AST. Full ecosystem compatibility; no translation layer needed. Cedes schema control, couples zetl to Pandoc's release cadence, and represents wikilinks/embeds/SPL as stringly-typed conventions over `Span`/`Raw` (ADR-3201 is essentially a rejection of this).
-- **(b)** Keep zetl-ext as the only AST. Ship a separate `zetl-pandoc-adapter` binary as an optional companion tool. Users invoke it explicitly in their manifest. Works, but requires users to know about adapter tools, install them separately, and reason about the two-layer abstraction.
-- **(c)** Typed protocol: each hook declares its `ast_type` in the manifest; zetl's own dispatch layer knows how to serialise to each supported type. Translation is owned by zetl, not a third-party tool. Mixed pipelines (zetl-ext + pandoc-ext + mdast-ext) compose because zetl translates at each boundary.
+- **(a)** Adopt pandoc-types (or mdast) wholesale as ztl's AST. Full ecosystem compatibility; no translation layer needed. Cedes schema control, couples ztl to Pandoc's release cadence, and represents wikilinks/embeds/SPL as stringly-typed conventions over `Span`/`Raw` (ADR-3201 is essentially a rejection of this).
+- **(b)** Keep ztl-ext as the only AST. Ship a separate `ztl-pandoc-adapter` binary as an optional companion tool. Users invoke it explicitly in their manifest. Works, but requires users to know about adapter tools, install them separately, and reason about the two-layer abstraction.
+- **(c)** Typed protocol: each hook declares its `ast_type` in the manifest; ztl's own dispatch layer knows how to serialise to each supported type. Translation is owned by ztl, not a third-party tool. Mixed pipelines (ztl-ext + pandoc-ext + mdast-ext) compose because ztl translates at each boundary.
 
-**Decision:** (c). The protocol is typed; `zetl-ext` is one of several supported `ast_type` values, not the only one. v1 accepts and defaults to `zetl-ext`; `pandoc-ext` and `mdast-ext` are reserved values that produce actionable errors in v1 and are implemented in v1.1 and v2.x respectively.
+**Decision:** (c). The protocol is typed; `ztl-ext` is one of several supported `ast_type` values, not the only one. v1 accepts and defaults to `ztl-ext`; `pandoc-ext` and `mdast-ext` are reserved values that produce actionable errors in v1 and are implemented in v1.1 and v2.x respectively.
 
 **Rationale:**
 
-- **Borrow strength without cession.** zetl retains schema control (ADR-3201 stands) while offering first-class compatibility with external ecosystems through translators zetl owns.
-- **Clean composition.** Mixed-`ast_type` pipelines work out of the box. A user can chain pandoc-crossref (pandoc-ext), a native zetl Callouts extension (zetl-ext), and a remark-gfm-style plugin (mdast-ext) in one pipeline; zetl translates at each boundary.
-- **First-party translator quality.** Adapter binaries live in third-party repos with their own release cadences, test thoroughness, and abandonment risk. A zetl-owned translator is testable in-tree with the rest of the hook runtime.
-- **Per-type versioning.** `ast_version` ranges are interpreted relative to the declared `ast_type`'s version scheme. pandoc-types v1.22 and v2.0 can be supported simultaneously in the compat matrix without coupling zetl-ext's semver.
+- **Borrow strength without cession.** ztl retains schema control (ADR-3201 stands) while offering first-class compatibility with external ecosystems through translators ztl owns.
+- **Clean composition.** Mixed-`ast_type` pipelines work out of the box. A user can chain pandoc-crossref (pandoc-ext), a native ztl Callouts extension (ztl-ext), and a remark-gfm-style plugin (mdast-ext) in one pipeline; ztl translates at each boundary.
+- **First-party translator quality.** Adapter binaries live in third-party repos with their own release cadences, test thoroughness, and abandonment risk. A ztl-owned translator is testable in-tree with the rest of the hook runtime.
+- **Per-type versioning.** `ast_version` ranges are interpreted relative to the declared `ast_type`'s version scheme. pandoc-types v1.22 and v2.0 can be supported simultaneously in the compat matrix without coupling ztl-ext's semver.
 - **Future-proofing.** New ecosystems (Djot, Pollen) are additions to the type registry, not redesigns of the protocol.
 - **Precedent.** LSP capability negotiation, Tree-sitter's per-query language fields, and DAP's similarly-typed protocols all demonstrate this shape works for protocol-level extensibility.
 
@@ -1719,7 +1719,7 @@ Three shapes were considered:
 - **Translator implementation cost.** Each supported type is a non-trivial Rust module with fuzz-quality round-trip tests against real ecosystem hooks. pandoc-ext alone is substantial. Managed by gating implementation to v1.1 (pandoc-ext) and v2.x (mdast-ext).
 - **Translation loss is intrinsic.** Foreign ASTs (Pandoc, mdast) don't have native wikilinks or SPL. Marker conventions are unavoidable. Documentation must make round-trip guarantees explicit.
 - **Protocol-convention emulation.** Supporting pandoc-ext means emulating Pandoc's invocation contract (env vars, argv). Real engineering; managed by scoping the contract in CON-3221 and documenting in `docs/ast-types/pandoc-ext.md`.
-- **Complexity signal to users.** Users now have one more manifest field. Default (`zetl-ext`) covers the 80% case; only ecosystem-migration users need to think about `ast_type`.
+- **Complexity signal to users.** Users now have one more manifest field. Default (`ztl-ext`) covers the 80% case; only ecosystem-migration users need to think about `ast_type`.
 
 **Alternatives rejected:**
 
@@ -1728,7 +1728,7 @@ Three shapes were considered:
 - **Defer typed protocol entirely to v2.0** — considered. Rejected because the manifest field is free to define now (it costs nothing to reserve) and retrofit later would require a manifest-schema breaking change.
 
 Status: Proposed.
-Supersedes: —. Extends ADR-3201 (which establishes zetl-ext as a native type) by placing it in a registry rather than as the sole type.
+Supersedes: —. Extends ADR-3201 (which establishes ztl-ext as a native type) by placing it in a registry rather than as the sole type.
 
 ### ADR-3205: Three Stages, Not Two or Four
 
@@ -1802,7 +1802,7 @@ Verifies: NFR-3201.
 
 ### TEST-3202: AST Schema Validation
 
-For a canonical demo vault, render through the pipeline; validate emitted AST against `zetl-ast-schema-v1.json` using a standard JSON Schema validator. Assert 0 validation errors.
+For a canonical demo vault, render through the pipeline; validate emitted AST against `ztl-ast-schema-v1.json` using a standard JSON Schema validator. Assert 0 validation errors.
 
 Property test: for arbitrary Markdown generated via a QuickCheck-style generator, assert `parse → serialise → deserialise → render_to_html` is byte-equivalent to `parse → render_to_html` (roundtrip property).
 
@@ -1833,7 +1833,7 @@ Verifies: REQ-3203.
 
 ### TEST-3203-determinism: Build Determinism
 
-Run `zetl build` three times on a fixed vault with fixed canonical extensions. Assert zero byte-differences across runs and across platforms (macOS aarch64 + Linux x86_64 in CI).
+Run `ztl build` three times on a fixed vault with fixed canonical extensions. Assert zero byte-differences across runs and across platforms (macOS aarch64 + Linux x86_64 in CI).
 
 Verifies: NFR-3203.
 
@@ -1864,7 +1864,7 @@ Verifies: REQ-3205.
 
 ### TEST-3205-startup: Zero-Hook Startup Cost
 
-Benchmark on a fixture vault with no `.zetl/hooks/` directory. Compare startup time to a control build (pre-SPEC-032 code or `--no-hooks` flag). Assert delta ≤ 5 ms P95.
+Benchmark on a fixture vault with no `.ztl/hooks/` directory. Compare startup time to a control build (pre-SPEC-032 code or `--no-hooks` flag). Assert delta ≤ 5 ms P95.
 
 Verifies: NFR-3205.
 
@@ -1878,7 +1878,7 @@ Verifies: REQ-3206.
 
 Chain `[10-a.py, 20-fail.py, 30-b.py]`. `20-fail.py` throws. Assert `30-b.py` receives `10-a.py`'s output, not the stage input. Assert the failure is recorded in the diagnostics but the pipeline completes.
 
-`zetl build --hook-fail-on error`: assert build exits non-zero; assert output HTML is still written (failure is reported, not build-aborting for partial output).
+`ztl build --hook-fail-on error`: assert build exits non-zero; assert output HTML is still written (failure is reported, not build-aborting for partial output).
 
 Verifies: REQ-3207, NFR-3204.
 
@@ -1890,19 +1890,19 @@ Verifies: NFR-3207.
 
 ### TEST-3208: Coverage Report
 
-Run build with mixed hook outcomes; assert `hook-coverage.json` content matches a golden schema. Verify `zetl hook coverage --json` emits structurally-equivalent data.
+Run build with mixed hook outcomes; assert `hook-coverage.json` content matches a golden schema. Verify `ztl hook coverage --json` emits structurally-equivalent data.
 
 Verifies: REQ-3208.
 
 ### TEST-3209: Dry-Run
 
-`zetl hook dry-run transform/callouts --vault demo-vault` against a fixture; assert the matched page list is byte-identical to a golden. Assert exit code 1 when zero pages match.
+`ztl hook dry-run transform/callouts --vault demo-vault` against a fixture; assert the matched page list is byte-identical to a golden. Assert exit code 1 when zero pages match.
 
 Verifies: REQ-3209.
 
 ### TEST-3210: Helper Library Contract Tests
 
-Python (`zetl-ast-py`): a minimal `identity` transform hook built with the library is run as a real persistent-mode subprocess against the zetl pipeline. Assert round-trip equivalence for a diverse page set.
+Python (`ztl-ast-py`): a minimal `identity` transform hook built with the library is run as a real persistent-mode subprocess against the ztl pipeline. Assert round-trip equivalence for a diverse page set.
 
 Same test in JavaScript. Run in CI on every helper-library or schema change.
 
@@ -1950,7 +1950,7 @@ Verifies: REQ-3213.
 
 Fixture: a pre-parse hook that wraps every paragraph in an HTML
 `<div>` (restructures the block tree). Manifest declares
-`contract.may_restructure = false`. Assert zetl emits a
+`contract.may_restructure = false`. Assert ztl emits a
 `contract_violation:may_restructure` diagnostic with the specific
 paragraph → div path in the reason field. Flip manifest to
 `may_restructure = true`; assert no diagnostic.
@@ -1961,7 +1961,7 @@ Verifies: REQ-3222, REQ-3224.
 
 Fixture: a transform hook that strips all `Wikilink` nodes from
 input. Manifest declares `contract.preserves = ["Wikilink"]`.
-Assert zetl emits a `contract_violation:preserves` diagnostic
+Assert ztl emits a `contract_violation:preserves` diagnostic
 enumerating the count delta and the affected page. Hook output is
 discarded per REQ-3207; next hook in the pipeline receives the
 unmodified input.
@@ -1988,14 +1988,14 @@ Matrix:
 
 | Subcommand                              | Fixture / assertion                                           |
 | --------------------------------------- | ------------------------------------------------------------- |
-| `zetl hook new transform foo --lang py` | scaffold appears at expected paths; `zetl hook test foo` passes before any edits |
-| `zetl hook test <existing>` no-op       | diff is empty; exit 0                                         |
-| `zetl hook test <existing>` after edit  | diff shown; exit 1                                            |
-| `zetl hook test --update`               | golden regenerated; exit 0                                    |
-| `zetl hook fixture --from projects/q2`  | `tests/hook-fixtures/<hook>/input.md` matches page content    |
-| `zetl hook watch` restart               | editing hook source triggers one restart within 500 ms        |
-| `zetl ast sample <file.md>`             | output validates against zetl-ast-schema-v1.json              |
-| `zetl ast diff a.json b.json`           | tree-diff identifies known mutations; exit 1 on non-empty diff |
+| `ztl hook new transform foo --lang py` | scaffold appears at expected paths; `ztl hook test foo` passes before any edits |
+| `ztl hook test <existing>` no-op       | diff is empty; exit 0                                         |
+| `ztl hook test <existing>` after edit  | diff shown; exit 1                                            |
+| `ztl hook test --update`               | golden regenerated; exit 0                                    |
+| `ztl hook fixture --from projects/q2`  | `tests/hook-fixtures/<hook>/input.md` matches page content    |
+| `ztl hook watch` restart               | editing hook source triggers one restart within 500 ms        |
+| `ztl ast sample <file.md>`             | output validates against ztl-ast-schema-v1.json              |
+| `ztl ast diff a.json b.json`           | tree-diff identifies known mutations; exit 1 on non-empty diff |
 
 **Diagnostic-shape fixtures:** TEST-3225 also covers CON-3225 by
 asserting every failure-class diagnostic (manifest parse error,
@@ -2028,16 +2028,16 @@ Profiles 2.1 (migrant), 2.2 (custom transform author), 2.3 (theme author) walked
 The OBS items below name Prometheus-style metric families. The
 **emission surface** — where those numbers become visible — is:
 
-1. **Primary user-facing surface: `zetl hook coverage [--json]`
+1. **Primary user-facing surface: `ztl hook coverage [--json]`
    (REQ-3208).** Rolls up the metric families into a per-hook table:
    match/invoke counts, P50/P95 latency, failure counts, reasons. This
    is what humans consume.
 2. **Structured log lines on stderr under `--verbose`.** Each OBS
    item below names the log-line shape it emits at that verbosity.
 3. **A full `/metrics` Prometheus endpoint is out of scope for this
-   spec.** Adding one requires the `zetl serve` process to expose
+   spec.** Adding one requires the `ztl serve` process to expose
    HTTP metrics infrastructure (counters, histograms, labels — none
-   of which zetl currently wires up); that's a separate SPEC.
+   of which ztl currently wires up); that's a separate SPEC.
 
 Metric-family names below are reserved and their shapes frozen as
 contract — a future Prometheus-endpoint spec can wire them up without
@@ -2046,47 +2046,47 @@ the same surface convention.
 
 ### OBS-3201: Hook Discovery
 
-Log line at zetl startup (once): `[zetl] hooks: discovered <N> in <stage>.d/ (theme=<M>, vault=<K>)` for each stage.
-Metric: `zetl_hooks_discovered_total{stage, source}`.
+Log line at ztl startup (once): `[ztl] hooks: discovered <N> in <stage>.d/ (theme=<M>, vault=<K>)` for each stage.
+Metric: `ztl_hooks_discovered_total{stage, source}`.
 
 ### OBS-3202: Selector Evaluation
 
-Metric: `zetl_hook_selector_latency_seconds{hook_id, layer}` histogram, where `layer` ∈ {path, frontmatter, probe, total}.
-Under `--verbose`: `[zetl] hook selector: <id> matched=<bool> evaluated_layers=<N> duration_ms=<M>`.
+Metric: `ztl_hook_selector_latency_seconds{hook_id, layer}` histogram, where `layer` ∈ {path, frontmatter, probe, total}.
+Under `--verbose`: `[ztl] hook selector: <id> matched=<bool> evaluated_layers=<N> duration_ms=<M>`.
 
 ### OBS-3203: Selection Hit Rate
 
-Metric: `zetl_hook_selector_match_total{hook_id, outcome}` counter, `outcome` ∈ {matched, excluded_path, failed_frontmatter, failed_probe}.
+Metric: `ztl_hook_selector_match_total{hook_id, outcome}` counter, `outcome` ∈ {matched, excluded_path, failed_frontmatter, failed_probe}.
 
 This feeds the coverage report and is the principal "is this hook earning its place?" signal.
 
 ### OBS-3204: Hook Invocation Latency
 
-Metric: `zetl_hook_invoke_duration_seconds{hook_id, mode}` histogram, `mode` ∈ {one-shot, persistent}.
-Under `--verbose`: `[zetl] hook invoke: <id> page=<slug> duration_ms=<M>`.
+Metric: `ztl_hook_invoke_duration_seconds{hook_id, mode}` histogram, `mode` ∈ {one-shot, persistent}.
+Under `--verbose`: `[ztl] hook invoke: <id> page=<slug> duration_ms=<M>`.
 
 ### OBS-3205: Failure Rate
 
-Metric: `zetl_hook_failure_total{hook_id, reason}` counter, `reason` ∈ {non_zero_exit, timeout, memory_exceeded, malformed_output, crash}.
+Metric: `ztl_hook_failure_total{hook_id, reason}` counter, `reason` ∈ {non_zero_exit, timeout, memory_exceeded, malformed_output, crash}.
 Log line per failure (severity `warn` under default, `error` under `--hook-fail-on error`).
 
 ### OBS-3206: End-to-End Render Overhead
 
-`zetl build` summary line: `[zetl] hooks: total_invocations=<N> total_duration_ms=<M> failures=<K>`.
+`ztl build` summary line: `[ztl] hooks: total_invocations=<N> total_duration_ms=<M> failures=<K>`.
 Delta against a `--no-hooks` baseline available in the coverage report.
 
 ### OBS-3207: Persistent-Mode Protocol Overhead
 
-Metric: `zetl_hook_protocol_duration_seconds{hook_id, phase}` histogram, `phase` ∈ {serialise, transport, deserialise}.
+Metric: `ztl_hook_protocol_duration_seconds{hook_id, phase}` histogram, `phase` ∈ {serialise, transport, deserialise}.
 
 ### OBS-3208: Memory
 
-Metric: `zetl_hook_memory_high_water_mib{hook_id}` gauge, sampled at each persistent-mode invocation boundary.
+Metric: `ztl_hook_memory_high_water_mib{hook_id}` gauge, sampled at each persistent-mode invocation boundary.
 
 ### OBS-3209: Template Variable Emission
 
-Metric: `zetl_hook_template_vars_total{hook_id, outcome}` counter, `outcome` ∈ {emitted, dropped_oversize, overwritten_by_later_stage}.
-Log line (debug): `[zetl] hook template_vars: <hook_id> page=<slug> bytes=<N> keys=<K>`.
+Metric: `ztl_hook_template_vars_total{hook_id, outcome}` counter, `outcome` ∈ {emitted, dropped_oversize, overwritten_by_later_stage}.
+Log line (debug): `[ztl] hook template_vars: <hook_id> page=<slug> bytes=<N> keys=<K>`.
 Coverage report (REQ-3208) includes a per-hook `template_var_bytes_avg` column for visibility into extension payload sizes.
 
 Trace: REQ-3214.
@@ -2095,14 +2095,14 @@ Trace: REQ-3214.
 
 ## 10. Security Considerations
 
-- **Untrusted code execution.** Hooks are arbitrary user/theme-author code. Zetl treats them as untrusted.
+- **Untrusted code execution.** Hooks are arbitrary user/theme-author code. ztl treats them as untrusted.
   - **Isolation:** out-of-process; no shared-memory primitive; subprocess stdin/stdout only.
-  - **No privilege escalation:** hook inherits the user's UID/GID; zetl does not gate per-hook permissions in v1 (future work).
-  - **Filesystem access:** a hook has whatever filesystem access the user running `zetl` has. Zetl does not jail hooks. Documentation notes this explicitly.
-  - **Network:** same — hooks can open sockets. Users who want stricter isolation should run zetl under their own sandboxing (bwrap, Firejail, Docker).
+  - **No privilege escalation:** hook inherits the user's UID/GID; ztl does not gate per-hook permissions in v1 (future work).
+  - **Filesystem access:** a hook has whatever filesystem access the user running `ztl` has. ztl does not jail hooks. Documentation notes this explicitly.
+  - **Network:** same — hooks can open sockets. Users who want stricter isolation should run ztl under their own sandboxing (bwrap, Firejail, Docker).
 - **Selector as DoS vector.** A pathological regex in `content_probe` could be catastrophic (ReDoS). Mitigation: use a regex engine with linear-time guarantees (`regex` crate); reject patterns that compile to non-linear. Fuzz test the probe path.
 - **Manifest parse.** Malformed TOML is user error. Parser hardening via TOML crate + `cargo-fuzz`.
-- **AST JSON deserialisation.** Hooks send JSON back; zetl deserialises. Untrusted-JSON attacks (deeply nested objects, huge arrays) mitigated by (a) 10 MiB max message size, (b) recursion depth limit of 256 (matches CommonMark's nesting cap).
+- **AST JSON deserialisation.** Hooks send JSON back; ztl deserialises. Untrusted-JSON attacks (deeply nested objects, huge arrays) mitigated by (a) 10 MiB max message size, (b) recursion depth limit of 256 (matches CommonMark's nesting cap).
 - **Threat model (v1) — out of scope:** targeted exfiltration by a theme author's malicious hook (same risk posture as Obsidian plugins or VS Code extensions; user consent to the theme is consent to its hooks).
 - **AI Trust Boundary classification:** Tier 3 (standard feature code; untrusted-input processing at the JSON protocol boundary). Implementation requires same-model fresh-context review OR cross-model review. Not Tier 1 — no cryptography or authentication in scope.
 
@@ -2112,8 +2112,8 @@ Trace: REQ-3214.
 
 - **README.md** — new "Extension hooks" section: three stages, selector basics, canonical extensions list, how to disable.
 - **CHANGELOG.md** — entry for the new stages, the AST schema, and the supersession of SPEC-031.
-- **`docs/hook-authoring.md`** — primary tutorial. Walks through writing a Python hook with `zetl-ast-py`, writing the manifest, running `zetl hook new` / `test` / `watch`, iterating. Structured as a five-minute first-hook path followed by deeper topics (selectors, contracts, ecosystem hooks).
-- **`docs/zetl-ast-reference.md`** — auto-generated from `tools/zetl-ast-schema-v1.json` at CI time (REQ-3202). One section per node type with shape, attrs, canonical example, and HTML-rendering expectations. Never hand-edited; a schema/reference discrepancy is a CI failure.
+- **`docs/hook-authoring.md`** — primary tutorial. Walks through writing a Python hook with `ztl-ast-py`, writing the manifest, running `ztl hook new` / `test` / `watch`, iterating. Structured as a five-minute first-hook path followed by deeper topics (selectors, contracts, ecosystem hooks).
+- **`docs/ztl-ast-reference.md`** — auto-generated from `tools/ztl-ast-schema-v1.json` at CI time (REQ-3202). One section per node type with shape, attrs, canonical example, and HTML-rendering expectations. Never hand-edited; a schema/reference discrepancy is a CI failure.
 - **`docs/hook-diagnostics.md`** — a catalogue of every diagnostic class the hook subsystem can emit (manifest parse errors, selector evaluation failures, contract violations, protocol errors, ecosystem runtime absence). Each entry gives the summary-line format, a worked example following CON-3225's five-part structure, and a remediation section.
 - **`docs/hook-migration.md`** — for any (hypothetical) SPEC-031 users: there's nothing to migrate; SPEC-031 never shipped. This doc exists only to anchor the link from SPEC-031's `superseded-by` field.
 - **`docs/canonical-extensions.md`** — per-extension reference for Callouts, Tasks, Admonition (now CSS-stubs per REQ-3212), covering syntax, selector, configuration, per-file opt-out, HTML output shape, and which ecosystem plugin provides the transformation.
@@ -2141,7 +2141,7 @@ Pandoc div syntax, Tasks deferred per §13 Q4).
 
 **Phase A — Plumbing:** AST schema, JSON Schema published, selector evaluator, manifest parser, one-shot + persistent protocol, coverage + dry-run subcommands. No canonical extensions yet. Originally planned to ship behind a `--features hooks-v2` cargo flag for one preview release; in practice the plumbing landed unconditionally (no compile-time gate ever wired) because the schema converged faster than expected and the gate would have shipped as a no-op. Phase D below is therefore a documentation-only step rather than a code change.
 
-**Phase B — Helper libraries:** `zetl-ast-py` and `zetl-ast-js` published to PyPI and npm. Version pinned to AST schema v1.0.
+**Phase B — Helper libraries:** `ztl-ast-py` and `ztl-ast-js` published to PyPI and npm. Version pinned to AST schema v1.0.
 
 **Phase C — Canonical extensions:** `callouts` first (smallest and highest ROI). Golden-HTML tests. `tasks` and `admonition` follow.
 
@@ -2157,20 +2157,20 @@ Pandoc div syntax, Tasks deferred per §13 Q4).
 
 1. **Python vs. JS as the default canonical-extension language.** Default theme ships canonical extensions in one language — which? Python is more familiar to the data/notes-writing crowd; JS is already in the theme (graph widget, SPA shell). *Proposed:* Python. Revisit if CI-minimal-environment feedback says otherwise.
 2. **Persistent-mode restart triggers in serve.** Should edits to a hook file trigger a persistent-mode restart automatically, or require a user action? *Proposed:* automatic on file change (filewatch), with a `--no-hook-reload` flag to opt out.
-3. **AST-level opt-out vs. frontmatter opt-out.** Some users may want to mark a single block as "don't transform" via a Markdown-level syntax (e.g., `{: .zetl-skip }`) rather than frontmatter. *Proposed:* defer; frontmatter covers the 80% case. Reconsider if demand emerges.
+3. **AST-level opt-out vs. frontmatter opt-out.** Some users may want to mark a single block as "don't transform" via a Markdown-level syntax (e.g., `{: .ztl-skip }`) rather than frontmatter. *Proposed:* defer; frontmatter covers the 80% case. Reconsider if demand emerges.
 4. **Tasks extension query syntax.** How much of Obsidian Tasks' DQL to support? *Proposed:* document a named subset (`not done`, `due before`, `path includes`, `tag includes`) as "supported"; anything else is "unsupported, will render as an unsupported-query placeholder." Avoid chasing the full grammar.
 5. **Dataview as a fourth canonical extension.** Worth shipping a subset as `dataview`? *Proposed:* defer to a separate SPEC once canonical three are stable. Dataview's query language deserves its own design conversation.
 6. **Multi-output hook stages.** Should a `transform` hook be able to emit *multiple* output ASTs (e.g., splitting a page into two)? *Proposed:* no in v1; single-in / single-out per stage. Multi-output is a page-generation concern, not a transform concern.
 7. **MCP exposure of hook coverage.** `get_page` via MCP could include which hooks touched the page in a metadata field. *Proposed:* off by default; opt-in via MCP tool parameter.
 8. **Selection layer cache.** Should selector evaluation results be cached across pages (e.g., a content probe compiled regex cached, a frontmatter parse reused)? *Proposed:* yes, cache per build; invalidate on file change in serve mode.
 9. **Vault-level template vars.** Should there be a `vault.ext.<hook_id>` namespace aggregated across pages (dead-link totals, tag clouds, cross-vault task summaries)? This requires a finalisation pass after all pages render and a distinct protocol message (`{"type": "finalise", ...}` for persistent-mode hooks, or a separate invocation for one-shot). *Proposed:* defer to v1.1; per-page `page.ext` covers the majority case without the finalisation complexity.
-10. **Schema declarations for template vars.** Should extensions declare the shape of their emitted vars in the manifest so themes can introspect and zetl can validate? *Proposed:* no in v1; loose typing + documentation suffices. Reconsider if theme-authoring feedback shows "I don't know what fields this extension emits" is a real pain point.
+10. **Schema declarations for template vars.** Should extensions declare the shape of their emitted vars in the manifest so themes can introspect and ztl can validate? *Proposed:* no in v1; loose typing + documentation suffices. Reconsider if theme-authoring feedback shows "I don't know what fields this extension emits" is a real pain point.
 11. **Template-var publishing from `pre-parse` hooks.** `pre-parse` runs before parsing, so extensions there have only the raw Markdown text — less rich than AST-stage extensions. Is it worth supporting emission at that stage, or restrict template-vars to `transform` and `post-render`? *Proposed:* allow at all three stages; the preprocessing stage has legitimate use (e.g., a word-counter that emits `page.ext.word_count.value` without parsing cost).
-12. **Executable-bit fallback vs. interpreter map.** Pandoc's filter loader guesses an interpreter from extension when the executable bit is absent (`.py→python`, `.js→node`, `.hs→runhaskell`, etc.; see [filters.html](https://pandoc.org/filters.html)). Should zetl replicate this for authoring ergonomics, or require the executable bit (unambiguous, prevents "why isn't my hook running")? *Proposed:* require the executable bit in v1 — clear error, good diagnostic. Add an extension-to-interpreter map in v1.1 if feedback requests it.
+12. **Executable-bit fallback vs. interpreter map.** Pandoc's filter loader guesses an interpreter from extension when the executable bit is absent (`.py→python`, `.js→node`, `.hs→runhaskell`, etc.; see [filters.html](https://pandoc.org/filters.html)). Should ztl replicate this for authoring ergonomics, or require the executable bit (unambiguous, prevents "why isn't my hook running")? *Proposed:* require the executable bit in v1 — clear error, good diagnostic. Add an extension-to-interpreter map in v1.1 if feedback requests it.
 13. **Symbol-scanner analogue for canonical extensions.** SPEC-031 had a symbol-scanner subcommand to prioritise shim work against the Obsidian plugin ecosystem. For SPEC-032's canonical extensions, the analogous question is "which patterns in the wild would benefit from a canonical extension we ship?" — answerable by scanning a sample of published vaults for `> [!`, `ad-*`, `tasks`, inline queries, etc. *Proposed:* defer to a tools-level follow-up, not a spec requirement.
 14. **Global (user-level) hook discovery.** Should REQ-3206 extend the
     discovery path set to include a user-level location
-    (`$XDG_CONFIG_HOME/zetl/hooks/<stage>.d/*`), matching the
+    (`$XDG_CONFIG_HOME/ztl/hooks/<stage>.d/*`), matching the
     install-once-use-everywhere ergonomic of `cargo install` /
     `npm -g`? The trade-off is determinism and audit: NFR-3203 /
     SPEC-033 NFR-3306 promise byte-identical HTML across runs and
@@ -2180,8 +2180,8 @@ Pandoc div syntax, Tasks deferred per §13 Q4).
     a vault auditor. *Resolved 2026-04-19: defer entirely for v1 —
     keep discovery vault+theme only.* Ecosystem plugins (SPEC-033)
     already cover the shared-toolkit ergonomic at the PATH layer;
-    zetl-native hooks distribute via git-clone-into-`.zetl/hooks/`
-    without zetl-side orchestration. Reconsider in v1.1 with an
+    ztl-native hooks distribute via git-clone-into-`.ztl/hooks/`
+    without ztl-side orchestration. Reconsider in v1.1 with an
     explicit-allow-list shape (vault config names each global
     hook) if user feedback shows the friction is real.
 
@@ -2244,7 +2244,7 @@ Pandoc div syntax, Tasks deferred per §13 Q4).
 - [ ] Stakeholder validation (open questions §13).
 - [ ] Adversarial review from a fresh context.
 - [ ] Synthetic-user simulation findings.
-- [ ] JSON Schema for the AST written and validated (currently referenced but not yet drafted; lives at `tools/zetl-ast-schema-v1.json`, to be produced in Phase A).
+- [ ] JSON Schema for the AST written and validated (currently referenced but not yet drafted; lives at `tools/ztl-ast-schema-v1.json`, to be produced in Phase A).
 - [ ] Helper-library API sketch (Python, JS) reviewed by respective ecosystem experts.
 - [ ] Prior-art literature survey (`tools/parser-lit-survey.md`) — complete (2026-04-19), findings folded into §1.4 Prior Art, REQ-3215..3220, and CON-3201/3202 updates.
 

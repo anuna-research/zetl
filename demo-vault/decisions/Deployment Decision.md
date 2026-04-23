@@ -4,7 +4,7 @@ title: Deployment Decision
 
 # Deployment Decision
 
-This document captures the deployment strategy for zetl: how it is distributed, where it runs, and what infrastructure assumptions it makes.
+This document captures the deployment strategy for ztl: how it is distributed, where it runs, and what infrastructure assumptions it makes.
 
 ```spl
 (given single-binary)
@@ -16,7 +16,7 @@ This document captures the deployment strategy for zetl: how it is distributed, 
 
 ## Distribution model
 
-zetl ships as a single static binary via `cargo install`. There is no package server, no auto-update mechanism, and no telemetry. Users are responsible for keeping their installation current.
+ztl ships as a single static binary via `cargo install`. There is no package server, no auto-update mechanism, and no telemetry. Users are responsible for keeping their installation current.
 
 ^distribution-model
 
@@ -31,13 +31,13 @@ The performance requirements documented in [[Performance]] are acceptable for th
 
 ^perf-acceptability-block
 
-CI runners (GitHub Actions, GitLab CI) typically have 2–4 vCPUs and SSDs, which means zetl's incremental re-index target of < 50 ms is achievable even for large repositories.
+CI runners (GitHub Actions, GitLab CI) typically have 2–4 vCPUs and SSDs, which means ztl's incremental re-index target of < 50 ms is achievable even for large repositories.
 
 ^ci-context
 
 ## Caching backend decision
 
-For deployments that opt into a caching backend, [[Redis vs Memcached]] is the reference decision. Locally, no external cache is required — zetl uses its own file-based [[Cache]].
+For deployments that opt into a caching backend, [[Redis vs Memcached]] is the reference decision. Locally, no external cache is required — ztl uses its own file-based [[Cache]].
 
 ```spl
 ; Adopt Redis where a caching backend is needed
@@ -60,10 +60,10 @@ For deployments that opt into a caching backend, [[Redis vs Memcached]] is the r
 
 ### CI integration
 
-zetl can be invoked from CI to fail a build when dead links or SPL drift are detected:
+ztl can be invoked from CI to fail a build when dead links or SPL drift are detected:
 
 ```bash
-zetl index && zetl check --exit-code
+ztl index && ztl check --exit-code
 ```
 
 ^ci-integration-snippet

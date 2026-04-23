@@ -1,4 +1,4 @@
-//! Integration tests for the `zetl reason` command family.
+//! Integration tests for the `ztl reason` command family.
 //!
 //! These tests exercise the reason subcommands end-to-end by building
 //! temporary vaults with known SPL content and verifying JSON output.
@@ -19,9 +19,9 @@ use tempfile::TempDir;
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Build a `Command` for the `zetl` binary with the given vault directory.
-fn zetl_cmd(vault: &Path) -> Command {
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+/// Build a `Command` for the `ztl` binary with the given vault directory.
+fn ztl_cmd(vault: &Path) -> Command {
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     cmd.arg("-d").arg(vault.as_os_str());
     cmd.arg("--no-cache");
     cmd
@@ -38,12 +38,12 @@ fn write_file(root: &Path, relative: &str, content: &str) {
 
 /// Run the command, assert success, parse stdout as JSON.
 fn run_json(cmd: &mut Command) -> Value {
-    let output = cmd.output().expect("failed to execute zetl");
+    let output = cmd.output().expect("failed to execute ztl");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "zetl exited with non-zero status.\nstdout: {stdout}\nstderr: {stderr}",
+        "ztl exited with non-zero status.\nstdout: {stdout}\nstderr: {stderr}",
     );
     serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("failed to parse JSON output: {e}\nraw stdout: {stdout}"))
@@ -56,7 +56,7 @@ fn run_json(cmd: &mut Command) -> Value {
 /// helper picks the stream matching exit status, falling back to the other
 /// on parse failure.
 fn run_json_any(cmd: &mut Command) -> (Value, ExitStatus) {
-    let output = cmd.output().expect("failed to execute zetl");
+    let output = cmd.output().expect("failed to execute ztl");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let primary = if output.status.success() {
@@ -314,7 +314,7 @@ fn test_026a_single_spl_block_extraction() {
     build_single_block_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("export")
             .arg("--as")
@@ -378,7 +378,7 @@ Some text between blocks.
     );
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("export")
             .arg("--as")
@@ -411,7 +411,7 @@ fn test_026c_html_comment_exclusion() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("export")
             .arg("--as")
@@ -449,7 +449,7 @@ fn test_026d_standalone_spl_file() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("export")
             .arg("--as")
@@ -497,7 +497,7 @@ fn test_027a_multi_file_theory_construction() {
     let dir = TempDir::new().expect("create temp dir");
     build_reason_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("reason").arg("status"));
+    let json = run_json(ztl_cmd(dir.path()).arg("reason").arg("status"));
 
     let theory = &json["theory"];
     assert_eq!(theory["facts"].as_u64(), Some(8), "8 total facts");
@@ -513,7 +513,7 @@ fn test_027b_parse_error_diagnostics() {
     let dir = TempDir::new().expect("create temp dir");
     build_parse_error_vault(dir.path());
 
-    let (json, status) = run_json_any(zetl_cmd(dir.path()).arg("reason").arg("status"));
+    let (json, status) = run_json_any(ztl_cmd(dir.path()).arg("reason").arg("status"));
 
     // Should exit non-zero (exit code 2 for parse errors)
     assert!(!status.success(), "should fail on parse errors");
@@ -541,7 +541,7 @@ fn test_027c_provenance_metadata() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("export")
             .arg("--as")
@@ -589,7 +589,7 @@ fn test_028a_penguin_bird_reasoning() {
     let dir = TempDir::new().expect("create temp dir");
     build_reason_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("reason").arg("status"));
+    let json = run_json(ztl_cmd(dir.path()).arg("reason").arg("status"));
 
     let conclusions = json["conclusions"].as_array().expect("conclusions array");
 
@@ -624,7 +624,7 @@ fn test_028b_conclusion_counts() {
     let dir = TempDir::new().expect("create temp dir");
     build_reason_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("reason").arg("status"));
+    let json = run_json(ztl_cmd(dir.path()).arg("reason").arg("status"));
 
     let summary = &json["summary"];
     assert_eq!(
@@ -647,7 +647,7 @@ fn test_028c_conclusion_filtering() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("status")
             .arg("--positive")
@@ -679,7 +679,7 @@ fn test_028d_literal_filter() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("status")
             .arg("--literal")
@@ -713,7 +713,7 @@ fn test_029a_explain_proof_tree() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("explain")
             .arg("~flies"),
@@ -750,7 +750,7 @@ fn test_029b_explain_defeat_chain() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("explain")
             .arg("flies"),
@@ -776,7 +776,7 @@ fn test_029c_explain_unknown_literal() {
     build_reason_vault(dir.path());
 
     let (json, status) = run_json_any(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("explain")
             .arg("nonexistent"),
@@ -802,7 +802,7 @@ fn test_030a_what_if_add_fact() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("what-if")
             .arg("(given extra-fact)"),
@@ -839,7 +839,7 @@ fn test_030b_what_if_no_side_effects() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("what-if")
             .arg("(given extra-fact)"),
@@ -860,7 +860,7 @@ fn test_030c_what_if_goal_filter() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("what-if")
             .arg("(given extra-fact)")
@@ -889,7 +889,7 @@ fn test_031a_why_not_defeated() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("why-not")
             .arg("flies"),
@@ -923,7 +923,7 @@ fn test_031b_why_not_already_provable() {
     build_reason_vault(dir.path());
 
     let (json, status) = run_json_any(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("why-not")
             .arg("bird"),
@@ -944,7 +944,7 @@ fn test_031c_why_not_missing_preconditions() {
     build_require_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("why-not")
             .arg("ready-to-deploy"),
@@ -984,7 +984,7 @@ fn test_032a_require_missing_facts() {
     build_require_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("require")
             .arg("ready-to-deploy"),
@@ -1019,7 +1019,7 @@ fn test_032b_require_already_provable() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("require")
             .arg("bird"),
@@ -1043,7 +1043,7 @@ fn test_032c_require_impossible() {
     build_reason_vault(dir.path());
 
     let (json, status) = run_json_any(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("require")
             .arg("totally-unknown"),
@@ -1060,7 +1060,7 @@ fn test_032d_require_with_assume() {
     build_require_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("require")
             .arg("ready-to-deploy")
@@ -1103,7 +1103,7 @@ fn test_033a_unresolved_conflict() {
     let dir = TempDir::new().expect("create temp dir");
     build_reason_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("reason").arg("conflicts"));
+    let json = run_json(ztl_cmd(dir.path()).arg("reason").arg("conflicts"));
 
     let conflicts = json["conflicts"].as_array().expect("conflicts array");
     assert_eq!(
@@ -1146,7 +1146,7 @@ fn test_033b_resolved_conflict() {
 ",
     );
 
-    let json = run_json(zetl_cmd(dir.path()).arg("reason").arg("conflicts"));
+    let json = run_json(ztl_cmd(dir.path()).arg("reason").arg("conflicts"));
 
     let conflicts = json["conflicts"].as_array().expect("conflicts array");
     assert!(conflicts.is_empty(), "resolved conflict should not appear");
@@ -1160,7 +1160,7 @@ fn test_033c_conflict_suggestions() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("conflicts")
             .arg("--suggest"),
@@ -1191,7 +1191,7 @@ fn test_033d_fail_on_conflicts() {
     build_reason_vault(dir.path());
 
     let (json, status) = run_json_any(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("conflicts")
             .arg("--fail-on-conflicts"),
@@ -1215,7 +1215,7 @@ fn test_034a_export_json() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("export")
             .arg("--as")
@@ -1261,7 +1261,7 @@ fn test_034b_export_json_with_conclusions() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("export")
             .arg("--as")
@@ -1288,13 +1288,13 @@ fn test_034c_export_spl() {
     let dir = TempDir::new().expect("create temp dir");
     build_reason_vault(dir.path());
 
-    let output = zetl_cmd(dir.path())
+    let output = ztl_cmd(dir.path())
         .arg("reason")
         .arg("export")
         .arg("--as")
         .arg("spl")
         .output()
-        .expect("failed to execute zetl");
+        .expect("failed to execute ztl");
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -1339,7 +1339,7 @@ fn test_034d_export_empty_vault() {
     write_file(dir.path(), "Empty.md", "# Empty\nNo SPL here.\n");
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("export")
             .arg("--as")
@@ -1362,7 +1362,7 @@ fn test_035a_links_with_conclusions() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("links")
             .arg("Bird Facts")
             .arg("--with-conclusions"),
@@ -1400,7 +1400,7 @@ fn test_035b_provenance_trace() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("provenance")
             .arg("bird"),
@@ -1436,7 +1436,7 @@ fn test_035c_provenance_cross_references() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("provenance")
             .arg("~flies"),
@@ -1460,7 +1460,7 @@ fn test_035d_provenance_unknown() {
     build_reason_vault(dir.path());
 
     let (json, status) = run_json_any(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("provenance")
             .arg("nonexistent"),
@@ -1480,7 +1480,7 @@ fn test_036a_check_spl_clean() {
     let dir = TempDir::new().expect("create temp dir");
     build_reason_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("check").arg("--spl"));
+    let json = run_json(ztl_cmd(dir.path()).arg("check").arg("--spl"));
 
     let spl_diags = json["spl_diagnostics"].as_array().expect("spl_diagnostics");
     assert!(
@@ -1496,7 +1496,7 @@ fn test_036b_check_spl_errors() {
     build_parse_error_vault(dir.path());
 
     // check --spl exits non-zero when SPL errors exist (--fail-on error is default)
-    let (json, status) = run_json_any(zetl_cmd(dir.path()).arg("check").arg("--spl"));
+    let (json, status) = run_json_any(ztl_cmd(dir.path()).arg("check").arg("--spl"));
 
     assert!(!status.success(), "check --spl should fail on parse errors");
 
@@ -1520,13 +1520,13 @@ fn test_037a_cache_consistency() {
     build_reason_vault(dir.path());
 
     // First run: build cache (without --no-cache)
-    let mut cmd1 = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut cmd1 = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     cmd1.arg("-d").arg(dir.path().as_os_str());
     cmd1.arg("reason").arg("status");
     let json1 = run_json(&mut cmd1);
 
     // Second run: should use cache
-    let mut cmd2 = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut cmd2 = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     cmd2.arg("-d").arg(dir.path().as_os_str());
     cmd2.arg("reason").arg("status");
     let json2 = run_json(&mut cmd2);
@@ -1553,7 +1553,7 @@ fn test_037b_cache_invalidation() {
     build_reason_vault(dir.path());
 
     // First run: build cache (without --no-cache)
-    let mut cmd1 = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut cmd1 = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     cmd1.arg("-d").arg(dir.path().as_os_str());
     cmd1.arg("reason").arg("status");
     let json1 = run_json(&mut cmd1);
@@ -1576,7 +1576,7 @@ fn test_037b_cache_invalidation() {
     );
 
     // Second run: cache should be invalidated due to mtime change
-    let mut cmd2 = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut cmd2 = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     cmd2.arg("-d").arg(dir.path().as_os_str());
     cmd2.arg("reason").arg("status");
     let json2 = run_json(&mut cmd2);
@@ -1596,13 +1596,13 @@ fn test_037c_no_cache_flag() {
     build_reason_vault(dir.path());
 
     // First run: build cache
-    let mut cmd1 = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut cmd1 = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     cmd1.arg("-d").arg(dir.path().as_os_str());
     cmd1.arg("reason").arg("status");
     let json1 = run_json(&mut cmd1);
 
     // Second run with --no-cache: should produce identical results
-    let json2 = run_json(zetl_cmd(dir.path()).arg("reason").arg("status"));
+    let json2 = run_json(ztl_cmd(dir.path()).arg("reason").arg("status"));
 
     assert_eq!(
         json1["summary"]["total"], json2["summary"]["total"],
@@ -1620,7 +1620,7 @@ fn test_defeater_blocks_conclusion() {
     let dir = TempDir::new().expect("create temp dir");
     build_defeater_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("reason").arg("status"));
+    let json = run_json(ztl_cmd(dir.path()).arg("reason").arg("status"));
 
     let conclusions = json["conclusions"].as_array().expect("conclusions");
 
@@ -1641,7 +1641,7 @@ fn test_strict_rule_definite_conclusion() {
     let dir = TempDir::new().expect("create temp dir");
     build_reason_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("reason").arg("status"));
+    let json = run_json(ztl_cmd(dir.path()).arg("reason").arg("status"));
     let conclusions = json["conclusions"].as_array().expect("conclusions");
 
     // bird should be +D because r-penguin-is-bird is a strict rule:
@@ -1670,7 +1670,7 @@ fn test_what_if_from_file() {
     write_file(hyp_dir.path(), "hypothetical.spl", "(given new-evidence)\n");
 
     let json = run_json(
-        zetl_cmd(vault_dir.path())
+        ztl_cmd(vault_dir.path())
             .arg("reason")
             .arg("what-if")
             .arg("--file")
@@ -1693,7 +1693,7 @@ fn test_no_spl_vault_error() {
     let dir = TempDir::new().expect("create temp dir");
     write_file(dir.path(), "Empty.md", "# Empty\nNo SPL here.\n");
 
-    let (json, status) = run_json_any(zetl_cmd(dir.path()).arg("reason").arg("status"));
+    let (json, status) = run_json_any(ztl_cmd(dir.path()).arg("reason").arg("status"));
 
     assert!(!status.success());
     assert!(json["error"].as_str().is_some());
@@ -1706,7 +1706,7 @@ fn test_source_file_count() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("export")
             .arg("--as")
@@ -1727,7 +1727,7 @@ fn test_explain_definite_fact() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("explain")
             .arg("penguin"),
@@ -1758,7 +1758,7 @@ fn test_ready_for_release_provable() {
     build_reason_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("status")
             .arg("--literal")
@@ -1788,13 +1788,13 @@ fn test_038a_provenance_grounding_fields_present() {
     build_reason_vault(dir.path());
 
     // Run once with caching enabled so the theory cache is built and saved.
-    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     build_cmd.arg("-d").arg(dir.path().as_os_str());
     build_cmd.arg("reason").arg("status");
     run_json(&mut build_cmd);
 
     // Now run provenance — theory cache should be present.
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     cmd.arg("-d").arg(dir.path().as_os_str());
     cmd.arg("reason").arg("provenance").arg("bird");
 
@@ -1849,7 +1849,7 @@ fn test_038b_provenance_grounding_fresh_null_without_cache() {
 
     // Run with --no-cache: theory is rebuilt but NOT saved, so no theory cache on disk.
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("provenance")
             .arg("bird"),
@@ -1874,13 +1874,13 @@ fn test_038c_provenance_grounding_fresh_true_unchanged() {
     build_reason_vault(dir.path());
 
     // First run: build theory cache.
-    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     build_cmd.arg("-d").arg(dir.path().as_os_str());
     build_cmd.arg("reason").arg("status");
     run_json(&mut build_cmd);
 
     // Second run: nothing changed — grounding should be fresh.
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     cmd.arg("-d").arg(dir.path().as_os_str());
     cmd.arg("reason").arg("provenance").arg("bird");
     let json = run_json(&mut cmd);
@@ -1910,7 +1910,7 @@ fn test_038d_provenance_grounding_fresh_false_section_changed() {
     build_reason_vault(dir.path());
 
     // First run: build theory cache.
-    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     build_cmd.arg("-d").arg(dir.path().as_os_str());
     build_cmd.arg("reason").arg("status");
     run_json(&mut build_cmd);
@@ -1942,7 +1942,7 @@ An extra paragraph has been added here to change the section grounding hash.
     );
 
     // Second run: SPL AST hash unchanged → theory cache hit, but section prose changed.
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     cmd.arg("-d").arg(dir.path().as_os_str());
     cmd.arg("reason").arg("provenance").arg("bird");
     let json = run_json(&mut cmd);
@@ -2017,7 +2017,7 @@ Prose for section B — this is the context for the B-theory.
     );
 
     // Build theory cache (no --no-cache so theory.json is written to disk).
-    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     build_cmd.arg("-d").arg(dir.path().as_os_str());
     build_cmd.arg("reason").arg("status");
     run_json(&mut build_cmd);
@@ -2052,7 +2052,7 @@ This extra paragraph changes the Section B grounding hash without moving the SPL
     );
 
     // Check for drift — theory cache loaded implicitly.
-    let mut check_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut check_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     check_cmd.arg("-d").arg(dir.path().as_os_str());
     check_cmd.arg("check").arg("--drift");
     let json = run_json(&mut check_cmd);
@@ -2117,13 +2117,13 @@ This section has no SPL.
     );
 
     // Build theory cache.
-    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     build_cmd.arg("-d").arg(dir.path().as_os_str());
     build_cmd.arg("reason").arg("status");
     run_json(&mut build_cmd);
 
     // Run provenance to inspect the grounding metadata.
-    let mut prov_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut prov_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     prov_cmd.arg("-d").arg(dir.path().as_os_str());
     prov_cmd
         .arg("reason")
@@ -2200,7 +2200,7 @@ Prose under the subsection provides H2-scoped context.
     );
 
     // Build theory cache.
-    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     build_cmd.arg("-d").arg(dir.path().as_os_str());
     build_cmd.arg("reason").arg("status");
     run_json(&mut build_cmd);
@@ -2234,7 +2234,7 @@ Prose under the subsection provides H2-scoped context.
 ",
     );
 
-    let mut check_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut check_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     check_cmd.arg("-d").arg(dir.path().as_os_str());
     check_cmd.arg("check").arg("--drift");
     let json = run_json(&mut check_cmd);
@@ -2273,7 +2273,7 @@ Prose under the subsection provides H2-scoped context.
 // TEST-043: Explicit Source Grounding (REQ-042 / §3.3)
 //
 // These integration tests verify that SPL blocks with `(meta LABEL (source …))`
-// declarations are detected and surfaced through `zetl reason provenance`.
+// declarations are detected and surfaced through `ztl reason provenance`.
 // ===========================================================================
 
 /// TEST-043a: Same-file `^block-id` grounding.
@@ -2304,13 +2304,13 @@ This paragraph provides the empirical basis for the theory. ^evidence-block
     );
 
     // Build theory cache so grounding metadata is stored.
-    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     build_cmd.arg("-d").arg(dir.path().as_os_str());
     build_cmd.arg("reason").arg("status");
     run_json(&mut build_cmd);
 
     // Run provenance and verify explicit grounding.
-    let mut prov_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut prov_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     prov_cmd.arg("-d").arg(dir.path().as_os_str());
     prov_cmd
         .arg("reason")
@@ -2394,13 +2394,13 @@ No SPL blocks here.
     );
 
     // Build theory cache.
-    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     build_cmd.arg("-d").arg(dir.path().as_os_str());
     build_cmd.arg("reason").arg("status");
     run_json(&mut build_cmd);
 
     // Run provenance.
-    let mut prov_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut prov_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     prov_cmd.arg("-d").arg(dir.path().as_os_str());
     prov_cmd.arg("reason").arg("provenance").arg("cross-result");
     let json = run_json(&mut prov_cmd);
@@ -2480,14 +2480,14 @@ Second piece of evidence. ^ref-b
     );
 
     // Build theory cache.
-    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     build_cmd.arg("-d").arg(dir.path().as_os_str());
     build_cmd.arg("reason").arg("status");
     run_json(&mut build_cmd);
 
     // Verify check shows explicitly_grounded_facts > 0.
     // Use run_json_any because check may exit non-zero for orphans (single-file vault).
-    let mut check_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut check_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     check_cmd.arg("-d").arg(dir.path().as_os_str());
     check_cmd.arg("check");
     let (check_json, _) = run_json_any(&mut check_cmd);
@@ -2502,7 +2502,7 @@ Second piece of evidence. ^ref-b
     );
 
     // Provenance must show multiple source_refs.
-    let mut prov_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut prov_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     prov_cmd.arg("-d").arg(dir.path().as_os_str());
     prov_cmd.arg("reason").arg("provenance").arg("multi-result");
     let json = run_json(&mut prov_cmd);
@@ -2535,7 +2535,7 @@ Second piece of evidence. ^ref-b
 /// TEST-043d: Broken `^block-id` source reference is reported as an SPL error.
 ///
 /// When the `source` meta references a block-id that does not exist in any
-/// file's Merkle leaves, `zetl check` must report it in spl_diagnostics.
+/// file's Merkle leaves, `ztl check` must report it in spl_diagnostics.
 ///
 /// KNOWN LIMITATION: The scanner currently always sets `explicit_groundings: vec![]`
 /// in `SplLeafCached`, so `validate_source_refs` in the CLI pipeline never finds
@@ -2563,7 +2563,7 @@ fn test_043d_broken_block_id_error() {
     );
 
     // Run check --spl.  The broken ^block-id should produce a spl_diagnostics error.
-    let (json, _status) = run_json_any(zetl_cmd(dir.path()).arg("check").arg("--spl"));
+    let (json, _status) = run_json_any(ztl_cmd(dir.path()).arg("check").arg("--spl"));
 
     let spl_diags = json["spl_diagnostics"].as_array().expect("spl_diagnostics");
 
@@ -2586,7 +2586,7 @@ fn test_043d_broken_block_id_error() {
 /// TEST-043e: Broken cross-file page reference is reported as an SPL error.
 ///
 /// When the `source` meta references `[[NoSuchPage^block-id]]` and the page
-/// does not exist, `zetl check` must report it in spl_diagnostics.
+/// does not exist, `ztl check` must report it in spl_diagnostics.
 ///
 /// KNOWN LIMITATION: Same as TEST-043d — the scanner does not populate
 /// `explicit_groundings`, so the CLI validation path cannot trigger this error.
@@ -2611,7 +2611,7 @@ fn test_043e_broken_cross_file_page_error() {
 ",
     );
 
-    let (json, _status) = run_json_any(zetl_cmd(dir.path()).arg("check").arg("--spl"));
+    let (json, _status) = run_json_any(ztl_cmd(dir.path()).arg("check").arg("--spl"));
 
     let spl_diags = json["spl_diagnostics"].as_array().expect("spl_diagnostics");
 
@@ -2631,7 +2631,7 @@ fn test_043e_broken_cross_file_page_error() {
 // ===========================================================================
 // TEST-044: Drift Detection (REQ-043a / REQ-043b / §6.5)
 //
-// These integration tests verify that `zetl check --drift` reports section
+// These integration tests verify that `ztl check --drift` reports section
 // drift when prose changes, is silent when the SPL itself changes or when
 // nothing changes, and that --fail-on warning causes a non-zero exit code.
 // ===========================================================================
@@ -2658,7 +2658,7 @@ This section provides context for the defeasible theory below.
     );
 
     // Build theory cache.
-    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     build_cmd.arg("-d").arg(dir.path().as_os_str());
     build_cmd.arg("reason").arg("status");
     run_json(&mut build_cmd);
@@ -2682,7 +2682,7 @@ Additional evidence has been added after the SPL, changing the grounding hash.
 ",
     );
 
-    let mut check_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut check_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     check_cmd.arg("-d").arg(dir.path().as_os_str());
     check_cmd.arg("check").arg("--drift");
     let json = run_json(&mut check_cmd);
@@ -2723,7 +2723,7 @@ Additional evidence has been added after the SPL, changing the grounding hash.
 /// TEST-044b: Explicit grounding drift is detectable via provenance freshness.
 ///
 /// When an SPL block carries explicit source metadata and the prose in its
-/// enclosing section changes, `zetl reason provenance` must report
+/// enclosing section changes, `ztl reason provenance` must report
 /// grounding.fresh=false with the explicit-grounding-specific warning message.
 #[test]
 fn test_044b_explicit_grounding_drift() {
@@ -2754,7 +2754,7 @@ Original theory context line (before change).
     );
 
     // Build theory cache.
-    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     build_cmd.arg("-d").arg(dir.path().as_os_str());
     build_cmd.arg("reason").arg("status");
     run_json(&mut build_cmd);
@@ -2783,7 +2783,7 @@ CHANGED theory context line — grounding hash is now different.
     );
 
     // Provenance must show fresh=false with the explicit-grounding warning.
-    let mut prov_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut prov_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     prov_cmd.arg("-d").arg(dir.path().as_os_str());
     prov_cmd
         .arg("reason")
@@ -2847,7 +2847,7 @@ Stable section prose that will not be modified.
     );
 
     // Build theory cache.
-    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     build_cmd.arg("-d").arg(dir.path().as_os_str());
     build_cmd.arg("reason").arg("status");
     run_json(&mut build_cmd);
@@ -2869,7 +2869,7 @@ Stable section prose that will not be modified.
 ",
     );
 
-    let mut check_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut check_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     check_cmd.arg("-d").arg(dir.path().as_os_str());
     check_cmd.arg("check").arg("--drift");
     let json = run_json(&mut check_cmd);
@@ -2892,7 +2892,7 @@ Stable section prose that will not be modified.
 
 /// TEST-044d: No drift when nothing has changed since the theory was built.
 ///
-/// Running `zetl check --drift` immediately after building the theory cache
+/// Running `ztl check --drift` immediately after building the theory cache
 /// (with no file modifications) must produce zero drift diagnostics.
 #[test]
 fn test_044d_no_drift_when_nothing_changed() {
@@ -2914,13 +2914,13 @@ This content does not change.
     );
 
     // Build theory cache.
-    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     build_cmd.arg("-d").arg(dir.path().as_os_str());
     build_cmd.arg("reason").arg("status");
     run_json(&mut build_cmd);
 
     // Check drift immediately — nothing has changed.
-    let mut check_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut check_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     check_cmd.arg("-d").arg(dir.path().as_os_str());
     check_cmd.arg("check").arg("--drift");
     let json = run_json(&mut check_cmd);
@@ -2948,8 +2948,8 @@ This content does not change.
 /// TEST-044e: `--fail-on warning` causes non-zero exit when drift warnings exist.
 ///
 /// When section drift diagnostics with Warning severity are present:
-/// - `zetl check --fail-on warning` must exit non-zero (1)
-/// - `zetl check --fail-on error`   must exit zero (no hard errors)
+/// - `ztl check --fail-on warning` must exit non-zero (1)
+/// - `ztl check --fail-on error`   must exit zero (no hard errors)
 #[test]
 fn test_044e_fail_on_warning_exit_code() {
     let dir = TempDir::new().expect("create temp dir");
@@ -2970,7 +2970,7 @@ Section prose before edit.
     );
 
     // Build theory cache.
-    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     build_cmd.arg("-d").arg(dir.path().as_os_str());
     build_cmd.arg("reason").arg("status");
     run_json(&mut build_cmd);
@@ -2994,7 +2994,7 @@ Section prose after edit — grounding hash has changed.
     // --fail-on warning with --drift: drift warnings → exit non-zero.
     // Using --drift avoids orphan detection (single-file vault) so exit code
     // reflects only drift severity, not graph issues.
-    let fail_output = assert_cmd::cargo::cargo_bin_cmd!("zetl")
+    let fail_output = assert_cmd::cargo::cargo_bin_cmd!("ztl")
         .arg("-d")
         .arg(dir.path().as_os_str())
         .arg("check")
@@ -3002,15 +3002,15 @@ Section prose after edit — grounding hash has changed.
         .arg("--fail-on")
         .arg("warning")
         .output()
-        .expect("failed to run zetl check --drift --fail-on warning");
+        .expect("failed to run ztl check --drift --fail-on warning");
 
     assert!(
         !fail_output.status.success(),
-        "zetl check --drift --fail-on warning must exit non-zero when drift warnings exist"
+        "ztl check --drift --fail-on warning must exit non-zero when drift warnings exist"
     );
 
     // --fail-on error with --drift: drift warnings are not hard errors → exit zero.
-    let error_output = assert_cmd::cargo::cargo_bin_cmd!("zetl")
+    let error_output = assert_cmd::cargo::cargo_bin_cmd!("ztl")
         .arg("-d")
         .arg(dir.path().as_os_str())
         .arg("check")
@@ -3018,18 +3018,18 @@ Section prose after edit — grounding hash has changed.
         .arg("--fail-on")
         .arg("error")
         .output()
-        .expect("failed to run zetl check --drift --fail-on error");
+        .expect("failed to run ztl check --drift --fail-on error");
 
     assert!(
         error_output.status.success(),
-        "zetl check --drift --fail-on error must exit zero when only drift warnings exist (no hard errors)"
+        "ztl check --drift --fail-on error must exit zero when only drift warnings exist (no hard errors)"
     );
 }
 
 // ===========================================================================
 // TEST-045: Durable Provenance (REQ-044 / CON-012)
 //
-// These integration tests verify that `zetl reason provenance` includes
+// These integration tests verify that `ztl reason provenance` includes
 // grounding freshness information and that freshness correctly reflects
 // whether the enclosing section has changed since the theory was built.
 // ===========================================================================
@@ -3058,13 +3058,13 @@ This section is the context for our theory.
     );
 
     // Build theory cache (with caching so theory.json is written to disk).
-    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     build_cmd.arg("-d").arg(dir.path().as_os_str());
     build_cmd.arg("reason").arg("status");
     run_json(&mut build_cmd);
 
     // Run provenance immediately — vault is unchanged.
-    let mut prov_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut prov_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     prov_cmd.arg("-d").arg(dir.path().as_os_str());
     prov_cmd.arg("reason").arg("provenance").arg("fresh-result");
     let json = run_json(&mut prov_cmd);
@@ -3128,7 +3128,7 @@ Original prose for this section.
     );
 
     // Build theory cache.
-    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     build_cmd.arg("-d").arg(dir.path().as_os_str());
     build_cmd.arg("reason").arg("status");
     run_json(&mut build_cmd);
@@ -3153,7 +3153,7 @@ An additional sentence was added after the SPL to change the section grounding h
     );
 
     // Run provenance — the SPL AST is unchanged (cache hit) but the section hash changed.
-    let mut prov_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut prov_cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     prov_cmd.arg("-d").arg(dir.path().as_os_str());
     prov_cmd.arg("reason").arg("provenance").arg("stale-result");
     let json = run_json(&mut prov_cmd);

@@ -1,27 +1,27 @@
 ---
-title: "SPEC-008: zetl watch — Vault Watch Mode with Graph Event Streaming"
+title: "SPEC-008: ztl watch — Vault Watch Mode with Graph Event Streaming"
 version: 0.1.0
 status: draft
 audience: agent, human
 date: 2026-02-24
 ---
 
-# SPEC-008: zetl watch — Vault Watch Mode with Graph Event Streaming
+# SPEC-008: ztl watch — Vault Watch Mode with Graph Event Streaming
 
 ## Information Table
 
 | Field        | Value                                                              |
 | ------------ | ------------------------------------------------------------------ |
 | Document ID  | SPEC-008                                                           |
-| Title        | zetl watch — Vault Watch Mode with Graph Event Streaming           |
+| Title        | ztl watch — Vault Watch Mode with Graph Event Streaming           |
 | Version      | 0.1.0                                                              |
 | Status       | Draft                                                              |
 | Author       | Agent (USDD Protocol v1.0.0)                                       |
 | Date         | 2026-02-24                                                         |
 | Audience     | Agent, Human                                                       |
 | Trace        | USDD Agent Protocol v1.0.0                                         |
-| Parent       | SPEC-001: zetl — Bi-directional Link Graph CLI                     |
-| Related      | SPEC-007: zetl diff, SPEC-006: index cache format                  |
+| Parent       | SPEC-001: ztl — Bi-directional Link Graph CLI                     |
+| Related      | SPEC-007: ztl diff, SPEC-006: index cache format                  |
 | Dependencies | notify crate (cross-platform FS events), SPEC-006 (Merkle tree, two-tier cache invalidation) |
 | Inspiration  | rowboat workspace-watcher pattern                                  |
 
@@ -29,17 +29,17 @@ date: 2026-02-24
 
 ## 1. Overview
 
-Every zetl command is invoked and exits. For a single query this is fine, but it means any process that wants to stay current with the vault — an editor extension, a live dashboard, an AI agent reasoning loop — must poll: run `zetl index` on a timer and hope it didn't miss a change or fire when nothing changed.
+Every ztl command is invoked and exits. For a single query this is fine, but it means any process that wants to stay current with the vault — an editor extension, a live dashboard, an AI agent reasoning loop — must poll: run `ztl index` on a timer and hope it didn't miss a change or fire when nothing changed.
 
-`zetl watch` changes this. It starts a persistent process that monitors the vault directory using OS file-system events, incrementally re-indexes changed files on each write, and emits **graph-level events** as newline-delimited JSON (NDJSON) on stdout. Consumers react to changes instead of polling for them.
+`ztl watch` changes this. It starts a persistent process that monitors the vault directory using OS file-system events, incrementally re-indexes changed files on each write, and emits **graph-level events** as newline-delimited JSON (NDJSON) on stdout. Consumers react to changes instead of polling for them.
 
-The event vocabulary mirrors the `zetl diff` output schema (SPEC-007): pages added/removed, links added/removed, orphans gained/resolved, dead links added/resolved. This deliberate alignment means any consumer that can process `zetl diff` output can also process `zetl watch` events.
+The event vocabulary mirrors the `ztl diff` output schema (SPEC-007): pages added/removed, links added/removed, orphans gained/resolved, dead links added/resolved. This deliberate alignment means any consumer that can process `ztl diff` output can also process `ztl watch` events.
 
 ### 1.1 Design Principles
 
-This feature follows zetl's existing philosophy:
+This feature follows ztl's existing philosophy:
 
-- **Files are the source of truth.** zetl watch never modifies vault files.
+- **Files are the source of truth.** ztl watch never modifies vault files.
 - **Agent-first, human-friendly.** NDJSON by default; `--format table` for human observation.
 - **Fast and disposable.** The in-memory index maintained by the watch process is rebuilt from the current cache on startup; no new persistent state is introduced.
 - **Minimal surprise.** Events are emitted exactly when the graph changes — not on every file write, not on content-identical saves.
@@ -48,7 +48,7 @@ This feature follows zetl's existing philosophy:
 
 **In scope:**
 
-- `zetl watch [<vault-path>]` command
+- `ztl watch [<vault-path>]` command
 - OS file-system event monitoring via the `notify` crate (cross-platform)
 - Debounced, incremental re-index on `.md` file changes
 - NDJSON graph event stream on stdout (one event per line)
@@ -62,7 +62,7 @@ This feature follows zetl's existing philosophy:
 - Watching non-`.md` files (attachments, images, PDFs)
 - A persistent daemon with socket IPC (future; see §11.1)
 - Event replay or event log persistence (future; see §11.2)
-- Watch mode for the `zetl reason` subsystem (SPL file changes, theory invalidation; future SPEC)
+- Watch mode for the `ztl reason` subsystem (SPL file changes, theory invalidation; future SPEC)
 
 ---
 
@@ -74,10 +74,10 @@ This feature follows zetl's existing philosophy:
 Name:        Akiko
 Role:        Product manager; 2,000-note Zettelkasten
 Goals:       Know immediately when she creates a dead link or new orphan while writing;
-             run zetl check automatically without manually invoking it after each save
-Constraints: Comfortable with CLI; runs zetl in a terminal pane alongside her editor;
+             run ztl check automatically without manually invoking it after each save
+Constraints: Comfortable with CLI; runs ztl in a terminal pane alongside her editor;
              does not want to think about polling intervals
-Workflow:    Writes notes in Obsidian; keeps a terminal with zetl watch running in a
+Workflow:    Writes notes in Obsidian; keeps a terminal with ztl watch running in a
              split pane; watches events scroll as she saves; filters orphans and dead
              links with grep
 Pain point:  "I find dead links hours later when I could catch them the moment I type them."
@@ -92,11 +92,11 @@ Goals:       React to vault changes in near-real-time; process only affected pag
              avoid re-processing 2,000 pages on every save
 Constraints: Non-interactive; stdout must be machine-parseable; must be able to pipe
              each event to a handler command
-Workflow:    1. Start: zetl watch --exec "python handle_event.py"
+Workflow:    1. Start: ztl watch --exec "python handle_event.py"
              2. handle_event.py reads one event from stdin, updates local index, re-reasons
                 over the affected neighbourhood, exits
              3. Repeat for each vault write
-Pain point:  "Polling zetl index every 5 seconds wastes CPU and misses sub-5s bursts."
+Pain point:  "Polling ztl index every 5 seconds wastes CPU and misses sub-5s bursts."
 ```
 
 ---
@@ -107,10 +107,10 @@ Pain point:  "Polling zetl index every 5 seconds wastes CPU and misses sub-5s bu
 
 ```
 Preconditions:
-  - Vault at ~/notes; zetl watch running in a terminal pane
+  - Vault at ~/notes; ztl watch running in a terminal pane
 
 Steps:
-  1. Akiko starts: zetl watch ~/notes --format table
+  1. Akiko starts: ztl watch ~/notes --format table
      → emits: [watch] index_ready  pages=2000  links=8421
 
   2. She saves ADR-043.md containing [[Benchmark: REST vs gRPC]]
@@ -140,12 +140,12 @@ Failure modes:
 
 ```
 Preconditions:
-  - zetl watch --exec "python reason.py" running as a background process
+  - ztl watch --exec "python reason.py" running as a background process
   - reason.py reads one JSON event from stdin, re-reasons over affected pages, exits
 
 Steps:
   1. User saves Research/Topic-A.md; it gains a link to Research/Topic-B.md
-  2. zetl watch detects the change (within 500ms)
+  2. ztl watch detects the change (within 500ms)
   3. Emits two events piped to reason.py:
        {"event":"link_added","from":"Research/Topic-A","to":"Research/Topic-B",...}
        {"event":"index_updated","changed_pages":["Research/Topic-A"],...}
@@ -153,11 +153,11 @@ Steps:
 
 Postconditions:
   - Agent processed 1 page rather than 2,000
-  - No zetl state written beyond the running in-memory index
+  - No ztl state written beyond the running in-memory index
 
 Failure modes:
-  - --exec command exits non-zero: zetl watch logs to stderr but continues watching
-  - --exec command hangs: zetl watch does not block; next event queued
+  - --exec command exits non-zero: ztl watch logs to stderr but continues watching
+  - --exec command hangs: ztl watch does not block; next event queued
 ```
 
 ---
@@ -166,7 +166,7 @@ Failure modes:
 
 ### REQ-053: Watch Command Entry Point
 
-The system SHALL provide a `zetl watch [<vault-path>]` subcommand that begins monitoring the specified vault directory (defaulting to the current directory) for file-system changes and does not exit until terminated by the user (SIGINT/SIGTERM) or a fatal error.
+The system SHALL provide a `ztl watch [<vault-path>]` subcommand that begins monitoring the specified vault directory (defaulting to the current directory) for file-system changes and does not exit until terminated by the user (SIGINT/SIGTERM) or a fatal error.
 
 Trace:
 - TEST-061
@@ -174,7 +174,7 @@ Trace:
 
 ### REQ-054: File-System Event Monitoring
 
-The system SHALL use OS-native file-system event notifications (inotify on Linux, FSEvents on macOS, ReadDirectoryChangesW on Windows) to detect `.md` file creations, modifications, and deletions within the vault directory hierarchy, respecting `.zetlignore` and the default ignore patterns.
+The system SHALL use OS-native file-system event notifications (inotify on Linux, FSEvents on macOS, ReadDirectoryChangesW on Windows) to detect `.md` file creations, modifications, and deletions within the vault directory hierarchy, respecting `.ztlignore` and the default ignore patterns.
 
 Trace:
 - TEST-062
@@ -199,7 +199,7 @@ The system SHALL use the two-tier cache invalidation strategy defined in SPEC-00
 
 Because SPEC-006 hashes normalised AST nodes (not raw bytes), purely cosmetic saves — whitespace, formatting, comment edits — produce an identical Merkle root and are suppressed without any file-level SHA comparison. This is strictly more accurate than a raw-content hash.
 
-The watch loop holds the in-memory index loaded on startup (including cached file Merkle roots). The roots are updated in-memory as files are re-indexed; they are flushed to `.zetl/index.json` on graceful shutdown (REQ-060).
+The watch loop holds the in-memory index loaded on startup (including cached file Merkle roots). The roots are updated in-memory as files are re-indexed; they are flushed to `.ztl/index.json` on graceful shutdown (REQ-060).
 
 Trace:
 - TEST-064
@@ -237,7 +237,7 @@ Trace:
 
 ### REQ-059: `--exec` Command Invocation
 
-The system SHALL support `zetl watch --exec <cmd>`, where each event JSON is written to the stdin of a new invocation of `<cmd>` (one event per invocation). The system SHALL not wait for `<cmd>` to exit before processing the next file-system event. If `<cmd>` exits non-zero, the system SHALL log the exit code to stderr but SHALL continue watching.
+The system SHALL support `ztl watch --exec <cmd>`, where each event JSON is written to the stdin of a new invocation of `<cmd>` (one event per invocation). The system SHALL not wait for `<cmd>` to exit before processing the next file-system event. If `<cmd>` exits non-zero, the system SHALL log the exit code to stderr but SHALL continue watching.
 
 Trace:
 - TEST-066
@@ -273,7 +273,7 @@ Trace:
 
 ### NFR-021: CPU Idle Overhead
 
-When no file-system changes are occurring, `zetl watch` SHALL consume ≤ 0.5% CPU on the host machine (measured over a 60-second idle window). The watch loop MUST be event-driven, not polling.
+When no file-system changes are occurring, `ztl watch` SHALL consume ≤ 0.5% CPU on the host machine (measured over a 60-second idle window). The watch loop MUST be event-driven, not polling.
 
 Trace:
 - TEST-070
@@ -281,7 +281,7 @@ Trace:
 
 ### NFR-022: Memory Ceiling
 
-`zetl watch` SHALL maintain a resident memory footprint of ≤ 250MB for a vault of 10,000 pages. The in-memory index held by the watch process is the same structure as the single-shot `zetl index` result; no additional data structure is introduced beyond the event queue.
+`ztl watch` SHALL maintain a resident memory footprint of ≤ 250MB for a vault of 10,000 pages. The in-memory index held by the watch process is the same structure as the single-shot `ztl index` result; no additional data structure is introduced beyond the event queue.
 
 Trace:
 - OBS-011
@@ -296,19 +296,19 @@ Trace:
 
 **Context:** File-system event APIs differ significantly between Linux (inotify), macOS (FSEvents / kqueue), and Windows (ReadDirectoryChangesW). A correct cross-platform implementation would duplicate significant OS-specific code.
 
-**Rationale:** `notify` abstracts all three platforms behind a single `Watcher` trait and is the de-facto standard for FS watching in the Rust ecosystem. It is actively maintained, has no unsafe code in the consumer-facing API, and supports both immediate and debounced event delivery. Using it keeps the zetl binary cross-platform without platform-specific conditionals.
+**Rationale:** `notify` abstracts all three platforms behind a single `Watcher` trait and is the de-facto standard for FS watching in the Rust ecosystem. It is actively maintained, has no unsafe code in the consumer-facing API, and supports both immediate and debounced event delivery. Using it keeps the ztl binary cross-platform without platform-specific conditionals.
 
 **Trade-offs:**
 - ✅ Cross-platform with a single dependency
 - ✅ Well-tested; used by cargo, watchexec, and others
 - ⚠️ Adds a dependency (~2 crate features needed: `macos_fsevent`, `inotify`); binary size increase is negligible (~50KB)
-- ⚠️ `notify` debounce is coarse; zetl implements its own debounce (REQ-055) over raw events for tighter control
+- ⚠️ `notify` debounce is coarse; ztl implements its own debounce (REQ-055) over raw events for tighter control
 
 ### ADR-014: Inherit SPEC-006 Two-Tier Cache Invalidation; Do Not Introduce a Separate Hash
 
-**Decision:** `zetl watch` reuses the SPEC-006 Merkle tree pipeline (REQ-039, ADR-009) for change detection. It does **not** introduce a separate SHA-256 or raw-content hash mechanism.
+**Decision:** `ztl watch` reuses the SPEC-006 Merkle tree pipeline (REQ-039, ADR-009) for change detection. It does **not** introduce a separate SHA-256 or raw-content hash mechanism.
 
-**Context:** An earlier draft of this spec (v0.1.0 before this revision) proposed adding a SHA-256 hash of raw file content as the second tier — inspired by rowboat's change detection pattern. SPEC-006 was then identified as already specifying a superior mechanism: BLAKE3 over normalised AST nodes, with the file Merkle root stored in `.zetl/index.json`.
+**Context:** An earlier draft of this spec (v0.1.0 before this revision) proposed adding a SHA-256 hash of raw file content as the second tier — inspired by rowboat's change detection pattern. SPEC-006 was then identified as already specifying a superior mechanism: BLAKE3 over normalised AST nodes, with the file Merkle root stored in `.ztl/index.json`.
 
 **Rationale:** SPEC-006's Merkle root is strictly better than a raw-content SHA-256:
 
@@ -318,7 +318,7 @@ Trace:
 | Hash input | Raw file bytes | Normalised AST nodes |
 | Whitespace-only save | Hash changes → event | Hash unchanged → suppressed |
 | SPL-aware suppression | No | Yes (ast_hash unchanged → no theory drift) |
-| Already in cache | No (must add) | Yes (`.zetl/index.json`, SPEC-006) |
+| Already in cache | No (must add) | Yes (`.ztl/index.json`, SPEC-006) |
 
 The watch loop loads the existing index cache on startup — file Merkle roots are already present. No additional cache fields are needed. The SPEC-006 scanner pipeline is already the code path for re-indexing; the watch loop simply invokes it for changed files rather than requiring a separate hashing step.
 
@@ -326,29 +326,29 @@ The watch loop loads the existing index cache on startup — file Merkle roots a
 - ✅ No new cache fields or dependencies; reuses existing infrastructure
 - ✅ Suppresses purely cosmetic saves at the AST level, not just byte level
 - ✅ BLAKE3 is ~10× faster than SHA-256
-- ✅ Consistent with the rest of zetl's pipeline
+- ✅ Consistent with the rest of ztl's pipeline
 - ⚠️ Requires SPEC-006 to be merged before SPEC-008 can be implemented; watch mode is blocked on the Merkle tree branch
 
 ### ADR-015: NDJSON on stdout; Status on stderr
 
 **Decision:** Graph events are emitted as NDJSON on stdout. Operational messages (index progress, shutdown notice, --exec errors) go to stderr.
 
-**Context:** `zetl watch` must be composable with downstream consumers via pipes and `--exec`. If events and operational messages share stdout, consumers cannot reliably parse the event stream.
+**Context:** `ztl watch` must be composable with downstream consumers via pipes and `--exec`. If events and operational messages share stdout, consumers cannot reliably parse the event stream.
 
-**Rationale:** The stdout/stderr separation is the Unix convention for separating data from diagnostics. It makes `zetl watch | grep dead_link` or `zetl watch | jq 'select(.event == "orphan_gained")'` work naturally. It also means redirecting stdout to a file captures a clean event log while terminal status remains visible. This is the same principle as `zetl`'s existing `-f json` / `-f table` split.
+**Rationale:** The stdout/stderr separation is the Unix convention for separating data from diagnostics. It makes `ztl watch | grep dead_link` or `ztl watch | jq 'select(.event == "orphan_gained")'` work naturally. It also means redirecting stdout to a file captures a clean event log while terminal status remains visible. This is the same principle as `ztl`'s existing `-f json` / `-f table` split.
 
 **Trade-offs:**
 - ✅ Composable with standard Unix tooling
-- ✅ Consistent with zetl's existing output model
+- ✅ Consistent with ztl's existing output model
 - ⚠️ `--format table` emits human-readable event lines on stdout (not stderr), because table mode is inherently human-facing and the composability requirement relaxes; documented in CON-022
 
 ---
 
 ## 7. Contract Specifications
 
-### CON-022: `zetl watch`
+### CON-022: `ztl watch`
 
-**Interface:** `zetl watch [<vault-path>] [--debounce <ms>] [--exec <cmd>] [--format json|table]`
+**Interface:** `ztl watch [<vault-path>] [--debounce <ms>] [--exec <cmd>] [--format json|table]`
 
 **Argument rules:**
 - `<vault-path>`: directory to watch; defaults to current directory
@@ -359,7 +359,7 @@ The watch loop loads the existing index cache on startup — file Merkle roots a
 
 **Pre-conditions:**
 - `<vault-path>` is an existing directory
-- `zetl index` has been run at least once (loads cache on startup; if no cache, runs a full index pass before starting the watch loop)
+- `ztl index` has been run at least once (loads cache on startup; if no cache, runs a full index pass before starting the watch loop)
 
 **Post-conditions:**
 - Exits 0 on graceful shutdown (SIGINT/SIGTERM)
@@ -404,7 +404,7 @@ The watch loop loads the existing index cache on startup — file Merkle roots a
 **--exec stderr logging (non-fatal, during watch loop):**
 
 ```
-[zetl watch] --exec exited 1 for event dead_link_added (ADR-043 → Benchmark: REST vs gRPC)
+[ztl watch] --exec exited 1 for event dead_link_added (ADR-043 → Benchmark: REST vs gRPC)
 ```
 
 **Implements:** REQ-053–061
@@ -419,10 +419,10 @@ The watch loop loads the existing index cache on startup — file Merkle roots a
 
 **Requirement:** REQ-053, REQ-057, REQ-060
 
-**Preconditions:** Vault with 10 .md files; `zetl index` run previously
+**Preconditions:** Vault with 10 .md files; `ztl index` run previously
 
 **Steps:**
-1. Start `zetl watch --format json` in background; collect stdout
+1. Start `ztl watch --format json` in background; collect stdout
 2. Verify first line is `{"event":"index_ready",...}` within 2 seconds
 3. Send SIGINT; verify process exits 0
 4. Verify no additional lines emitted after shutdown
@@ -445,7 +445,7 @@ The watch loop loads the existing index cache on startup — file Merkle roots a
 
 **Requirement:** REQ-055
 
-**Preconditions:** `zetl watch --debounce 200` running
+**Preconditions:** `ztl watch --debounce 200` running
 
 **Steps:**
 1. Write `Page.md` three times in 50ms intervals (simulating editor temp-file rename pattern)
@@ -458,7 +458,7 @@ The watch loop loads the existing index cache on startup — file Merkle roots a
 
 **Requirement:** REQ-056
 
-**Preconditions:** `zetl watch` running; `Note.md` already indexed
+**Preconditions:** `ztl watch` running; `Note.md` already indexed
 
 **Steps:**
 1. Write `Note.md` with identical content (mtime changes, content does not)
@@ -484,12 +484,12 @@ The watch loop loads the existing index cache on startup — file Merkle roots a
 
 **Requirement:** REQ-059
 
-**Preconditions:** `zetl watch --exec "cat >> /tmp/events.log"` running
+**Preconditions:** `ztl watch --exec "cat >> /tmp/events.log"` running
 
 **Steps:**
 1. Create `NewPage.md`
 2. Verify `/tmp/events.log` contains exactly the `page_added` and `index_updated` event JSON lines
-3. Modify `--exec` to exit 1; verify zetl watch continues running and logs to stderr
+3. Modify `--exec` to exit 1; verify ztl watch continues running and logs to stderr
 
 ---
 
@@ -497,7 +497,7 @@ The watch loop loads the existing index cache on startup — file Merkle roots a
 
 **Requirement:** REQ-060
 
-**Preconditions:** `zetl watch` running; a file write occurs simultaneously with SIGTERM
+**Preconditions:** `ztl watch` running; a file write occurs simultaneously with SIGTERM
 
 **Steps:**
 1. Write `Page.md`; immediately send SIGTERM
@@ -511,7 +511,7 @@ The watch loop loads the existing index cache on startup — file Merkle roots a
 **Requirement:** REQ-061
 
 **Steps:**
-1. `zetl watch /nonexistent --format json`
+1. `ztl watch /nonexistent --format json`
 2. Verify exit non-zero; stdout contains `{"error":{"code":"VAULT_NOT_FOUND",...}}`
 
 ---
@@ -533,7 +533,7 @@ The watch loop loads the existing index cache on startup — file Merkle roots a
 
 **Requirement:** NFR-021
 
-**Preconditions:** `zetl watch` running; no file changes for 60 seconds
+**Preconditions:** `ztl watch` running; no file changes for 60 seconds
 
 **Steps:**
 1. Sample CPU usage every 5 seconds for 60 seconds
@@ -548,11 +548,11 @@ The watch loop loads the existing index cache on startup — file Merkle roots a
 **Signal:** Verbose lines on stderr when `--verbose` passed
 
 ```
-[zetl watch] started  vault=/Users/akiko/notes  debounce=150ms  pages=2000
-[zetl watch] event    file=ADR-043.md  mtime_changed=true  hash_changed=true  reindex_ms=12
-[zetl watch] event    file=Draft.md    mtime_changed=true  hash_changed=false  suppressed=true
-[zetl watch] batch    changed=2  events_emitted=4  total_ms=38
-[zetl watch] shutdown signal=SIGINT  uptime_s=3847
+[ztl watch] started  vault=/Users/akiko/notes  debounce=150ms  pages=2000
+[ztl watch] event    file=ADR-043.md  mtime_changed=true  hash_changed=true  reindex_ms=12
+[ztl watch] event    file=Draft.md    mtime_changed=true  hash_changed=false  suppressed=true
+[ztl watch] batch    changed=2  events_emitted=4  total_ms=38
+[ztl watch] shutdown signal=SIGINT  uptime_s=3847
 ```
 
 **Purpose:** Diagnose latency (NFR-020), verify hash suppression (REQ-056), confirm debounce coalescing (REQ-055).
@@ -582,16 +582,16 @@ The watch loop loads the existing index cache on startup — file Merkle roots a
 
 ### 11.1 Persistent Daemon with Socket IPC
 
-`zetl watch` as specified requires the caller to remain attached to its stdout. A future `zetl daemon` mode would run as a background process writing events to a Unix domain socket, allowing multiple consumers to subscribe simultaneously (e.g. both an editor extension and a reasoning agent). This is a significant architectural addition and is not needed for the initial use cases.
+`ztl watch` as specified requires the caller to remain attached to its stdout. A future `ztl daemon` mode would run as a background process writing events to a Unix domain socket, allowing multiple consumers to subscribe simultaneously (e.g. both an editor extension and a reasoning agent). This is a significant architectural addition and is not needed for the initial use cases.
 
 ### 11.2 Event Log Persistence
 
-Today events are ephemeral — if no consumer is attached when a file changes, the event is lost. A future `--log <path>` flag could append all events to an NDJSON file, providing a queryable audit trail. Combined with `zetl diff`, this would give complete temporal coverage: `zetl diff` for git-bounded history, the event log for intra-commit deltas.
+Today events are ephemeral — if no consumer is attached when a file changes, the event is lost. A future `--log <path>` flag could append all events to an NDJSON file, providing a queryable audit trail. Combined with `ztl diff`, this would give complete temporal coverage: `ztl diff` for git-bounded history, the event log for intra-commit deltas.
 
 ### 11.3 SPL Watch Integration
 
-When `zetl reason watch` is implemented, it would subscribe to `index_updated` events from the watch loop and re-run theory derivation over the affected subgraph. The Merkle infrastructure from SPEC-006 would serve as the efficient early-exit check (unchanged SPL hashes → skip re-derivation).
+When `ztl reason watch` is implemented, it would subscribe to `index_updated` events from the watch loop and re-run theory derivation over the affected subgraph. The Merkle infrastructure from SPEC-006 would serve as the efficient early-exit check (unchanged SPL hashes → skip re-derivation).
 
 ### 11.4 MCP Event Subscription
 
-A natural extension of `zetl watch` is exposing the event stream as an MCP resource, allowing LLM clients (Claude Desktop, etc.) to subscribe to vault-change notifications. This builds on the rowboat-inspired MCP server work that is also a candidate for a future SPEC.
+A natural extension of `ztl watch` is exposing the event stream as an MCP resource, allowing LLM clients (Claude Desktop, etc.) to subscribe to vault-change notifications. This builds on the rowboat-inspired MCP server work that is also a candidate for a future SPEC.

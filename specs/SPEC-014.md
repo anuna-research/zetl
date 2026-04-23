@@ -1,60 +1,60 @@
 ---
-title: "SPEC-014: zetl theme — Theme Distribution and Installation"
+title: "SPEC-014: ztl theme — Theme Distribution and Installation"
 version: 0.1.0
 status: draft
 audience: agent, human
 date: 2026-03-02
 ---
 
-# SPEC-014: zetl theme — Theme Distribution and Installation
+# SPEC-014: ztl theme — Theme Distribution and Installation
 
 ## Information Table
 
 | Field          | Value                                                          |
 | -------------- | -------------------------------------------------------------- |
 | Document ID    | SPEC-014                                                       |
-| Title          | zetl theme — Theme Distribution and Installation               |
+| Title          | ztl theme — Theme Distribution and Installation               |
 | Version        | 0.1.0                                                          |
 | Status         | Draft                                                          |
 | Author         | Agent (USDD Protocol v1.3.0)                                   |
 | Date           | 2026-03-02                                                     |
 | Audience       | Agent, Human                                                   |
 | Trace          | USDD Agent Protocol v1.3.0                                     |
-| Parent         | SPEC-012: zetl — Named Themes for Serve and Build              |
-| Related        | SPEC-001: zetl — Bi-directional Link Graph CLI                 |
+| Parent         | SPEC-012: ztl — Named Themes for Serve and Build              |
+| Related        | SPEC-001: ztl — Bi-directional Link Graph CLI                 |
 
 ---
 
 ## 1. Overview
 
-SPEC-012 established named themes under `.zetl/themes/<name>/` with a two-tier template resolution (user theme → built-in default). That specification explicitly deferred theme distribution:
+SPEC-012 established named themes under `.ztl/themes/<name>/` with a two-tier template resolution (user theme → built-in default). That specification explicitly deferred theme distribution:
 
-> **Out of scope:** Theme packaging or distribution (future SPEC — theme marketplace, `zetl theme install`)
+> **Out of scope:** Theme packaging or distribution (future SPEC — theme marketplace, `ztl theme install`)
 
 This specification addresses that gap. It defines how themes are authored, discovered, installed, and managed — giving users a way to share and reuse themes without manually copying directories.
 
 ### 1.1 Core Insight
 
-Themes are small collections of Minijinja templates and static assets. They are naturally version-controlled artifacts. Git is already universally available to zetl users (the tool targets knowledge workers who publish vaults). Rather than inventing a theme registry or package format, zetl uses **git references** as the distribution mechanism — any git repository (or subdirectory within one) can be a theme source. A curated set of **bundled themes** ships inside the zetl binary for zero-network-required defaults.
+Themes are small collections of Minijinja templates and static assets. They are naturally version-controlled artifacts. Git is already universally available to ztl users (the tool targets knowledge workers who publish vaults). Rather than inventing a theme registry or package format, ztl uses **git references** as the distribution mechanism — any git repository (or subdirectory within one) can be a theme source. A curated set of **bundled themes** ships inside the ztl binary for zero-network-required defaults.
 
 ### 1.2 Design Philosophy
 
 1. **Git is the registry** — no proprietary hosting, no API keys, no accounts. A theme is a git repo (or a path within one). Users install themes the same way they install anything else in their workflow.
-2. **Bundled themes are first-class** — the zetl binary ships with a small set of official themes beyond `default`. These are always available, even offline, and serve as reference implementations for theme authors.
+2. **Bundled themes are first-class** — the ztl binary ships with a small set of official themes beyond `default`. These are always available, even offline, and serve as reference implementations for theme authors.
 3. **Themes are inert files** — a theme is templates + static assets + a manifest. No executable hooks, no build steps, no post-install scripts. This eliminates supply-chain risk.
 4. **Offline-first** — once installed, a theme works without network access. The install step is the only operation that touches the network.
-5. **Vault-local** — themes install into `.zetl/themes/<name>/`, exactly where SPEC-012 already looks for them. No global theme store, no cross-vault interference.
+5. **Vault-local** — themes install into `.ztl/themes/<name>/`, exactly where SPEC-012 already looks for them. No global theme store, no cross-vault interference.
 
 ### 1.3 Scope
 
 **In scope:**
 
-- `theme.toml` manifest file for theme metadata (name, version, author, description, zetl compatibility)
-- `zetl theme install <source>` command to install themes from git references
-- `zetl theme list` command to enumerate available themes (bundled + installed)
-- `zetl theme remove <name>` command to uninstall a theme
-- `zetl theme export <name>` command to extract a bundled theme to `.zetl/themes/` for customisation
-- Bundled theme system: official themes embedded in the zetl binary via a `themes/` directory in the source repository
+- `theme.toml` manifest file for theme metadata (name, version, author, description, ztl compatibility)
+- `ztl theme install <source>` command to install themes from git references
+- `ztl theme list` command to enumerate available themes (bundled + installed)
+- `ztl theme remove <name>` command to uninstall a theme
+- `ztl theme export <name>` command to extract a bundled theme to `.ztl/themes/` for customisation
+- Bundled theme system: official themes embedded in the ztl binary via a `themes/` directory in the source repository
 - Theme source resolution: git URL, GitHub shorthand (`user/repo`), and optional ref/path specifiers
 
 **Out of scope:**
@@ -62,7 +62,7 @@ Themes are small collections of Minijinja templates and static assets. They are 
 - Theme marketplace or central registry (discovery is via documentation, GitHub search, or word of mouth)
 - Theme compilation or build steps (Sass, TypeScript, etc. — users bring pre-compiled assets)
 - Theme dependencies on other themes (no theme inheritance chain beyond Minijinja `{% extends %}`)
-- Automatic theme updates (`zetl theme install` is explicit; users re-install to update)
+- Automatic theme updates (`ztl theme install` is explicit; users re-install to update)
 - Theme configuration variables (deferred — `theme.toml` carries metadata, not user-configurable variables)
 
 ---
@@ -86,13 +86,13 @@ Constraints:
 **Happy Path: Install and Use a Community Theme**
 
 ```
-Preconditions: Vault exists with .zetl/ directory. Network available.
+Preconditions: Vault exists with .ztl/ directory. Network available.
 Steps:
-  1. zetl theme list → sees bundled themes (default, minimal, docs)
-  2. zetl theme install aesop-themes/garden → installs from GitHub
-  3. zetl serve --theme garden → previews the theme
-  4. zetl build --theme garden → builds static site with the theme
-Postconditions: Theme files exist in .zetl/themes/garden/
+  1. ztl theme list → sees bundled themes (default, minimal, docs)
+  2. ztl theme install aesop-themes/garden → installs from GitHub
+  3. ztl serve --theme garden → previews the theme
+  4. ztl build --theme garden → builds static site with the theme
+Postconditions: Theme files exist in .ztl/themes/garden/
 Failure modes:
   - Network unavailable → clear error with hint to check connectivity
   - Repo not found → clear error with the resolved URL
@@ -102,7 +102,7 @@ Failure modes:
 ### 2.2 Theme Author
 
 ```
-Role: Developer who creates themes for the zetl community
+Role: Developer who creates themes for the ztl community
 Goals:
   - Create a theme as a standalone git repository
   - Include metadata (name, description, compatibility) for discoverability
@@ -117,16 +117,16 @@ Constraints:
 **Happy Path: Publish a Theme**
 
 ```
-Preconditions: Theme author has a working theme in .zetl/themes/my-theme/
+Preconditions: Theme author has a working theme in .ztl/themes/my-theme/
 Steps:
   1. Create theme.toml with name, version, description, author
   2. git init, commit templates + static/ + theme.toml
-  3. Push to GitHub as my-org/zetl-theme-clean
-  4. Users install via: zetl theme install my-org/zetl-theme-clean
+  3. Push to GitHub as my-org/ztl-theme-clean
+  4. Users install via: ztl theme install my-org/ztl-theme-clean
 Postconditions: Theme is installable by anyone with the git URL
 Failure modes:
-  - Missing theme.toml → installs but zetl theme list shows "(no manifest)"
-  - Incompatible zetl version → warning at install time, not a hard block
+  - Missing theme.toml → installs but ztl theme list shows "(no manifest)"
+  - Incompatible ztl version → warning at install time, not a hard block
 ```
 
 ### 2.3 Monorepo Theme Author
@@ -144,11 +144,11 @@ Constraints:
 **Happy Path: Install from a Monorepo**
 
 ```
-Preconditions: Monorepo at github.com/acme/zetl-themes with themes/garden/ and themes/minimal/
+Preconditions: Monorepo at github.com/acme/ztl-themes with themes/garden/ and themes/minimal/
 Steps:
-  1. zetl theme install acme/zetl-themes --path themes/garden
-  2. zetl theme install acme/zetl-themes --path themes/minimal
-Postconditions: .zetl/themes/garden/ and .zetl/themes/minimal/ exist
+  1. ztl theme install acme/ztl-themes --path themes/garden
+  2. ztl theme install acme/ztl-themes --path themes/minimal
+Postconditions: .ztl/themes/garden/ and .ztl/themes/minimal/ exist
 Failure modes:
   - Path does not exist in repo → clear error listing available subdirectories
 ```
@@ -171,8 +171,8 @@ version = "1.0.0"                   # Required. SemVer.
 description = "A warm, organic theme for digital gardens"  # Optional.
 author = "Jane Doe <jane@example.com>"                     # Optional.
 license = "MIT"                     # Optional.
-homepage = "https://github.com/jane/zetl-garden"           # Optional.
-min_zetl_version = "0.9.0"         # Optional. Minimum zetl version for compatibility.
+homepage = "https://github.com/jane/ztl-garden"           # Optional.
+min_ztl_version = "0.9.0"         # Optional. Minimum ztl version for compatibility.
 
 [theme.templates]
 # Declares which templates this theme overrides. Informational only — the
@@ -192,7 +192,7 @@ The system SHALL validate `theme.toml` at install time:
 
 - `theme.name` MUST be a non-empty string matching `^[a-z0-9][a-z0-9_-]*$` (lowercase, hyphens, underscores, no leading special chars).
 - `theme.version` MUST be valid SemVer if present.
-- `theme.min_zetl_version`, if present, SHALL be compared against the running zetl version. If the running version is older, the system SHALL print a warning but SHALL NOT block installation.
+- `theme.min_ztl_version`, if present, SHALL be compared against the running ztl version. If the running version is older, the system SHALL print a warning but SHALL NOT block installation.
 - Unknown keys SHALL be ignored (forward compatibility).
 
 Trace:
@@ -204,7 +204,7 @@ Trace:
 
 REQ-014-003: Bundled Theme Directory
 
-The zetl source repository SHALL contain a `themes/` directory at the repository root. Each subdirectory is a complete theme with the same structure as `.zetl/themes/<name>/`:
+The ztl source repository SHALL contain a `themes/` directory at the repository root. Each subdirectory is a complete theme with the same structure as `.ztl/themes/<name>/`:
 
 ```
 themes/
@@ -233,11 +233,11 @@ Trace:
 
 REQ-014-004: Bundled Theme Embedding
 
-The zetl binary SHALL embed all themes from the `themes/` source directory at compile time. The template engine's fallback chain (SPEC-012 Tier 2) SHALL resolve built-in templates from the active bundled theme rather than only from hardcoded `include_str!()` calls.
+The ztl binary SHALL embed all themes from the `themes/` source directory at compile time. The template engine's fallback chain (SPEC-012 Tier 2) SHALL resolve built-in templates from the active bundled theme rather than only from hardcoded `include_str!()` calls.
 
 The resolution order becomes:
 
-1. **Tier 1 (User Theme):** `.zetl/themes/<active-theme>/<template>.html` on disk
+1. **Tier 1 (User Theme):** `.ztl/themes/<active-theme>/<template>.html` on disk
 2. **Tier 2 (Bundled Theme):** Embedded templates for `<active-theme>` from the `themes/` compile-time directory
 3. **Tier 3 (Default Fallback):** Embedded templates from `themes/default/`
 
@@ -251,7 +251,7 @@ Trace:
 
 REQ-014-005: Bundled Theme Listing
 
-`zetl theme list` SHALL distinguish between bundled themes, installed themes (in `.zetl/themes/`), and themes that shadow a bundled theme (an installed theme with the same name as a bundled one). The output SHALL indicate the source of each theme.
+`ztl theme list` SHALL distinguish between bundled themes, installed themes (in `.ztl/themes/`), and themes that shadow a bundled theme (an installed theme with the same name as a bundled one). The output SHALL indicate the source of each theme.
 
 Trace:
 - TEST-014-005
@@ -262,7 +262,7 @@ Trace:
 
 REQ-014-006: Install from Git URL
 
-`zetl theme install <source>` SHALL accept the following source formats:
+`ztl theme install <source>` SHALL accept the following source formats:
 
 | Format | Example | Resolution |
 | --- | --- | --- |
@@ -270,7 +270,7 @@ REQ-014-006: Install from Git URL
 | HTTPS URL | `https://git.example.com/repo.git` | Used directly |
 | SSH URL | `git@github.com:user/repo.git` | Used directly |
 
-The system SHALL clone the repository (shallow, depth 1) into a temporary directory, then copy the theme files into `.zetl/themes/<name>/`.
+The system SHALL clone the repository (shallow, depth 1) into a temporary directory, then copy the theme files into `.ztl/themes/<name>/`.
 
 Trace:
 - TEST-014-006
@@ -283,9 +283,9 @@ REQ-014-007: Git Ref Specifier
 The source MAY include a ref specifier using `#<ref>` syntax:
 
 ```
-zetl theme install user/repo#v2.0.0      # tag
-zetl theme install user/repo#main        # branch
-zetl theme install user/repo#abc1234     # commit SHA
+ztl theme install user/repo#v2.0.0      # tag
+ztl theme install user/repo#main        # branch
+ztl theme install user/repo#abc1234     # commit SHA
 ```
 
 When no ref is specified, the system SHALL use the repository's default branch.
@@ -300,7 +300,7 @@ REQ-014-008: Subdirectory Path
 The `--path <dir>` flag SHALL specify a subdirectory within the cloned repository to use as the theme root. This enables monorepo workflows where multiple themes live in a single repository.
 
 ```
-zetl theme install acme/zetl-themes --path themes/garden
+ztl theme install acme/ztl-themes --path themes/garden
 ```
 
 The system SHALL verify the path exists within the cloned repository. If not, the system SHALL list available subdirectories (up to 1 level deep) that contain a `theme.toml` or template files, as a hint.
@@ -328,7 +328,7 @@ Trace:
 
 REQ-014-010: Install Overwrites
 
-If `.zetl/themes/<name>/` already exists, the system SHALL refuse to overwrite unless `--force` is passed. With `--force`, the existing directory is replaced entirely (not merged).
+If `.ztl/themes/<name>/` already exists, the system SHALL refuse to overwrite unless `--force` is passed. With `--force`, the existing directory is replaced entirely (not merged).
 
 Trace:
 - TEST-014-010
@@ -337,20 +337,20 @@ Trace:
 
 REQ-014-011: Provenance Tracking
 
-After installation, the system SHALL write a `.zetl-source.toml` file inside the installed theme directory recording the installation provenance:
+After installation, the system SHALL write a `.ztl-source.toml` file inside the installed theme directory recording the installation provenance:
 
 ```toml
-# .zetl-source.toml — auto-generated, do not edit
+# .ztl-source.toml — auto-generated, do not edit
 [source]
 url = "https://github.com/user/repo.git"
 ref = "v2.0.0"
 commit = "abc1234def5678..."
 path = "themes/garden"
 installed_at = "2026-03-02T14:30:00Z"
-zetl_version = "0.9.0"
+ztl_version = "0.9.0"
 ```
 
-This file enables `zetl theme list` to show where a theme came from and supports future `zetl theme update` functionality (out of scope for this spec).
+This file enables `ztl theme list` to show where a theme came from and supports future `ztl theme update` functionality (out of scope for this spec).
 
 Trace:
 - TEST-014-011
@@ -359,9 +359,9 @@ Trace:
 
 ### 3.4 Theme Management Commands
 
-REQ-014-012: `zetl theme list`
+REQ-014-012: `ztl theme list`
 
-The system SHALL provide a `zetl theme list` subcommand that outputs all available themes. Default output is JSON; `-f table` produces a human-readable table.
+The system SHALL provide a `ztl theme list` subcommand that outputs all available themes. Default output is JSON; `-f table` produces a human-readable table.
 
 **JSON schema:**
 
@@ -372,7 +372,7 @@ The system SHALL provide a `zetl theme list` subcommand that outputs all availab
       "name": "default",
       "source": "bundled",
       "version": "0.9.0",
-      "description": "The default zetl theme",
+      "description": "The default ztl theme",
       "active": true
     },
     {
@@ -380,7 +380,7 @@ The system SHALL provide a `zetl theme list` subcommand that outputs all availab
       "source": "installed",
       "version": "1.0.0",
       "description": "A warm, organic theme",
-      "origin": "https://github.com/jane/zetl-garden.git#v1.0.0",
+      "origin": "https://github.com/jane/ztl-garden.git#v1.0.0",
       "active": false
     }
   ]
@@ -391,8 +391,8 @@ The system SHALL provide a `zetl theme list` subcommand that outputs all availab
 
 ```
  Name     Source     Version  Description
- default  bundled    0.9.0    The default zetl theme
- garden   installed  1.0.0    A warm, organic theme (github.com/jane/zetl-garden)
+ default  bundled    0.9.0    The default ztl theme
+ garden   installed  1.0.0    A warm, organic theme (github.com/jane/ztl-garden)
  minimal  bundled    0.9.0    A minimal, typography-focused theme
 ```
 
@@ -404,18 +404,18 @@ Trace:
 
 ---
 
-REQ-014-013: `zetl theme remove <name>`
+REQ-014-013: `ztl theme remove <name>`
 
-The system SHALL provide a `zetl theme remove <name>` subcommand that deletes `.zetl/themes/<name>/` and all its contents. The system SHALL refuse to remove bundled themes (they are embedded in the binary and cannot be deleted). If the theme shadows a bundled theme, the system SHALL warn that the bundled version will become active after removal.
+The system SHALL provide a `ztl theme remove <name>` subcommand that deletes `.ztl/themes/<name>/` and all its contents. The system SHALL refuse to remove bundled themes (they are embedded in the binary and cannot be deleted). If the theme shadows a bundled theme, the system SHALL warn that the bundled version will become active after removal.
 
 Trace:
 - TEST-014-013
 
 ---
 
-REQ-014-014: `zetl theme export <name>`
+REQ-014-014: `ztl theme export <name>`
 
-The system SHALL provide a `zetl theme export <name>` subcommand that copies a bundled theme's files into `.zetl/themes/<name>/`. This allows users to customise a bundled theme as a starting point. If the target directory already exists, the system SHALL refuse unless `--force` is passed.
+The system SHALL provide a `ztl theme export <name>` subcommand that copies a bundled theme's files into `.ztl/themes/<name>/`. This allows users to customise a bundled theme as a starting point. If the target directory already exists, the system SHALL refuse unless `--force` is passed.
 
 When used with a non-bundled theme name, the system SHALL return an error explaining that only bundled themes can be exported (installed themes are already on disk).
 
@@ -428,7 +428,7 @@ Trace:
 
 REQ-014-015: No Executable Content
 
-Theme installation SHALL NOT execute any scripts, hooks, or build steps from the theme source. The install process is strictly: clone → copy files → write provenance. If a theme directory contains executable files (`.sh`, `.py`, etc.), they SHALL be copied as inert files and never executed by zetl.
+Theme installation SHALL NOT execute any scripts, hooks, or build steps from the theme source. The install process is strictly: clone → copy files → write provenance. If a theme directory contains executable files (`.sh`, `.py`, etc.), they SHALL be copied as inert files and never executed by ztl.
 
 Trace:
 - TEST-014-015
@@ -466,7 +466,7 @@ Trace:
 
 NFR-014-003: Offline Operation
 
-All theme operations except `zetl theme install` SHALL work without network access. Bundled themes and installed themes are fully local.
+All theme operations except `ztl theme install` SHALL work without network access. Bundled themes and installed themes are fully local.
 
 Trace:
 - TEST-014-NFR-003
@@ -477,7 +477,7 @@ Trace:
 
 ### ADR-014-001: Git References over Package Registry
 
-**Context:** Theme distribution requires a mechanism for users to discover, download, and install themes. Options include: (a) a central registry (npm-style), (b) git repositories as the distribution unit, (c) tarballs/zips from URLs, (d) a zetl-specific package format.
+**Context:** Theme distribution requires a mechanism for users to discover, download, and install themes. Options include: (a) a central registry (npm-style), (b) git repositories as the distribution unit, (c) tarballs/zips from URLs, (d) a ztl-specific package format.
 
 **Decision:** Use git repositories as the sole external distribution mechanism, with GitHub shorthand as syntactic sugar.
 
@@ -485,7 +485,7 @@ Trace:
 
 - **Zero infrastructure** — no registry to host, secure, or maintain. No API keys or accounts.
 - **Versioning is built-in** — git refs (tags, branches, commits) provide immutable version pinning.
-- **Familiar workflow** — zetl users already use git. `zetl theme install user/repo#v2` reads naturally.
+- **Familiar workflow** — ztl users already use git. `ztl theme install user/repo#v2` reads naturally.
 - **Monorepo support** — the `--path` flag handles collections elegantly.
 - **Precedent** — Hugo (`hugo mod get`), Zola (git submodules), Go modules, and Terraform providers all use git-based distribution successfully.
 
@@ -493,7 +493,7 @@ Trace:
 
 - No dependency resolution (themes cannot declare dependencies on other themes). Acceptable because themes are self-contained by design.
 - No search/discovery built into the CLI. Acceptable because GitHub search, awesome-lists, and documentation fill this role.
-- Requires git on the user's machine. Acceptable because zetl's target audience universally has git installed.
+- Requires git on the user's machine. Acceptable because ztl's target audience universally has git installed.
 
 **Alternatives rejected:**
 
@@ -512,7 +512,7 @@ Trace:
 **Rationale:**
 
 - **Single source of truth** — bundled themes live as normal theme directories, editable and testable like any user theme.
-- **Extractable** — `zetl theme export default` can write the exact files that ship in the binary, no desync risk.
+- **Extractable** — `ztl theme export default` can write the exact files that ship in the binary, no desync risk.
 - **Scalable** — adding a new bundled theme is: create directory, add files, rebuild.
 - **Testable** — integration tests can use the real bundled theme files.
 
@@ -548,7 +548,7 @@ description = "string"        # Optional.
 author = "string"             # Optional.
 license = "string"            # Optional. SPDX identifier.
 homepage = "string"           # Optional. URL.
-min_zetl_version = "string"   # Optional. SemVer — minimum compatible zetl version.
+min_ztl_version = "string"   # Optional. SemVer — minimum compatible ztl version.
 
 [theme.templates]
 overrides = ["string"]        # Optional. List of template filenames this theme overrides.
@@ -564,10 +564,10 @@ Verified by:
 
 ---
 
-### CON-014-002: `zetl theme install` CLI Interface
+### CON-014-002: `ztl theme install` CLI Interface
 
 ```
-zetl theme install <source> [--path <dir>] [--name <name>] [--force]
+ztl theme install <source> [--path <dir>] [--name <name>] [--force]
 
 Arguments:
   <source>    Theme source. One of:
@@ -590,20 +590,20 @@ Stdout (JSON):
     "installed": {
       "name": "garden",
       "version": "1.0.0",
-      "source": "https://github.com/jane/zetl-garden.git",
+      "source": "https://github.com/jane/ztl-garden.git",
       "ref": "v1.0.0",
-      "path": ".zetl/themes/garden"
+      "path": ".ztl/themes/garden"
     }
   }
 ```
 
 Pre-conditions:
-- `.zetl/` directory exists in the vault root (or is created automatically)
+- `.ztl/` directory exists in the vault root (or is created automatically)
 - `git` is available on `$PATH`
 
 Post-conditions:
-- `.zetl/themes/<name>/` contains the theme files
-- `.zetl/themes/<name>/.zetl-source.toml` records provenance
+- `.ztl/themes/<name>/` contains the theme files
+- `.ztl/themes/<name>/.ztl-source.toml` records provenance
 
 Error model:
 - Network unreachable: exit 1, stderr message with hint
@@ -624,10 +624,10 @@ Verified by:
 
 ---
 
-### CON-014-003: `zetl theme list` CLI Interface
+### CON-014-003: `ztl theme list` CLI Interface
 
 ```
-zetl theme list
+ztl theme list
 
 Output (JSON, default):
   {
@@ -681,7 +681,7 @@ Expected: Validation fails with a descriptive error.
 Scenario: `theme.version` is not valid SemVer (e.g., "1.0" or "latest").
 Expected: Validation fails.
 
-Scenario: `theme.min_zetl_version` is newer than running zetl.
+Scenario: `theme.min_ztl_version` is newer than running ztl.
 Expected: Warning printed, installation proceeds.
 
 ---
@@ -695,50 +695,50 @@ Expected: All files present and parseable.
 
 ### TEST-014-004: Three-Tier Template Resolution
 
-Scenario: `--theme garden` where `garden` is bundled. No `.zetl/themes/garden/` on disk.
+Scenario: `--theme garden` where `garden` is bundled. No `.ztl/themes/garden/` on disk.
 Expected: Templates resolve from bundled `themes/garden/`.
 
-Scenario: `--theme garden` where `garden` is bundled AND `.zetl/themes/garden/page.html` exists on disk.
+Scenario: `--theme garden` where `garden` is bundled AND `.ztl/themes/garden/page.html` exists on disk.
 Expected: `page.html` resolves from disk (Tier 1), other templates from bundled (Tier 2).
 
-Scenario: `--theme custom` where `custom` is not bundled. `.zetl/themes/custom/page.html` exists.
+Scenario: `--theme custom` where `custom` is not bundled. `.ztl/themes/custom/page.html` exists.
 Expected: `page.html` from disk (Tier 1), all others from `themes/default/` (Tier 3).
 
 ---
 
 ### TEST-014-005: Theme Listing
 
-Scenario: No `.zetl/themes/` directory exists.
+Scenario: No `.ztl/themes/` directory exists.
 Expected: Only bundled themes listed, all with `source: "bundled"`.
 
-Scenario: `.zetl/themes/garden/` exists with `theme.toml`.
+Scenario: `.ztl/themes/garden/` exists with `theme.toml`.
 Expected: Listed as `source: "installed"` with metadata from manifest.
 
-Scenario: `.zetl/themes/minimal/` exists and `minimal` is also bundled.
+Scenario: `.ztl/themes/minimal/` exists and `minimal` is also bundled.
 Expected: Listed as `source: "installed (shadows bundled)"`.
 
 ---
 
 ### TEST-014-006: Install from GitHub Shorthand
 
-Scenario: `zetl theme install user/repo` where repo contains `theme.toml` at root.
-Expected: Theme installed to `.zetl/themes/<name>/`. Provenance file written.
+Scenario: `ztl theme install user/repo` where repo contains `theme.toml` at root.
+Expected: Theme installed to `.ztl/themes/<name>/`. Provenance file written.
 
 ---
 
 ### TEST-014-007: Install with Git Ref
 
-Scenario: `zetl theme install user/repo#v2.0.0` where tag `v2.0.0` exists.
+Scenario: `ztl theme install user/repo#v2.0.0` where tag `v2.0.0` exists.
 Expected: Theme installed from that tag. Provenance records the ref and resolved commit SHA.
 
 ---
 
 ### TEST-014-008: Install with Subdirectory Path
 
-Scenario: `zetl theme install user/monorepo --path themes/garden`.
-Expected: Only `themes/garden/` contents copied to `.zetl/themes/garden/`.
+Scenario: `ztl theme install user/monorepo --path themes/garden`.
+Expected: Only `themes/garden/` contents copied to `.ztl/themes/garden/`.
 
-Scenario: `zetl theme install user/monorepo --path nonexistent`.
+Scenario: `ztl theme install user/monorepo --path nonexistent`.
 Expected: Error with hint listing available subdirectories.
 
 ---
@@ -746,22 +746,22 @@ Expected: Error with hint listing available subdirectories.
 ### TEST-014-009: Name Resolution Precedence
 
 Scenario: `--name my-garden` flag provided.
-Expected: Installed as `.zetl/themes/my-garden/` regardless of manifest name.
+Expected: Installed as `.ztl/themes/my-garden/` regardless of manifest name.
 
 Scenario: No `--name`, manifest says `name = "garden"`.
-Expected: Installed as `.zetl/themes/garden/`.
+Expected: Installed as `.ztl/themes/garden/`.
 
 Scenario: No `--name`, no manifest, `--path themes/garden`.
-Expected: Installed as `.zetl/themes/garden/`.
+Expected: Installed as `.ztl/themes/garden/`.
 
-Scenario: No `--name`, no manifest, no `--path`, source is `user/zetl-garden`.
-Expected: Installed as `.zetl/themes/zetl-garden/`.
+Scenario: No `--name`, no manifest, no `--path`, source is `user/ztl-garden`.
+Expected: Installed as `.ztl/themes/ztl-garden/`.
 
 ---
 
 ### TEST-014-010: Install Overwrite Protection
 
-Scenario: `.zetl/themes/garden/` already exists, `zetl theme install user/repo` resolves to `garden`.
+Scenario: `.ztl/themes/garden/` already exists, `ztl theme install user/repo` resolves to `garden`.
 Expected: Error, existing directory not modified.
 
 Scenario: Same as above with `--force`.
@@ -771,37 +771,37 @@ Expected: Existing directory replaced. New provenance file written.
 
 ### TEST-014-011: Provenance File
 
-Scenario: Install a theme, read `.zetl-source.toml` from the installed directory.
-Expected: Contains `url`, `commit` (full SHA), `installed_at` (ISO 8601), `zetl_version`.
+Scenario: Install a theme, read `.ztl-source.toml` from the installed directory.
+Expected: Contains `url`, `commit` (full SHA), `installed_at` (ISO 8601), `ztl_version`.
 
 ---
 
 ### TEST-014-012: List Command Output
 
-Scenario: `zetl theme list` with both bundled and installed themes.
+Scenario: `ztl theme list` with both bundled and installed themes.
 Expected: JSON output matches CON-014-003 schema. Table output is human-readable.
 
 ---
 
 ### TEST-014-013: Remove Command
 
-Scenario: `zetl theme remove garden` where `garden` is installed.
-Expected: `.zetl/themes/garden/` deleted. Success message.
+Scenario: `ztl theme remove garden` where `garden` is installed.
+Expected: `.ztl/themes/garden/` deleted. Success message.
 
-Scenario: `zetl theme remove default`.
+Scenario: `ztl theme remove default`.
 Expected: Error — cannot remove a bundled theme.
 
 ---
 
 ### TEST-014-014: Export Command
 
-Scenario: `zetl theme export default`.
-Expected: Bundled `default` theme files written to `.zetl/themes/default/`.
+Scenario: `ztl theme export default`.
+Expected: Bundled `default` theme files written to `.ztl/themes/default/`.
 
-Scenario: `zetl theme export default` when `.zetl/themes/default/` already exists.
+Scenario: `ztl theme export default` when `.ztl/themes/default/` already exists.
 Expected: Error, suggests `--force`.
 
-Scenario: `zetl theme export garden` where `garden` is installed (not bundled).
+Scenario: `ztl theme export garden` where `garden` is installed (not bundled).
 Expected: Error — only bundled themes can be exported.
 
 ---
@@ -815,10 +815,10 @@ Expected: File is copied but never executed. No shell invocation during install.
 
 ### TEST-014-016: Path Traversal Rejection
 
-Scenario: `zetl theme install user/repo --name "../../../etc"`.
+Scenario: `ztl theme install user/repo --name "../../../etc"`.
 Expected: Error — invalid theme name.
 
-Scenario: `zetl theme install user/repo --path "../../secrets"`.
+Scenario: `ztl theme install user/repo --path "../../secrets"`.
 Expected: Error — path traversal detected.
 
 ---
@@ -841,7 +841,7 @@ OBS-014-002: Theme Resolution Logging
 When `--verbose` is active, the template engine SHALL log which tier each template was resolved from:
 
 ```
-  theme: base.html  ← .zetl/themes/garden/base.html (disk)
+  theme: base.html  ← .ztl/themes/garden/base.html (disk)
   theme: index.html ← bundled:garden/index.html
   theme: page.html  ← bundled:default/page.html (fallback)
 ```
@@ -852,38 +852,38 @@ When `--verbose` is active, the template engine SHALL log which tier each templa
 
 ### Phase 1: Bundled Themes and `theme list`
 
-**Goal:** Move existing templates into `themes/default/`, add a build-time embedding mechanism, create at least one additional bundled theme (`minimal`), and implement `zetl theme list`.
+**Goal:** Move existing templates into `themes/default/`, add a build-time embedding mechanism, create at least one additional bundled theme (`minimal`), and implement `ztl theme list`.
 
 **Changes:**
 - Create `themes/default/` with current templates + `theme.toml`
 - Create `themes/minimal/` with a stripped-down theme
 - Add `build.rs` or `include_dir!` for compile-time embedding
 - Refactor `engine.rs` template loader to support three-tier resolution
-- Add `zetl theme list` subcommand to `cli.rs`
+- Add `ztl theme list` subcommand to `cli.rs`
 - Update `validate_theme()` to accept bundled theme names
 
-**Verification:** Existing tests pass. `zetl theme list` shows bundled themes. `zetl serve --theme minimal` renders correctly.
+**Verification:** Existing tests pass. `ztl theme list` shows bundled themes. `ztl serve --theme minimal` renders correctly.
 
 ### Phase 2: Git-Based Install and Remove
 
-**Goal:** Implement `zetl theme install` and `zetl theme remove`.
+**Goal:** Implement `ztl theme install` and `ztl theme remove`.
 
 **Changes:**
 - Add `theme` subcommand group to `cli.rs`
 - Implement git clone + file copy logic
 - Implement source format parsing (GitHub shorthand, URLs, #ref, --path)
 - Implement name resolution (REQ-014-009)
-- Write `.zetl-source.toml` provenance
-- Implement `zetl theme remove`
+- Write `.ztl-source.toml` provenance
+- Implement `ztl theme remove`
 
 **Verification:** Install from a real GitHub repo. Verify provenance file. Remove and verify cleanup.
 
 ### Phase 3: Export and Polish
 
-**Goal:** Implement `zetl theme export`, add a `docs` bundled theme, polish error messages.
+**Goal:** Implement `ztl theme export`, add a `docs` bundled theme, polish error messages.
 
 **Changes:**
-- Implement `zetl theme export`
+- Implement `ztl theme export`
 - Create `themes/docs/` bundled theme
 - Improve error messages for all failure modes
 - Add verbose logging (OBS-014-001, OBS-014-002)
@@ -897,14 +897,14 @@ When `--verbose` is active, the template engine SHALL log which tier each templa
 1. **Should bundled themes include static assets?**
    Bundled themes that include CSS or JS beyond what's in the Tailwind CDN would increase binary size. The `minimal` theme could be pure template overrides (no extra assets), staying within the 100 KB budget. A `docs` theme might need a small CSS file. Recommendation: allow small static assets in bundled themes but enforce the size budget in CI.
 
-2. **Should `zetl theme install` support non-git sources (tarball URL, local path)?**
-   A local path (`zetl theme install ./path/to/theme`) would be useful for development. A tarball URL would support non-git hosting. Recommendation: add `--local <path>` as a convenience alias for `cp -r`, defer tarball support.
+2. **Should `ztl theme install` support non-git sources (tarball URL, local path)?**
+   A local path (`ztl theme install ./path/to/theme`) would be useful for development. A tarball URL would support non-git hosting. Recommendation: add `--local <path>` as a convenience alias for `cp -r`, defer tarball support.
 
-3. **Should there be a `zetl theme update` command?**
-   With provenance tracking (`.zetl-source.toml`), a future `zetl theme update` could re-install from the same source at a newer ref. This spec defers the command but establishes the provenance data it would need.
+3. **Should there be a `ztl theme update` command?**
+   With provenance tracking (`.ztl-source.toml`), a future `ztl theme update` could re-install from the same source at a newer ref. This spec defers the command but establishes the provenance data it would need.
 
 4. **Should the `--theme` flag accept a git reference directly?**
-   E.g., `zetl serve --theme github:user/repo#v2` that auto-installs on first use. This would blur the line between install and use. Recommendation: keep install explicit — `zetl theme install` then `zetl serve --theme name`.
+   E.g., `ztl serve --theme github:user/repo#v2` that auto-installs on first use. This would blur the line between install and use. Recommendation: keep install explicit — `ztl theme install` then `ztl serve --theme name`.
 
 ---
 
@@ -912,9 +912,9 @@ When `--verbose` is active, the template engine SHALL log which tier each templa
 
 | Feature | Description |
 | --- | --- |
-| `zetl theme update` | Re-install from provenance source at latest ref or specified ref |
+| `ztl theme update` | Re-install from provenance source at latest ref or specified ref |
 | Theme variables | `theme.toml` `[variables]` section exposing configurable values to templates |
-| Theme preview | `zetl theme preview <source>` — install to temp dir, serve, clean up |
-| Theme init | `zetl theme init <name>` — scaffold a new theme directory with boilerplate |
-| Awesome list | Curated list of community themes in zetl documentation |
+| Theme preview | `ztl theme preview <source>` — install to temp dir, serve, clean up |
+| Theme init | `ztl theme init <name>` — scaffold a new theme directory with boilerplate |
+| Awesome list | Curated list of community themes in ztl documentation |
 | Theme CI validation | GitHub Action that validates theme structure and renders test pages |

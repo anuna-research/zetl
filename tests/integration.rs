@@ -1,7 +1,7 @@
-//! Integration tests for the `zetl` CLI.
+//! Integration tests for the `ztl` CLI.
 //!
 //! These tests exercise the binary end-to-end by creating temporary vaults
-//! with known markdown files, running `zetl` subcommands via
+//! with known markdown files, running `ztl` subcommands via
 //! `std::process::Command`, and verifying the JSON output.
 
 use assert_cmd::Command;
@@ -15,17 +15,17 @@ use tempfile::TempDir;
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Build a `Command` for the `zetl` binary with the given vault directory.
-fn zetl_cmd(vault: &Path) -> Command {
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+/// Build a `Command` for the `ztl` binary with the given vault directory.
+fn ztl_cmd(vault: &Path) -> Command {
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     cmd.arg("-d").arg(vault.as_os_str());
     cmd.arg("--no-cache");
     cmd
 }
 
 /// Build a `Command` without `--no-cache` (uses the incremental file cache).
-fn zetl_cmd_cached(vault: &Path) -> Command {
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+fn ztl_cmd_cached(vault: &Path) -> Command {
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     cmd.arg("-d").arg(vault.as_os_str());
     cmd
 }
@@ -41,12 +41,12 @@ fn write_file(root: &Path, relative: &str, content: &str) {
 
 /// Run the command, assert success, parse stdout as JSON.
 fn run_json(cmd: &mut Command) -> Value {
-    let output = cmd.output().expect("failed to execute zetl");
+    let output = cmd.output().expect("failed to execute ztl");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "zetl exited with non-zero status.\nstdout: {stdout}\nstderr: {stderr}",
+        "ztl exited with non-zero status.\nstdout: {stdout}\nstderr: {stderr}",
     );
     serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("failed to parse JSON output: {e}\nraw stdout: {stdout}"))
@@ -54,12 +54,12 @@ fn run_json(cmd: &mut Command) -> Value {
 
 /// Run the command, assert success, parse stdout as JSON, and return stderr too.
 fn run_json_with_stderr(cmd: &mut Command) -> (Value, String) {
-    let output = cmd.output().expect("failed to execute zetl");
+    let output = cmd.output().expect("failed to execute ztl");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "zetl exited with non-zero status.\nstdout: {stdout}\nstderr: {stderr}",
+        "ztl exited with non-zero status.\nstdout: {stdout}\nstderr: {stderr}",
     );
     let json = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("failed to parse JSON output: {e}\nraw stdout: {stdout}"));
@@ -74,7 +74,7 @@ fn run_json_with_stderr(cmd: &mut Command) -> (Value, String) {
 ///  - success → parse stdout
 ///  - failure → parse stderr (fall back to stdout for robustness)
 fn run_json_any(cmd: &mut Command) -> (Value, std::process::ExitStatus) {
-    let output = cmd.output().expect("failed to execute zetl");
+    let output = cmd.output().expect("failed to execute ztl");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let primary = if output.status.success() {
@@ -284,9 +284,9 @@ fn build_test010_vault(root: &Path) {
 }
 
 /// Create a vault for TEST-012 ignore patterns:
-/// Has .zetlignore with "drafts/" and files in drafts/ that should be excluded.
+/// Has .ztlignore with "drafts/" and files in drafts/ that should be excluded.
 fn build_test012_vault(root: &Path) {
-    write_file(root, ".zetlignore", "drafts/\n");
+    write_file(root, ".ztlignore", "drafts/\n");
     write_file(root, "Public.md", "# Public\n\nLinks to [[Notes]].\n");
     write_file(root, "Notes.md", "# Notes\n\nPublic note.\n");
     write_file(
@@ -310,7 +310,7 @@ fn test_001_index_scan_completeness() {
     let dir = TempDir::new().expect("create temp dir");
     build_test001_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("index"));
+    let json = run_json(ztl_cmd(dir.path()).arg("index"));
 
     // Verify files_scanned = 5
     assert_eq!(
@@ -343,10 +343,10 @@ fn test_002_graph_construction() {
     build_test002_vault(dir.path());
 
     // First, build the index
-    run_json(zetl_cmd(dir.path()).arg("index"));
+    run_json(ztl_cmd(dir.path()).arg("index"));
 
     // Check forward links from A: should link to B and C
-    let json_a = run_json(zetl_cmd(dir.path()).arg("links").arg("A"));
+    let json_a = run_json(ztl_cmd(dir.path()).arg("links").arg("A"));
     let links_a = json_a["links"].as_array().expect("links should be array");
     assert_eq!(
         links_a.len(),
@@ -355,7 +355,7 @@ fn test_002_graph_construction() {
     );
 
     // Check forward links from B: should link to C
-    let json_b = run_json(zetl_cmd(dir.path()).arg("links").arg("B"));
+    let json_b = run_json(ztl_cmd(dir.path()).arg("links").arg("B"));
     let links_b = json_b["links"].as_array().expect("links should be array");
     assert_eq!(
         links_b.len(),
@@ -364,7 +364,7 @@ fn test_002_graph_construction() {
     );
 
     // Check forward links from D: should have 0 links
-    let json_d = run_json(zetl_cmd(dir.path()).arg("links").arg("D"));
+    let json_d = run_json(ztl_cmd(dir.path()).arg("links").arg("D"));
     let links_d = json_d["links"].as_array().expect("links should be array");
     assert_eq!(
         links_d.len(),
@@ -373,7 +373,7 @@ fn test_002_graph_construction() {
     );
 
     // Check backlinks for C: should be linked from A and B
-    let json_c_bl = run_json(zetl_cmd(dir.path()).arg("backlinks").arg("C"));
+    let json_c_bl = run_json(ztl_cmd(dir.path()).arg("backlinks").arg("C"));
     let backlinks_c = json_c_bl["backlinks"]
         .as_array()
         .expect("backlinks should be array");
@@ -407,7 +407,7 @@ fn test_003_forward_link_query() {
     let dir = TempDir::new().expect("create temp dir");
     build_test003_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("links").arg("Index"));
+    let json = run_json(ztl_cmd(dir.path()).arg("links").arg("Index"));
 
     // Verify the page name in the response
     assert_eq!(
@@ -457,7 +457,7 @@ fn test_004_backlink_query() {
     let dir = TempDir::new().expect("create temp dir");
     build_test004_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("backlinks").arg("Concept X"));
+    let json = run_json(ztl_cmd(dir.path()).arg("backlinks").arg("Concept X"));
 
     // Verify backlinks count
     let backlinks = json["backlinks"]
@@ -505,7 +505,7 @@ fn test_005_dead_link_detection() {
     let dir = TempDir::new().expect("create temp dir");
     build_test005_vault(dir.path());
 
-    let (json, status) = run_json_any(zetl_cmd(dir.path()).arg("check").arg("--dead-links"));
+    let (json, status) = run_json_any(ztl_cmd(dir.path()).arg("check").arg("--dead-links"));
 
     // Should report dead links
     let dead_links = json["dead_links"]
@@ -550,7 +550,7 @@ fn test_006_orphan_detection() {
     let dir = TempDir::new().expect("create temp dir");
     build_test006_vault(dir.path());
 
-    let (json, _status) = run_json_any(zetl_cmd(dir.path()).arg("check").arg("--orphans"));
+    let (json, _status) = run_json_any(ztl_cmd(dir.path()).arg("check").arg("--orphans"));
 
     let orphans = json["orphans"].as_array().expect("orphans should be array");
 
@@ -591,7 +591,7 @@ fn test_007_syntax_validation() {
     let dir = TempDir::new().expect("create temp dir");
     build_test007_vault(dir.path());
 
-    let (json, _status) = run_json_any(zetl_cmd(dir.path()).arg("check").arg("--syntax"));
+    let (json, _status) = run_json_any(ztl_cmd(dir.path()).arg("check").arg("--syntax"));
 
     let syntax_errors = json["syntax_errors"]
         .as_array()
@@ -650,13 +650,13 @@ fn test_008_simhash_fuzzy_search() {
     build_test008_vault(dir.path());
 
     // First index the vault
-    run_json(zetl_cmd(dir.path()).arg("index"));
+    run_json(ztl_cmd(dir.path()).arg("index"));
 
     // Search for "zettelkasen" (typo) with a generous threshold
     // (SimHash with character trigrams can produce moderate distances
     // for short strings with small edits)
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("similar")
             .arg("zettelkasen")
             .arg("--threshold")
@@ -705,7 +705,7 @@ fn test_009_stats() {
     let dir = TempDir::new().expect("create temp dir");
     build_test009_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("stats"));
+    let json = run_json(ztl_cmd(dir.path()).arg("stats"));
 
     // The vault has 4 pages (A, B, C, D)
     assert_eq!(
@@ -784,7 +784,7 @@ fn test_010_shortest_path_found() {
     let dir = TempDir::new().expect("create temp dir");
     build_test010_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("path").arg("A").arg("D"));
+    let json = run_json(ztl_cmd(dir.path()).arg("path").arg("A").arg("D"));
 
     // Verify path: A -> B -> C -> D
     assert_eq!(json["from"].as_str(), Some("A"));
@@ -810,7 +810,7 @@ fn test_010_shortest_path_no_path() {
     build_test010_vault(dir.path());
 
     // E is isolated, so no path from A to E
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("path").arg("A").arg("E");
 
     // Should exit non-zero
@@ -826,7 +826,7 @@ fn test_012_ignore_patterns() {
     let dir = TempDir::new().expect("create temp dir");
     build_test012_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("index"));
+    let json = run_json(ztl_cmd(dir.path()).arg("index"));
 
     // Should only scan 2 files (Public.md and Notes.md), not the drafts
     assert_eq!(
@@ -836,7 +836,7 @@ fn test_012_ignore_patterns() {
     );
 
     // Verify with stats that only 2 pages exist
-    let stats = run_json(zetl_cmd(dir.path()).arg("stats"));
+    let stats = run_json(ztl_cmd(dir.path()).arg("stats"));
     assert_eq!(
         stats["pages"].as_u64(),
         Some(2),
@@ -852,7 +852,7 @@ fn test_012_ignore_patterns() {
 fn test_empty_vault() {
     let dir = TempDir::new().expect("create temp dir");
 
-    let json = run_json(zetl_cmd(dir.path()).arg("index"));
+    let json = run_json(ztl_cmd(dir.path()).arg("index"));
 
     assert_eq!(
         json["files_scanned"].as_u64(),
@@ -881,31 +881,31 @@ fn test_default_ignores_git_and_node_modules() {
         "node_modules/pkg/readme.md",
         "# Readme\n\n[[Link]].\n",
     );
-    write_file(dir.path(), ".zetl/index.md", "# Index\n\n[[Link]].\n");
+    write_file(dir.path(), ".ztl/index.md", "# Index\n\n[[Link]].\n");
     // This one should be scanned
     write_file(dir.path(), "Real Note.md", "# Real Note\n\nContent.\n");
 
-    let json = run_json(zetl_cmd(dir.path()).arg("index"));
+    let json = run_json(ztl_cmd(dir.path()).arg("index"));
 
     assert_eq!(
         json["files_scanned"].as_u64(),
         Some(1),
-        "only Real Note.md should be scanned (default ignores for .git, node_modules, .zetl), got: {json}"
+        "only Real Note.md should be scanned (default ignores for .git, node_modules, .ztl), got: {json}"
     );
 }
 
 #[test]
 fn test_version_flag() {
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     cmd.arg("--version");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("zetl"));
+        .stdout(predicate::str::contains("ztl"));
 }
 
 #[test]
 fn test_help_flag() {
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     cmd.arg("--help");
     cmd.assert()
         .success()
@@ -923,7 +923,7 @@ fn test_links_case_insensitive_page_name() {
     write_file(dir.path(), "Other.md", "# Other\n\nContent.\n");
 
     // Query with different case should still work
-    let json = run_json(zetl_cmd(dir.path()).arg("links").arg("my page"));
+    let json = run_json(ztl_cmd(dir.path()).arg("links").arg("my page"));
 
     let links = json["links"].as_array().expect("links should be array");
     assert_eq!(links.len(), 1, "should find 1 forward link");
@@ -948,7 +948,7 @@ fn test_check_all_categories() {
     write_file(dir.path(), "Broken.md", "# Broken\n\nUnclosed [[link\n");
 
     // Run check without any filter flags (should report all categories)
-    let (json, _status) = run_json_any(zetl_cmd(dir.path()).arg("check"));
+    let (json, _status) = run_json_any(ztl_cmd(dir.path()).arg("check"));
 
     // Should have dead_links, orphans, and syntax_errors in the output
     assert!(
@@ -1000,7 +1000,7 @@ fn test_013_basic_content_search() {
     let dir = TempDir::new().expect("create temp dir");
     build_test013_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("quick"));
+    let json = run_json(ztl_cmd(dir.path()).arg("search").arg("quick"));
 
     let results = json["results"].as_array().expect("results should be array");
 
@@ -1033,7 +1033,7 @@ fn test_013_search_with_context() {
     build_test013_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("search")
             .arg("quick")
             .arg("--context")
@@ -1056,7 +1056,7 @@ fn test_013_search_no_matches() {
     let dir = TempDir::new().expect("create temp dir");
     build_test013_vault(dir.path());
 
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("search").arg("nonexistent");
 
     // Should exit non-zero
@@ -1078,7 +1078,7 @@ fn test_014_body_text_exclusion() {
     );
 
     // Default: body-text only — should find "quick" in body but not frontmatter or code block
-    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("quick"));
+    let json = run_json(ztl_cmd(dir.path()).arg("search").arg("quick"));
 
     let results = json["results"].as_array().expect("results should be array");
 
@@ -1106,7 +1106,7 @@ fn test_014_search_all_mode() {
     );
 
     // --all mode: should find "quick" in frontmatter, body, and code block
-    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("quick").arg("--all"));
+    let json = run_json(ztl_cmd(dir.path()).arg("search").arg("quick").arg("--all"));
 
     let total = json["total_matches"].as_u64().expect("total_matches");
     assert!(
@@ -1131,7 +1131,7 @@ fn test_015_regex_search() {
     );
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("search")
             .arg(r"\bnotes?\b")
             .arg("--regex"),
@@ -1152,7 +1152,7 @@ fn test_015_invalid_regex() {
     let dir = TempDir::new().expect("create temp dir");
     write_file(dir.path(), "A.md", "# A\n\nContent.\n");
 
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("search").arg("[invalid").arg("--regex");
 
     // Should fail (bad regex)
@@ -1173,7 +1173,7 @@ fn test_016_case_insensitive_default() {
         "# Case\n\nZettelkasten on line 3.\nzettelkasten on line 4.\n",
     );
 
-    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("ZETTELKASTEN"));
+    let json = run_json(ztl_cmd(dir.path()).arg("search").arg("ZETTELKASTEN"));
 
     let total = json["total_matches"].as_u64().expect("total_matches");
     assert_eq!(
@@ -1193,7 +1193,7 @@ fn test_016_case_sensitive() {
     );
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("search")
             .arg("Zettelkasten")
             .arg("--case-sensitive"),
@@ -1214,7 +1214,7 @@ fn test_016_case_sensitive() {
 fn test_017_search_respects_ignores() {
     let dir = TempDir::new().expect("create temp dir");
 
-    write_file(dir.path(), ".zetlignore", "drafts/\n");
+    write_file(dir.path(), ".ztlignore", "drafts/\n");
     write_file(
         dir.path(),
         "Public.md",
@@ -1226,7 +1226,7 @@ fn test_017_search_respects_ignores() {
         "# Draft\n\nSecret draft content here.\n",
     );
 
-    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("content"));
+    let json = run_json(ztl_cmd(dir.path()).arg("search").arg("content"));
 
     let results = json["results"].as_array().expect("results should be array");
 
@@ -1258,7 +1258,7 @@ fn test_018_search_result_limiting() {
     );
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("search")
             .arg("the")
             .arg("--limit")
@@ -1286,7 +1286,7 @@ fn test_019_empty_search_query() {
     write_file(dir.path(), "A.md", "# A\n\nSome content here.\n");
 
     // Empty query should return JSON error with code 2
-    let (json, status) = run_json_any(zetl_cmd(dir.path()).arg("search").arg(""));
+    let (json, status) = run_json_any(ztl_cmd(dir.path()).arg("search").arg(""));
     assert!(!status.success(), "empty query should fail");
     assert_eq!(json["error"].as_str(), Some("Empty search query"));
     assert_eq!(json["code"].as_i64(), Some(2));
@@ -1297,7 +1297,7 @@ fn test_019_whitespace_search_query() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "A.md", "# A\n\nSome content here.\n");
 
-    let (json, status) = run_json_any(zetl_cmd(dir.path()).arg("search").arg("   "));
+    let (json, status) = run_json_any(ztl_cmd(dir.path()).arg("search").arg("   "));
     assert!(!status.success(), "whitespace-only query should fail");
     assert_eq!(json["error"].as_str(), Some("Empty search query"));
     assert_eq!(json["code"].as_i64(), Some(2));
@@ -1313,7 +1313,7 @@ fn test_020_json_error_page_not_found() {
     write_file(dir.path(), "A.md", "# A\n\nContent.\n");
 
     // links to nonexistent page should return JSON error
-    let (json, status) = run_json_any(zetl_cmd(dir.path()).arg("links").arg("nonexistent"));
+    let (json, status) = run_json_any(ztl_cmd(dir.path()).arg("links").arg("nonexistent"));
     assert!(!status.success());
     assert!(json["error"].as_str().unwrap().contains("Page not found"));
     assert_eq!(json["code"].as_i64(), Some(1));
@@ -1324,7 +1324,7 @@ fn test_020_json_error_backlinks_not_found() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "A.md", "# A\n\nContent.\n");
 
-    let (json, status) = run_json_any(zetl_cmd(dir.path()).arg("backlinks").arg("nonexistent"));
+    let (json, status) = run_json_any(ztl_cmd(dir.path()).arg("backlinks").arg("nonexistent"));
     assert!(!status.success());
     assert!(json["error"].as_str().unwrap().contains("Page not found"));
     assert_eq!(json["code"].as_i64(), Some(1));
@@ -1337,7 +1337,7 @@ fn test_020_json_error_invalid_regex() {
     write_file(dir.path(), "A.md", "# A\n\nContent.\n");
 
     let (json, status) = run_json_any(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("search")
             .arg("[bad")
             .arg("--regex"),
@@ -1362,8 +1362,8 @@ fn test_021_links_dedup() {
     );
     write_file(dir.path(), "B.md", "# B\n\nContent.\n");
 
-    run_json(zetl_cmd(dir.path()).arg("index"));
-    let json = run_json(zetl_cmd(dir.path()).arg("links").arg("A"));
+    run_json(ztl_cmd(dir.path()).arg("index"));
+    let json = run_json(ztl_cmd(dir.path()).arg("links").arg("A"));
     let links = json["links"].as_array().unwrap();
 
     // Both [[B]] are on line 3, so (A, B, 3) should appear only once
@@ -1386,8 +1386,8 @@ fn test_021_links_different_lines_not_deduped() {
     );
     write_file(dir.path(), "B.md", "# B\n\nContent.\n");
 
-    run_json(zetl_cmd(dir.path()).arg("index"));
-    let json = run_json(zetl_cmd(dir.path()).arg("links").arg("A"));
+    run_json(ztl_cmd(dir.path()).arg("index"));
+    let json = run_json(ztl_cmd(dir.path()).arg("links").arg("A"));
     let links = json["links"].as_array().unwrap();
 
     assert_eq!(
@@ -1408,7 +1408,7 @@ fn test_023_list_pages() {
     write_file(dir.path(), "Apple.md", "# Apple\n");
     write_file(dir.path(), "sub/Mango.md", "# Mango\n");
 
-    let json = run_json(zetl_cmd(dir.path()).arg("list"));
+    let json = run_json(ztl_cmd(dir.path()).arg("list"));
     let pages = json["pages"].as_array().unwrap();
 
     assert_eq!(json["total"].as_u64(), Some(3));
@@ -1422,7 +1422,7 @@ fn test_023_list_pages() {
 #[test]
 fn test_023_list_empty_vault() {
     let dir = TempDir::new().unwrap();
-    let json = run_json(zetl_cmd(dir.path()).arg("list"));
+    let json = run_json(ztl_cmd(dir.path()).arg("list"));
     assert_eq!(json["total"].as_u64(), Some(0));
     assert_eq!(json["pages"].as_array().unwrap().len(), 0);
 }
@@ -1452,7 +1452,7 @@ fn test_024_search_path_filter() {
 
     // Search with --path restricts to concepts/
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("search")
             .arg("note")
             .arg("--path")
@@ -1477,7 +1477,7 @@ fn test_024_search_no_path_filter() {
     write_file(dir.path(), "tools/Gamma.md", "# Gamma\n\nA note.\n");
 
     // Without --path, all directories searched
-    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("note"));
+    let json = run_json(ztl_cmd(dir.path()).arg("search").arg("note"));
     let results = json["results"].as_array().unwrap();
     let dirs: std::collections::HashSet<&str> = results
         .iter()
@@ -1499,8 +1499,8 @@ fn test_025_export_graph() {
     write_file(dir.path(), "B.md", "# B\n\n[[C]].\n");
     write_file(dir.path(), "C.md", "# C\n\n[[A]].\n");
 
-    run_json(zetl_cmd(dir.path()).arg("index"));
-    let json = run_json(zetl_cmd(dir.path()).arg("export"));
+    run_json(ztl_cmd(dir.path()).arg("index"));
+    let json = run_json(ztl_cmd(dir.path()).arg("export"));
 
     let nodes = json["nodes"].as_array().unwrap();
     let edges = json["edges"].as_array().unwrap();
@@ -1533,8 +1533,8 @@ fn test_025_export_includes_dead_link_targets() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "A.md", "# A\n\n[[Ghost]].\n");
 
-    run_json(zetl_cmd(dir.path()).arg("index"));
-    let json = run_json(zetl_cmd(dir.path()).arg("export"));
+    run_json(ztl_cmd(dir.path()).arg("index"));
+    let json = run_json(ztl_cmd(dir.path()).arg("export"));
 
     let nodes = json["nodes"].as_array().unwrap();
     let node_names: Vec<&str> = nodes.iter().map(|n| n["page"].as_str().unwrap()).collect();
@@ -1553,7 +1553,7 @@ fn test_025_export_includes_dead_link_targets() {
 }
 
 // ===========================================================================
-// TEST-049: zetl blocks --resolve (reverse mode) — REQ-045 / CON-020
+// TEST-049: ztl blocks --resolve (reverse mode) — REQ-045 / CON-020
 // ===========================================================================
 
 /// TEST-049 scenario: hash prefix too short (< 8 hex chars) → exit 1, error message
@@ -1563,7 +1563,7 @@ fn test_049_resolve_hash_too_short() {
     write_file(dir.path(), "A.md", "# A\n\nSome content.\n");
 
     let (json, status) = run_json_any(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("blocks")
             .arg("--resolve")
             .arg("e5f6"),
@@ -1589,7 +1589,7 @@ fn test_049_resolve_hash_not_found() {
     write_file(dir.path(), "A.md", "# A\n\nSome content.\n");
 
     let (json, status) = run_json_any(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("blocks")
             .arg("--resolve")
             .arg("deadbeef"),
@@ -1618,7 +1618,7 @@ fn test_049_resolve_unique_match() {
     );
 
     // First get the hash via forward mode
-    let forward = run_json(zetl_cmd(dir.path()).arg("blocks").arg("Redis"));
+    let forward = run_json(ztl_cmd(dir.path()).arg("blocks").arg("Redis"));
     let blocks = forward["blocks"].as_array().unwrap();
     assert!(!blocks.is_empty(), "Redis.md should have blocks");
 
@@ -1632,7 +1632,7 @@ fn test_049_resolve_unique_match() {
 
     // Resolve with 8-char prefix
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("blocks")
             .arg("--resolve")
             .arg(prefix),
@@ -1696,7 +1696,7 @@ fn test_049_resolve_ambiguous_prefix() {
     write_file(dir.path(), "A.md", "# A\n\nContent here.\n");
 
     let (json, status) = run_json_any(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("blocks")
             .arg("--resolve")
             .arg("00000000"),
@@ -1721,7 +1721,7 @@ fn test_049_resolve_duplicate_content() {
     write_file(dir.path(), "File2.md", &format!("# File2\n\n{identical}\n"));
 
     // Get the hash from forward mode on File1
-    let forward = run_json(zetl_cmd(dir.path()).arg("blocks").arg("File1"));
+    let forward = run_json(ztl_cmd(dir.path()).arg("blocks").arg("File1"));
     let blocks = forward["blocks"].as_array().unwrap();
     let para = blocks
         .iter()
@@ -1732,7 +1732,7 @@ fn test_049_resolve_duplicate_content() {
 
     // Resolve — should find both files
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("blocks")
             .arg("--resolve")
             .arg(prefix),
@@ -1773,7 +1773,7 @@ fn test_049_resolve_roundtrip() {
     );
 
     // Forward mode: get blocks
-    let forward = run_json(zetl_cmd(dir.path()).arg("blocks").arg("Decision"));
+    let forward = run_json(ztl_cmd(dir.path()).arg("blocks").arg("Decision"));
     let blocks = forward["blocks"].as_array().unwrap();
     let para = blocks
         .iter()
@@ -1786,7 +1786,7 @@ fn test_049_resolve_roundtrip() {
 
     // Reverse mode: resolve with the full hash
     let reverse = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("blocks")
             .arg("--resolve")
             .arg(forward_hash),
@@ -1820,7 +1820,7 @@ fn test_049_resolve_roundtrip() {
 }
 
 // ===========================================================================
-// TEST-049: zetl blocks (forward mode) — REQ-045 / CON-020
+// TEST-049: ztl blocks (forward mode) — REQ-045 / CON-020
 // ===========================================================================
 
 /// Fixture content modelled after demo-vault/decisions/Redis vs Memcached.md.
@@ -1829,7 +1829,7 @@ fn test_049_resolve_roundtrip() {
 const REDIS_FIXTURE: &str = "\
 # Redis vs Memcached
 
-We evaluated Redis and Memcached as caching backends for the zetl index layer.
+We evaluated Redis and Memcached as caching backends for the ztl index layer.
 
 ```spl
 (given redis-evaluated)
@@ -1858,7 +1858,7 @@ fn test_049_blocks_forward_list_all_types() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "Redis vs Memcached.md", REDIS_FIXTURE);
 
-    let json = run_json(zetl_cmd(dir.path()).arg("blocks").arg("Redis vs Memcached"));
+    let json = run_json(ztl_cmd(dir.path()).arg("blocks").arg("Redis vs Memcached"));
 
     assert_eq!(
         json["page"].as_str().unwrap(),
@@ -1928,7 +1928,7 @@ fn test_049_blocks_forward_spl_has_spl_hashes() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "Redis vs Memcached.md", REDIS_FIXTURE);
 
-    let json = run_json(zetl_cmd(dir.path()).arg("blocks").arg("Redis vs Memcached"));
+    let json = run_json(ztl_cmd(dir.path()).arg("blocks").arg("Redis vs Memcached"));
 
     let blocks = json["blocks"].as_array().unwrap();
 
@@ -1980,7 +1980,7 @@ fn test_049_blocks_forward_type_filter_paragraph() {
     write_file(dir.path(), "Redis vs Memcached.md", REDIS_FIXTURE);
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("blocks")
             .arg("Redis vs Memcached")
             .arg("--type")
@@ -2019,7 +2019,7 @@ fn test_049_blocks_page_not_found() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "A.md", "# A\n\nSome content.\n");
 
-    let (json, status) = run_json_any(zetl_cmd(dir.path()).arg("blocks").arg("NonExistentPage"));
+    let (json, status) = run_json_any(ztl_cmd(dir.path()).arg("blocks").arg("NonExistentPage"));
 
     assert!(
         !status.success(),
@@ -2040,7 +2040,7 @@ fn test_049_blocks_forward_hash_as_source_metadata_roundtrip() {
     write_file(dir.path(), "Redis vs Memcached.md", REDIS_FIXTURE);
 
     // Forward pass: collect all blocks
-    let forward = run_json(zetl_cmd(dir.path()).arg("blocks").arg("Redis vs Memcached"));
+    let forward = run_json(ztl_cmd(dir.path()).arg("blocks").arg("Redis vs Memcached"));
     let blocks = forward["blocks"].as_array().unwrap();
 
     // Use the table block as our probe — it has a unique, stable hash
@@ -2054,7 +2054,7 @@ fn test_049_blocks_forward_hash_as_source_metadata_roundtrip() {
 
     // Reverse pass: resolve with the full hash
     let reverse = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("blocks")
             .arg("--resolve")
             .arg(forward_hash),
@@ -2114,7 +2114,7 @@ fn test_012_003_theme_page_override_inherits_base() {
     build_theme_test_vault(dir.path());
 
     // Create a custom theme that overrides only page.html with a banner
-    let theme_dir = dir.path().join(".zetl/themes/banner-theme");
+    let theme_dir = dir.path().join(".ztl/themes/banner-theme");
     fs::create_dir_all(&theme_dir).expect("create theme dir");
     fs::write(
         theme_dir.join("page.html"),
@@ -2130,16 +2130,16 @@ fn test_012_003_theme_page_override_inherits_base() {
     let out_dir = dir.path().join("dist");
 
     // Build with the custom theme
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("build")
         .arg("--theme")
         .arg("banner-theme")
         .arg("-o")
         .arg(out_dir.as_os_str());
-    let output = cmd.output().expect("failed to execute zetl build");
+    let output = cmd.output().expect("failed to execute ztl build");
     assert!(
         output.status.success(),
-        "zetl build with banner-theme should succeed.\nstderr: {}",
+        "ztl build with banner-theme should succeed.\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -2179,7 +2179,7 @@ fn test_012_003_theme_base_override_affects_all_pages() {
     build_theme_test_vault(dir.path());
 
     // Create a theme that overrides base.html with a custom wrapper
-    let theme_dir = dir.path().join(".zetl/themes/custom-base");
+    let theme_dir = dir.path().join(".ztl/themes/custom-base");
     fs::create_dir_all(&theme_dir).expect("create theme dir");
     fs::write(
         theme_dir.join("base.html"),
@@ -2197,16 +2197,16 @@ fn test_012_003_theme_base_override_affects_all_pages() {
 
     let out_dir = dir.path().join("dist");
 
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("build")
         .arg("--theme")
         .arg("custom-base")
         .arg("-o")
         .arg(out_dir.as_os_str());
-    let output = cmd.output().expect("failed to execute zetl build");
+    let output = cmd.output().expect("failed to execute ztl build");
     assert!(
         output.status.success(),
-        "zetl build with custom-base theme should succeed.\nstderr: {}",
+        "ztl build with custom-base theme should succeed.\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -2227,30 +2227,30 @@ fn test_012_003_theme_base_override_affects_all_pages() {
     );
 }
 
-/// TEST-012-003: --theme default works with no .zetl/ directory at all.
+/// TEST-012-003: --theme default works with no .ztl/ directory at all.
 #[test]
-fn test_012_003_default_theme_no_zetl_dir() {
+fn test_012_003_default_theme_no_ztl_dir() {
     let dir = TempDir::new().expect("create temp dir");
     build_theme_test_vault(dir.path());
 
-    // Confirm no .zetl directory exists
+    // Confirm no .ztl directory exists
     assert!(
-        !dir.path().join(".zetl").exists(),
-        "precondition: .zetl/ should not exist"
+        !dir.path().join(".ztl").exists(),
+        "precondition: .ztl/ should not exist"
     );
 
     let out_dir = dir.path().join("dist");
 
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("build")
         .arg("--theme")
         .arg("default")
         .arg("-o")
         .arg(out_dir.as_os_str());
-    let output = cmd.output().expect("failed to execute zetl build");
+    let output = cmd.output().expect("failed to execute ztl build");
     assert!(
         output.status.success(),
-        "zetl build --theme default should succeed without .zetl/ dir.\nstderr: {}",
+        "ztl build --theme default should succeed without .ztl/ dir.\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -2274,7 +2274,7 @@ fn test_012_010_nonexistent_theme_error() {
     build_theme_test_vault(dir.path());
 
     // Create one valid theme so the hint lists it
-    let theme_dir = dir.path().join(".zetl/themes/existing-theme");
+    let theme_dir = dir.path().join(".ztl/themes/existing-theme");
     fs::create_dir_all(&theme_dir).expect("create theme dir");
     fs::write(
         theme_dir.join("page.html"),
@@ -2284,17 +2284,17 @@ fn test_012_010_nonexistent_theme_error() {
 
     let out_dir = dir.path().join("dist");
 
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("build")
         .arg("--theme")
         .arg("nonexistent")
         .arg("-o")
         .arg(out_dir.as_os_str());
-    let output = cmd.output().expect("failed to execute zetl build");
+    let output = cmd.output().expect("failed to execute ztl build");
 
     assert!(
         !output.status.success(),
-        "zetl build --theme nonexistent should fail"
+        "ztl build --theme nonexistent should fail"
     );
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -2320,17 +2320,17 @@ fn test_012_010_path_traversal_rejected() {
 
     let out_dir = dir.path().join("dist");
 
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("build")
         .arg("--theme")
         .arg("../escape")
         .arg("-o")
         .arg(out_dir.as_os_str());
-    let output = cmd.output().expect("failed to execute zetl build");
+    let output = cmd.output().expect("failed to execute ztl build");
 
     assert!(
         !output.status.success(),
-        "zetl build --theme '../escape' should fail"
+        "ztl build --theme '../escape' should fail"
     );
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -2347,7 +2347,7 @@ fn test_012_010_theme_variable_accessible() {
     build_theme_test_vault(dir.path());
 
     // Create a theme that outputs {{ theme }} in visible content
-    let theme_dir = dir.path().join(".zetl/themes/my-theme");
+    let theme_dir = dir.path().join(".ztl/themes/my-theme");
     fs::create_dir_all(&theme_dir).expect("create theme dir");
     fs::write(
         theme_dir.join("page.html"),
@@ -2361,16 +2361,16 @@ fn test_012_010_theme_variable_accessible() {
 
     let out_dir = dir.path().join("dist");
 
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("build")
         .arg("--theme")
         .arg("my-theme")
         .arg("-o")
         .arg(out_dir.as_os_str());
-    let output = cmd.output().expect("failed to execute zetl build");
+    let output = cmd.output().expect("failed to execute ztl build");
     assert!(
         output.status.success(),
-        "zetl build with my-theme should succeed.\nstderr: {}",
+        "ztl build with my-theme should succeed.\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -2391,7 +2391,7 @@ fn test_012_010_theme_variable_accessible() {
 
 // ── TEST-012-005: Serve-mode static asset handling ─────────────────────────
 //
-// These tests spawn `zetl serve` on a random port, wait for it to start,
+// These tests spawn `ztl serve` on a random port, wait for it to start,
 // send raw HTTP/1.1 requests via TcpStream, then verify responses.
 
 /// Find a free TCP port by binding to port 0 and reading the assigned port.
@@ -2400,15 +2400,15 @@ fn find_free_port() -> u16 {
     listener.local_addr().unwrap().port()
 }
 
-/// Spawn `zetl serve` and wait up to 5 seconds for it to respond to an HTTP probe.
+/// Spawn `ztl serve` and wait up to 5 seconds for it to respond to an HTTP probe.
 ///
 /// A raw TCP connect is not enough: between `find_free_port` dropping its
-/// probe listener and `zetl` binding the port, another process can grab it
+/// probe listener and `ztl` binding the port, another process can grab it
 /// on a busy test host. Probing with an actual HTTP request confirms we are
-/// talking to `zetl`, not a squatter, and that axum's state is live.
+/// talking to `ztl`, not a squatter, and that axum's state is live.
 #[allow(clippy::zombie_processes)] // caller owns the returned Child and kills it when the test finishes
 fn spawn_serve(vault: &Path, port: u16, theme: &str) -> std::process::Child {
-    let bin = assert_cmd::cargo::cargo_bin!("zetl");
+    let bin = assert_cmd::cargo::cargo_bin!("ztl");
     let child = std::process::Command::new(bin)
         .arg("-d")
         .arg(vault)
@@ -2421,7 +2421,7 @@ fn spawn_serve(vault: &Path, port: u16, theme: &str) -> std::process::Child {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .expect("spawn zetl serve");
+        .expect("spawn ztl serve");
 
     for _ in 0..50 {
         if probe_http(port) {
@@ -2429,7 +2429,7 @@ fn spawn_serve(vault: &Path, port: u16, theme: &str) -> std::process::Child {
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
-    panic!("zetl serve did not become ready on port {port}");
+    panic!("ztl serve did not become ready on port {port}");
 }
 
 /// Send a tiny HTTP request and return true iff we got back an `HTTP/` status line.
@@ -2478,12 +2478,12 @@ fn http_get(port: u16, path: &str) -> (String, String, Vec<u8>) {
     (status_line, headers, body)
 }
 
-/// TEST-012-005: Shared .zetl/static/test.js returns 200 with correct MIME.
+/// TEST-012-005: Shared .ztl/static/test.js returns 200 with correct MIME.
 #[test]
 fn test_012_005_serve_shared_static_200_mime() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "Note.md", "# Note\nHello.\n");
-    let static_dir = dir.path().join(".zetl/static");
+    let static_dir = dir.path().join(".ztl/static");
     fs::create_dir_all(&static_dir).unwrap();
     fs::write(static_dir.join("test.js"), b"console.log('ok');").unwrap();
 
@@ -2509,12 +2509,12 @@ fn test_012_005_serve_theme_overrides_shared() {
     write_file(dir.path(), "Note.md", "# Note\nHello.\n");
 
     // Shared version
-    let shared = dir.path().join(".zetl/static");
+    let shared = dir.path().join(".ztl/static");
     fs::create_dir_all(&shared).unwrap();
     fs::write(shared.join("style.css"), b"body{color:red}").unwrap();
 
     // Theme override
-    let theme_dir = dir.path().join(".zetl/themes/mytheme/static");
+    let theme_dir = dir.path().join(".ztl/themes/mytheme/static");
     fs::create_dir_all(&theme_dir).unwrap();
     fs::write(theme_dir.join("style.css"), b"body{color:blue}").unwrap();
 
@@ -2557,7 +2557,7 @@ fn test_012_005_serve_404_for_nonexistent() {
 fn test_012_005_serve_no_static_dirs_graceful() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "Note.md", "# Note\nHello.\n");
-    // No .zetl/static/ at all
+    // No .ztl/static/ at all
 
     let port = find_free_port();
     let mut child = spawn_serve(dir.path(), port, "default");
@@ -2596,17 +2596,17 @@ fn test_012_006_build_shared_and_theme_merge() {
     write_file(dir.path(), "Note.md", "# Note\nHello.\n");
 
     // Shared static
-    let shared = dir.path().join(".zetl/static");
+    let shared = dir.path().join(".ztl/static");
     fs::create_dir_all(&shared).unwrap();
     fs::write(shared.join("shared.js"), "// shared").unwrap();
 
     // Theme static
-    let theme_dir = dir.path().join(".zetl/themes/merge-theme/static");
+    let theme_dir = dir.path().join(".ztl/themes/merge-theme/static");
     fs::create_dir_all(&theme_dir).unwrap();
     fs::write(theme_dir.join("theme.js"), "// theme").unwrap();
 
     // Also need a minimal theme template so --theme validation passes
-    let theme_root = dir.path().join(".zetl/themes/merge-theme");
+    let theme_root = dir.path().join(".ztl/themes/merge-theme");
     fs::write(
         theme_root.join("page.html"),
         r#"{% extends "base.html" %}{% block content %}{{ page.content_html }}{% endblock %}"#,
@@ -2614,16 +2614,16 @@ fn test_012_006_build_shared_and_theme_merge() {
     .unwrap();
 
     let out_dir = dir.path().join("dist");
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("build")
         .arg("--theme")
         .arg("merge-theme")
         .arg("-o")
         .arg(out_dir.as_os_str());
-    let output = cmd.output().expect("run zetl build");
+    let output = cmd.output().expect("run ztl build");
     assert!(
         output.status.success(),
-        "zetl build should succeed.\nstderr: {}",
+        "ztl build should succeed.\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -2645,15 +2645,15 @@ fn test_012_006_build_theme_overwrites_shared() {
     write_file(dir.path(), "Note.md", "# Note\nHello.\n");
 
     // Both have style.css
-    let shared = dir.path().join(".zetl/static");
+    let shared = dir.path().join(".ztl/static");
     fs::create_dir_all(&shared).unwrap();
     fs::write(shared.join("style.css"), "/* shared */").unwrap();
 
-    let theme_dir = dir.path().join(".zetl/themes/winner/static");
+    let theme_dir = dir.path().join(".ztl/themes/winner/static");
     fs::create_dir_all(&theme_dir).unwrap();
     fs::write(theme_dir.join("style.css"), "/* theme wins */").unwrap();
 
-    let theme_root = dir.path().join(".zetl/themes/winner");
+    let theme_root = dir.path().join(".ztl/themes/winner");
     fs::write(
         theme_root.join("page.html"),
         r#"{% extends "base.html" %}{% block content %}{{ page.content_html }}{% endblock %}"#,
@@ -2661,16 +2661,16 @@ fn test_012_006_build_theme_overwrites_shared() {
     .unwrap();
 
     let out_dir = dir.path().join("dist");
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("build")
         .arg("--theme")
         .arg("winner")
         .arg("-o")
         .arg(out_dir.as_os_str());
-    let output = cmd.output().expect("run zetl build");
+    let output = cmd.output().expect("run ztl build");
     assert!(
         output.status.success(),
-        "zetl build should succeed.\nstderr: {}",
+        "ztl build should succeed.\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -2687,17 +2687,17 @@ fn test_012_006_build_preserves_directory_structure() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "Note.md", "# Note\nHello.\n");
 
-    let nested = dir.path().join(".zetl/static/fonts/woff2");
+    let nested = dir.path().join(".ztl/static/fonts/woff2");
     fs::create_dir_all(&nested).unwrap();
     fs::write(nested.join("inter.woff2"), "fontbytes").unwrap();
 
     let out_dir = dir.path().join("dist");
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("build").arg("-o").arg(out_dir.as_os_str());
-    let output = cmd.output().expect("run zetl build");
+    let output = cmd.output().expect("run ztl build");
     assert!(
         output.status.success(),
-        "zetl build should succeed.\nstderr: {}",
+        "ztl build should succeed.\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -2713,18 +2713,18 @@ fn test_012_006_build_preserves_directory_structure() {
 fn test_012_006_build_no_static_dirs_no_output() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "Note.md", "# Note\nHello.\n");
-    // No .zetl/static/ or on-disk theme static. The default theme ships
+    // No .ztl/static/ or on-disk theme static. The default theme ships
     // bundled static assets (Inter fonts, theme.css) so `_static/` will be
     // populated from the embedded bundle — we assert those bundled files
     // are what ends up in the output, not user-side content.
 
     let out_dir = dir.path().join("dist");
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("build").arg("-o").arg(out_dir.as_os_str());
-    let output = cmd.output().expect("run zetl build");
+    let output = cmd.output().expect("run ztl build");
     assert!(
         output.status.success(),
-        "zetl build should succeed.\nstderr: {}",
+        "ztl build should succeed.\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -2740,7 +2740,7 @@ fn test_012_006_build_no_static_dirs_no_output() {
     // No user-supplied assets should leak in when there are none on disk.
     assert!(
         !static_dir.join("user-custom.css").exists(),
-        "no user-side assets should be present when .zetl/static/ is empty"
+        "no user-side assets should be present when .ztl/static/ is empty"
     );
 }
 
@@ -2749,7 +2749,7 @@ fn test_012_006_build_no_static_dirs_no_output() {
 /// Install a custom theme whose page template renders frontmatter fields so
 /// we can verify them in the static-build HTML output.
 fn install_frontmatter_theme(vault: &Path) {
-    let theme_dir = vault.join(".zetl/themes/fm-test");
+    let theme_dir = vault.join(".ztl/themes/fm-test");
     fs::create_dir_all(&theme_dir).unwrap();
     fs::write(
         theme_dir.join("page.html"),
@@ -2778,16 +2778,16 @@ fn test_012_007_frontmatter_fields_accessible_in_template() {
     );
 
     let out_dir = dir.path().join("dist");
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("build")
         .arg("--theme")
         .arg("fm-test")
         .arg("-o")
         .arg(out_dir.as_os_str());
-    let output = cmd.output().expect("run zetl build");
+    let output = cmd.output().expect("run ztl build");
     assert!(
         output.status.success(),
-        "zetl build should succeed.\nstderr: {}",
+        "ztl build should succeed.\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -2822,16 +2822,16 @@ fn test_012_007_no_frontmatter_empty_object() {
     );
 
     let out_dir = dir.path().join("dist");
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("build")
         .arg("--theme")
         .arg("fm-test")
         .arg("-o")
         .arg(out_dir.as_os_str());
-    let output = cmd.output().expect("run zetl build");
+    let output = cmd.output().expect("run ztl build");
     assert!(
         output.status.success(),
-        "zetl build should succeed.\nstderr: {}",
+        "ztl build should succeed.\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -2866,16 +2866,16 @@ fn test_012_007_malformed_yaml_warning() {
     );
 
     let out_dir = dir.path().join("dist");
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("build")
         .arg("--theme")
         .arg("fm-test")
         .arg("-o")
         .arg(out_dir.as_os_str());
-    let output = cmd.output().expect("run zetl build");
+    let output = cmd.output().expect("run ztl build");
     assert!(
         output.status.success(),
-        "zetl build should succeed even with malformed frontmatter.\nstderr: {}",
+        "ztl build should succeed even with malformed frontmatter.\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -2910,12 +2910,12 @@ fn test_012_007_strip_frontmatter_from_rendered_html() {
     );
 
     let out_dir = dir.path().join("dist");
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("build").arg("-o").arg(out_dir.as_os_str());
-    let output = cmd.output().expect("run zetl build");
+    let output = cmd.output().expect("run ztl build");
     assert!(
         output.status.success(),
-        "zetl build should succeed.\nstderr: {}",
+        "ztl build should succeed.\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -2951,7 +2951,7 @@ fn test_012_007_strip_frontmatter_from_rendered_html() {
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
-// 1. zetl index JSON includes search_index_docs and search_index_size_kb
+// 1. ztl index JSON includes search_index_docs and search_index_size_kb
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -2959,7 +2959,7 @@ fn test_013_v1_index_json_has_search_fields() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "Note.md", "# Note\n\nSome content.\n");
 
-    let json = run_json(zetl_cmd(dir.path()).arg("index"));
+    let json = run_json(ztl_cmd(dir.path()).arg("index"));
 
     assert!(
         json["search_index_docs"].as_u64().is_some(),
@@ -2993,7 +2993,7 @@ fn test_013_v1_search_results_have_bm25_fields() {
         "# Introduction\n\nThis page discusses alpha deeply.\n\n## Details\n\nMore alpha content.\n",
     );
 
-    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("alpha"));
+    let json = run_json(ztl_cmd(dir.path()).arg("search").arg("alpha"));
     let results = json["results"].as_array().expect("results array");
 
     assert!(
@@ -3032,7 +3032,7 @@ fn test_013_001_inline_code_excluded() {
         "# Inline\n\nNormal body text.\n`exclusion_zeta in inline code`\nMore body text.\n",
     );
 
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("search").arg("exclusion_zeta");
     cmd.assert().failure(); // no matches → exit 1
 }
@@ -3047,7 +3047,7 @@ fn test_013_001_html_comment_excluded() {
         "# Comment\n\nNormal body text.\n<!-- exclusion_eta in HTML comment -->\nMore body text.\n",
     );
 
-    let mut cmd = zetl_cmd(dir.path());
+    let mut cmd = ztl_cmd(dir.path());
     cmd.arg("search").arg("exclusion_eta");
     cmd.assert().failure(); // no matches → exit 1
 }
@@ -3062,7 +3062,7 @@ fn test_013_001_body_text_found_around_exclusion_zones() {
         "# Mixed\n\nbodyterm in body.\n`bodyterm in inline code`\n<!-- bodyterm in comment -->\n",
     );
 
-    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("bodyterm"));
+    let json = run_json(ztl_cmd(dir.path()).arg("search").arg("bodyterm"));
     let total = json["total_matches"].as_u64().expect("total_matches");
     assert_eq!(
         total, 1,
@@ -3090,7 +3090,7 @@ fn test_013_002_relevance_ranking() {
         "# Sparse\n\nOnly one quux here in this longer sentence.\n",
     );
 
-    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("quux"));
+    let json = run_json(ztl_cmd(dir.path()).arg("search").arg("quux"));
     let results = json["results"].as_array().expect("results array");
 
     // Collect (page, score) pairs
@@ -3125,7 +3125,7 @@ fn test_013_005_line_level_results_separate_and_same_score() {
         "# Multi\n\nThe term zephyr on line 3.\n\nThe term zephyr on line 5.\n\nThe term zephyr on line 7.\n",
     );
 
-    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("zephyr"));
+    let json = run_json(ztl_cmd(dir.path()).arg("search").arg("zephyr"));
     let results = json["results"].as_array().expect("results array");
 
     assert_eq!(
@@ -3169,7 +3169,7 @@ fn test_013_v1_heading_context_correct() {
         "# Overview\n\nIntroductory text.\n\n## Implementation\n\nThis section has the searchterm here.\n\n### Sub-section\n\nAnother searchterm occurrence.\n",
     );
 
-    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("searchterm"));
+    let json = run_json(ztl_cmd(dir.path()).arg("search").arg("searchterm"));
     let results = json["results"].as_array().expect("results array");
 
     assert_eq!(results.len(), 2, "should have 2 results for 'searchterm'");
@@ -3220,7 +3220,7 @@ fn test_013_011_heading_in_code_block_not_used_as_context() {
         "# Real Heading\n\nBody text before code.\n\n```\n# Fake Heading\n```\n\nBody text after code with codeheadingterm.\n",
     );
 
-    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("codeheadingterm"));
+    let json = run_json(ztl_cmd(dir.path()).arg("search").arg("codeheadingterm"));
     let results = json["results"].as_array().expect("results array");
 
     assert_eq!(results.len(), 1, "should find exactly one match");
@@ -3251,11 +3251,11 @@ fn test_013_003_index_invalidation_after_file_change() {
     );
 
     // Build initial index (with cache so the cache file is saved for incremental detection)
-    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+    run_json(ztl_cmd_cached(dir.path()).arg("index"));
 
     // "newterm" is not yet in the file
     {
-        let mut cmd = zetl_cmd_cached(dir.path());
+        let mut cmd = ztl_cmd_cached(dir.path());
         cmd.arg("search").arg("newterm");
         cmd.assert().failure();
     }
@@ -3268,10 +3268,10 @@ fn test_013_003_index_invalidation_after_file_change() {
     );
 
     // Re-index (incremental — detects file change and rebuilds search index)
-    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+    run_json(ztl_cmd_cached(dir.path()).arg("index"));
 
     // Now "newterm" should be found
-    let json = run_json(zetl_cmd_cached(dir.path()).arg("search").arg("newterm"));
+    let json = run_json(ztl_cmd_cached(dir.path()).arg("search").arg("newterm"));
     assert_eq!(
         json["total_matches"].as_u64().unwrap(),
         1,
@@ -3280,7 +3280,7 @@ fn test_013_003_index_invalidation_after_file_change() {
 
     // And "oldterm" should no longer be indexed
     {
-        let mut cmd = zetl_cmd_cached(dir.path());
+        let mut cmd = ztl_cmd_cached(dir.path());
         cmd.arg("search").arg("oldterm");
         cmd.assert().failure();
     }
@@ -3300,10 +3300,10 @@ fn test_013_003_no_cache_forces_rebuild() {
     );
 
     // First: build with cache (normal operation)
-    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+    run_json(ztl_cmd_cached(dir.path()).arg("index"));
 
     // Second: rebuild with --no-cache (should delete and fully rebuild the search index)
-    let json = run_json(zetl_cmd(dir.path()).arg("index"));
+    let json = run_json(ztl_cmd(dir.path()).arg("index"));
 
     // Index should report the correct document count after forced rebuild
     assert_eq!(
@@ -3313,7 +3313,7 @@ fn test_013_003_no_cache_forces_rebuild() {
     );
 
     // Search should still work after the forced rebuild
-    let search_json = run_json(zetl_cmd(dir.path()).arg("search").arg("stableterm"));
+    let search_json = run_json(ztl_cmd(dir.path()).arg("search").arg("stableterm"));
     assert_eq!(
         search_json["total_matches"].as_u64().unwrap(),
         1,
@@ -3334,21 +3334,21 @@ fn test_013_004_lazy_index_built_on_search() {
         "# LazyDoc\n\nThis document has lazyterm content.\n",
     );
 
-    // Ensure no .zetl/search/ directory exists (fresh vault — no prior `zetl index`)
-    let search_dir = dir.path().join(".zetl").join("search");
+    // Ensure no .ztl/search/ directory exists (fresh vault — no prior `ztl index`)
+    let search_dir = dir.path().join(".ztl").join("search");
     assert!(
         !search_dir.exists(),
         "search dir must not exist before the lazy test"
     );
 
-    // Run `zetl search` without a prior `zetl index` — should build index lazily
-    let (json, stderr) = run_json_with_stderr(zetl_cmd(dir.path()).arg("search").arg("lazyterm"));
+    // Run `ztl search` without a prior `ztl index` — should build index lazily
+    let (json, stderr) = run_json_with_stderr(ztl_cmd(dir.path()).arg("search").arg("lazyterm"));
 
     // The result should be found
     assert_eq!(
         json["total_matches"].as_u64().unwrap(),
         1,
-        "lazyterm should be found even without prior zetl index"
+        "lazyterm should be found even without prior ztl index"
     );
 
     // Stderr must contain the lazy-build advisory message
@@ -3400,10 +3400,10 @@ fn test_013_006_near_depth1_outgoing() {
     build_phase2_vault(dir.path());
 
     // Build link graph (required for --near); must use cached mode so index.json is saved.
-    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+    run_json(ztl_cmd_cached(dir.path()).arg("index"));
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("search")
             .arg("graphterm")
             .arg("--near")
@@ -3441,10 +3441,10 @@ fn test_013_006_near_depth2_includes_second_hop() {
     let dir = TempDir::new().unwrap();
     build_phase2_vault(dir.path());
 
-    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+    run_json(ztl_cmd_cached(dir.path()).arg("index"));
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("search")
             .arg("graphterm")
             .arg("--near")
@@ -3477,10 +3477,10 @@ fn test_013_006_near_includes_backlinks() {
     let dir = TempDir::new().unwrap();
     build_phase2_vault(dir.path());
 
-    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+    run_json(ztl_cmd_cached(dir.path()).arg("index"));
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("search")
             .arg("graphterm")
             .arg("--near")
@@ -3507,7 +3507,7 @@ fn test_013_007_depth_without_near_exits_2() {
     let dir = TempDir::new().unwrap();
     build_phase2_vault(dir.path());
 
-    zetl_cmd(dir.path())
+    ztl_cmd(dir.path())
         .arg("search")
         .arg("graphterm")
         .arg("--depth")
@@ -3525,9 +3525,9 @@ fn test_013_007_depth_zero_exits_2() {
     let dir = TempDir::new().unwrap();
     build_phase2_vault(dir.path());
 
-    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+    run_json(ztl_cmd_cached(dir.path()).arg("index"));
 
-    zetl_cmd(dir.path())
+    ztl_cmd(dir.path())
         .arg("search")
         .arg("graphterm")
         .arg("--near")
@@ -3547,11 +3547,11 @@ fn test_013_008_case_insensitive_anchor_resolution() {
     let dir = TempDir::new().unwrap();
     build_phase2_vault(dir.path());
 
-    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+    run_json(ztl_cmd_cached(dir.path()).arg("index"));
 
     // "spaced repetition" (lowercase) should resolve to "Spaced Repetition"
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("search")
             .arg("spacedterm")
             .arg("--near")
@@ -3582,16 +3582,16 @@ fn test_013_008_unresolvable_anchor_exits_2_with_suggestions() {
     let dir = TempDir::new().unwrap();
     build_phase2_vault(dir.path());
 
-    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+    run_json(ztl_cmd_cached(dir.path()).arg("index"));
 
     // Use a name that partially matches "Spaced Repetition" to trigger suggestions
-    let output = zetl_cmd(dir.path())
+    let output = ztl_cmd(dir.path())
         .arg("search")
         .arg("graphterm")
         .arg("--near")
         .arg("spaced")
         .output()
-        .expect("execute zetl");
+        .expect("execute ztl");
 
     assert_eq!(output.status.code(), Some(2), "should exit with code 2");
 
@@ -3611,9 +3611,9 @@ fn test_013_008_completely_unknown_anchor_exits_2() {
     let dir = TempDir::new().unwrap();
     build_phase2_vault(dir.path());
 
-    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+    run_json(ztl_cmd_cached(dir.path()).arg("index"));
 
-    zetl_cmd(dir.path())
+    ztl_cmd(dir.path())
         .arg("search")
         .arg("graphterm")
         .arg("--near")
@@ -3631,10 +3631,10 @@ fn test_013_009_neighbourhood_metadata_present_with_near() {
     let dir = TempDir::new().unwrap();
     build_phase2_vault(dir.path());
 
-    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+    run_json(ztl_cmd_cached(dir.path()).arg("index"));
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("search")
             .arg("graphterm")
             .arg("--near")
@@ -3679,7 +3679,7 @@ fn test_013_009_neighbourhood_metadata_absent_without_near() {
     let dir = TempDir::new().unwrap();
     build_phase2_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("graphterm"));
+    let json = run_json(ztl_cmd(dir.path()).arg("search").arg("graphterm"));
 
     // REQ-013-009: fields must be omitted from the envelope when --near is not used
     assert!(
@@ -3705,12 +3705,12 @@ fn test_013_016_near_composes_with_path_filter() {
     let dir = TempDir::new().unwrap();
     build_phase2_vault(dir.path());
 
-    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+    run_json(ztl_cmd_cached(dir.path()).arg("index"));
 
     // --near A (neighbourhood {A, B, C} at depth 1) AND --path B.md
     // Expected: only B.md result (C and A excluded by --path)
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("search")
             .arg("graphterm")
             .arg("--near")
@@ -3735,10 +3735,10 @@ fn test_013_016_near_composes_with_context() {
     let dir = TempDir::new().unwrap();
     build_phase2_vault(dir.path());
 
-    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+    run_json(ztl_cmd_cached(dir.path()).arg("index"));
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("search")
             .arg("graphterm")
             .arg("--near")
@@ -3771,24 +3771,24 @@ fn test_013_016_near_composes_with_context() {
 
 // ===========================================================================
 // Phase 4: Static build search
-// TEST-013-014: zetl build emits search-index.json with BM25 corpus statistics
+// TEST-013-014: ztl build emits search-index.json with BM25 corpus statistics
 // TEST-013-015: Generated HTML includes Cmd+K modal, BM25 fetch, and keyboard nav
 // ===========================================================================
 
-/// Run `zetl build --out-dir <out>` against the vault at `vault`, assert success.
+/// Run `ztl build --out-dir <out>` against the vault at `vault`, assert success.
 fn run_build(vault: &Path, out_dir: &Path) {
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     cmd.arg("-d")
         .arg(vault)
         .arg("--no-cache")
         .arg("build")
         .arg("--out-dir")
         .arg(out_dir);
-    let output = cmd.output().expect("failed to execute zetl build");
+    let output = cmd.output().expect("failed to execute ztl build");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "zetl build exited with non-zero status.\nstderr: {stderr}"
+        "ztl build exited with non-zero status.\nstderr: {stderr}"
     );
 }
 
@@ -4245,7 +4245,7 @@ fn test_013_012_api_search_limit_parameter() {
 
 #[test]
 fn test_013_013_serve_html_search_modal_fields() {
-    // The HTML served by zetl serve must contain the Cmd+K modal elements
+    // The HTML served by ztl serve must contain the Cmd+K modal elements
     // that display page name, heading, context, and score to the user.
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "Page.md", "# Page\n\nsome content\n");
@@ -4426,7 +4426,7 @@ fn test_014_006_theme_install_from_local_file_url() {
 
     let url = file_url(&repo_dir);
 
-    let mut cmd = zetl_cmd(&vault);
+    let mut cmd = ztl_cmd(&vault);
     cmd.arg("theme").arg("install").arg(&url);
     let json = run_json(&mut cmd);
 
@@ -4442,10 +4442,10 @@ fn test_014_006_theme_install_from_local_file_url() {
     );
 
     // Theme directory must exist on disk.
-    let theme_dir = vault.join(".zetl/themes/my-theme-repo");
+    let theme_dir = vault.join(".ztl/themes/my-theme-repo");
     assert!(
         theme_dir.is_dir(),
-        ".zetl/themes/my-theme-repo must exist after install"
+        ".ztl/themes/my-theme-repo must exist after install"
     );
     assert!(
         theme_dir.join("base.html").exists(),
@@ -4471,7 +4471,7 @@ fn test_014_007_theme_install_at_specific_tag() {
 
     let url_with_tag = format!("{}#v1.0.0", file_url(&repo_dir));
 
-    let mut cmd = zetl_cmd(&vault);
+    let mut cmd = ztl_cmd(&vault);
     cmd.arg("theme").arg("install").arg(&url_with_tag);
     let json = run_json(&mut cmd);
 
@@ -4482,7 +4482,7 @@ fn test_014_007_theme_install_at_specific_tag() {
     );
 
     // Name comes from theme.toml ("tagged-theme"), not the repo dir name.
-    let theme_dir = vault.join(".zetl/themes/tagged-theme");
+    let theme_dir = vault.join(".ztl/themes/tagged-theme");
     assert!(
         theme_dir.is_dir(),
         "theme dir must exist after tagged install"
@@ -4514,7 +4514,7 @@ fn test_014_008_theme_install_with_path_subdir() {
 
     let url = file_url(&repo_dir);
 
-    let mut cmd = zetl_cmd(&vault);
+    let mut cmd = ztl_cmd(&vault);
     cmd.arg("theme")
         .arg("install")
         .arg(&url)
@@ -4534,8 +4534,8 @@ fn test_014_008_theme_install_with_path_subdir() {
         "path must be recorded in output"
     );
 
-    let theme_dir = vault.join(".zetl/themes/light");
-    assert!(theme_dir.is_dir(), ".zetl/themes/light must exist");
+    let theme_dir = vault.join(".ztl/themes/light");
+    assert!(theme_dir.is_dir(), ".ztl/themes/light must exist");
     assert!(
         theme_dir.join("theme.toml").exists(),
         "theme.toml must be present"
@@ -4564,7 +4564,7 @@ fn test_014_009_theme_install_with_name_override() {
 
     let url = file_url(&repo_dir);
 
-    let mut cmd = zetl_cmd(&vault);
+    let mut cmd = ztl_cmd(&vault);
     cmd.arg("theme")
         .arg("install")
         .arg(&url)
@@ -4578,8 +4578,8 @@ fn test_014_009_theme_install_with_name_override() {
         "--name should override derived name; got {json}"
     );
 
-    let theme_dir = vault.join(".zetl/themes/custom-name");
-    assert!(theme_dir.is_dir(), ".zetl/themes/custom-name must exist");
+    let theme_dir = vault.join(".ztl/themes/custom-name");
+    assert!(theme_dir.is_dir(), ".ztl/themes/custom-name must exist");
 }
 
 // ---------------------------------------------------------------------------
@@ -4600,14 +4600,14 @@ fn test_014_010_duplicate_install_fails_without_force() {
 
     // First install — must succeed.
     run_json(&mut {
-        let mut cmd = zetl_cmd(&vault);
+        let mut cmd = ztl_cmd(&vault);
         cmd.arg("theme").arg("install").arg(&url);
         cmd
     });
 
     // Second install without --force — must fail.
     let output = {
-        let bin = assert_cmd::cargo::cargo_bin!("zetl");
+        let bin = assert_cmd::cargo::cargo_bin!("ztl");
         std::process::Command::new(bin)
             .arg("-d")
             .arg(&vault)
@@ -4616,7 +4616,7 @@ fn test_014_010_duplicate_install_fails_without_force() {
             .arg("install")
             .arg(&url)
             .output()
-            .expect("run zetl")
+            .expect("run ztl")
     };
     assert!(
         !output.status.success(),
@@ -4630,18 +4630,18 @@ fn test_014_010_duplicate_install_fails_without_force() {
 
     // Third install with --force — must succeed.
     run_json(&mut {
-        let mut cmd = zetl_cmd(&vault);
+        let mut cmd = ztl_cmd(&vault);
         cmd.arg("theme").arg("install").arg("--force").arg(&url);
         cmd
     });
 }
 
 // ---------------------------------------------------------------------------
-// TEST-014-011: .zetl-source.toml is written with correct provenance.
+// TEST-014-011: .ztl-source.toml is written with correct provenance.
 // ---------------------------------------------------------------------------
 
 #[test]
-fn test_014_011_zetl_source_toml_provenance() {
+fn test_014_011_ztl_source_toml_provenance() {
     let dir = TempDir::new().unwrap();
     let vault = dir.path().join("vault");
     fs::create_dir_all(&vault).unwrap();
@@ -4654,50 +4654,50 @@ fn test_014_011_zetl_source_toml_provenance() {
     let url_with_tag = format!("{}#v2.0.0", file_url(&repo_dir));
 
     run_json(&mut {
-        let mut cmd = zetl_cmd(&vault);
+        let mut cmd = ztl_cmd(&vault);
         cmd.arg("theme").arg("install").arg(&url_with_tag);
         cmd
     });
 
     // Name comes from theme.toml ("prov-theme"), not the repo dir name.
-    let source_path = vault.join(".zetl/themes/prov-theme/.zetl-source.toml");
+    let source_path = vault.join(".ztl/themes/prov-theme/.ztl-source.toml");
     assert!(
         source_path.exists(),
-        ".zetl-source.toml must exist after install"
+        ".ztl-source.toml must exist after install"
     );
 
-    let content = fs::read_to_string(&source_path).expect("read .zetl-source.toml");
+    let content = fs::read_to_string(&source_path).expect("read .ztl-source.toml");
 
     // Must contain the URL (without the #ref fragment).
     let expected_url = file_url(&repo_dir);
     assert!(
         content.contains(&expected_url),
-        ".zetl-source.toml must contain the source URL; got:\n{content}"
+        ".ztl-source.toml must contain the source URL; got:\n{content}"
     );
     // Must record the ref.
     assert!(
         content.contains("v2.0.0"),
-        ".zetl-source.toml must contain the ref 'v2.0.0'; got:\n{content}"
+        ".ztl-source.toml must contain the ref 'v2.0.0'; got:\n{content}"
     );
     // Must contain a commit SHA (40 hex chars somewhere).
     assert!(
         content.contains("commit"),
-        ".zetl-source.toml must contain a 'commit' field; got:\n{content}"
+        ".ztl-source.toml must contain a 'commit' field; got:\n{content}"
     );
     // Must contain installed_at (ISO 8601 format).
     assert!(
         content.contains("installed_at"),
-        ".zetl-source.toml must contain 'installed_at'; got:\n{content}"
+        ".ztl-source.toml must contain 'installed_at'; got:\n{content}"
     );
-    // Must contain zetl_version.
+    // Must contain ztl_version.
     assert!(
-        content.contains("zetl_version"),
-        ".zetl-source.toml must contain 'zetl_version'; got:\n{content}"
+        content.contains("ztl_version"),
+        ".ztl-source.toml must contain 'ztl_version'; got:\n{content}"
     );
 }
 
 // ---------------------------------------------------------------------------
-// TEST-014-012: zetl theme list shows installed theme with origin.
+// TEST-014-012: ztl theme list shows installed theme with origin.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -4714,14 +4714,14 @@ fn test_014_012_theme_list_shows_installed_with_origin() {
 
     // Install the theme.
     run_json(&mut {
-        let mut cmd = zetl_cmd(&vault);
+        let mut cmd = ztl_cmd(&vault);
         cmd.arg("theme").arg("install").arg(&url);
         cmd
     });
 
     // List themes.
     let json = run_json(&mut {
-        let mut cmd = zetl_cmd(&vault);
+        let mut cmd = ztl_cmd(&vault);
         cmd.arg("theme").arg("list");
         cmd
     });
@@ -4746,7 +4746,7 @@ fn test_014_012_theme_list_shows_installed_with_origin() {
 }
 
 // ---------------------------------------------------------------------------
-// TEST-014-013: zetl serve --theme <installed> renders with the installed theme.
+// TEST-014-013: ztl serve --theme <installed> renders with the installed theme.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -4778,7 +4778,7 @@ fn test_014_013_serve_with_installed_theme() {
 
     // Install the theme into the vault.
     run_json(&mut {
-        let mut cmd = zetl_cmd(&vault);
+        let mut cmd = ztl_cmd(&vault);
         cmd.arg("theme")
             .arg("install")
             .arg(&url)
@@ -4806,7 +4806,7 @@ fn test_014_013_serve_with_installed_theme() {
 }
 
 // ---------------------------------------------------------------------------
-// TEST-014-015: zetl theme remove <installed> deletes the theme directory.
+// TEST-014-015: ztl theme remove <installed> deletes the theme directory.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -4823,7 +4823,7 @@ fn test_014_015_theme_remove_installed() {
 
     // Install.
     run_json(&mut {
-        let mut cmd = zetl_cmd(&vault);
+        let mut cmd = ztl_cmd(&vault);
         cmd.arg("theme")
             .arg("install")
             .arg(&url)
@@ -4832,12 +4832,12 @@ fn test_014_015_theme_remove_installed() {
         cmd
     });
 
-    let theme_dir = vault.join(".zetl/themes/rm-theme");
+    let theme_dir = vault.join(".ztl/themes/rm-theme");
     assert!(theme_dir.is_dir(), "theme dir must exist before removal");
 
     // Remove.
     let json = run_json(&mut {
-        let mut cmd = zetl_cmd(&vault);
+        let mut cmd = ztl_cmd(&vault);
         cmd.arg("theme").arg("remove").arg("rm-theme");
         cmd
     });
@@ -4854,7 +4854,7 @@ fn test_014_015_theme_remove_installed() {
 
     // After removal, theme list must not include rm-theme as installed.
     let list = run_json(&mut {
-        let mut cmd = zetl_cmd(&vault);
+        let mut cmd = ztl_cmd(&vault);
         cmd.arg("theme").arg("list");
         cmd
     });
@@ -4868,7 +4868,7 @@ fn test_014_015_theme_remove_installed() {
 }
 
 // ---------------------------------------------------------------------------
-// TEST-014-016: zetl theme remove default fails (bundled theme).
+// TEST-014-016: ztl theme remove default fails (bundled theme).
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -4877,7 +4877,7 @@ fn test_014_016_theme_remove_bundled_fails() {
     write_file(dir.path(), "Note.md", "# Note\n\nHello.\n");
 
     let output = {
-        let bin = assert_cmd::cargo::cargo_bin!("zetl");
+        let bin = assert_cmd::cargo::cargo_bin!("ztl");
         std::process::Command::new(bin)
             .arg("-d")
             .arg(dir.path())
@@ -4886,7 +4886,7 @@ fn test_014_016_theme_remove_bundled_fails() {
             .arg("remove")
             .arg("default")
             .output()
-            .expect("run zetl")
+            .expect("run ztl")
     };
 
     assert!(
@@ -4919,7 +4919,7 @@ fn test_014_invalid_source_strings_rejected() {
 
     for source in &invalid_sources {
         let output = {
-            let bin = assert_cmd::cargo::cargo_bin!("zetl");
+            let bin = assert_cmd::cargo::cargo_bin!("ztl");
             std::process::Command::new(bin)
                 .arg("-d")
                 .arg(dir.path())
@@ -4928,7 +4928,7 @@ fn test_014_invalid_source_strings_rejected() {
                 .arg("install")
                 .arg(source)
                 .output()
-                .expect("run zetl")
+                .expect("run ztl")
         };
         assert!(
             !output.status.success(),
@@ -4960,7 +4960,7 @@ fn test_014_path_traversal_rejected() {
 
     for path in &traversal_paths {
         let output = {
-            let bin = assert_cmd::cargo::cargo_bin!("zetl");
+            let bin = assert_cmd::cargo::cargo_bin!("ztl");
             std::process::Command::new(bin)
                 .arg("-d")
                 .arg(dir.path())
@@ -4971,7 +4971,7 @@ fn test_014_path_traversal_rejected() {
                 .arg("--path")
                 .arg(path)
                 .output()
-                .expect("run zetl")
+                .expect("run ztl")
         };
         assert!(
             !output.status.success(),
@@ -4994,7 +4994,7 @@ fn test_014_path_traversal_rejected() {
 // TEST-015-001: fountain theme — Courier Prime font-face, no CDN URLs
 // ===========================================================================
 
-/// TEST-015-001: `zetl build --theme fountain` produces HTML that declares
+/// TEST-015-001: `ztl build --theme fountain` produces HTML that declares
 /// Courier Prime via @font-face with local WOFF2 paths and contains no
 /// external CDN URLs for fonts or stylesheets.
 #[test]
@@ -5003,17 +5003,17 @@ fn test_015_001_fountain_font_face_no_cdn() {
     write_file(dir.path(), "Intro.md", "# Intro\n\nOpening scene.\n");
 
     let out_dir = dir.path().join("dist");
-    let output = zetl_cmd(dir.path())
+    let output = ztl_cmd(dir.path())
         .arg("build")
         .arg("--theme")
         .arg("fountain")
         .arg("-o")
         .arg(&out_dir)
         .output()
-        .expect("zetl build --theme fountain");
+        .expect("ztl build --theme fountain");
     assert!(
         output.status.success(),
-        "zetl build --theme fountain failed:\n{}",
+        "ztl build --theme fountain failed:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -5065,7 +5065,7 @@ fn test_015_001_fountain_font_face_no_cdn() {
 // TEST-015-002: fountain theme — WOFF2 fonts copied to _static/
 // ===========================================================================
 
-/// TEST-015-002: After `zetl build --theme fountain`, all four Courier Prime
+/// TEST-015-002: After `ztl build --theme fountain`, all four Courier Prime
 /// WOFF2 font files are present in the `_static/` directory of the build
 /// output.
 #[test]
@@ -5074,17 +5074,17 @@ fn test_015_002_fountain_woff2_fonts_in_static() {
     write_file(dir.path(), "Scene.md", "# Scene\n\nContent.\n");
 
     let out_dir = dir.path().join("dist");
-    let output = zetl_cmd(dir.path())
+    let output = ztl_cmd(dir.path())
         .arg("build")
         .arg("--theme")
         .arg("fountain")
         .arg("-o")
         .arg(&out_dir)
         .output()
-        .expect("zetl build --theme fountain");
+        .expect("ztl build --theme fountain");
     assert!(
         output.status.success(),
-        "zetl build --theme fountain failed:\n{}",
+        "ztl build --theme fountain failed:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -5099,7 +5099,7 @@ fn test_015_002_fountain_woff2_fonts_in_static() {
         let path = static_dir.join(font);
         assert!(
             path.exists(),
-            "_static/{font} must exist in build output after `zetl build --theme fountain`"
+            "_static/{font} must exist in build output after `ztl build --theme fountain`"
         );
         let size = fs::metadata(&path)
             .unwrap_or_else(|e| panic!("failed to stat {font}: {e}"))
@@ -5110,7 +5110,7 @@ fn test_015_002_fountain_woff2_fonts_in_static() {
 
 // (Fountain chain scene-nav tests removed — see IMPL-015.)
 
-/// TEST-015-003c: `zetl theme list` includes "fountain" with `source =
+/// TEST-015-003c: `ztl theme list` includes "fountain" with `source =
 /// "bundled"`.
 #[test]
 fn test_015_003_fountain_theme_list_bundled() {
@@ -5118,7 +5118,7 @@ fn test_015_003_fountain_theme_list_bundled() {
     write_file(dir.path(), "Note.md", "# Note\n\nHello.\n");
 
     let json = run_json(&mut {
-        let mut cmd = zetl_cmd(dir.path());
+        let mut cmd = ztl_cmd(dir.path());
         cmd.arg("theme").arg("list");
         cmd
     });
@@ -5127,7 +5127,7 @@ fn test_015_003_fountain_theme_list_bundled() {
     let fountain = themes
         .iter()
         .find(|t| t["name"].as_str() == Some("fountain"))
-        .unwrap_or_else(|| panic!("fountain must appear in `zetl theme list`; got: {json}"));
+        .unwrap_or_else(|| panic!("fountain must appear in `ztl theme list`; got: {json}"));
 
     assert_eq!(
         fountain["source"].as_str().unwrap_or(""),
@@ -5154,17 +5154,17 @@ fn test_015_004_fountain_file_renders_screenplay_html() {
     );
 
     let out_dir = dir.path().join("dist");
-    let output = zetl_cmd(dir.path())
+    let output = ztl_cmd(dir.path())
         .arg("build")
         .arg("--theme")
         .arg("fountain")
         .arg("-o")
         .arg(&out_dir)
         .output()
-        .expect("zetl build --theme fountain");
+        .expect("ztl build --theme fountain");
     assert!(
         output.status.success(),
-        "zetl build --theme fountain failed:\n{}",
+        "ztl build --theme fountain failed:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -5211,12 +5211,12 @@ fn test_015_004_fountain_file_renders_screenplay_html() {
 }
 
 // ---------------------------------------------------------------------------
-// zetl hook list
+// ztl hook list
 // ---------------------------------------------------------------------------
 
-/// Helper: create a hook file in the vault's .zetl/hooks/ directory.
+/// Helper: create a hook file in the vault's .ztl/hooks/ directory.
 fn create_vault_hook(vault: &Path, name: &str, executable: bool) {
-    let hooks_dir = vault.join(".zetl/hooks");
+    let hooks_dir = vault.join(".ztl/hooks");
     fs::create_dir_all(&hooks_dir).unwrap();
     let path = hooks_dir.join(name);
     fs::write(&path, "#!/bin/sh\necho hook").unwrap();
@@ -5236,7 +5236,7 @@ fn hook_list_empty_vault_json() {
     let tmp = TempDir::new().unwrap();
     write_file(tmp.path(), "note.md", "# Hello");
 
-    let mut cmd = zetl_cmd(tmp.path());
+    let mut cmd = ztl_cmd(tmp.path());
     cmd.args(["hook", "list"]);
     let json = run_json(&mut cmd);
 
@@ -5249,7 +5249,7 @@ fn hook_list_empty_vault_table() {
     let tmp = TempDir::new().unwrap();
     write_file(tmp.path(), "note.md", "# Hello");
 
-    let mut cmd = zetl_cmd(tmp.path());
+    let mut cmd = ztl_cmd(tmp.path());
     cmd.args(["-f", "table", "hook", "list"]);
     let output = cmd.output().unwrap();
     assert!(output.status.success());
@@ -5264,7 +5264,7 @@ fn hook_list_vault_hooks_json() {
     create_vault_hook(tmp.path(), "post-build", true);
     create_vault_hook(tmp.path(), "pre-build", false);
 
-    let mut cmd = zetl_cmd(tmp.path());
+    let mut cmd = ztl_cmd(tmp.path());
     cmd.args(["hook", "list"]);
     let json = run_json(&mut cmd);
 
@@ -5288,7 +5288,7 @@ fn hook_list_vault_hooks_table() {
     write_file(tmp.path(), "note.md", "# Hello");
     create_vault_hook(tmp.path(), "post-build", true);
 
-    let mut cmd = zetl_cmd(tmp.path());
+    let mut cmd = ztl_cmd(tmp.path());
     cmd.args(["-f", "table", "hook", "list"]);
     let output = cmd.output().unwrap();
     assert!(output.status.success());
@@ -5306,7 +5306,7 @@ fn hook_list_ignores_unrecognized_hooks() {
     // Create an unrecognized hook name — should be ignored
     create_vault_hook(tmp.path(), "not-a-hook", true);
 
-    let mut cmd = zetl_cmd(tmp.path());
+    let mut cmd = ztl_cmd(tmp.path());
     cmd.args(["hook", "list"]);
     let json = run_json(&mut cmd);
 
@@ -5321,7 +5321,7 @@ fn hook_list_ignores_unrecognized_hooks() {
 
 /// Helper: create a vault hook with custom script body.
 fn create_vault_hook_with_script(vault: &Path, name: &str, script: &str) {
-    let hooks_dir = vault.join(".zetl/hooks");
+    let hooks_dir = vault.join(".ztl/hooks");
     fs::create_dir_all(&hooks_dir).unwrap();
     let path = hooks_dir.join(name);
     fs::write(&path, script).unwrap();
@@ -5344,7 +5344,7 @@ fn hook_run_executes_and_prints_stdout() {
         "#!/bin/sh\necho \"hook executed\"",
     );
 
-    let mut cmd = zetl_cmd(tmp.path());
+    let mut cmd = ztl_cmd(tmp.path());
     cmd.args(["hook", "run", "post-build"]);
     let output = cmd.output().unwrap();
     assert!(output.status.success());
@@ -5362,7 +5362,7 @@ fn hook_run_prints_stderr_to_stderr() {
         "#!/bin/sh\necho \"stderr msg\" >&2\necho ok",
     );
 
-    let mut cmd = zetl_cmd(tmp.path());
+    let mut cmd = ztl_cmd(tmp.path());
     cmd.args(["hook", "run", "post-build"]);
     let output = cmd.output().unwrap();
     assert!(output.status.success());
@@ -5378,7 +5378,7 @@ fn hook_run_exits_with_hook_exit_code() {
     write_file(tmp.path(), "note.md", "# Hello");
     create_vault_hook_with_script(tmp.path(), "post-build", "#!/bin/sh\nexit 42");
 
-    let mut cmd = zetl_cmd(tmp.path());
+    let mut cmd = ztl_cmd(tmp.path());
     cmd.args(["hook", "run", "post-build"]);
     let output = cmd.output().unwrap();
     assert!(!output.status.success());
@@ -5390,7 +5390,7 @@ fn hook_run_unknown_name_errors() {
     let tmp = TempDir::new().unwrap();
     write_file(tmp.path(), "note.md", "# Hello");
 
-    let mut cmd = zetl_cmd(tmp.path());
+    let mut cmd = ztl_cmd(tmp.path());
     cmd.args(["hook", "run", "nonexistent"]);
     let output = cmd.output().unwrap();
     assert!(!output.status.success());
@@ -5405,7 +5405,7 @@ fn hook_run_no_executable_hook_errors() {
     // Hook exists but is not executable.
     create_vault_hook(tmp.path(), "post-build", false);
 
-    let mut cmd = zetl_cmd(tmp.path());
+    let mut cmd = ztl_cmd(tmp.path());
     cmd.args(["hook", "run", "post-build"]);
     let output = cmd.output().unwrap();
     assert!(!output.status.success());
@@ -5425,7 +5425,7 @@ fn hook_run_receives_vault_context_on_stdin() {
     // Hook that reads stdin JSON and prints the hook name and page count.
     create_vault_hook_with_script(tmp.path(), "post-build", "#!/bin/sh\ncat");
 
-    let mut cmd = zetl_cmd(tmp.path());
+    let mut cmd = ztl_cmd(tmp.path());
     cmd.args(["hook", "run", "post-build"]);
     let output = cmd.output().unwrap();
     assert!(output.status.success());
@@ -5443,7 +5443,7 @@ fn hook_run_extra_json_merged_into_context() {
     write_file(tmp.path(), "note.md", "# Hello");
     create_vault_hook_with_script(tmp.path(), "post-build", "#!/bin/sh\ncat");
 
-    let mut cmd = zetl_cmd(tmp.path());
+    let mut cmd = ztl_cmd(tmp.path());
     cmd.args([
         "hook",
         "run",
@@ -5471,7 +5471,7 @@ fn hook_run_invalid_extra_json_errors() {
     write_file(tmp.path(), "note.md", "# Hello");
     create_vault_hook_with_script(tmp.path(), "post-build", "#!/bin/sh\ncat");
 
-    let mut cmd = zetl_cmd(tmp.path());
+    let mut cmd = ztl_cmd(tmp.path());
     cmd.args(["hook", "run", "post-build", "--", "not-valid-json"]);
     let output = cmd.output().unwrap();
     assert!(!output.status.success());
@@ -5479,20 +5479,20 @@ fn hook_run_invalid_extra_json_errors() {
     assert!(stderr.contains("invalid JSON"), "stderr: {stderr}");
 }
 
-// TEST-122: When compiled without `--features semantic`, `zetl search --semantic` and
-// `zetl search --hybrid` must exit non-zero with a clear error message. REQ-098, NFR-041.
+// TEST-122: When compiled without `--features semantic`, `ztl search --semantic` and
+// `ztl search --hybrid` must exit non-zero with a clear error message. REQ-098, NFR-041.
 #[cfg(not(feature = "semantic"))]
 #[test]
 fn test_search_semantic_flag_requires_feature() {
     let tmp = TempDir::new().unwrap();
     write_file(tmp.path(), "note.md", "# Hello\nSome content here.");
 
-    let mut cmd = zetl_cmd(tmp.path());
+    let mut cmd = ztl_cmd(tmp.path());
     cmd.args(["search", "--semantic", "hello"]);
     let output = cmd.output().unwrap();
     assert!(
         !output.status.success(),
-        "`zetl search --semantic` should exit non-zero without semantic feature"
+        "`ztl search --semantic` should exit non-zero without semantic feature"
     );
     // Error is emitted as JSON on stdout (default format) or plain text on stderr.
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -5510,12 +5510,12 @@ fn test_search_hybrid_flag_requires_feature() {
     let tmp = TempDir::new().unwrap();
     write_file(tmp.path(), "note.md", "# Hello\nSome content here.");
 
-    let mut cmd = zetl_cmd(tmp.path());
+    let mut cmd = ztl_cmd(tmp.path());
     cmd.args(["search", "--hybrid", "hello"]);
     let output = cmd.output().unwrap();
     assert!(
         !output.status.success(),
-        "`zetl search --hybrid` should exit non-zero without semantic feature"
+        "`ztl search --hybrid` should exit non-zero without semantic feature"
     );
     // Error is emitted as JSON on stdout (default format) or plain text on stderr.
     let stderr = String::from_utf8_lossy(&output.stderr);

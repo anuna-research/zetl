@@ -130,7 +130,7 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
     // window; every earlier contributor is surfaced as a
     // `Co-authored-by:` trailer in both the git commit message and the
     // jj snapshot description. When the list is empty (rare — WAL
-    // recovery, first-sync edge), fall back to the generic zetl-crdt
+    // recovery, first-sync edge), fall back to the generic ztl-crdt
     // identity so downstream tooling still sees a valid author.
     // Resolve each contributor user_id → (display_name, user_id). The
     // user_id doubles as the local-part of the `{id}@vault` email used
@@ -140,7 +140,7 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
     let resolve_identity = |uid: &str| -> (String, String) {
         match crate::user::load_profile(&state.vault_root, uid) {
             Ok(Some(p)) => (p.name.clone(), p.id.clone()),
-            _ => ("zetl-crdt".to_string(), "zetl-crdt".to_string()),
+            _ => ("ztl-crdt".to_string(), "ztl-crdt".to_string()),
         }
     };
     let (primary_name, primary_id, co_authors): (String, String, Vec<(String, String)>) =
@@ -153,7 +153,7 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
                 .collect();
             (pname, pid, co_authors)
         } else {
-            ("zetl-crdt".to_string(), "zetl-crdt".to_string(), Vec::new())
+            ("ztl-crdt".to_string(), "ztl-crdt".to_string(), Vec::new())
         };
     // primary_email is only consumed by the history-gated jj snapshot
     // below; silence the unused-variable warning in builds without the
@@ -307,11 +307,11 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
         let hook_env = hooks::HookEnv {
             vault_root: vault_root.to_path_buf(),
             theme: theme.clone(),
-            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+            ztl_version: env!("CARGO_PKG_VERSION").to_string(),
             extra_vars: vec![
-                ("ZETL_SAVED_FILE".into(), rel_path_str),
-                ("ZETL_SAVED_PAGE".into(), page_name),
-                ("ZETL_HOOK_DEPTH".into(), "0".into()),
+                ("ztl_SAVED_FILE".into(), rel_path_str),
+                ("ztl_SAVED_PAGE".into(), page_name),
+                ("ztl_HOOK_DEPTH".into(), "0".into()),
             ],
         };
 
@@ -721,14 +721,14 @@ mod tests {
         }
 
         // A second flush with no further edits has an empty contributor
-        // list — attribution falls back to the zetl-crdt identity,
+        // list — attribution falls back to the ztl-crdt identity,
         // preserving behaviour for WAL-recovery / first-connect flushes.
         state.crdt_store.record_edit("note");
         let result2 = flush_pipeline(&state, "note");
         if let Some(_r) = result2 {
             let repo = git2::Repository::open(dir.path()).unwrap();
             let head = repo.head().unwrap().peel_to_commit().unwrap();
-            assert_eq!(head.author().name().unwrap(), "zetl-crdt");
+            assert_eq!(head.author().name().unwrap(), "ztl-crdt");
         }
     }
 }

@@ -25,7 +25,7 @@ Building without the flag produces a binary that handles [[Wikilinks]], [[Graph 
 
 ## Graceful degradation
 
-When a user runs `zetl reason` on a binary built without the feature, they get a clear error message explaining how to rebuild with `--features reason`. This is better than a confusing "unknown command" error.
+When a user runs `ztl reason` on a binary built without the feature, they get a clear error message explaining how to rebuild with `--features reason`. This is better than a confusing "unknown command" error.
 
 ## Why not always include it?
 

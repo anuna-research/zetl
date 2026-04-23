@@ -1,6 +1,6 @@
-; zetl caching theory
+; ztl caching theory
 ; Reasoning about cache validity, backend selection, and performance acceptability.
-; Run: zetl reason status --positive -d .
+; Run: ztl reason status --positive -d .
 
 ; hello
 

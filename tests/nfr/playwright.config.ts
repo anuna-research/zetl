@@ -14,7 +14,7 @@ export default defineConfig({
   expect: { timeout: 15_000 },
 
   use: {
-    baseURL: process.env.ZETL_NFR_BASE_URL ?? `http://127.0.0.1:${DEFAULT_HARNESS_PORT}`,
+    baseURL: process.env.ztl_NFR_BASE_URL ?? `http://127.0.0.1:${DEFAULT_HARNESS_PORT}`,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "off",

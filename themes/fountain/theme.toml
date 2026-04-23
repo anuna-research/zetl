@@ -2,7 +2,7 @@
 name = "fountain"
 version = "0.1.0"
 description = "Screenplay-style theme using Courier Prime"
-author = "zetl contributors"
+author = "ztl contributors"
 license = "AGPL-3.0"
 
 [theme.templates]

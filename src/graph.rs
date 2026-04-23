@@ -673,7 +673,7 @@ pub fn serialize_graph_index(
             "allowSelfLoops": true,
         },
         "attributes": {
-            "format": "zetl-graph/v1",
+            "format": "ztl-graph/v1",
             "generated_at": generated_at,
             "vault": {
                 "name": vault_name,
@@ -687,7 +687,7 @@ pub fn serialize_graph_index(
 }
 
 /// Context-based variant of [`serialize_graph_index`] that takes a pre-built
-/// [`GraphIndexContext`] instead of raw arguments. Used by `zetl serve` route
+/// [`GraphIndexContext`] instead of raw arguments. Used by `ztl serve` route
 /// handlers via `build_graph_index_context`.
 pub fn serialize_graph_index_ctx(ctx: &GraphIndexContext) -> serde_json::Value {
     let mut nodes = ctx.nodes.clone();
@@ -733,7 +733,7 @@ pub fn serialize_graph_index_ctx(ctx: &GraphIndexContext) -> serde_json::Value {
 
     serde_json::json!({
         "attributes": {
-            "format": "zetl-graph/v1",
+            "format": "ztl-graph/v1",
             "vault": {
                 "name": ctx.vault_name,
                 "pages": ctx.total_pages,
@@ -1740,7 +1740,7 @@ mod tests {
         assert_eq!(out["options"]["type"], "directed");
         assert_eq!(out["options"]["multi"], false);
         assert_eq!(out["options"]["allowSelfLoops"], true);
-        assert_eq!(out["attributes"]["format"], "zetl-graph/v1");
+        assert_eq!(out["attributes"]["format"], "ztl-graph/v1");
         assert_eq!(out["attributes"]["generated_at"], "2026-04-16T00:00:00Z");
         assert_eq!(out["attributes"]["vault"]["name"], "my-vault");
         assert_eq!(out["attributes"]["vault"]["pages"], 3);

@@ -1,7 +1,7 @@
 //! WebAuthn passkey registration and authentication (SPEC-020, REQ-020-002).
 //!
 //! Uses `webauthn-rs` for challenge generation and verification, with credential
-//! storage in `.zetl/users/<id>/passkeys.json` alongside the user profile.
+//! storage in `.ztl/users/<id>/passkeys.json` alongside the user profile.
 
 use anyhow::{anyhow, Context, Result};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -46,7 +46,7 @@ impl PasskeyManager {
     ///
     /// - `rp_id`: The relying party identifier (e.g. "localhost" or a domain).
     /// - `rp_origin`: The origin URL (e.g. "http://localhost:3000").
-    /// - `rp_name`: Human-readable relying party name (e.g. "zetl vault").
+    /// - `rp_name`: Human-readable relying party name (e.g. "ztl vault").
     pub fn new(rp_id: &str, rp_origin: &str, rp_name: &str) -> Result<Self> {
         let origin =
             Url::parse(rp_origin).with_context(|| format!("invalid rp_origin URL: {rp_origin}"))?;
@@ -207,7 +207,7 @@ impl PasskeyManager {
 
 // -- UUID derivation --
 
-/// Deterministically derive a UUID from a zetl user ID using BLAKE3.
+/// Deterministically derive a UUID from a ztl user ID using BLAKE3.
 ///
 /// WebAuthn requires a stable `Uuid` for each user. We hash the user ID
 /// to produce one, setting version-4 and variant-1 bits for format compliance.
@@ -224,7 +224,7 @@ pub fn user_id_to_uuid(user_id: &str) -> Uuid {
 
 // -- Credential storage --
 
-/// Load stored passkeys for a user from `.zetl/users/<id>/passkeys.json`.
+/// Load stored passkeys for a user from `.ztl/users/<id>/passkeys.json`.
 pub fn load_passkeys(vault_root: &Path, user_id: &str) -> Result<Vec<Passkey>> {
     let path = super::user_dir(vault_root, user_id).join(PASSKEYS_FILE);
     if !path.exists() {
@@ -237,7 +237,7 @@ pub fn load_passkeys(vault_root: &Path, user_id: &str) -> Result<Vec<Passkey>> {
     Ok(stored.passkeys)
 }
 
-/// Save passkeys for a user to `.zetl/users/<id>/passkeys.json`.
+/// Save passkeys for a user to `.ztl/users/<id>/passkeys.json`.
 pub fn save_passkeys(vault_root: &Path, user_id: &str, passkeys: &[Passkey]) -> Result<()> {
     let dir = super::user_dir(vault_root, user_id);
     std::fs::create_dir_all(&dir)
@@ -353,26 +353,26 @@ mod tests {
 
     #[test]
     fn test_passkey_manager_creation() {
-        let mgr = PasskeyManager::new("localhost", "http://localhost:3000", "zetl vault");
+        let mgr = PasskeyManager::new("localhost", "http://localhost:3000", "ztl vault");
         assert!(mgr.is_ok(), "PasskeyManager should be constructible");
     }
 
     #[test]
     fn test_passkey_manager_invalid_origin() {
-        let mgr = PasskeyManager::new("localhost", "not-a-url", "zetl vault");
+        let mgr = PasskeyManager::new("localhost", "not-a-url", "ztl vault");
         assert!(mgr.is_err(), "invalid origin should fail");
     }
 
     #[test]
     fn test_start_registration() {
-        let mgr = PasskeyManager::new("localhost", "http://localhost:3000", "zetl vault").unwrap();
+        let mgr = PasskeyManager::new("localhost", "http://localhost:3000", "ztl vault").unwrap();
         let ccr = mgr.start_registration("alice-a1b2c3d4", "Alice", &[]);
         assert!(ccr.is_ok(), "start_registration should succeed: {ccr:?}");
     }
 
     #[test]
     fn test_finish_registration_no_pending() {
-        let mgr = PasskeyManager::new("localhost", "http://localhost:3000", "zetl vault").unwrap();
+        let mgr = PasskeyManager::new("localhost", "http://localhost:3000", "ztl vault").unwrap();
 
         // Create a dummy RegisterPublicKeyCredential
         let response: RegisterPublicKeyCredential = serde_json::from_str(DUMMY_REG_RESPONSE)
@@ -391,7 +391,7 @@ mod tests {
 
     #[test]
     fn test_start_authentication_no_passkeys() {
-        let mgr = PasskeyManager::new("localhost", "http://localhost:3000", "zetl vault").unwrap();
+        let mgr = PasskeyManager::new("localhost", "http://localhost:3000", "ztl vault").unwrap();
         let result = mgr.start_authentication("alice-a1b2c3d4", &[]);
         assert!(result.is_err(), "should fail with no passkeys");
         assert!(result
@@ -402,7 +402,7 @@ mod tests {
 
     #[test]
     fn test_finish_authentication_no_pending() {
-        let mgr = PasskeyManager::new("localhost", "http://localhost:3000", "zetl vault").unwrap();
+        let mgr = PasskeyManager::new("localhost", "http://localhost:3000", "ztl vault").unwrap();
 
         let response: PublicKeyCredential = serde_json::from_str(DUMMY_AUTH_RESPONSE)
             .unwrap_or_else(|_| {

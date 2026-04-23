@@ -1,6 +1,6 @@
 //! Integration tests for TEST-050: VCS Independence (NFR-017).
 //!
-//! These tests verify that all zetl commands work identically whether or not
+//! These tests verify that all ztl commands work identically whether or not
 //! a `.git` directory is present. The core requirement (NFR-017) is that
 //! Merkle tree construction, cache invalidation, drift detection, and grounding
 //! resolution produce identical results regardless of VCS presence.
@@ -10,7 +10,7 @@
 //! 1. **All commands work without Git** — vault in a plain directory (no `.git`);
 //!    all commands succeed and git fields are null.
 //!
-//! 2. **Git metadata is optional enrichment** — vault inside a Git repo; `zetl
+//! 2. **Git metadata is optional enrichment** — vault inside a Git repo; `ztl
 //!    reason provenance` shows git fields; removing `.git` nulls them while
 //!    keeping provenance output otherwise identical. *(Skipped if `git` binary
 //!    is not available.)*
@@ -29,17 +29,17 @@ use tempfile::TempDir;
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Build a `Command` for `zetl` pointing at `vault`, bypassing the cache.
-fn zetl_cmd(vault: &Path) -> Command {
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+/// Build a `Command` for `ztl` pointing at `vault`, bypassing the cache.
+fn ztl_cmd(vault: &Path) -> Command {
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     cmd.arg("-d").arg(vault.as_os_str());
     cmd.arg("--no-cache");
     cmd
 }
 
-/// Build a `Command` for `zetl` pointing at `vault`, WITH caching enabled.
-fn zetl_cmd_cached(vault: &Path) -> Command {
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+/// Build a `Command` for `ztl` pointing at `vault`, WITH caching enabled.
+fn ztl_cmd_cached(vault: &Path) -> Command {
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     cmd.arg("-d").arg(vault.as_os_str());
     cmd
 }
@@ -55,12 +55,12 @@ fn write_file(root: &Path, relative: &str, content: &str) {
 
 /// Run the command, assert exit-zero, and parse stdout as JSON.
 fn run_json(cmd: &mut Command) -> Value {
-    let output = cmd.output().expect("failed to execute zetl");
+    let output = cmd.output().expect("failed to execute ztl");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "zetl exited non-zero.\nstdout: {stdout}\nstderr: {stderr}",
+        "ztl exited non-zero.\nstdout: {stdout}\nstderr: {stderr}",
     );
     serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("failed to parse JSON: {e}\nstdout: {stdout}"))
@@ -96,7 +96,7 @@ fn git_available() -> bool {
 /// Build a minimal vault with wikilinks and an SPL block.
 ///
 /// Produces exactly one defeasible conclusion (`flies`) from two source pages,
-/// so that `zetl reason provenance flies` can be tested end-to-end.
+/// so that `ztl reason provenance flies` can be tested end-to-end.
 fn build_vcs_vault(root: &Path) {
     write_file(
         root,
@@ -137,13 +137,13 @@ See [[Bird Facts]].
 // Scenario 1: All commands work without Git (TEST-050 §1)
 // ===========================================================================
 
-/// TEST-050-1a: `zetl index` succeeds when the vault has no `.git` directory.
+/// TEST-050-1a: `ztl index` succeeds when the vault has no `.git` directory.
 #[test]
 fn test_050_1a_index_no_git() {
     let dir = TempDir::new().expect("create temp dir");
     build_vcs_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("index"));
+    let json = run_json(ztl_cmd(dir.path()).arg("index"));
 
     // Output conforms to the IndexResult schema; no git fields present.
     assert!(
@@ -165,13 +165,13 @@ fn test_050_1a_index_no_git() {
     );
 }
 
-/// TEST-050-1b: `zetl check` succeeds when the vault has no `.git` directory.
+/// TEST-050-1b: `ztl check` succeeds when the vault has no `.git` directory.
 #[test]
 fn test_050_1b_check_no_git() {
     let dir = TempDir::new().expect("create temp dir");
     build_vcs_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("check"));
+    let json = run_json(ztl_cmd(dir.path()).arg("check"));
 
     assert!(json["dead_links"].is_array(), "dead_links must be present");
     assert!(json["orphans"].is_array(), "orphans must be present");
@@ -185,13 +185,13 @@ fn test_050_1b_check_no_git() {
     );
 }
 
-/// TEST-050-1c: `zetl stats` succeeds when the vault has no `.git` directory.
+/// TEST-050-1c: `ztl stats` succeeds when the vault has no `.git` directory.
 #[test]
 fn test_050_1c_stats_no_git() {
     let dir = TempDir::new().expect("create temp dir");
     build_vcs_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("stats"));
+    let json = run_json(ztl_cmd(dir.path()).arg("stats"));
 
     assert!(json["pages"].is_number(), "pages must be present");
     assert!(json["spl_blocks"].is_number(), "spl_blocks must be present");
@@ -205,13 +205,13 @@ fn test_050_1c_stats_no_git() {
     );
 }
 
-/// TEST-050-1d: `zetl reason status` succeeds when the vault has no `.git` directory.
+/// TEST-050-1d: `ztl reason status` succeeds when the vault has no `.git` directory.
 #[test]
 fn test_050_1d_reason_status_no_git() {
     let dir = TempDir::new().expect("create temp dir");
     build_vcs_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("reason").arg("status"));
+    let json = run_json(ztl_cmd(dir.path()).arg("reason").arg("status"));
 
     assert!(json["theory"].is_object(), "theory summary must be present");
     assert!(
@@ -229,7 +229,7 @@ fn test_050_1d_reason_status_no_git() {
     );
 }
 
-/// TEST-050-1e: `zetl reason provenance` succeeds in a plain dir and reports
+/// TEST-050-1e: `ztl reason provenance` succeeds in a plain dir and reports
 ///              git fields as JSON null (§1.6).
 #[test]
 fn test_050_1e_reason_provenance_git_null_no_git() {
@@ -237,7 +237,7 @@ fn test_050_1e_reason_provenance_git_null_no_git() {
     build_vcs_vault(dir.path());
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("provenance")
             .arg("flies"),
@@ -261,7 +261,7 @@ fn test_050_1e_reason_provenance_git_null_no_git() {
 // Scenario 2: Git metadata is optional enrichment (TEST-050 §2)
 // ===========================================================================
 
-/// TEST-050-2: `zetl reason provenance` includes git fields inside a Git repo
+/// TEST-050-2: `ztl reason provenance` includes git fields inside a Git repo
 ///             and they become null after `.git` is removed, while all other
 ///             provenance output remains identical.
 ///
@@ -288,7 +288,7 @@ fn test_050_2_git_metadata_optional_enrichment() {
 
     // Run provenance inside the git repo.
     let json_with_git = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("provenance")
             .arg("flies"),
@@ -324,7 +324,7 @@ fn test_050_2_git_metadata_optional_enrichment() {
 
     // Re-run provenance (force fresh build with --no-cache).
     let json_without_git = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("provenance")
             .arg("flies"),
@@ -357,7 +357,7 @@ fn test_050_2_git_metadata_optional_enrichment() {
     );
 }
 
-/// TEST-050-2b: `zetl reason provenance` marks `git_dirty: true` when there
+/// TEST-050-2b: `ztl reason provenance` marks `git_dirty: true` when there
 ///              are uncommitted changes.
 ///
 /// Skipped when the `git` binary is not available.
@@ -383,7 +383,7 @@ fn test_050_2b_git_dirty_true_with_uncommitted_changes() {
     write_file(dir.path(), "UncommittedNote.md", "# Uncommitted\n");
 
     let json = run_json(
-        zetl_cmd(dir.path())
+        ztl_cmd(dir.path())
             .arg("reason")
             .arg("provenance")
             .arg("flies"),
@@ -406,7 +406,7 @@ fn test_050_2b_git_dirty_true_with_uncommitted_changes() {
 
 /// TEST-050-3a: The index cache remains valid after `.git` is removed.
 ///
-/// Indexes a vault inside a git repo, removes `.git`, and re-runs `zetl index`.
+/// Indexes a vault inside a git repo, removes `.git`, and re-runs `ztl index`.
 /// The second run must succeed (cache is content/mtime-based, not VCS-based).
 ///
 /// Skipped when the `git` binary is not available.
@@ -428,8 +428,8 @@ fn test_050_3a_index_cache_valid_after_git_removal() {
         "git commit failed"
     );
 
-    // First index: WITH cache (populates .zetl/index.json).
-    let json1 = run_json(zetl_cmd_cached(dir.path()).arg("index"));
+    // First index: WITH cache (populates .ztl/index.json).
+    let json1 = run_json(ztl_cmd_cached(dir.path()).arg("index"));
     let files1 = json1["files_scanned"]
         .as_u64()
         .expect("files_scanned numeric");
@@ -439,7 +439,7 @@ fn test_050_3a_index_cache_valid_after_git_removal() {
 
     // Second index: WITH cache; files are unchanged so cache should still be
     // valid (mtime + content hash match).
-    let json2 = run_json(zetl_cmd_cached(dir.path()).arg("index"));
+    let json2 = run_json(ztl_cmd_cached(dir.path()).arg("index"));
     let files2 = json2["files_scanned"]
         .as_u64()
         .expect("files_scanned numeric");
@@ -450,17 +450,17 @@ fn test_050_3a_index_cache_valid_after_git_removal() {
         "file count must be identical with and without .git"
     );
 
-    // The .zetl/index.json file must exist (cache was created or reused).
+    // The .ztl/index.json file must exist (cache was created or reused).
     assert!(
-        dir.path().join(".zetl").join("index.json").exists(),
-        ".zetl/index.json must exist after indexed run"
+        dir.path().join(".ztl").join("index.json").exists(),
+        ".ztl/index.json must exist after indexed run"
     );
 }
 
 /// TEST-050-3b: The theory cache remains valid after `.git` is removed.
 ///
 /// Builds the theory cache inside a git repo, then removes `.git` and reruns
-/// `zetl reason status`. The command must succeed and produce the same
+/// `ztl reason status`. The command must succeed and produce the same
 /// conclusions (cache is VCS-independent). git_commit/git_dirty becoming null
 /// in provenance output is tested in scenario 2.
 ///
@@ -484,7 +484,7 @@ fn test_050_3b_theory_cache_valid_after_git_removal() {
     );
 
     // First run: build theory cache inside the git repo.
-    let mut cmd1 = zetl_cmd_cached(dir.path());
+    let mut cmd1 = ztl_cmd_cached(dir.path());
     cmd1.arg("reason").arg("status");
     let json1 = run_json(&mut cmd1);
     let total1 = json1["summary"]["total"].as_u64().expect("total numeric");
@@ -493,7 +493,7 @@ fn test_050_3b_theory_cache_valid_after_git_removal() {
     fs::remove_dir_all(dir.path().join(".git")).expect("remove .git");
 
     // Second run: WITH cache, without .git; theory cache must still be valid.
-    let mut cmd2 = zetl_cmd_cached(dir.path());
+    let mut cmd2 = ztl_cmd_cached(dir.path());
     cmd2.arg("reason").arg("status");
     let json2 = run_json(&mut cmd2);
     let total2 = json2["summary"]["total"].as_u64().expect("total numeric");
@@ -503,14 +503,14 @@ fn test_050_3b_theory_cache_valid_after_git_removal() {
         "conclusion count must be identical with and without .git (VCS-independent cache)"
     );
 
-    // The .zetl/theory.json must exist (theory cache was created or reused).
+    // The .ztl/theory.json must exist (theory cache was created or reused).
     assert!(
-        dir.path().join(".zetl").join("theory.json").exists(),
-        ".zetl/theory.json must exist after theory build"
+        dir.path().join(".ztl").join("theory.json").exists(),
+        ".ztl/theory.json must exist after theory build"
     );
 }
 
-/// TEST-050-3c: After removing `.git`, `zetl reason provenance` shows
+/// TEST-050-3c: After removing `.git`, `ztl reason provenance` shows
 ///              `git_commit: null` and `git_dirty: null` even when the theory
 ///              cache was originally built inside a git repo.
 ///
@@ -535,7 +535,7 @@ fn test_050_3c_provenance_git_fields_null_after_git_removal() {
 
     // First run: build theory cache (WITH cache, so it's stored to disk).
     let _json1 = run_json(
-        zetl_cmd_cached(dir.path())
+        ztl_cmd_cached(dir.path())
             .arg("reason")
             .arg("provenance")
             .arg("flies"),
@@ -547,7 +547,7 @@ fn test_050_3c_provenance_git_fields_null_after_git_removal() {
     // Second run: WITH cached theory but WITHOUT .git. git fields must be null
     // because they are read fresh from the environment, not from the cache.
     let json2 = run_json(
-        zetl_cmd_cached(dir.path())
+        ztl_cmd_cached(dir.path())
             .arg("reason")
             .arg("provenance")
             .arg("flies"),

@@ -1,33 +1,33 @@
 ---
-title: "SPEC-015: zetl fountain — Screenplay Theme and Scene Chaining"
+title: "SPEC-015: ztl fountain — Screenplay Theme and Scene Chaining"
 version: 0.3.0
 status: draft
 audience: agent, human
 date: 2026-03-02
 ---
 
-# SPEC-015: zetl fountain — Screenplay Theme and Scene Chaining
+# SPEC-015: ztl fountain — Screenplay Theme and Scene Chaining
 
 ## Information Table
 
 | Field          | Value                                                          |
 | -------------- | -------------------------------------------------------------- |
 | Document ID    | SPEC-015                                                       |
-| Title          | zetl fountain — Screenplay Theme and Scene Chaining            |
+| Title          | ztl fountain — Screenplay Theme and Scene Chaining            |
 | Version        | 0.3.0                                                          |
 | Status         | Draft                                                          |
 | Author         | Agent (USDD Protocol v1.3.0)                                   |
 | Date           | 2026-03-02                                                     |
 | Audience       | Agent, Human                                                   |
 | Trace          | USDD Agent Protocol v1.3.0                                     |
-| Parent         | SPEC-012: zetl — Named Themes for Serve and Build              |
+| Parent         | SPEC-012: ztl — Named Themes for Serve and Build              |
 | Related        | SPEC-014: Theme Distribution, SPEC-016: Lifecycle Hooks, SPEC-001: Bi-directional Link Graph |
 
 ---
 
 ## 1. Overview
 
-Screenwriters work in scenes. Each scene is a self-contained unit — a location, a time, characters, dialogue, action — but scenes only become a screenplay when placed in sequence. This specification adds first-class screenplay support to zetl by combining two capabilities:
+Screenwriters work in scenes. Each scene is a self-contained unit — a location, a time, characters, dialogue, action — but scenes only become a screenplay when placed in sequence. This specification adds first-class screenplay support to ztl by combining two capabilities:
 
 1. **A Fountain theme** — templates and CSS that render vault pages as screenplay pages using Courier Prime and industry-standard formatting.
 2. **Scene chaining** — frontmatter fields (`prev` and `next`) that establish a linear reading order across scene files, with prev/next navigation in the web UI.
@@ -36,7 +36,7 @@ Screenplay assembly (walking the chain, stripping frontmatter/wikilinks, concate
 
 ### 1.1 Core Insight
 
-A zetl vault of screenplay scenes is a **linked list encoded as a wiki**. Each scene file is a node; `prev`/`next` frontmatter fields are the pointers. Wikilinks within scenes cross-reference characters, locations, and story notes — useful during writing but can be stripped during assembly by a hook.
+A ztl vault of screenplay scenes is a **linked list encoded as a wiki**. Each scene file is a node; `prev`/`next` frontmatter fields are the pointers. Wikilinks within scenes cross-reference characters, locations, and story notes — useful during writing but can be stripped during assembly by a hook.
 
 ### 1.2 Design Philosophy
 
@@ -53,18 +53,18 @@ A zetl vault of screenplay scenes is a **linked list encoded as a wiki**. Each s
 - Bundled `fountain` theme with Courier Prime font, screenplay page layout, and prev/next navigation
 - `prev` and `next` frontmatter fields for establishing scene order
 - Prev/next navigation links in the page template (all themes, not just fountain)
-- Scene chain validation in `zetl check` (broken chains, cycles, orphaned scenes)
+- Scene chain validation in `ztl check` (broken chains, cycles, orphaned scenes)
 
 **Out of scope:**
 
 - Screenplay assembly (walking chains, stripping wikilinks/frontmatter, concatenating into `.fountain`) — this is a post-build hook concern per SPEC-016
-- Fountain parsing or semantic validation (zetl treats Fountain as opaque text — it passes through unchanged)
+- Fountain parsing or semantic validation (ztl treats Fountain as opaque text — it passes through unchanged)
 - PDF generation (users pipe the `.fountain` output to dedicated tools like Highland, Fade In, or afterwriting)
 - Real-time collaborative editing
 - Fountain-specific search or indexing (standard full-text search from SPEC-013 applies)
 - Automatic scene numbering (Fountain handles this natively with `#scene-number#` syntax)
 - Revision tracking or colored revision pages (production concern, not a writing tool concern)
-- A standalone `zetl compile` command
+- A standalone `ztl compile` command
 
 ---
 
@@ -87,9 +87,9 @@ Constraints:
   - Needs the compiled output to be a valid .fountain file readable by any screenplay app
 Daily workflow:
   1. Open a scene file, write in Fountain syntax
-  2. Preview in browser with `zetl serve --theme fountain`
+  2. Preview in browser with `ztl serve --theme fountain`
   3. Navigate between scenes using prev/next
-  4. Run `zetl build --theme fountain` to produce static site
+  4. Run `ztl build --theme fountain` to produce static site
   5. If a post-build assembly hook is installed, find the assembled .fountain file in the build output
 ```
 
@@ -108,14 +108,14 @@ Steps:
      INT. APARTMENT - MORNING
      ...
 
-  2. zetl serve --theme fountain → browser shows screenplay pages with Courier Prime
+  2. ztl serve --theme fountain → browser shows screenplay pages with Courier Prime
   3. Click "Next Scene" → navigates to the next scene in chain
   4. Position indicator shows "Scene 1 of 12"
-  5. zetl check → validates chain integrity (no broken links, no cycles)
+  5. ztl check → validates chain integrity (no broken links, no cycles)
 
 Postconditions: Scenes render with screenplay formatting and are navigable in chain order.
 Failure modes:
-  - Broken chain (scene's next target doesn't exist) → zetl check reports error
+  - Broken chain (scene's next target doesn't exist) → ztl check reports error
   - Circular chain → detected, error with cycle path
 ```
 
@@ -135,9 +135,9 @@ Constraints:
 Daily workflow:
   1. Write scenes with episode-specific chains
   2. Reference [[Character Bible/SARAH]] for consistency
-  3. zetl serve --theme fountain → preview scenes with screenplay formatting
+  3. ztl serve --theme fountain → preview scenes with screenplay formatting
   4. Navigate between episode scenes using prev/next links
-  5. zetl check → validates all chains are intact
+  5. ztl check → validates all chains are intact
 ```
 
 **Happy Path: Multi-Episode Vault**
@@ -148,10 +148,10 @@ Steps:
   1. E01 scenes chain: E01 Cold Open → E01 Scene 2 → ... → E01 Tag
   2. E02 scenes chain: E02 Teaser → E02 Scene 2 → ... → E02 Tag
   3. Reference pages (Character Bible, Locations) have no prev/next — they're wiki pages, not scenes
-  4. zetl serve --theme fountain → each scene renders with screenplay formatting
+  4. ztl serve --theme fountain → each scene renders with screenplay formatting
   5. Prev/next navigation works within each episode's chain independently
 
-Postconditions: Each chain is independently navigable. zetl check validates integrity.
+Postconditions: Each chain is independently navigable. ztl check validates integrity.
 Failure modes:
   - A scene appears in two chains → error: scene has multiple prev pointers
   - A scene's next points to a reference page → warning: target has no prev/next, chain ends
@@ -195,7 +195,7 @@ The fountain theme's CSS SHALL style standard HTML elements to approximate Fount
 | Transition | Lines ending in `TO:` or forced with `>` | Right-aligned, uppercase |
 | Centered | Wrapped in `> <` | Centered |
 
-Note: zetl does not parse Fountain semantically. The theme uses CSS selectors and patterns to approximate formatting. Writers using standard Fountain conventions will get correct visual output. The assembled `.fountain` file is the authoritative format for precise rendering in dedicated screenplay software.
+Note: ztl does not parse Fountain semantically. The theme uses CSS selectors and patterns to approximate formatting. Writers using standard Fountain conventions will get correct visual output. The assembled `.fountain` file is the authoritative format for precise rendering in dedicated screenplay software.
 
 Trace:
 - TEST-015-002
@@ -221,7 +221,7 @@ Trace:
 
 REQ-015-004: Prev/Next Frontmatter Fields
 
-The system SHALL recognise `prev` and `next` fields in a page's YAML frontmatter as scene chain pointers. Values are page names (optionally wrapped in wikilink syntax for consistency with zetl conventions):
+The system SHALL recognise `prev` and `next` fields in a page's YAML frontmatter as scene chain pointers. Values are page names (optionally wrapped in wikilink syntax for consistency with ztl conventions):
 
 ```yaml
 ---
@@ -260,7 +260,7 @@ Trace:
 
 REQ-015-006: Chain Validation
 
-`zetl check` SHALL include chain validation when scene chain frontmatter is detected:
+`ztl check` SHALL include chain validation when scene chain frontmatter is detected:
 
 - **Broken forward link:** Scene A's `next` points to a page that does not exist → error
 - **Broken backward link:** Scene A's `next` is Scene B, but Scene B's `prev` is not Scene A → warning (asymmetric chain)
@@ -268,7 +268,7 @@ REQ-015-006: Chain Validation
 - **Multiple predecessors:** Two different scenes list the same `next` target → error (fan-in creates ambiguous order)
 - **Orphaned scenes:** Scenes with `prev`/`next` fields that are not reachable from any chain head → warning
 
-Chain validation SHALL be included in the standard `zetl check` output as a new diagnostic category alongside dead links, orphans, and syntax errors.
+Chain validation SHALL be included in the standard `ztl check` output as a new diagnostic category alongside dead links, orphans, and syntax errors.
 
 Trace:
 - TEST-015-006
@@ -322,7 +322,7 @@ Trace:
 
 ### ADR-015-001: Fountain as Opaque Text, Not Parsed
 
-**Context:** Fountain is a plain-text markup language with well-defined syntax for scene headings, dialogue, action, transitions, etc. zetl could parse Fountain semantically (identifying elements, validating structure) or treat it as opaque text that passes through unchanged.
+**Context:** Fountain is a plain-text markup language with well-defined syntax for scene headings, dialogue, action, transitions, etc. ztl could parse Fountain semantically (identifying elements, validating structure) or treat it as opaque text that passes through unchanged.
 
 **Decision:** Treat Fountain content as opaque text. The theme provides visual approximation via CSS patterns; any assembly hook preserves content verbatim.
 
@@ -330,8 +330,8 @@ Trace:
 
 - **Simplicity** — no Fountain parser to build or maintain. Fountain parsing is a solved problem in dedicated tools (Highland, Fade In, afterwriting).
 - **Fidelity** — zero risk of mangling the writer's content. What they wrote is what the theme renders and what any assembly hook outputs.
-- **Separation of concerns** — zetl is the wiki/graph/view layer. Screenplay rendering is delegated to purpose-built tools.
-- **Forward compatibility** — if Fountain syntax evolves, zetl doesn't need updating.
+- **Separation of concerns** — ztl is the wiki/graph/view layer. Screenplay rendering is delegated to purpose-built tools.
+- **Forward compatibility** — if Fountain syntax evolves, ztl doesn't need updating.
 
 **Trade-off:** The theme's CSS-based formatting is approximate. Writers who need pixel-perfect screenplay rendering export the `.fountain` file (via an assembly hook) to a dedicated app. The web preview is for writing workflow, not final output.
 
@@ -348,8 +348,8 @@ Trace:
 - **Explicit over implicit** — the order is declared in each file, not inferred from naming conventions that may break.
 - **Reorderable** — changing scene order means editing two files' frontmatter, not renaming files and updating all references.
 - **Multiple chains** — a vault can contain multiple independent chains (episodes, acts) without special directory structure.
-- **Wiki-native** — the fields can use wikilink syntax (`[[Scene 2]]`), consistent with how zetl users already reference pages.
-- **Inspectable** — `zetl check` can validate chain integrity. `zetl links` already shows forward/backward relationships.
+- **Wiki-native** — the fields can use wikilink syntax (`[[Scene 2]]`), consistent with how ztl users already reference pages.
+- **Inspectable** — `ztl check` can validate chain integrity. `ztl links` already shows forward/backward relationships.
 
 **Trade-off:** Reordering requires editing frontmatter in two+ files (the moved scene, its old neighbours, its new neighbours). A manifest-based approach would centralise order in one file. However, the frontmatter approach keeps each scene self-describing and avoids a single-point-of-failure manifest.
 
@@ -367,7 +367,7 @@ Trace:
 
 - **No JS dependency** — the theme works in environments with JavaScript disabled (print stylesheets, RSS readers, minimal browsers).
 - **Performance** — CSS rendering is instantaneous. No DOM manipulation or parsing delay.
-- **Consistency with zetl philosophy** — templates are inert HTML/CSS. No executable code in themes (REQ-014-015 from SPEC-014).
+- **Consistency with ztl philosophy** — templates are inert HTML/CSS. No executable code in themes (REQ-014-015 from SPEC-014).
 - **Build mode compatibility** — static HTML output works the same as serve mode.
 
 **Trade-off:** CSS cannot perfectly identify all Fountain elements (e.g., distinguishing Character names from shouted Action requires semantic parsing). The approximation is good enough for writing workflow; final rendering is done in dedicated software.
@@ -399,7 +399,7 @@ next: "[[Scene 3 - Coffee Shop]]"  # or plain: "Scene 3 - Coffee Shop"
 Rules:
 - `prev` and `next` values are strings. If wrapped in `[[...]]`, the delimiters are stripped.
 - If the value contains `|`, text after the pipe is ignored (alias syntax).
-- Page name resolution is case-insensitive, matching zetl's standard behaviour.
+- Page name resolution is case-insensitive, matching ztl's standard behaviour.
 
 Implements:
 - REQ-015-004
@@ -461,10 +461,10 @@ Verified by:
 
 ### TEST-015-001: Fountain Theme Rendering
 
-Scenario: `zetl serve --theme fountain` with a scene file containing standard Fountain content.
+Scenario: `ztl serve --theme fountain` with a scene file containing standard Fountain content.
 Expected: Page renders with Courier Prime font, screenplay page layout, white page on grey background. No external CDN requests.
 
-Scenario: `zetl build --theme fountain` produces static HTML.
+Scenario: `ztl build --theme fountain` produces static HTML.
 Expected: Static files include font files in `_static/`, CSS is self-contained, pages render correctly when opened via `file://`.
 
 ---
@@ -515,13 +515,13 @@ Expected: Two chain heads detected.
 ### TEST-015-006: Chain Validation
 
 Scenario: Scene A's `next` is "Nonexistent Scene".
-Expected: `zetl check` reports broken chain error.
+Expected: `ztl check` reports broken chain error.
 
 Scenario: Scene A → B → C → A (cycle).
-Expected: `zetl check` reports cycle with path A → B → C → A.
+Expected: `ztl check` reports cycle with path A → B → C → A.
 
 Scenario: Scene A → B and Scene C → B (fan-in).
-Expected: `zetl check` reports ambiguous predecessor for B.
+Expected: `ztl check` reports ambiguous predecessor for B.
 
 Scenario: Scene D has `prev: "[[Scene C]]"` but is not reachable from any chain head.
 Expected: Warning about orphaned scene.
@@ -542,7 +542,7 @@ Expected: All chain fields are None.
 
 OBS-015-001: Chain Validation in Check
 
-`zetl check` verbose output SHALL include:
+`ztl check` verbose output SHALL include:
 - Number of scene chains found
 - Chain lengths
 - Any validation warnings or errors
@@ -553,16 +553,16 @@ OBS-015-001: Chain Validation in Check
 
 ### Phase 1: Scene Chaining and Page Context
 
-**Goal:** Add `prev`/`next` frontmatter parsing, chain data in `PageContext`, chain validation in `zetl check`, and basic prev/next navigation in all themes. This phase has no theme dependency.
+**Goal:** Add `prev`/`next` frontmatter parsing, chain data in `PageContext`, chain validation in `ztl check`, and basic prev/next navigation in all themes. This phase has no theme dependency.
 
 **Changes:**
 - Parse `prev`/`next` from frontmatter in `context.rs`
 - Add `ChainLink`, `chain_position`, `chain_length`, `chain_head_slug` to `PageContext`
 - Implement chain walking and chain head detection
-- Add chain validation diagnostics to `zetl check`
+- Add chain validation diagnostics to `ztl check`
 - Add conditional prev/next nav to the default theme's `page.html` (shown only when chain data exists)
 
-**Verification:** Create test vault with chained scenes. Verify chain data in page context. Verify `zetl check` reports broken chains. Verify prev/next links render in default theme.
+**Verification:** Create test vault with chained scenes. Verify chain data in page context. Verify `ztl check` reports broken chains. Verify prev/next links render in default theme.
 
 ### Phase 2: Fountain Theme
 
@@ -576,7 +576,7 @@ OBS-015-001: Chain Validation in Check
 - Enhanced prev/next navigation with scene position indicator
 - Sidebar shows scenes in chain order when a valid chain exists
 
-**Verification:** `zetl serve --theme fountain` renders scenes as screenplay pages. `zetl build --theme fountain` produces static HTML. Fonts load without CDN.
+**Verification:** `ztl serve --theme fountain` renders scenes as screenplay pages. `ztl build --theme fountain` produces static HTML. Fonts load without CDN.
 
 ### Phase 3: Assembly Hook (Post SPEC-016)
 
@@ -584,10 +584,10 @@ OBS-015-001: Chain Validation in Check
 
 **Changes:**
 - Add `hooks/post-build` executable to `themes/fountain/`
-- Hook reads chain data from `ZETL_CONTEXT` stdin JSON, walks chains, strips frontmatter/wikilinks, concatenates, and writes `.fountain` files to the output directory
+- Hook reads chain data from `ztl_CONTEXT` stdin JSON, walks chains, strips frontmatter/wikilinks, concatenates, and writes `.fountain` files to the output directory
 - This phase depends on SPEC-016 being implemented first
 
-**Verification:** `zetl build --theme fountain` with a chained vault produces `screenplay/<slug>.fountain` in the output directory via the hook.
+**Verification:** `ztl build --theme fountain` with a chained vault produces `screenplay/<slug>.fountain` in the output directory via the hook.
 
 ---
 
@@ -600,7 +600,7 @@ OBS-015-001: Chain Validation in Check
    WOFF2 font files are ~30-50 KB each. Embedding them in the binary via the bundled theme system (SPEC-014) keeps things simple but increases binary size. Recommendation: embed them — the size is negligible relative to the overall binary, and it ensures offline functionality.
 
 3. **What language should the assembly hook be written in?**
-   Per SPEC-016, hooks are executables. A shell script would be simplest but less portable. A small Rust binary compiled alongside zetl would be fast but adds build complexity. A Python/Deno script would be easy to write but adds a runtime dependency. Recommendation: ship as a shell script initially (most users have bash), document how to replace with a compiled alternative.
+   Per SPEC-016, hooks are executables. A shell script would be simplest but less portable. A small Rust binary compiled alongside ztl would be fast but adds build complexity. A Python/Deno script would be easy to write but adds a runtime dependency. Recommendation: ship as a shell script initially (most users have bash), document how to replace with a compiled alternative.
 
 ---
 
@@ -611,7 +611,7 @@ OBS-015-001: Chain Validation in Check
 | Serve-time assembly route | A `/screenplay/<slug>/` route in serve mode, rendered by a `pre-serve` hook or middleware |
 | PDF rendering | `@media print` CSS in the fountain theme for browser-based PDF export, or integration with a headless renderer |
 | Fountain syntax highlighting | Syntax-aware highlighting in the TUI view (SPEC-009) |
-| Scene reordering | `zetl reorder` command to swap scene positions by updating frontmatter |
+| Scene reordering | `ztl reorder` command to swap scene positions by updating frontmatter |
 | Character index | Auto-generated character list from ALL CAPS names in scene content |
 | Dialogue extraction | Extract all dialogue for a specific character across scenes |
 | Fountain linting | Validate Fountain syntax (missing scene headings, unclosed dual dialogue, etc.) |

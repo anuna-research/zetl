@@ -1,6 +1,6 @@
 //! Integration coverage for SPEC-032 §9 observability.
 //!
-//! Drives [`zetl::hooks::pipeline::run_page_with_observer`] with an
+//! Drives [`ztl::hooks::pipeline::run_page_with_observer`] with an
 //! in-process [`CapturingObserver`] and asserts the event stream + the
 //! rolled-up [`HookStats`] block match the OBS-3204 log-line shape and
 //! the "per-stage time, per-hook time, pages matched, diagnostics
@@ -9,14 +9,14 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use zetl::hooks::ast::{
+use ztl::hooks::ast::{
     Block, Document, DocumentKind, Inline, Paragraph, Position, Text, AST_VERSION,
 };
-use zetl::hooks::build_context::{BuildContext, BuildMode, PageMeta};
-use zetl::hooks::observability::{
+use ztl::hooks::build_context::{BuildContext, BuildMode, PageMeta};
+use ztl::hooks::observability::{
     CapturingObserver, HookInvocationStatus, HookKey, HookObserver, HookStats,
 };
-use zetl::hooks::pipeline::{
+use ztl::hooks::pipeline::{
     run_page_with_observer, AstDocument, HookError, HookPipeline, PostRenderHook, PreParseHook,
     Stage, TransformHook,
 };
@@ -313,7 +313,7 @@ fn summary_line_obs_3206_shape() {
 
     let line = stats.lock().unwrap().format_summary_line();
     assert!(
-        line.starts_with("[zetl] hooks: total_invocations=3 total_duration_ms="),
+        line.starts_with("[ztl] hooks: total_invocations=3 total_duration_ms="),
         "got: {line}"
     );
     assert!(line.ends_with(" failures=0"), "got: {line}");

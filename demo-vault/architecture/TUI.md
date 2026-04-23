@@ -4,7 +4,7 @@ title: TUI
 
 # TUI
 
-`zetl tui` launches an interactive terminal interface for browsing your vault. It is the human-oriented complement to zetl's [[JSON by Default]] output.
+`ztl tui` launches an interactive terminal interface for browsing your vault. It is the human-oriented complement to ztl's [[JSON by Default]] output.
 
 ## Views
 

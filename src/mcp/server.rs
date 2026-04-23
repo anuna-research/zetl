@@ -139,7 +139,7 @@ impl ServerHandler for McpServer {
             .build();
         InitializeResult::new(capabilities)
             .with_server_info(Implementation::new(
-                "zetl-mcp",
+                "ztl-mcp",
                 env!("CARGO_PKG_VERSION"),
             ))
             .with_instructions(

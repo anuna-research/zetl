@@ -1,35 +1,35 @@
 ---
-title: "SPEC-004: zetl — Distributed Vault Sync via Goblins Sidecar"
+title: "SPEC-004: ztl — Distributed Vault Sync via Goblins Sidecar"
 version: 0.1.0
 status: draft
 audience: agent, human
 date: 2026-02-18
 ---
 
-# SPEC-004: zetl — Distributed Vault Sync via Goblins Sidecar
+# SPEC-004: ztl — Distributed Vault Sync via Goblins Sidecar
 
 ## Information Table
 
 | Field          | Value                                                    |
 | -------------- | -------------------------------------------------------- |
 | Document ID    | SPEC-004                                                 |
-| Title          | zetl — Distributed Vault Sync via Goblins Sidecar       |
+| Title          | ztl — Distributed Vault Sync via Goblins Sidecar       |
 | Version        | 0.1.0                                                    |
 | Status         | Draft                                                    |
 | Author         | Agent (USDD Protocol v1.0.0)                             |
 | Date           | 2026-02-18                                               |
 | Audience       | Agent, Human                                             |
 | Trace          | USDD Agent Protocol v1.0.0                               |
-| Parent         | SPEC-001: zetl — Bi-directional Link Graph CLI           |
+| Parent         | SPEC-001: ztl — Bi-directional Link Graph CLI           |
 | Related        | SPEC-029: xm Agent Memory System, XM Whitepaper         |
 
 ---
 
 ## 1. Overview
 
-zetl is a single-machine, read-only CLI tool. It indexes a local vault of Markdown files, builds a link graph, and answers queries. It never modifies files and has no awareness of other vaults on other machines.
+ztl is a single-machine, read-only CLI tool. It indexes a local vault of Markdown files, builds a link graph, and answers queries. It never modifies files and has no awareness of other vaults on other machines.
 
-This specification proposes extending zetl with **distributed vault synchronization** by adding a **Spritely Goblins sidecar** — a separate long-running process that handles networking, capability-based access control, and vault merging. The Goblins sidecar speaks OCapN (Object Capability Network) for secure peer-to-peer communication and uses sturdyrefs for persistent, delegatable capability tokens.
+This specification proposes extending ztl with **distributed vault synchronization** by adding a **Spritely Goblins sidecar** — a separate long-running process that handles networking, capability-based access control, and vault merging. The Goblins sidecar speaks OCapN (Object Capability Network) for secure peer-to-peer communication and uses sturdyrefs for persistent, delegatable capability tokens.
 
 ### 1.1 Core Insight
 
@@ -39,30 +39,30 @@ The better decomposition:
 
 | Concern | Owner | Why |
 | --- | --- | --- |
-| File parsing, graph building, queries | **zetl** (Rust) | Already built, fast, single binary |
+| File parsing, graph building, queries | **ztl** (Rust) | Already built, fast, single binary |
 | Networking, capabilities, sync protocol | **Goblins sidecar** (Guile Scheme) | OCapN is the best existing solution for capability-secured P2P |
-| Conflict resolution, merge semantics | **Shared** (zetl proposes, sidecar negotiates) | Merge policy is a local decision informed by network state |
+| Conflict resolution, merge semantics | **Shared** (ztl proposes, sidecar negotiates) | Merge policy is a local decision informed by network state |
 | File storage | **Filesystem** | Markdown files remain the source of truth |
 
-zetl stays pure Rust, fast, and simple for local operations. The sidecar is optional — zetl works perfectly without it. When the sidecar is running, zetl gains the ability to share vault content with remote peers, receive updates, and merge changes.
+ztl stays pure Rust, fast, and simple for local operations. The sidecar is optional — ztl works perfectly without it. When the sidecar is running, ztl gains the ability to share vault content with remote peers, receive updates, and merge changes.
 
 ### 1.2 Design Philosophy
 
-1. **Files remain the source of truth.** The sidecar never bypasses zetl. All changes materialize as Markdown files in the vault directory. zetl re-indexes to discover them.
+1. **Files remain the source of truth.** The sidecar never bypasses ztl. All changes materialize as Markdown files in the vault directory. ztl re-indexes to discover them.
 2. **Capabilities, not passwords.** Access to a remote vault (or subset of a vault) is granted by sharing a sturdyref — an unforgeable, attenuable, revocable token. No usernames, no passwords, no ACLs.
-3. **Local-first, network-optional.** The sidecar is a separate process. If it's not running, zetl works as before. If the network is down, the sidecar works from its local state.
+3. **Local-first, network-optional.** The sidecar is a separate process. If it's not running, ztl works as before. If the network is down, the sidecar works from its local state.
 4. **Merge is explicit.** The sidecar never silently overwrites local files. Incoming changes are staged, conflicts are reported, and the user (or agent) decides.
-5. **Minimal trust boundary.** zetl trusts the sidecar via a Unix domain socket capability. The sidecar trusts remote peers via OCapN sturdyrefs with attenuated permissions. No ambient authority exists at any layer.
+5. **Minimal trust boundary.** ztl trusts the sidecar via a Unix domain socket capability. The sidecar trusts remote peers via OCapN sturdyrefs with attenuated permissions. No ambient authority exists at any layer.
 
 ### 1.3 Scope
 
 **In scope:**
 
-- Architecture for zetl ↔ Goblins sidecar communication (IPC protocol)
+- Architecture for ztl ↔ Goblins sidecar communication (IPC protocol)
 - Capability model for vault sharing (what granularity, what permissions)
 - Sync protocol for vault merging (what data flows, how conflicts are detected)
 - Merge strategies for Markdown files and link graphs
-- Sidecar lifecycle management (`zetl sync start`, `zetl sync stop`)
+- Sidecar lifecycle management (`ztl sync start`, `ztl sync stop`)
 - Research spikes for critical unknowns (Syrup in Rust, merge semantics)
 
 **Out of scope:**
@@ -71,7 +71,7 @@ zetl stays pure Rust, fast, and simple for local operations. The sidecar is opti
 - Browser-based vault access (WebSocket netlayer)
 - Multi-vault federation (3+ vaults; this SPEC covers bilateral sync)
 - Real-time collaborative editing (Google Docs-style)
-- xm RDF/SPARQL integration (xm and zetl are separate tools with different data models)
+- xm RDF/SPARQL integration (xm and ztl are separate tools with different data models)
 
 ---
 
@@ -92,9 +92,9 @@ Constraints:
 Daily workflow:
   1. Write notes on laptop during the day
   2. Connect to home network in the evening
-  3. Run `zetl sync push` to send changes
-  4. On desktop: `zetl sync pull` to receive and merge
-  5. Resolve any conflicts flagged by zetl
+  3. Run `ztl sync push` to send changes
+  4. On desktop: `ztl sync pull` to receive and merge
+  5. Resolve any conflicts flagged by ztl
 ```
 
 ### 2.2 Research Team Sharing Knowledge
@@ -113,10 +113,10 @@ Constraints:
 Daily workflow:
   1. Alice shares concepts/ folder with Bob (read-write)
   2. Alice shares references/ folder with Carol (read-only)
-  3. Bob creates a new note in concepts/, runs `zetl sync push`
-  4. Alice runs `zetl sync pull`, sees Bob's new note merged into her vault
-  5. Carol runs `zetl sync pull`, sees the new note (read-only copy)
-  6. Alice revokes Carol's access: `zetl sync revoke <sturdyref>`
+  3. Bob creates a new note in concepts/, runs `ztl sync push`
+  4. Alice runs `ztl sync pull`, sees Bob's new note merged into her vault
+  5. Carol runs `ztl sync pull`, sees the new note (read-only copy)
+  6. Alice revokes Carol's access: `ztl sync revoke <sturdyref>`
 ```
 
 ### 2.3 Agent-to-Agent Knowledge Handoff
@@ -129,15 +129,15 @@ Goals:
   - Knowledge transfer happens via structured Markdown, not ad-hoc text
   - Capabilities scoped per-task so agents cannot access unrelated vaults
 Constraints:
-  - Agents invoke zetl CLI non-interactively
+  - Agents invoke ztl CLI non-interactively
   - JSON output required for programmatic consumption
   - Capability must be injectable as an environment variable or flag
 Daily workflow:
-  1. Orchestrator grants Agent A a scoped capability: `zetl sync grant --scope project/auth --permissions rw`
+  1. Orchestrator grants Agent A a scoped capability: `ztl sync grant --scope project/auth --permissions rw`
   2. Agent A writes findings to project/auth/ folder
-  3. Agent A pushes: `zetl sync push --scope project/auth`
+  3. Agent A pushes: `ztl sync push --scope project/auth`
   4. Orchestrator grants Agent B the same sturdyref
-  5. Agent B pulls: `zetl sync pull --scope project/auth`
+  5. Agent B pulls: `ztl sync pull --scope project/auth`
   6. Agent B has full context, continues the work
 ```
 
@@ -147,31 +147,31 @@ Daily workflow:
 Happy Path: First-Time Vault Sharing (Two Peers)
 
 Preconditions:
-  - Alice and Bob both have zetl installed with the Goblins sidecar
-  - Both sidecars are running (`zetl sync start`)
+  - Alice and Bob both have ztl installed with the Goblins sidecar
+  - Both sidecars are running (`ztl sync start`)
 Steps:
   1. Alice generates a share capability:
-     `zetl sync share --scope concepts/ --permissions read`
+     `ztl sync share --scope concepts/ --permissions read`
      → Returns: ocapn://...onion.../s/abc123...
   2. Alice sends the sturdyref to Bob out-of-band (email, chat, QR code)
   3. Bob adds the remote:
-     `zetl sync remote add alice <sturdyref>`
+     `ztl sync remote add alice <sturdyref>`
   4. Bob pulls:
-     `zetl sync pull alice`
+     `ztl sync pull alice`
      → Sidecar connects to Alice's sidecar via OCapN
      → Negotiates what's changed since last sync (or everything, if first sync)
      → Downloads pages, writes to bob-vault/concepts/ (or a configurable path)
-     → zetl re-indexes automatically
+     → ztl re-indexes automatically
   5. Bob queries:
-     `zetl backlinks "Zettelkasten" -f table`
+     `ztl backlinks "Zettelkasten" -f table`
      → Sees links from both his own pages and Alice's synced pages
 Postconditions:
   - Bob has a local copy of Alice's concepts/ folder
-  - Subsequent `zetl sync pull alice` only transfers deltas
+  - Subsequent `ztl sync pull alice` only transfers deltas
 Failure modes:
   - Network unreachable → sidecar retries with exponential backoff, reports status
-  - Sturdyref expired → `zetl sync pull` returns structured error with explanation
-  - File conflict → staged in .zetl/conflicts/, `zetl sync conflicts` lists them
+  - Sturdyref expired → `ztl sync pull` returns structured error with explanation
+  - File conflict → staged in .ztl/conflicts/, `ztl sync conflicts` lists them
 ```
 
 ```
@@ -181,23 +181,23 @@ Preconditions:
   - Alice and Bob both have read-write access to a shared scope
   - Both have modified the same page since last sync
 Steps:
-  1. Alice pushes her changes: `zetl sync push`
-  2. Bob pushes his changes: `zetl sync push`
+  1. Alice pushes her changes: `ztl sync push`
+  2. Bob pushes his changes: `ztl sync push`
      → Sidecar detects divergent modifications to "Knowledge Graph.md"
-  3. Bob runs: `zetl sync pull alice`
+  3. Bob runs: `ztl sync pull alice`
      → Sidecar downloads Alice's version
      → Detects conflict (both modified since common ancestor)
-     → Writes Alice's version to .zetl/conflicts/Knowledge Graph.md.alice
-     → Writes conflict marker: .zetl/conflicts/manifest.json
+     → Writes Alice's version to .ztl/conflicts/Knowledge Graph.md.alice
+     → Writes conflict marker: .ztl/conflicts/manifest.json
      → Does NOT overwrite Bob's working copy
-  4. Bob runs: `zetl sync conflicts`
+  4. Bob runs: `ztl sync conflicts`
      → Shows: Knowledge Graph.md (local: modified 2026-02-18T10:30, remote: alice, modified 2026-02-18T09:15)
   5. Bob resolves manually (or agent resolves programmatically)
-  6. Bob marks resolved: `zetl sync resolve "Knowledge Graph.md"`
+  6. Bob marks resolved: `ztl sync resolve "Knowledge Graph.md"`
   7. Next push includes the resolved version
 Postconditions:
   - No data lost — both versions preserved until explicit resolution
-  - Conflict history recorded in .zetl/sync/log.json
+  - Conflict history recorded in .ztl/sync/log.json
 Failure modes:
   - Conflict left unresolved → subsequent pulls for this file are blocked until resolved
   - Three-way conflict (3+ peers) → each remote version staged separately
@@ -214,7 +214,7 @@ Machine A                                    Machine B
 ┌─────────────────────┐                     ┌─────────────────────┐
 │                     │                     │                     │
 │  ┌───────────────┐  │                     │  ┌───────────────┐  │
-│  │   zetl CLI    │  │                     │  │   zetl CLI    │  │
+│  │   ztl CLI    │  │                     │  │   ztl CLI    │  │
 │  │   (Rust)      │  │                     │  │   (Rust)      │  │
 │  │               │  │                     │  │               │  │
 │  │ index, links, │  │                     │  │ index, links, │  │
@@ -236,7 +236,7 @@ Machine A                                    Machine B
 │  │ - remotes     │  │                     │  │ - remotes     │  │
 │  └───────┬───────┘  │                     │  └───────┬───────┘  │
 │          │          │                     │          │          │
-│   .zetl/sync/       │                     │   .zetl/sync/       │
+│   .ztl/sync/       │                     │   .ztl/sync/       │
 │   ├── state.json    │                     │   ├── state.json    │
 │   ├── bloblin/      │                     │   ├── bloblin/      │
 │   ├── remotes.json  │                     │   ├── remotes.json  │
@@ -245,21 +245,21 @@ Machine A                                    Machine B
 │  vault-a/           │                     │  vault-b/           │
 │  ├── concepts/      │                     │  ├── concepts/      │
 │  ├── projects/      │                     │  ├── references/    │
-│  └── .zetl/         │                     │  └── .zetl/         │
+│  └── .ztl/         │                     │  └── .ztl/         │
 │                     │                     │                     │
 └─────────────────────┘                     └─────────────────────┘
 ```
 
 ### 3.2 Component Responsibilities
 
-**zetl CLI (Rust)** — unchanged for local operations, extended with `sync` subcommand group:
+**ztl CLI (Rust)** — unchanged for local operations, extended with `sync` subcommand group:
 
 | Responsibility | Details |
 | --- | --- |
 | Local vault operations | All existing commands (index, links, backlinks, search, check, etc.) |
-| Sync command dispatch | `zetl sync {start,stop,status,share,pull,push,conflicts,resolve,...}` |
+| Sync command dispatch | `ztl sync {start,stop,status,share,pull,push,conflicts,resolve,...}` |
 | IPC with sidecar | Connects to sidecar via Unix socket, sends commands, receives results |
-| Conflict presentation | `zetl sync conflicts` shows staged conflicts in JSON/table format |
+| Conflict presentation | `ztl sync conflicts` shows staged conflicts in JSON/table format |
 | Merge execution | Writes incoming files to vault, applies merge policy, stages conflicts |
 
 **Goblins Sidecar (Guile Scheme)** — long-running daemon process:
@@ -278,14 +278,14 @@ Machine A                                    Machine B
 | Location | Purpose |
 | --- | --- |
 | `vault/*.md` | Markdown source files (source of truth) |
-| `.zetl/index.json` | zetl's cached link graph (existing) |
-| `.zetl/sync/state.json` | Sync vector clock / last-known state per remote |
-| `.zetl/sync/bloblin/` | Goblins persistence store (capabilities, session state) |
-| `.zetl/sync/remotes.json` | Known remotes (name → sturdyref mapping) |
-| `.zetl/sync/conflicts/` | Staged conflict files awaiting resolution |
-| `.zetl/sync/log.json` | Append-only sync history for auditability |
+| `.ztl/index.json` | ztl's cached link graph (existing) |
+| `.ztl/sync/state.json` | Sync vector clock / last-known state per remote |
+| `.ztl/sync/bloblin/` | Goblins persistence store (capabilities, session state) |
+| `.ztl/sync/remotes.json` | Known remotes (name → sturdyref mapping) |
+| `.ztl/sync/conflicts/` | Staged conflict files awaiting resolution |
+| `.ztl/sync/log.json` | Append-only sync history for auditability |
 
-### 3.3 IPC Protocol (zetl ↔ Sidecar)
+### 3.3 IPC Protocol (ztl ↔ Sidecar)
 
 ```
 ADR-001: IPC Protocol — Syrup over Unix Domain Socket
@@ -293,7 +293,7 @@ ADR-001: IPC Protocol — Syrup over Unix Domain Socket
 Status: Proposed
 
 Context:
-  zetl (Rust) needs to communicate with the Goblins sidecar (Guile).
+  ztl (Rust) needs to communicate with the Goblins sidecar (Guile).
   Three options were evaluated:
 
   A. Full OCapN/CapTP over Unix socket
@@ -325,22 +325,22 @@ Decision:
 
 Consequences:
   + Fast time-to-working-prototype
-  + zetl's Rust implementation stays simple initially
+  + ztl's Rust implementation stays simple initially
   + Sidecar handles all OCapN complexity
   - Two serialization hops for remote operations (JSON → Syrup → OCapN)
-  - Promise pipelining not available to zetl CLI initially
+  - Promise pipelining not available to ztl CLI initially
 ```
 
 **IPC Message Format (JSON-RPC 2.0):**
 
 ```json
-// zetl → sidecar: request
+// ztl → sidecar: request
 {"jsonrpc": "2.0", "method": "sync.pull", "params": {"remote": "alice", "scope": "concepts/"}, "id": 1}
 
-// sidecar → zetl: response
+// sidecar → ztl: response
 {"jsonrpc": "2.0", "result": {"files_received": 3, "conflicts": 1, "conflict_files": ["Knowledge Graph.md"]}, "id": 1}
 
-// sidecar → zetl: error
+// sidecar → ztl: error
 {"jsonrpc": "2.0", "error": {"code": -32001, "message": "Remote unreachable", "data": {"remote": "alice", "last_seen": "2026-02-17T15:30:00Z"}}, "id": 1}
 ```
 
@@ -396,22 +396,22 @@ Consequences:
 
 ```
 1. CREATE — Alice generates a capability for a scope
-   zetl sync share --scope "concepts/" --permissions read
+   ztl sync share --scope "concepts/" --permissions read
    → ocapn://abc123.onion/s/7f8a9b2c...
 
 2. DELEGATE — Alice sends the sturdyref to Bob (out-of-band)
    (email, chat, file, QR code, environment variable)
 
 3. ATTENUATE — Bob can create a weaker capability from the one he holds
-   zetl sync attenuate <sturdyref> --permissions read --expires 7d
+   ztl sync attenuate <sturdyref> --permissions read --expires 7d
    → ocapn://abc123.onion/s/new-weaker-ref...
 
 4. USE — Bob connects and syncs using the capability
-   zetl sync remote add alice <sturdyref>
-   zetl sync pull alice
+   ztl sync remote add alice <sturdyref>
+   ztl sync pull alice
 
 5. REVOKE — Alice revokes Bob's access
-   zetl sync revoke <sturdyref>
+   ztl sync revoke <sturdyref>
    → Next pull by Bob fails with "capability revoked" error
 ```
 
@@ -494,10 +494,10 @@ Bob's sidecar                              Alice's sidecar
      │  8. Apply changes locally:               │
      │     - Write New Note.md to vault         │
      │     - Zettelkasten.md: detect conflict   │
-     │       → stage in .zetl/sync/conflicts/   │
+     │       → stage in .ztl/sync/conflicts/   │
      │     - Delete Old Draft.md (or archive)   │
      │  9. Update sync state                    │
-     │  10. Signal zetl to re-index             │
+     │  10. Signal ztl to re-index             │
      │                                          │
 ```
 
@@ -555,9 +555,9 @@ REQ-001: Sidecar Lifecycle
 
 The CLI SHALL provide commands to start, stop, and query the status
 of the Goblins sidecar process:
-  - `zetl sync start` — launch sidecar daemon
-  - `zetl sync stop` — gracefully terminate sidecar
-  - `zetl sync status` — report sidecar state (running/stopped,
+  - `ztl sync start` — launch sidecar daemon
+  - `ztl sync stop` — gracefully terminate sidecar
+  - `ztl sync status` — report sidecar state (running/stopped,
     connected remotes, pending syncs)
 
 The sidecar SHALL persist its state across restarts via Bloblin.
@@ -571,7 +571,7 @@ Trace:
 REQ-002: Capability Creation and Sharing
 
 The CLI SHALL allow creating scoped capabilities for vault sharing:
-  - `zetl sync share --scope <glob> --permissions <read|write|admin>`
+  - `ztl sync share --scope <glob> --permissions <read|write|admin>`
   - Returns a sturdyref URI that encodes scope, permissions, and
     the sidecar's network address
 
@@ -588,12 +588,12 @@ Trace:
 REQ-003: Remote Management
 
 The CLI SHALL allow registering, listing, and removing remote peers:
-  - `zetl sync remote add <name> <sturdyref>`
-  - `zetl sync remote list`
-  - `zetl sync remote remove <name>`
+  - `ztl sync remote add <name> <sturdyref>`
+  - `ztl sync remote list`
+  - `ztl sync remote remove <name>`
 
 Remote metadata (name, sturdyref, last sync time, status) SHALL be
-persisted in .zetl/sync/remotes.json.
+persisted in .ztl/sync/remotes.json.
 
 Trace:
   - TEST-003
@@ -604,16 +604,16 @@ Trace:
 REQ-004: Pull (Receive Changes)
 
 The CLI SHALL allow pulling changes from a registered remote:
-  - `zetl sync pull <remote> [--scope <glob>]`
+  - `ztl sync pull <remote> [--scope <glob>]`
 
 Pull SHALL:
   a) Connect to the remote sidecar via OCapN
   b) Request a delta since the last known sync generation
   c) Download new and modified files
   d) Write non-conflicting files directly to the vault
-  e) Stage conflicting files in .zetl/sync/conflicts/
+  e) Stage conflicting files in .ztl/sync/conflicts/
   f) Update the sync state (vector clock, generation)
-  g) Trigger zetl re-indexing of affected files
+  g) Trigger ztl re-indexing of affected files
 
 Trace:
   - TEST-004
@@ -624,7 +624,7 @@ Trace:
 REQ-005: Push (Send Changes)
 
 The CLI SHALL allow pushing local changes to a registered remote:
-  - `zetl sync push <remote> [--scope <glob>]`
+  - `ztl sync push <remote> [--scope <glob>]`
 
 Push SHALL:
   a) Compute which local files have changed since last sync
@@ -644,7 +644,7 @@ REQ-006: Conflict Detection and Resolution
 The system SHALL detect conflicts when both peers modify the same
 file between sync points.
 
-Conflicts SHALL be staged in .zetl/sync/conflicts/ with a manifest:
+Conflicts SHALL be staged in .ztl/sync/conflicts/ with a manifest:
   {
     "file": "concepts/Knowledge Graph.md",
     "local_hash": "sha256:...",
@@ -655,8 +655,8 @@ Conflicts SHALL be staged in .zetl/sync/conflicts/ with a manifest:
   }
 
 The CLI SHALL provide:
-  - `zetl sync conflicts` — list all unresolved conflicts
-  - `zetl sync resolve <file> [--accept local|remote|merged]`
+  - `ztl sync conflicts` — list all unresolved conflicts
+  - `ztl sync resolve <file> [--accept local|remote|merged]`
 
 Conflicts SHALL block further sync of the affected file until resolved.
 
@@ -669,10 +669,10 @@ Trace:
 REQ-007: Capability Attenuation and Revocation
 
 Capability holders SHALL be able to create weaker child capabilities:
-  - `zetl sync attenuate <sturdyref> --permissions read [--expires <duration>]`
+  - `ztl sync attenuate <sturdyref> --permissions read [--expires <duration>]`
 
 Capability creators SHALL be able to revoke issued capabilities:
-  - `zetl sync revoke <sturdyref>`
+  - `ztl sync revoke <sturdyref>`
 
 Revocation SHALL take effect on the next connection attempt by the
 revoked peer.
@@ -686,7 +686,7 @@ Trace:
 REQ-008: Sync Auditability
 
 All sync operations SHALL be recorded in an append-only log at
-.zetl/sync/log.json with:
+.ztl/sync/log.json with:
   - Timestamp
   - Operation (pull/push/share/revoke)
   - Remote name
@@ -723,7 +723,7 @@ NFR-003: Offline Resilience
 If the sidecar cannot reach a remote peer, it SHALL:
   a) Queue the sync request
   b) Retry with exponential backoff (1s, 2s, 4s, ..., max 5min)
-  c) Report status via `zetl sync status`
+  c) Report status via `ztl sync status`
   d) Complete the sync when connectivity is restored
 
 No data SHALL be lost due to network interruption.
@@ -732,10 +732,10 @@ No data SHALL be lost due to network interruption.
 ```
 NFR-004: Backward Compatibility
 
-The sync subsystem SHALL be fully additive. Existing zetl commands
+The sync subsystem SHALL be fully additive. Existing ztl commands
 SHALL work identically whether or not the sidecar is running. The
 sidecar SHALL NOT modify the vault index format or any existing
-.zetl/ files.
+.ztl/ files.
 ```
 
 ```
@@ -752,11 +752,11 @@ No plaintext file content SHALL traverse the network.
 ## 5. Contract Specifications (CLI Interface)
 
 ```
-CON-001: zetl sync start / stop / status
+CON-001: ztl sync start / stop / status
 
-zetl sync start [OPTIONS]
-zetl sync stop
-zetl sync status
+ztl sync start [OPTIONS]
+ztl sync stop
+ztl sync status
 
 Options:
   --transport <TYPE>   Network transport: tor | tcp-tls | both [default: tor]
@@ -788,9 +788,9 @@ Verified by: TEST-001
 ```
 
 ```
-CON-002: zetl sync share
+CON-002: ztl sync share
 
-zetl sync share --scope <GLOB> --permissions <PERMS> [OPTIONS]
+ztl sync share --scope <GLOB> --permissions <PERMS> [OPTIONS]
 
 Arguments:
   --scope <GLOB>        Folder or glob pattern relative to vault root
@@ -814,11 +814,11 @@ Verified by: TEST-002
 ```
 
 ```
-CON-003: zetl sync remote {add,list,remove}
+CON-003: ztl sync remote {add,list,remove}
 
-zetl sync remote add <NAME> <STURDYREF>
-zetl sync remote list [--json]
-zetl sync remote remove <NAME>
+ztl sync remote add <NAME> <STURDYREF>
+ztl sync remote list [--json]
+ztl sync remote remove <NAME>
 
 Example output (JSON, list):
 {
@@ -838,9 +838,9 @@ Verified by: TEST-003
 ```
 
 ```
-CON-004: zetl sync pull
+CON-004: ztl sync pull
 
-zetl sync pull <REMOTE> [--scope <GLOB>] [--dry-run]
+ztl sync pull <REMOTE> [--scope <GLOB>] [--dry-run]
 
 Pulls changes from a registered remote.
 --dry-run shows what would change without applying.
@@ -868,9 +868,9 @@ Verified by: TEST-004
 ```
 
 ```
-CON-005: zetl sync push
+CON-005: ztl sync push
 
-zetl sync push <REMOTE> [--scope <GLOB>] [--dry-run]
+ztl sync push <REMOTE> [--scope <GLOB>] [--dry-run]
 
 Pushes local changes to a registered remote.
 
@@ -897,10 +897,10 @@ Verified by: TEST-005
 ```
 
 ```
-CON-006: zetl sync conflicts / resolve
+CON-006: ztl sync conflicts / resolve
 
-zetl sync conflicts [--json]
-zetl sync resolve <FILE> [--accept local|remote]
+ztl sync conflicts [--json]
+ztl sync resolve <FILE> [--accept local|remote]
 
 Example output (JSON, conflicts):
 {
@@ -910,8 +910,8 @@ Example output (JSON, conflicts):
       "local_modified": "2026-02-18T10:30:00Z",
       "remote_modified": "2026-02-18T09:15:00Z",
       "remote_name": "alice",
-      "local_version": ".zetl/sync/conflicts/Knowledge Graph.md.local",
-      "remote_version": ".zetl/sync/conflicts/Knowledge Graph.md.alice"
+      "local_version": ".ztl/sync/conflicts/Knowledge Graph.md.local",
+      "remote_version": ".ztl/sync/conflicts/Knowledge Graph.md.alice"
     }
   ],
   "count": 1
@@ -922,10 +922,10 @@ Verified by: TEST-006
 ```
 
 ```
-CON-007: zetl sync attenuate / revoke
+CON-007: ztl sync attenuate / revoke
 
-zetl sync attenuate <STURDYREF> --permissions <PERMS> [--expires <DURATION>]
-zetl sync revoke <STURDYREF>
+ztl sync attenuate <STURDYREF> --permissions <PERMS> [--expires <DURATION>]
+ztl sync revoke <STURDYREF>
 
 Example output (JSON, attenuate):
 {
@@ -948,16 +948,16 @@ TEST-001: Sidecar Lifecycle
 
 Scenario: Start, query, and stop the sidecar
 Given: No sidecar is running
-When: `zetl sync start` is run
+When: `ztl sync start` is run
 Then:
   - A background process is launched
-  - `zetl sync status` reports running=true with PID
+  - `ztl sync status` reports running=true with PID
   - The process listens on a Unix socket
-When: `zetl sync stop` is run
+When: `ztl sync stop` is run
 Then:
   - The process terminates gracefully
-  - `zetl sync status` reports running=false
-  - State is persisted to .zetl/sync/bloblin/
+  - `ztl sync status` reports running=false
+  - State is persisted to .ztl/sync/bloblin/
 
 Verifies: REQ-001
 ```
@@ -967,7 +967,7 @@ TEST-002: Capability Creation
 
 Scenario: Create a scoped read capability
 Given: Sidecar is running
-When: `zetl sync share --scope "concepts/" --permissions read --expires 7d`
+When: `ztl sync share --scope "concepts/" --permissions read --expires 7d`
 Then:
   - Returns a valid sturdyref URI
   - The sturdyref encodes scope=concepts/, permissions=read, expiry=+7d
@@ -981,10 +981,10 @@ TEST-003: Remote Registration
 
 Scenario: Add, list, and remove a remote
 Given: Sidecar is running, Alice's sturdyref is known
-When: `zetl sync remote add alice <sturdyref>`
-Then: `zetl sync remote list` shows alice with scope and permissions
-When: `zetl sync remote remove alice`
-Then: `zetl sync remote list` shows empty list
+When: `ztl sync remote add alice <sturdyref>`
+Then: `ztl sync remote list` shows alice with scope and permissions
+When: `ztl sync remote remove alice`
+Then: `ztl sync remote list` shows empty list
 
 Verifies: REQ-003
 ```
@@ -994,7 +994,7 @@ TEST-004: Pull — Clean Sync
 
 Scenario: Pull new files from a remote with no conflicts
 Given: Alice's vault has concepts/NewNote.md that Bob doesn't have
-When: Bob runs `zetl sync pull alice`
+When: Bob runs `ztl sync pull alice`
 Then:
   - concepts/NewNote.md appears in Bob's vault
   - Bob's link graph includes the new page after re-indexing
@@ -1010,14 +1010,14 @@ TEST-005: Push — Send Changes
 Scenario: Push local changes to a remote
 Given: Bob has write capability for Alice's concepts/ scope
        Bob creates concepts/BobNote.md locally
-When: Bob runs `zetl sync push alice`
+When: Bob runs `ztl sync push alice`
 Then:
   - Alice's sidecar receives and writes concepts/BobNote.md
   - Push reports files_sent=1, accepted=true
 
 Scenario: Push rejected (read-only capability)
 Given: Bob has only read capability
-When: Bob runs `zetl sync push alice`
+When: Bob runs `ztl sync push alice`
 Then:
   - Exit code 2, error: "capability does not permit write"
 
@@ -1029,14 +1029,14 @@ TEST-006: Conflict Detection and Resolution
 
 Scenario: Both peers modify the same file
 Given: Alice and Bob both modify concepts/Zettelkasten.md after last sync
-When: Bob runs `zetl sync pull alice`
+When: Bob runs `ztl sync pull alice`
 Then:
   - Bob's working copy is NOT overwritten
-  - Alice's version is staged in .zetl/sync/conflicts/Zettelkasten.md.alice
-  - `zetl sync conflicts` reports 1 conflict with both versions' paths
-When: Bob runs `zetl sync resolve "concepts/Zettelkasten.md" --accept local`
+  - Alice's version is staged in .ztl/sync/conflicts/Zettelkasten.md.alice
+  - `ztl sync conflicts` reports 1 conflict with both versions' paths
+When: Bob runs `ztl sync resolve "concepts/Zettelkasten.md" --accept local`
 Then:
-  - Conflict is removed from .zetl/sync/conflicts/
+  - Conflict is removed from .ztl/sync/conflicts/
   - Bob's version is kept, marked as the resolution
   - Next push sends Bob's resolved version
 
@@ -1048,13 +1048,13 @@ TEST-007: Capability Attenuation and Revocation
 
 Scenario: Attenuate a capability
 Given: Alice holds an admin capability for concepts/
-When: Alice runs `zetl sync attenuate <sturdyref> --permissions read --expires 7d`
+When: Alice runs `ztl sync attenuate <sturdyref> --permissions read --expires 7d`
 Then: Returns a new sturdyref with reduced permissions and expiry
 
 Scenario: Revoke a capability
 Given: Alice previously shared a capability with Bob
-When: Alice runs `zetl sync revoke <sturdyref>`
-Then: Bob's next `zetl sync pull` fails with "capability revoked"
+When: Alice runs `ztl sync revoke <sturdyref>`
+Then: Bob's next `ztl sync pull` fails with "capability revoked"
 
 Verifies: REQ-007
 ```
@@ -1064,7 +1064,7 @@ TEST-008: Sync Auditability
 
 Scenario: All operations are logged
 Given: A series of sync operations (share, pull, push, resolve)
-When: .zetl/sync/log.json is inspected
+When: .ztl/sync/log.json is inspected
 Then:
   - Each operation has a timestamped entry
   - Files transferred are listed
@@ -1081,14 +1081,14 @@ Verifies: REQ-008
 ```
 OBS-001: Sync Log
 
-All sync operations SHALL be logged to .zetl/sync/log.json in
+All sync operations SHALL be logged to .ztl/sync/log.json in
 append-only JSON-lines format for post-hoc auditability.
 ```
 
 ```
 OBS-002: Sidecar Health
 
-`zetl sync status` SHALL report:
+`ztl sync status` SHALL report:
   - Process uptime
   - Memory usage
   - Connected remotes and their last-seen timestamps
@@ -1168,7 +1168,7 @@ Exit criteria: If content hashing alone is insufficient, evaluate
 | Phase | Deliverable | Effort | Dependencies |
 | --- | --- | --- | --- |
 | **0. Spikes** | Syrup-rs crate, sidecar prototype, conflict detection test | 3-4 days | Guile 3.0 + Goblins 0.17.0 installed |
-| **1. Local IPC** | zetl ↔ sidecar communication over Unix socket (JSON-RPC) | 2-3 days | Spike results |
+| **1. Local IPC** | ztl ↔ sidecar communication over Unix socket (JSON-RPC) | 2-3 days | Spike results |
 | **2. Sync core** | Pull/push protocol with conflict staging (LAN only, TCP+TLS) | 3-5 days | Phase 1 |
 | **3. Capabilities** | Share, attenuate, revoke commands with folder scopes | 2-3 days | Phase 2 |
 | **4. Tor transport** | Add Tor onion service for internet-wide sync | 1-2 days | Phase 3 |
@@ -1180,8 +1180,8 @@ Total estimated effort: **13-20 days** (including spikes).
 
 ## 10. Open Questions
 
-1. **Should the sidecar be bundled with zetl or installed separately?**
-   Bundling (via `zetl sync install`) simplifies setup but adds a Guile dependency to the zetl distribution. Separate installation keeps zetl pure Rust but requires users to install Guile and Goblins independently. Recommendation: provide an install script (`zetl sync install`) that bootstraps the Guile environment, but keep it optional.
+1. **Should the sidecar be bundled with ztl or installed separately?**
+   Bundling (via `ztl sync install`) simplifies setup but adds a Guile dependency to the ztl distribution. Separate installation keeps ztl pure Rust but requires users to install Guile and Goblins independently. Recommendation: provide an install script (`ztl sync install`) that bootstraps the Guile environment, but keep it optional.
 
 2. **Should deleted files propagate via sync?**
    If Alice deletes a page, should Bob's copy be deleted on next pull? Dangerous — could cause data loss. Options: (a) never propagate deletes, (b) propagate as "tombstone" markers that Bob must confirm, (c) configurable per-remote. Recommendation: option (b), tombstones with explicit confirmation.
@@ -1192,11 +1192,11 @@ Total estimated effort: **13-20 days** (including spikes).
 4. **Should sync support partial file updates (diffs) or always transfer whole files?**
    Whole-file transfer is simpler and sufficient for Markdown files (typically < 50KB). Diff-based transfer saves bandwidth for large files but adds complexity. Recommendation: whole-file transfer initially, add diff support if vaults with large files become a common use case.
 
-5. **What happens when both Goblins and zetl's cache try to write to .zetl/ simultaneously?**
-   The sidecar writes to `.zetl/sync/` while zetl writes to `.zetl/index.json`. These are separate subtrees, so no conflict. The sidecar should NOT modify `index.json`; instead it signals zetl to re-index after writing synced files. Mechanism: write a trigger file (`.zetl/sync/.reindex`) that zetl checks on next invocation.
+5. **What happens when both Goblins and ztl's cache try to write to .ztl/ simultaneously?**
+   The sidecar writes to `.ztl/sync/` while ztl writes to `.ztl/index.json`. These are separate subtrees, so no conflict. The sidecar should NOT modify `index.json`; instead it signals ztl to re-index after writing synced files. Mechanism: write a trigger file (`.ztl/sync/.reindex`) that ztl checks on next invocation.
 
 6. **Is Goblins mature enough for this use case?**
-   Goblins 0.17.0 explicitly warns against production use. However, zetl itself is a 0.1.0 tool — both are in early development. The sidecar architecture isolates Goblins instability: if it crashes, zetl continues working locally. The spikes in §8 will surface any showstopper issues before committing to the full implementation.
+   Goblins 0.17.0 explicitly warns against production use. However, ztl itself is a 0.1.0 tool — both are in early development. The sidecar architecture isolates Goblins instability: if it crashes, ztl continues working locally. The spikes in §8 will surface any showstopper issues before committing to the full implementation.
 
 ---
 

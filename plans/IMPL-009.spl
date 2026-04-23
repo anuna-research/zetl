@@ -1,17 +1,17 @@
 ;; ════════════════════════════════════════════════════════════════════════════
-;; IMPL-009: zetl view — Xanadu-Inspired Transclusion TUI
+;; IMPL-009: ztl view — Xanadu-Inspired Transclusion TUI
 ;; Implementation plan for SPEC-009
 ;; ════════════════════════════════════════════════════════════════════════════
 
 (meta plan
   (id "IMPL-009")
-  (title "zetl view — Xanadu-Inspired Transclusion TUI")
+  (title "ztl view — Xanadu-Inspired Transclusion TUI")
   (version "0.1.0")
   (status "active")
   (created "2026-02-24")
   (author "agent:claude")
   (spec "SPEC-009")
-  (description "Implement zetl view: an interactive TUI that renders the current note in a left pane alongside transcluded context cards in a right pane, connected by a visible bridge column — a terminal-native implementation of Ted Nelson's Xanadu parallel-pages model. Phases: P0 view module scaffold; P1 two-pane layout and main pane; P2 wikilink anchor annotations and color palette; P3 context cards and bridge column; P4 dynamic scroll tracking; P5 focused-link mode, navigation history, backlink toggle; P6 CLI entry point with page picker, no-index fallback, and fuzzy suggestion; P7 terminal degradation (no-color, narrow); P8 debug observability and tests TEST-071–079."))
+  (description "Implement ztl view: an interactive TUI that renders the current note in a left pane alongside transcluded context cards in a right pane, connected by a visible bridge column — a terminal-native implementation of Ted Nelson's Xanadu parallel-pages model. Phases: P0 view module scaffold; P1 two-pane layout and main pane; P2 wikilink anchor annotations and color palette; P3 context cards and bridge column; P4 dynamic scroll tracking; P5 focused-link mode, navigation history, backlink toggle; P6 CLI entry point with page picker, no-index fallback, and fuzzy suggestion; P7 terminal degradation (no-color, narrow); P8 debug observability and tests TEST-071–079."))
 
 ;; ════════════════════════════════════════════════════════════════════════════
 ;; Agents
@@ -30,7 +30,7 @@
 
 (meta task-view-module
   (description "Create src/view/ module (distinct from existing src/tui/). Includes: mod.rs declaring the module; app.rs with ViewApp struct holding state (current_page, scroll_offset, nav_history, context_mode, focus_state); event.rs with the crossterm event loop; terminal.rs with enter_alternate_screen / restore_terminal helpers using crossterm. Wire the module into src/lib.rs and src/main.rs. ratatui + crossterm are already in Cargo.toml (from IMPL-TUI); no new Cargo.toml changes required.")
-  (acceptance "cargo check passes; src/view/ module compiles; a stub ViewApp::run() that opens a blank alternate screen and exits on 'q' works end-to-end; existing zetl commands unaffected"))
+  (acceptance "cargo check passes; src/view/ module compiles; a stub ViewApp::run() that opens a blank alternate screen and exits on 'q' works end-to-end; existing ztl commands unaffected"))
 
 (meta r-ready-view-module
   (description "No blocking dependencies — ratatui and crossterm already present")
@@ -162,7 +162,7 @@
 
 (meta task-scroll-tracking
   (description "Wire the viewport tracking so that every scroll event (j/k/Ctrl-d/Ctrl-u/g/G) triggers a synchronous re-render of both panes and the bridge column within the 16ms target (NFR-024). After each scroll: recompute viewport_start/viewport_end from scroll_offset and main pane height; filter LinkMap to visible_links = links with line_number in viewport; rebuild the context pane with cards for visible_links only; rebuild the bridge column with connectors for visible_links; links that scrolled out of view have their cards removed; newly visible links have cards inserted. The render pipeline is: compute_visible_links → render_main_pane → render_context_pane → render_bridge → flush. REQ-067, NFR-024.")
-  (acceptance "Scrolling past a wikilink removes its card from context pane; scrolling to reveal one adds it. Render completes within 16ms for a note with 50 wikilinks (verified via ZETL_DEBUG_RENDER=1 timing). '↓ N more' count updates dynamically with scroll position."))
+  (acceptance "Scrolling past a wikilink removes its card from context pane; scrolling to reveal one adds it. Render completes within 16ms for a note with 50 wikilinks (verified via ztl_DEBUG_RENDER=1 timing). '↓ N more' count updates dynamically with scroll position."))
 
 (normally r-ready-scroll-tracking
   (and task-scroll-tracking completed-context-cards completed-bridge-column)
@@ -197,7 +197,7 @@
 (given task-nav-history)
 
 (meta task-nav-history
-  (description "Implement in-session navigation history and Enter-to-navigate. ViewApp gains a NavHistory struct holding a Vec<(page_title: String, scroll_offset: usize)> and a history_index: usize. Enter in FocusMode: if the focused link is dead, show a status bar message 'dead link — run zetl index or create the page' and do nothing; otherwise push (current_page, scroll_offset) to history, set current_page = focused link's target, reset scroll_offset = 0, exit FocusMode, reload content and LinkMap for new page. '[' navigates backward: pop to history_index - 1, restore scroll_offset. ']' navigates forward: advance history_index. History depth ≥ 50 entries (Vec truncates oldest on overflow). Status bar updates on every navigation. REQ-069, REQ-071.")
+  (description "Implement in-session navigation history and Enter-to-navigate. ViewApp gains a NavHistory struct holding a Vec<(page_title: String, scroll_offset: usize)> and a history_index: usize. Enter in FocusMode: if the focused link is dead, show a status bar message 'dead link — run ztl index or create the page' and do nothing; otherwise push (current_page, scroll_offset) to history, set current_page = focused link's target, reset scroll_offset = 0, exit FocusMode, reload content and LinkMap for new page. '[' navigates backward: pop to history_index - 1, restore scroll_offset. ']' navigates forward: advance history_index. History depth ≥ 50 entries (Vec truncates oldest on overflow). Status bar updates on every navigation. REQ-069, REQ-071.")
   (acceptance "Navigate A → B → C; press '[' to return to B with scroll position restored; press '[' again to return to A; press ']' to return to B. History depth test: 51 navigations truncate the oldest entry. Dead link Enter shows status message; page does not change."))
 
 (normally r-ready-nav-history
@@ -228,13 +228,13 @@
 ;; Phase 6 — CLI Entry Point, Page Picker, No-Index Fallback, Fuzzy Suggestion
 ;; ════════════════════════════════════════════════════════════════════════════
 
-;; ── Task: zetl view CLI entry point ──────────────────────────────────────
+;; ── Task: ztl view CLI entry point ──────────────────────────────────────
 
 (given task-cli-entry)
 
 (meta task-cli-entry
-  (description "Add 'zetl view [<page>] [--context-lines <N>] [--main-width <pct>]' subcommand to the clap CLI in src/cli.rs. Validate arguments: --context-lines must be 1–20; --main-width must be 30–80. Before launching ViewApp: check stdin is a TTY (use crossterm::terminal::is_raw_mode_enabled or libc isatty()); if not, exit with error code NOT_A_TTY and JSON error message. Render the status bar at the bottom of the terminal showing: 'zetl view │ <page_title> │ <mode> │ [focused_link] │ N links │ j/k scroll  Tab focus  ?'. Implement '?' key to show a keybindings help overlay listing all keybindings from CON-023. Implement 'q' and Ctrl-C to restore terminal and exit 0. Implement Ctrl-R to toggle full-screen context pane overlay in single-pane mode. REQ-062, CON-023.")
-  (acceptance "'zetl view PageA' launches TUI on PageA. 'zetl view' with no arg shows page picker (task-page-picker). '--context-lines 3' limits cards to 3 lines. '--main-width 70' gives main pane 70% width. Non-TTY exits with NOT_A_TTY JSON error. 'q' exits 0 cleanly. '?' shows help overlay. Status bar displays correct page title and link count."))
+  (description "Add 'ztl view [<page>] [--context-lines <N>] [--main-width <pct>]' subcommand to the clap CLI in src/cli.rs. Validate arguments: --context-lines must be 1–20; --main-width must be 30–80. Before launching ViewApp: check stdin is a TTY (use crossterm::terminal::is_raw_mode_enabled or libc isatty()); if not, exit with error code NOT_A_TTY and JSON error message. Render the status bar at the bottom of the terminal showing: 'ztl view │ <page_title> │ <mode> │ [focused_link] │ N links │ j/k scroll  Tab focus  ?'. Implement '?' key to show a keybindings help overlay listing all keybindings from CON-023. Implement 'q' and Ctrl-C to restore terminal and exit 0. Implement Ctrl-R to toggle full-screen context pane overlay in single-pane mode. REQ-062, CON-023.")
+  (acceptance "'ztl view PageA' launches TUI on PageA. 'ztl view' with no arg shows page picker (task-page-picker). '--context-lines 3' limits cards to 3 lines. '--main-width 70' gives main pane 70% width. Non-TTY exits with NOT_A_TTY JSON error. 'q' exits 0 cleanly. '?' shows help overlay. Status bar displays correct page title and link count."))
 
 (normally r-ready-cli-entry
   (and task-cli-entry completed-view-module)
@@ -249,8 +249,8 @@
 (given task-page-picker)
 
 (meta task-page-picker
-  (description "Implement the interactive page picker shown when 'zetl view' is invoked without a <page> argument. Display a full-screen overlay with: a text input field at the top; a scrollable list of all indexed pages below, filtered in real time as the user types (substring match on page title, case-insensitive). Arrow keys or j/k scroll the list; Enter selects the focused page and opens the main TUI on it; Esc or 'q' exits 0 with no output. The '/' key in the main TUI also opens this same picker as an overlay (without closing the current session). REQ-062, CON-023.")
-  (acceptance "Launching 'zetl view' with no arg shows the picker overlay. Typing 'arch' filters to pages containing 'arch'. Enter on selected page opens TUI on that page. Esc exits cleanly. '/' from main TUI opens picker as overlay and returns to the previous page on Esc."))
+  (description "Implement the interactive page picker shown when 'ztl view' is invoked without a <page> argument. Display a full-screen overlay with: a text input field at the top; a scrollable list of all indexed pages below, filtered in real time as the user types (substring match on page title, case-insensitive). Arrow keys or j/k scroll the list; Enter selects the focused page and opens the main TUI on it; Esc or 'q' exits 0 with no output. The '/' key in the main TUI also opens this same picker as an overlay (without closing the current session). REQ-062, CON-023.")
+  (acceptance "Launching 'ztl view' with no arg shows the picker overlay. Typing 'arch' filters to pages containing 'arch'. Enter on selected page opens TUI on that page. Esc exits cleanly. '/' from main TUI opens picker as overlay and returns to the previous page on Esc."))
 
 (normally r-ready-page-picker
   (and task-page-picker completed-cli-entry completed-nav-history)
@@ -265,7 +265,7 @@
 (given task-no-index-fallback)
 
 (meta task-no-index-fallback
-  (description "Implement the no-index graceful fallback (REQ-072). Before opening the TUI: check for the existence of .zetl/index.json (or equivalent per SPEC-006). If missing: display a status message 'Building index…' on stderr (before entering alternate screen); run the SPEC-006 index pipeline in-process (call the same function as 'zetl index'); if indexing succeeds, proceed to open the TUI; if indexing fails, exit non-zero with a plain-text error and JSON error code INDEX_BUILD_FAILED. REQ-072, CON-023.")
+  (description "Implement the no-index graceful fallback (REQ-072). Before opening the TUI: check for the existence of .ztl/index.json (or equivalent per SPEC-006). If missing: display a status message 'Building index…' on stderr (before entering alternate screen); run the SPEC-006 index pipeline in-process (call the same function as 'ztl index'); if indexing succeeds, proceed to open the TUI; if indexing fails, exit non-zero with a plain-text error and JSON error code INDEX_BUILD_FAILED. REQ-072, CON-023.")
   (acceptance "With no index: 'Building index…' message appears; index is built; TUI opens. With a vault that fails to index (e.g. parse error): exits non-zero with INDEX_BUILD_FAILED JSON error. With index already present: no message shown; TUI opens immediately."))
 
 (normally r-ready-no-index-fallback
@@ -282,7 +282,7 @@
 
 (meta task-fuzzy-suggestion
   (description "Implement the page-not-found fuzzy suggestion prompt (REQ-073). When the <page> argument does not match any indexed page title exactly: use the SimHash + Hamming distance matching from SPEC-001 (already implemented in src/simhash.rs) to find the top 5 closest page titles; display them as a numbered selection prompt in a TUI overlay (or plain text if alternate screen not yet entered): '1. <title>  2. <title>  ...' with a 'Select [1-5] or q to quit:' prompt. If the user selects a number 1–5, open the TUI on that page. If the user presses 'q' or Esc, exit 0 with no output. REQ-073, CON-023.")
-  (acceptance "With 'zetl view Architektur' and no exact match: top 5 suggestions appear. Selecting '1' opens TUI on suggestion 1. 'q' exits 0 with no output. With 0 matches: 'No pages found matching X' message and exit 0."))
+  (acceptance "With 'ztl view Architektur' and no exact match: top 5 suggestions appear. Selecting '1' opens TUI on suggestion 1. 'q' exits 0 with no output. With 0 matches: 'No pages found matching X' message and exit 0."))
 
 (normally r-ready-fuzzy-suggestion
   (and task-fuzzy-suggestion completed-cli-entry)
@@ -321,8 +321,8 @@
 (given task-debug-render)
 
 (meta task-debug-render
-  (description "Implement ZETL_DEBUG_RENDER=1 timing output (OBS-012). When this env var is set, emit structured debug lines to stderr (not stdout, not alternate screen). Four event types: startup (index_load_ms, first_frame_ms, page); render (event name, layout_ms, paint_ms, total_ms); navigate (from, to, history_depth); quit (uptime_s, pages_visited, nav_history_depth). Use std::time::Instant for all measurements. startup timing: T0 at process start, T_index after index load, T_first_frame after first terminal write. render timing: instrument the render pipeline from keypress receipt (event dispatch) to flush. navigate timing: on every page transition. quit timing: on 'q' or Ctrl-C. Format: '[zetl view] <event>  <key=val>...' as shown in OBS-012. OBS-012.")
-  (acceptance "With ZETL_DEBUG_RENDER=1: startup line appears after first frame; every scroll event produces a render line; navigation produces a navigate line; quit produces a quit line. Without ZETL_DEBUG_RENDER: no debug output. timing values are non-zero and in plausible ranges."))
+  (description "Implement ztl_DEBUG_RENDER=1 timing output (OBS-012). When this env var is set, emit structured debug lines to stderr (not stdout, not alternate screen). Four event types: startup (index_load_ms, first_frame_ms, page); render (event name, layout_ms, paint_ms, total_ms); navigate (from, to, history_depth); quit (uptime_s, pages_visited, nav_history_depth). Use std::time::Instant for all measurements. startup timing: T0 at process start, T_index after index load, T_first_frame after first terminal write. render timing: instrument the render pipeline from keypress receipt (event dispatch) to flush. navigate timing: on every page transition. quit timing: on 'q' or Ctrl-C. Format: '[ztl view] <event>  <key=val>...' as shown in OBS-012. OBS-012.")
+  (acceptance "With ztl_DEBUG_RENDER=1: startup line appears after first frame; every scroll event produces a render line; navigation produces a navigate line; quit produces a quit line. Without ztl_DEBUG_RENDER: no debug output. timing values are non-zero and in plausible ranges."))
 
 (normally r-ready-debug-render
   (and task-debug-render completed-scroll-tracking completed-nav-history)

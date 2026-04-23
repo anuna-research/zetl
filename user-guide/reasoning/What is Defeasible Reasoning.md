@@ -5,7 +5,7 @@ tags: [reasoning, concepts, primer]
 
 # What is Defeasible Reasoning
 
-A short primer on the kind of logic zetl uses when you ask it to reason over your notes. No symbols, no formal notation — just an explanation of why this flavour of logic suits knowledge work.
+A short primer on the kind of logic ztl uses when you ask it to reason over your notes. No symbols, no formal notation — just an explanation of why this flavour of logic suits knowledge work.
 
 > **Requires `--features reason` at install.** See [[Installation]].
 
@@ -22,9 +22,9 @@ Defeasible reasoning lets you write rules that are **normally** true but **can b
 - *Normally, a release candidate is ready if core features are done, docs are written, and tests pass.*
 - *Except when there is an outstanding critical bug.*
 
-Both rules live in the theory at the same time. When zetl reasons over them, the defeater wins if its conditions hold — the release is blocked. If the bug is later fixed, the block lifts and the conclusion flips. You never rewrote the rules; you just added and removed facts.
+Both rules live in the theory at the same time. When ztl reasons over them, the defeater wins if its conditions hold — the release is blocked. If the bug is later fixed, the block lifts and the conclusion flips. You never rewrote the rules; you just added and removed facts.
 
-This is exactly how thinking about ongoing work feels. "We're on track — unless the client pushes back on the design." "The proposal is done — except we still need a legal review." You already reason this way. zetl just gives you a notation for it.
+This is exactly how thinking about ongoing work feels. "We're on track — unless the client pushes back on the design." "The proposal is done — except we still need a legal review." You already reason this way. ztl just gives you a notation for it.
 
 ## The four conclusion tags
 
@@ -47,11 +47,11 @@ Three reasons:
 
 1. **Beliefs revise.** Your notes are a record of thinking that changes over time. A logic that can downgrade yesterday's conclusion without you rewriting it is a better match for that record.
 2. **Rules have strengths.** When two pages disagree — a design doc says "use Redis", a later benchmark says "use SQLite" — you want the newer, stronger claim to win without silencing the older one. Defeasible logic gives you preference relations for exactly this.
-3. **Tentative answers are legitimate.** Saying "on current evidence, probably yes, but I'd want to check" is how humans actually reason. The `+d` tag is zetl's way of saying the same thing back to you.
+3. **Tentative answers are legitimate.** Saying "on current evidence, probably yes, but I'd want to check" is how humans actually reason. The `+d` tag is ztl's way of saying the same thing back to you.
 
 ## What this enables
 
-Once rules and facts live inside your vault, zetl can do things that static notes cannot:
+Once rules and facts live inside your vault, ztl can do things that static notes cannot:
 
 - Tell you *why* a conclusion holds, tracing it back to the page and line that contributed (see [[Proof Trees]]).
 - Flag contradictions before you notice them (see [[Running Queries]]).

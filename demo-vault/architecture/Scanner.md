@@ -1,6 +1,6 @@
 # Scanner
 
-The scanner is zetl's entry point for understanding a vault. It walks every Markdown file and standalone `.spl` file, extracting [[Wikilinks]] and [[Spindle Lisp]] blocks in a single pass.
+The scanner is ztl's entry point for understanding a vault. It walks every Markdown file and standalone `.spl` file, extracting [[Wikilinks]] and [[Spindle Lisp]] blocks in a single pass.
 
 ## Wikilink extraction
 

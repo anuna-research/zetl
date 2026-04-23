@@ -5,7 +5,7 @@ tags: [writing, organisation, folders]
 
 # Organising Your Vault
 
-zetl is indifferent to how your vault is laid out. Pages resolve by filename,
+ztl is indifferent to how your vault is laid out. Pages resolve by filename,
 not path, so you can reorganise at any time without breaking links.
 
 ## No required structure
@@ -54,7 +54,7 @@ you value predictable paths.
 ```
 
 **Zettelkasten-style.** Timestamped slip-boxes, no folders, atomic notes
-linked into trails. Works, but not required — zetl is not a Zettelkasten
+linked into trails. Works, but not required — ztl is not a Zettelkasten
 tool, just a link-graph tool.
 
 ```
@@ -80,32 +80,32 @@ Because links resolve by filename, moving `Seeing Like a State.md` from
 reference. After the move:
 
 ```bash
-zetl index     # refresh the cached graph
-zetl check     # confirm no dead links
+ztl index     # refresh the cached graph
+ztl check     # confirm no dead links
 ```
 
 Renaming is a little more work — see [[Linking Pages]] for the rename workflow.
 
-## `.zetlignore` — excluding drafts and private files
+## `.ztlignore` — excluding drafts and private files
 
-zetl scans the entire vault root by default. Put files and folders you want
-zetl to ignore into a `.zetlignore` file using gitignore syntax:
+ztl scans the entire vault root by default. Put files and folders you want
+ztl to ignore into a `.ztlignore` file using gitignore syntax:
 
 ```
-# ~/notes/.zetlignore
+# ~/notes/.ztlignore
 drafts/
 private/
 *.tmp
 scratch.md
 ```
 
-Patterns match the vault root. Subdirectory `.zetlignore` files are not
+Patterns match the vault root. Subdirectory `.ztlignore` files are not
 honoured — keep it all in one file at the top.
 
-zetl already excludes `.git/`, `.zetl/`, `node_modules/`, and dotdirs like
-`.obsidian/` by default. Run `zetl build --include-hidden` to include them
-anyway, or `zetl build --exclude 'pattern/'` for a one-off exclusion that
-doesn't touch `.zetlignore`.
+ztl already excludes `.git/`, `.ztl/`, `node_modules/`, and dotdirs like
+`.obsidian/` by default. Run `ztl build --include-hidden` to include them
+anyway, or `ztl build --exclude 'pattern/'` for a one-off exclusion that
+doesn't touch `.ztlignore`.
 
 ## Tags vs folders
 
@@ -128,7 +128,7 @@ browsing; tags scale for cross-cutting queries. See
 Three patterns pull their weight:
 
 - **Titles.** `Zettelkasten Method.md`, not `zettelkasten-method.md`. Human
-  filenames. zetl slugifies at render.
+  filenames. ztl slugifies at render.
 - **Dates.** `2026-04-18` (ISO 8601) sorts right and never confuses month
   order. Use it in journal/meeting filenames.
 - **Uniqueness.** Two pages with the same title on the graph is ambiguous.

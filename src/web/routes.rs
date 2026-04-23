@@ -286,7 +286,7 @@ pub async fn dashboard_handler(
 }
 
 /// Try to serve a file from the public directory. Returns `Some(Response)` if a
-/// matching file exists, `None` otherwise (fall through to zetl rendering).
+/// matching file exists, `None` otherwise (fall through to ztl rendering).
 fn try_serve_public(state: &WebState, url_path: &str) -> Option<Response> {
     let public_dir = state.public_dir.as_ref()?;
 
@@ -382,7 +382,7 @@ pub async fn index_handler(
             let hist_ms = hist_start.elapsed().as_millis();
             if state.verbose {
                 eprintln!(
-                    "[zetl] history-context: vault trend={} points recent={} changes duration_ms={}",
+                    "[ztl] history-context: vault trend={} points recent={} changes duration_ms={}",
                     hist.trend.len(),
                     hist.recent_changes.len(),
                     hist_ms
@@ -440,7 +440,7 @@ pub async fn page_handler(
 
     // Raw-source: /{slug}/index.<ext> returns the original .md (or .fountain,
     // .spl, …) file from the vault, matching the `<out>/{slug}/index.<ext>`
-    // artefact emitted by `zetl build`. Complements /api/pages/{slug}.
+    // artefact emitted by `ztl build`. Complements /api/pages/{slug}.
     if let Some((page_slug, ext)) = slug
         .rsplit_once("/index.")
         .or_else(|| slug.strip_prefix("index.").map(|e| ("", e)))
@@ -656,7 +656,7 @@ pub async fn page_handler(
                               btn.disabled = true;\
                               btn.textContent = 'Requesting...';\
                               try {{\
-                                var csrf = document.cookie.split(';').map(function(c){{return c.trim();}}).find(function(c){{return c.startsWith('zetl_csrf=');}});\
+                                var csrf = document.cookie.split(';').map(function(c){{return c.trim();}}).find(function(c){{return c.startsWith('ztl_csrf=');}});\
                                 var csrfVal = csrf ? csrf.split('=')[1] : '';\
                                 var r = await fetch('/api/access-request', {{\
                                   method: 'POST',\
@@ -740,7 +740,7 @@ pub async fn page_handler(
                     let hist_ms = hist_start.elapsed().as_millis();
                     if state.verbose {
                         eprintln!(
-                            "[zetl] history-context: vault trend={} points recent={} changes duration_ms={}",
+                            "[ztl] history-context: vault trend={} points recent={} changes duration_ms={}",
                             hist.trend.len(),
                             hist.recent_changes.len(),
                             hist_ms
@@ -890,7 +890,7 @@ pub async fn page_handler(
             let hist_ms = hist_start.elapsed().as_millis();
             if state.verbose {
                 eprintln!(
-                    "[zetl] history-context: page {:?} trend={} points created={} duration_ms={}",
+                    "[ztl] history-context: page {:?} trend={} points created={} duration_ms={}",
                     page_name,
                     hist.link_trend.len(),
                     hist.created_at,
@@ -922,7 +922,7 @@ pub async fn page_handler(
             let hist_ms = hist_start.elapsed().as_millis();
             if state.verbose {
                 eprintln!(
-                    "[zetl] history-context: vault trend={} points recent={} changes duration_ms={}",
+                    "[ztl] history-context: vault trend={} points recent={} changes duration_ms={}",
                     hist.trend.len(),
                     hist.recent_changes.len(),
                     hist_ms
@@ -1193,14 +1193,14 @@ pub async fn save_handler(
         .and_then(|token| state.sessions.validate(&token));
 
     if let Some(ref lock) = state.git_commit_lock {
-        // Resolve author from authenticated session, fallback to "zetl".
+        // Resolve author from authenticated session, fallback to "ztl".
         let (author_name, author_id) = if let Some(ref uid) = session_user_id {
             match crate::user::load_profile(&state.vault_root, uid) {
                 Ok(Some(profile)) => (profile.name.clone(), profile.id.clone()),
-                _ => ("zetl".to_string(), "zetl".to_string()),
+                _ => ("ztl".to_string(), "ztl".to_string()),
             }
         } else {
-            ("zetl".to_string(), "zetl".to_string())
+            ("ztl".to_string(), "ztl".to_string())
         };
 
         let custom_message = headers
@@ -1266,10 +1266,10 @@ pub async fn save_handler(
                 let (profile_name, profile_id) = if let Some(ref uid) = session_user_id {
                     match crate::user::load_profile(&state.vault_root, uid) {
                         Ok(Some(p)) => (p.name.clone(), p.id.clone()),
-                        _ => ("zetl".to_string(), "zetl".to_string()),
+                        _ => ("ztl".to_string(), "ztl".to_string()),
                     }
                 } else {
-                    ("zetl".to_string(), "zetl".to_string())
+                    ("ztl".to_string(), "ztl".to_string())
                 };
                 let author_email = format!("{profile_id}@vault");
                 if let Ok(Some(_)) = crate::history::auto_snapshot_as(
@@ -1389,11 +1389,11 @@ pub async fn save_handler(
             let hook_env = hooks::HookEnv {
                 vault_root: vault_root.to_path_buf(),
                 theme: theme.clone(),
-                zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+                ztl_version: env!("CARGO_PKG_VERSION").to_string(),
                 extra_vars: vec![
-                    ("ZETL_SAVED_FILE".into(), rel_path),
-                    ("ZETL_SAVED_PAGE".into(), page_name),
-                    ("ZETL_HOOK_DEPTH".into(), "0".into()),
+                    ("ztl_SAVED_FILE".into(), rel_path),
+                    ("ztl_SAVED_PAGE".into(), page_name),
+                    ("ztl_HOOK_DEPTH".into(), "0".into()),
                 ],
             };
 
@@ -1530,7 +1530,7 @@ pub async fn api_search_handler(
             None => {
                 return (
                     StatusCode::SERVICE_UNAVAILABLE,
-                    "Vector index not available. Run `zetl index` first.",
+                    "Vector index not available. Run `ztl index` first.",
                 )
                     .into_response();
             }
@@ -1985,8 +1985,8 @@ pub async fn print_handler(State(state): State<WebState>) -> Response {
 /// GET /_static/{*path} — Serve static assets with two-tier lookup.
 ///
 /// Lookup order:
-///   1. .zetl/themes/<active-theme>/static/<path>  (per-theme override)
-///   2. .zetl/static/<path>                         (vault-wide fallback)
+///   1. .ztl/themes/<active-theme>/static/<path>  (per-theme override)
+///   2. .ztl/static/<path>                         (vault-wide fallback)
 ///
 /// Returns 404 if neither location has the file (or if the directories don't exist).
 pub async fn static_handler(
@@ -2004,13 +2004,13 @@ pub async fn static_handler(
     }
 
     // Build candidate paths (two-tier lookup)
-    let zetl_dir = state.vault_root.join(".zetl");
+    let ztl_dir = state.vault_root.join(".ztl");
     let candidates: Vec<PathBuf> = {
         let mut c = Vec::with_capacity(2);
         // 1. Theme-specific static dir
         if !state.theme.is_empty() {
             c.push(
-                zetl_dir
+                ztl_dir
                     .join("themes")
                     .join(&state.theme)
                     .join("static")
@@ -2018,7 +2018,7 @@ pub async fn static_handler(
             );
         }
         // 2. Vault-wide static dir
-        c.push(zetl_dir.join("static").join(&req_path));
+        c.push(ztl_dir.join("static").join(&req_path));
         c
     };
 
@@ -2031,11 +2031,11 @@ pub async fn static_handler(
             continue;
         }
 
-        // Safety: ensure canonical path is under .zetl/
-        let Ok(zetl_canonical) = zetl_dir.canonicalize() else {
+        // Safety: ensure canonical path is under .ztl/
+        let Ok(ztl_canonical) = ztl_dir.canonicalize() else {
             continue;
         };
-        if !canonical.starts_with(&zetl_canonical) {
+        if !canonical.starts_with(&ztl_canonical) {
             return StatusCode::NOT_FOUND.into_response();
         }
 
@@ -2469,7 +2469,7 @@ async fn vault_history_handler_inner(State(state): State<WebState>) -> Response 
 
     if state.verbose {
         eprintln!(
-            "[zetl] history-route: path=/_history entries={} duration_ms={}",
+            "[ztl] history-route: path=/_history entries={} duration_ms={}",
             recent_changes.len(),
             start.elapsed().as_millis()
         );
@@ -3467,7 +3467,7 @@ pub async fn passkey_auth_finish_handler(
                 let token = state.sessions.create(&profile.id);
                 let secure = if state.tls { "; Secure" } else { "" };
                 let cookie = format!(
-                    "zetl_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400{secure}"
+                    "ztl_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400{secure}"
                 );
 
                 return (
@@ -4190,7 +4190,7 @@ pub async fn accept_invite_submit_handler(
             .into_response();
     }
 
-    // Inject SPL facts into .zetl/collab/access.spl
+    // Inject SPL facts into .ztl/collab/access.spl
     if let Err(e) = inject_access_spl(vault_root, &user_id, &claims.role, claims.pages.as_deref()) {
         eprintln!("warning: failed to write access.spl: {e}");
     }
@@ -4229,7 +4229,7 @@ fn escape_spl_value(s: &str) -> String {
     out
 }
 
-/// Append SPL access facts for an invited user to `.zetl/collab/access.spl`.
+/// Append SPL access facts for an invited user to `.ztl/collab/access.spl`.
 fn inject_access_spl(
     vault_root: &std::path::Path,
     user_id: &str,
@@ -4238,7 +4238,7 @@ fn inject_access_spl(
 ) -> anyhow::Result<()> {
     use std::io::Write;
 
-    let collab_dir = vault_root.join(".zetl/collab");
+    let collab_dir = vault_root.join(".ztl/collab");
     std::fs::create_dir_all(&collab_dir)?;
     let spl_path = collab_dir.join("access.spl");
 
@@ -4330,7 +4330,7 @@ pub async fn bootstrap_handler(
             let token = state.sessions.create(&profile.id);
             let secure = if state.tls { "; Secure" } else { "" };
             let cookie = format!(
-                "zetl_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400{secure}"
+                "ztl_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400{secure}"
             );
             let location = format!("/passkey/register?user_id={}", profile.id);
             (
@@ -4667,7 +4667,7 @@ pub async fn admin_permissions_handler(
     };
 
     // Load current access.spl assignments
-    let access_path = vault_root.join(".zetl/collab/access.spl");
+    let access_path = vault_root.join(".ztl/collab/access.spl");
     let access_content = std::fs::read_to_string(&access_path).unwrap_or_default();
     let assignments = parse_access_spl_assignments(&access_content);
 
@@ -4795,7 +4795,7 @@ pub async fn admin_permissions_save_handler(
         }
 
         // Remove from access.spl
-        let access_path = vault_root.join(".zetl/collab/access.spl");
+        let access_path = vault_root.join(".ztl/collab/access.spl");
         let content = std::fs::read_to_string(&access_path).unwrap_or_default();
         let new_content: String = content
             .lines()
@@ -4808,7 +4808,7 @@ pub async fn admin_permissions_save_handler(
         // Auto-commit
         if let Some(ref lock) = state.git_commit_lock {
             if let Ok(repo) = lock.lock() {
-                let acl_path = vault_root.join(".zetl/collab/access.spl");
+                let acl_path = vault_root.join(".ztl/collab/access.spl");
                 let user_name = crate::user::load_profile(vault_root, &session.user_id)
                     .ok()
                     .flatten()
@@ -4856,7 +4856,7 @@ pub async fn admin_permissions_save_handler(
 
     // Generate and write access.spl
     let spl_content = generate_access_spl(&permissions, body.visibility_mode.as_deref());
-    let access_path = vault_root.join(".zetl/collab/access.spl");
+    let access_path = vault_root.join(".ztl/collab/access.spl");
 
     // Ensure the directory exists
     if let Some(parent) = access_path.parent() {
@@ -4894,7 +4894,7 @@ pub async fn admin_permissions_save_handler(
     // Auto-commit the change
     if let Some(ref lock) = state.git_commit_lock {
         if let Ok(repo) = lock.lock() {
-            let rel_path = std::path::Path::new(".zetl/collab/access.spl");
+            let rel_path = std::path::Path::new(".ztl/collab/access.spl");
             let user_name = crate::user::load_profile(vault_root, &session.user_id)
                 .ok()
                 .flatten()
@@ -5279,7 +5279,7 @@ pub async fn api_pages_put_handler(
             Err(resp) => return resp,
         }
     } else {
-        ("zetl".to_string(), false)
+        ("ztl".to_string(), false)
     };
 
     let slug = urldecode(&slug);
@@ -5413,7 +5413,7 @@ pub async fn api_pages_put_handler(
         let (author_name, author_id) = match crate::user::load_profile(&state.vault_root, &user_id)
         {
             Ok(Some(profile)) => (profile.name.clone(), profile.id.clone()),
-            _ => ("zetl".to_string(), "zetl".to_string()),
+            _ => ("ztl".to_string(), "ztl".to_string()),
         };
 
         let custom_message = headers
@@ -5491,7 +5491,7 @@ pub async fn api_pages_delete_handler(
             Err(resp) => return resp,
         }
     } else {
-        ("zetl".to_string(), false)
+        ("ztl".to_string(), false)
     };
 
     let slug = urldecode(&slug);
@@ -5536,7 +5536,7 @@ pub async fn api_pages_delete_handler(
         let (author_name, author_id) = match crate::user::load_profile(&state.vault_root, &user_id)
         {
             Ok(Some(profile)) => (profile.name.clone(), profile.id.clone()),
-            _ => ("zetl".to_string(), "zetl".to_string()),
+            _ => ("ztl".to_string(), "ztl".to_string()),
         };
 
         let page_name = slug.rsplit('/').next().unwrap_or(slug);
@@ -5778,7 +5778,7 @@ pub async fn llms_txt_handler(State(state): State<WebState>) -> Response {
 //
 // Mirrors the build-mode `<out-dir>/graph-index.json` asset so themes can
 // fetch a single URL regardless of serve/build. Uses the same pure core
-// (`graph::serialize_graph_index`) as `zetl build` via the shared
+// (`graph::serialize_graph_index`) as `ztl build` via the shared
 // `web::build::build_graph_index_context` helper.
 pub async fn graph_index_handler(State(state): State<WebState>) -> Response {
     let data = state.data.read().unwrap_or_else(|e| e.into_inner());
@@ -6080,11 +6080,11 @@ fn fire_access_request_hook(
     let hook_env = hooks::HookEnv {
         vault_root: vault_root.to_path_buf(),
         theme: theme.to_string(),
-        zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+        ztl_version: env!("CARGO_PKG_VERSION").to_string(),
         extra_vars: vec![
-            ("ZETL_ACCESS_REQUEST_USER".into(), user_id.to_string()),
-            ("ZETL_ACCESS_REQUEST_PAGE".into(), page_slug.to_string()),
-            ("ZETL_HOOK_DEPTH".into(), "0".into()),
+            ("ztl_ACCESS_REQUEST_USER".into(), user_id.to_string()),
+            ("ztl_ACCESS_REQUEST_PAGE".into(), page_slug.to_string()),
+            ("ztl_HOOK_DEPTH".into(), "0".into()),
         ],
     };
 
@@ -6824,7 +6824,7 @@ mod tests {
             passkey_mgr: crate::user::passkey::PasskeyManager::new(
                 "localhost",
                 "http://localhost:3000",
-                "zetl vault",
+                "ztl vault",
             )
             .ok()
             .map(Arc::new),
@@ -6883,7 +6883,7 @@ mod tests {
     #[tokio::test]
     async fn static_serves_from_vault_static() {
         let tmp = tempfile::tempdir().unwrap();
-        let static_dir = tmp.path().join(".zetl/static");
+        let static_dir = tmp.path().join(".ztl/static");
         std::fs::create_dir_all(&static_dir).unwrap();
         std::fs::write(static_dir.join("app.js"), b"console.log('hi');").unwrap();
 
@@ -6900,11 +6900,11 @@ mod tests {
     async fn static_theme_overrides_vault() {
         let tmp = tempfile::tempdir().unwrap();
         // Vault-wide static
-        let vault_static = tmp.path().join(".zetl/static");
+        let vault_static = tmp.path().join(".ztl/static");
         std::fs::create_dir_all(&vault_static).unwrap();
         std::fs::write(vault_static.join("style.css"), b"body{color:red}").unwrap();
         // Theme-specific static (should win)
-        let theme_static = tmp.path().join(".zetl/themes/mytheme/static");
+        let theme_static = tmp.path().join(".ztl/themes/mytheme/static");
         std::fs::create_dir_all(&theme_static).unwrap();
         std::fs::write(theme_static.join("style.css"), b"body{color:blue}").unwrap();
 
@@ -6920,12 +6920,12 @@ mod tests {
     #[tokio::test]
     async fn static_falls_back_to_vault_when_theme_missing() {
         let tmp = tempfile::tempdir().unwrap();
-        let vault_static = tmp.path().join(".zetl/static");
+        let vault_static = tmp.path().join(".ztl/static");
         std::fs::create_dir_all(&vault_static).unwrap();
         std::fs::write(vault_static.join("logo.png"), b"\x89PNG").unwrap();
 
         // Theme dir doesn't have logo.png
-        let theme_static = tmp.path().join(".zetl/themes/mytheme/static");
+        let theme_static = tmp.path().join(".ztl/themes/mytheme/static");
         std::fs::create_dir_all(&theme_static).unwrap();
 
         let state = test_state(tmp.path(), "mytheme");
@@ -6950,9 +6950,9 @@ mod tests {
     #[tokio::test]
     async fn static_rejects_path_traversal() {
         let tmp = tempfile::tempdir().unwrap();
-        // Put a secret file outside .zetl
+        // Put a secret file outside .ztl
         std::fs::write(tmp.path().join("secret.txt"), b"secret").unwrap();
-        let vault_static = tmp.path().join(".zetl/static");
+        let vault_static = tmp.path().join(".ztl/static");
         std::fs::create_dir_all(&vault_static).unwrap();
 
         let state = test_state(tmp.path(), "default");
@@ -6968,7 +6968,7 @@ mod tests {
     #[tokio::test]
     async fn static_serves_nested_path() {
         let tmp = tempfile::tempdir().unwrap();
-        let nested = tmp.path().join(".zetl/static/fonts/sub");
+        let nested = tmp.path().join(".ztl/static/fonts/sub");
         std::fs::create_dir_all(&nested).unwrap();
         std::fs::write(nested.join("inter.woff2"), b"woff2data").unwrap();
 
@@ -6984,7 +6984,7 @@ mod tests {
     #[tokio::test]
     async fn static_no_dirs_returns_404_without_error() {
         let tmp = tempfile::tempdir().unwrap();
-        // No .zetl directory at all
+        // No .ztl directory at all
         let state = test_state(tmp.path(), "default");
         let app = static_router(state);
 
@@ -7084,7 +7084,7 @@ mod tests {
 
         let val: serde_json::Value = serde_json::from_slice(&body).unwrap();
         // Envelope (CON-101)
-        assert_eq!(val["attributes"]["format"], "zetl-graph/v1");
+        assert_eq!(val["attributes"]["format"], "ztl-graph/v1");
         assert_eq!(val["options"]["type"], "directed");
         assert_eq!(val["attributes"]["vault"]["pages"], 1);
         assert_eq!(val["attributes"]["vault"]["links"], 1);

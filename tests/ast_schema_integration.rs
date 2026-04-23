@@ -1,18 +1,18 @@
 //! Schema-validation tests for the Rust AST (SPEC-032 REQ-3202 / TEST-3202).
 //!
 //! Closes the contract between `src/hooks/ast/` and
-//! `tools/zetl-ast-schema-v1.json`: every Rust-constructed document
+//! `tools/ztl-ast-schema-v1.json`: every Rust-constructed document
 //! SHALL serialise to JSON that passes the schema, and every schema-valid
 //! example SHALL deserialise back into an equal Rust value.
 
 use serde_json::{json, Value};
-use zetl::hooks::ast::{
+use ztl::hooks::ast::{
     Block, BlockQuote, Code, CodeBlock, Document, DocumentKind, Embed, Emphasis, Frontmatter,
     Heading, HtmlBlock, HtmlInline, Image, Inline, LineBreak, Link, List, ListItem, Paragraph,
     Position, SoftBreak, SplBlock, Strong, Text, ThematicBreak, Wikilink, AST_VERSION,
 };
 
-const SCHEMA_PATH: &str = "tools/zetl-ast-schema-v1.json";
+const SCHEMA_PATH: &str = "tools/ztl-ast-schema-v1.json";
 
 fn load_schema() -> jsonschema::Validator {
     let bytes =

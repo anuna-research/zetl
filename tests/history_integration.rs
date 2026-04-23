@@ -1,4 +1,4 @@
-//! Integration tests for SPEC-017: zetl history — Invisible Temporal Graph
+//! Integration tests for SPEC-017: ztl history — Invisible Temporal Graph
 //! Navigation via jj-lib.
 //!
 //! Tests in this file require `--features history` to compile.
@@ -20,16 +20,16 @@
 use std::fs;
 use std::path::Path;
 
-use zetl::history::jj_backend::{JjBackend, VcsBackend as _};
+use ztl::history::jj_backend::{JjBackend, VcsBackend as _};
 
 fn write(root: &Path, name: &str, content: &str) {
     fs::write(root.join(name), content).unwrap();
 }
 
-// TEST-080: VCS initialisation stores jj metadata in .zetl/jj/ (REQ-075, ADR-045).
-// Verifies: .zetl/jj/.jj/ created; no .jj/ at vault root; idempotent.
+// TEST-080: VCS initialisation stores jj metadata in .ztl/jj/ (REQ-075, ADR-045).
+// Verifies: .ztl/jj/.jj/ created; no .jj/ at vault root; idempotent.
 #[test]
-fn test_080_vcs_init_creates_zetl_jj_dir() {
+fn test_080_vcs_init_creates_ztl_jj_dir() {
     let dir = tempfile::TempDir::new().unwrap();
     let vault_root = dir.path();
 
@@ -37,10 +37,10 @@ fn test_080_vcs_init_creates_zetl_jj_dir() {
     JjBackend::open_or_init_at_vault_root(vault_root)
         .expect("open_or_init_at_vault_root must succeed on first call");
 
-    // .zetl/jj/.jj/ must exist (jj metadata is inside .zetl/).
+    // .ztl/jj/.jj/ must exist (jj metadata is inside .ztl/).
     assert!(
-        vault_root.join(".zetl/jj/.jj").is_dir(),
-        ".zetl/jj/.jj/ must exist after init"
+        vault_root.join(".ztl/jj/.jj").is_dir(),
+        ".ztl/jj/.jj/ must exist after init"
     );
 
     // .jj/ must NOT exist at the vault root (ADR-045: invisible to users).
@@ -98,7 +98,7 @@ fn test_084_new_file_triggers_snapshot() {
     assert!(s2.is_some(), "adding a file must produce a new snapshot");
 }
 
-// TEST-085: list_changes returns no zetl commits before any snapshot.
+// TEST-085: list_changes returns no ztl commits before any snapshot.
 #[test]
 fn test_085_list_changes_empty_before_snapshot() {
     let dir = tempfile::TempDir::new().unwrap();
@@ -107,7 +107,7 @@ fn test_085_list_changes_empty_before_snapshot() {
     let changes = b.list_changes(100).unwrap();
     assert!(
         changes.is_empty(),
-        "must have no zetl commits before snapshot; got {changes:?}"
+        "must have no ztl commits before snapshot; got {changes:?}"
     );
 }
 
@@ -147,13 +147,13 @@ fn test_087_resolve_change_id_roundtrip() {
 #[test]
 fn test_088_read_file_at_returns_content() {
     let dir = tempfile::TempDir::new().unwrap();
-    write(dir.path(), "note.md", "# Zetl note\n[[backlink]]");
+    write(dir.path(), "note.md", "# ztl note\n[[backlink]]");
     let mut b = JjBackend::open_or_init(dir.path()).unwrap();
     let cid = b.snapshot("note snap").unwrap().unwrap();
     let bytes = b.read_file_at(&cid, "note.md").unwrap();
     assert_eq!(
         String::from_utf8(bytes).unwrap(),
-        "# Zetl note\n[[backlink]]"
+        "# ztl note\n[[backlink]]"
     );
 }
 
@@ -176,7 +176,7 @@ fn test_089_read_file_at_missing_path_errors() {
 // snapshots (REQ-077, CON-024).
 
 use chrono::{FixedOffset, TimeZone as _};
-use zetl::history::core::{parse_time_expr, resolve_snapshot, TimeExpr};
+use ztl::history::core::{parse_time_expr, resolve_snapshot, TimeExpr};
 
 // TEST-090: parse_time_expr resolves ISO 8601 and relative forms correctly.
 #[test]
@@ -276,8 +276,8 @@ fn test_091_resolve_snapshot_against_real_jj() {
 
 use std::path::PathBuf;
 use std::time::SystemTime;
-use zetl::history::cache::HistoricalIndexCache;
-use zetl::types::ParsedFile;
+use ztl::history::cache::HistoricalIndexCache;
+use ztl::types::ParsedFile;
 
 fn dummy_parsed_file(name: &str) -> ParsedFile {
     ParsedFile {
@@ -338,7 +338,7 @@ fn test_097_historical_cache_format_matches_index_json() {
 
     let path = dir
         .path()
-        .join(".zetl/history")
+        .join(".ztl/history")
         .join(format!("{hash}.json"));
     let content = std::fs::read_to_string(&path).unwrap();
     let v: serde_json::Value = serde_json::from_str(&content).unwrap();
@@ -369,7 +369,7 @@ fn test_098_historical_cache_lru_eviction() {
     }
 
     // Count surviving files.
-    let history_dir = dir.path().join(".zetl/history");
+    let history_dir = dir.path().join(".ztl/history");
     let count = std::fs::read_dir(&history_dir)
         .unwrap()
         .filter_map(|e| e.ok())
@@ -435,7 +435,7 @@ fn test_092_auto_snapshot_description_contains_hash() {
 
     let hash = "a".repeat(64);
     let result =
-        zetl::history::auto_snapshot(dir.path(), Some(&hash)).expect("auto_snapshot must not fail");
+        ztl::history::auto_snapshot(dir.path(), Some(&hash)).expect("auto_snapshot must not fail");
     assert!(
         result.is_some(),
         "auto_snapshot must create a commit for new content"
@@ -460,14 +460,14 @@ fn test_093_auto_snapshot_deduplicates_same_hash() {
 
     let hash = "b".repeat(64);
 
-    let first = zetl::history::auto_snapshot(dir.path(), Some(&hash))
+    let first = ztl::history::auto_snapshot(dir.path(), Some(&hash))
         .expect("first auto_snapshot must not fail");
     assert!(first.is_some(), "first call must produce a commit");
 
     // Add a new file — jj tree hash changes, but vault_root_hash is still the
     // same (caller controls it). The Merkle deduplication must win.
     write(dir.path(), "new.md", "# New file");
-    let second = zetl::history::auto_snapshot(dir.path(), Some(&hash))
+    let second = ztl::history::auto_snapshot(dir.path(), Some(&hash))
         .expect("second auto_snapshot must not fail");
     assert!(
         second.is_none(),
@@ -494,12 +494,12 @@ fn test_094_auto_snapshot_new_commit_on_hash_change() {
     let hash1 = "c".repeat(64);
     let hash2 = "d".repeat(64);
 
-    let first = zetl::history::auto_snapshot(dir.path(), Some(&hash1))
+    let first = ztl::history::auto_snapshot(dir.path(), Some(&hash1))
         .expect("first auto_snapshot must not fail");
     assert!(first.is_some(), "first call must produce a commit");
 
     write(dir.path(), "note.md", "# Version two");
-    let second = zetl::history::auto_snapshot(dir.path(), Some(&hash2))
+    let second = ztl::history::auto_snapshot(dir.path(), Some(&hash2))
         .expect("second auto_snapshot must not fail");
     assert!(
         second.is_some(),
@@ -528,10 +528,10 @@ fn test_094_auto_snapshot_new_commit_on_hash_change() {
 // TEST-100: extract_vault_root_hash_from_description parses a valid description.
 #[test]
 fn test_100_extract_hash_from_description_valid() {
-    use zetl::history::core::extract_vault_root_hash_from_description;
+    use ztl::history::core::extract_vault_root_hash_from_description;
 
     let hash = "a".repeat(64);
-    let desc = format!("zetl-snapshot vault_root_hash={hash}");
+    let desc = format!("ztl-snapshot vault_root_hash={hash}");
     let result = extract_vault_root_hash_from_description(&desc);
     assert_eq!(
         result,
@@ -543,10 +543,10 @@ fn test_100_extract_hash_from_description_valid() {
 // TEST-101: extract_vault_root_hash_from_description returns None for missing hash.
 #[test]
 fn test_101_extract_hash_from_description_missing() {
-    use zetl::history::core::extract_vault_root_hash_from_description;
+    use ztl::history::core::extract_vault_root_hash_from_description;
 
     assert!(
-        extract_vault_root_hash_from_description("zetl-snapshot").is_none(),
+        extract_vault_root_hash_from_description("ztl-snapshot").is_none(),
         "plain snapshot description without hash must return None"
     );
     assert!(
@@ -570,9 +570,9 @@ fn test_101_extract_hash_from_description_missing() {
 #[test]
 fn test_102_pit_resolve_and_cache_roundtrip() {
     use chrono::{FixedOffset, TimeZone as _};
-    use zetl::history::cache::HistoricalIndexCache;
-    use zetl::history::core::{extract_vault_root_hash_from_description, resolve_snapshot};
-    use zetl::history::jj_backend::ChangeInfo;
+    use ztl::history::cache::HistoricalIndexCache;
+    use ztl::history::core::{extract_vault_root_hash_from_description, resolve_snapshot};
+    use ztl::history::jj_backend::ChangeInfo;
 
     let hash1 = "1".repeat(64);
     let hash2 = "2".repeat(64);
@@ -587,7 +587,7 @@ fn test_102_pit_resolve_and_cache_roundtrip() {
             change_id: "bbbbbbbbbbbb".to_owned(),
             commit_id: "deadbeef0002".to_owned(),
             timestamp: ts2,
-            description: format!("zetl-snapshot vault_root_hash={hash2}"),
+            description: format!("ztl-snapshot vault_root_hash={hash2}"),
             author_name: "test".to_string(),
             author_email: "test@example".to_string(),
         },
@@ -595,7 +595,7 @@ fn test_102_pit_resolve_and_cache_roundtrip() {
             change_id: "aaaaaaaaaaaa".to_owned(),
             commit_id: "deadbeef0001".to_owned(),
             timestamp: ts1,
-            description: format!("zetl-snapshot vault_root_hash={hash1}"),
+            description: format!("ztl-snapshot vault_root_hash={hash1}"),
             author_name: "test".to_string(),
             author_email: "test@example".to_string(),
         },
@@ -619,7 +619,7 @@ fn test_102_pit_resolve_and_cache_roundtrip() {
 
     // Use dummy ParsedFile (reuse helper from the cache tests in the same file).
     use std::time::SystemTime;
-    let dummy = zetl::types::ParsedFile {
+    let dummy = ztl::types::ParsedFile {
         path: std::path::PathBuf::from("v1-note.md"),
         page_name: "v1-note".to_owned(),
         links: vec![],
@@ -644,13 +644,13 @@ fn test_102_pit_resolve_and_cache_roundtrip() {
 
 // TEST-103: cmd_index stores the current index in HistoricalIndexCache (REQ-079).
 //
-// Simulates the `zetl index` auto_snapshot + cache-store flow:
+// Simulates the `ztl index` auto_snapshot + cache-store flow:
 // auto_snapshot produces a commit with vault_root_hash in the description;
 // the historical cache is then populated so future --at queries can load it.
 #[test]
 fn test_103_auto_snapshot_and_cache_are_linked() {
-    use zetl::history::cache::HistoricalIndexCache;
-    use zetl::history::core::extract_vault_root_hash_from_description;
+    use ztl::history::cache::HistoricalIndexCache;
+    use ztl::history::core::extract_vault_root_hash_from_description;
 
     let dir = tempfile::TempDir::new().unwrap();
     let vault_root = dir.path();
@@ -659,10 +659,10 @@ fn test_103_auto_snapshot_and_cache_are_linked() {
     let hash = "e".repeat(64);
 
     // Simulate what cmd_index does: auto_snapshot then store in cache.
-    zetl::history::auto_snapshot(vault_root, Some(&hash)).expect("auto_snapshot must succeed");
+    ztl::history::auto_snapshot(vault_root, Some(&hash)).expect("auto_snapshot must succeed");
 
     let cache = HistoricalIndexCache::with_default_capacity();
-    let files = vec![zetl::types::ParsedFile {
+    let files = vec![ztl::types::ParsedFile {
         path: vault_root.join("note.md"),
         page_name: "note".to_owned(),
         links: vec![],
@@ -689,12 +689,12 @@ fn test_103_auto_snapshot_and_cache_are_linked() {
     );
 }
 
-// TEST-093: Graceful degradation — NO_HISTORY when .zetl/jj/ is absent (REQ-084, NFR-031).
+// TEST-093: Graceful degradation — NO_HISTORY when .ztl/jj/ is absent (REQ-084, NFR-031).
 //
 // Verifies:
-//   1. open_history fails with NO_HISTORY when .zetl/jj/ is absent.
-//   2. auto_snapshot (zetl index) silently re-initialises .zetl/jj/.
-//   3. After re-init, open_history succeeds but list_changes returns no zetl
+//   1. open_history fails with NO_HISTORY when .ztl/jj/ is absent.
+//   2. auto_snapshot (ztl index) silently re-initialises .ztl/jj/.
+//   3. After re-init, open_history succeeds but list_changes returns no ztl
 //      snapshots (SNAPSHOT_NOT_FOUND semantics: history starts now).
 //   4. Non-temporal operations are unaffected by the missing jj dir.
 #[test]
@@ -703,15 +703,15 @@ fn test_graceful_degradation_no_history() {
     let vault_root = dir.path();
     write(vault_root, "page.md", "# PageA\n[[PageB]]");
 
-    // Step 1: .zetl/jj/ does not exist — open_history must fail with NO_HISTORY.
+    // Step 1: .ztl/jj/ does not exist — open_history must fail with NO_HISTORY.
     assert!(
-        !vault_root.join(".zetl/jj").exists(),
-        ".zetl/jj/ must not exist before any index"
+        !vault_root.join(".ztl/jj").exists(),
+        ".ztl/jj/ must not exist before any index"
     );
 
-    let result = zetl::history::open_history(vault_root);
+    let result = ztl::history::open_history(vault_root);
     match result {
-        Ok(_) => panic!("open_history must fail when .zetl/jj/ is absent"),
+        Ok(_) => panic!("open_history must fail when .ztl/jj/ is absent"),
         Err(e) => {
             let err_msg = e.to_string();
             assert!(
@@ -721,19 +721,19 @@ fn test_graceful_degradation_no_history() {
         }
     }
 
-    // Step 2: auto_snapshot (equivalent to `zetl index`) silently re-initialises.
-    zetl::history::auto_snapshot(vault_root, None)
-        .expect("auto_snapshot must succeed even when .zetl/jj/ was absent");
+    // Step 2: auto_snapshot (equivalent to `ztl index`) silently re-initialises.
+    ztl::history::auto_snapshot(vault_root, None)
+        .expect("auto_snapshot must succeed even when .ztl/jj/ was absent");
 
-    // .zetl/jj/ must now exist.
+    // .ztl/jj/ must now exist.
     assert!(
-        vault_root.join(".zetl/jj").exists(),
-        ".zetl/jj/ must exist after auto_snapshot re-initialises"
+        vault_root.join(".ztl/jj").exists(),
+        ".ztl/jj/ must exist after auto_snapshot re-initialises"
     );
 
-    // Step 3: open_history now succeeds, but no zetl-labelled snapshots exist yet
+    // Step 3: open_history now succeeds, but no ztl-labelled snapshots exist yet
     // (the auto_snapshot above was the first, so we have 0 prior snapshots).
-    let backend = zetl::history::open_history(vault_root)
+    let backend = ztl::history::open_history(vault_root)
         .expect("open_history must succeed after re-initialisation");
     let changes = backend.list_changes(100).unwrap();
     // The first auto_snapshot creates at most 1 commit; either 0 or 1 is valid here.
@@ -764,7 +764,7 @@ fn test_104_watch_mode_snapshot_deduplication() {
     // Step 1: Initial file content → first snapshot.
     write(vault_root, "page.md", "# Hello\n[[OtherPage]]");
     let hash_v1 = "a".repeat(64);
-    let result = zetl::history::auto_snapshot(vault_root, Some(&hash_v1))
+    let result = ztl::history::auto_snapshot(vault_root, Some(&hash_v1))
         .expect("first watch-cycle snapshot must succeed");
     assert!(
         result.is_some(),
@@ -774,7 +774,7 @@ fn test_104_watch_mode_snapshot_deduplication() {
     // Step 2: File unchanged (same vault_root_hash) → deduplication fires.
     // This mirrors what cmd_watch does: auto_snapshot is called but vault content
     // is semantically identical (Merkle root unchanged), so no new commit is made.
-    let result2 = zetl::history::auto_snapshot(vault_root, Some(&hash_v1))
+    let result2 = ztl::history::auto_snapshot(vault_root, Some(&hash_v1))
         .expect("second call with same hash must not error");
     assert!(
         result2.is_none(),
@@ -784,7 +784,7 @@ fn test_104_watch_mode_snapshot_deduplication() {
     // Step 3: File modified → new hash → new snapshot.
     write(vault_root, "page.md", "# Hello\n[[OtherPage]]\n[[NewLink]]");
     let hash_v2 = "b".repeat(64);
-    let result3 = zetl::history::auto_snapshot(vault_root, Some(&hash_v2))
+    let result3 = ztl::history::auto_snapshot(vault_root, Some(&hash_v2))
         .expect("third snapshot with new hash must succeed");
     assert!(
         result3.is_some(),
@@ -795,25 +795,25 @@ fn test_104_watch_mode_snapshot_deduplication() {
     let backend = JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
     let changes = backend.list_changes(10).unwrap();
     // We expect 2 committed snapshots (hash_v1 and hash_v2).
-    let zetl_snapshots: Vec<_> = changes
+    let ztl_snapshots: Vec<_> = changes
         .iter()
-        .filter(|c| c.description.starts_with("zetl-snapshot"))
+        .filter(|c| c.description.starts_with("ztl-snapshot"))
         .collect();
     assert_eq!(
-        zetl_snapshots.len(),
+        ztl_snapshots.len(),
         2,
-        "must have exactly 2 zetl snapshots: got {:?}",
-        zetl_snapshots
+        "must have exactly 2 ztl snapshots: got {:?}",
+        ztl_snapshots
             .iter()
             .map(|c| &c.description)
             .collect::<Vec<_>>()
     );
     assert!(
-        zetl_snapshots[0].description.contains(&hash_v2),
+        ztl_snapshots[0].description.contains(&hash_v2),
         "most recent snapshot must embed hash_v2"
     );
     assert!(
-        zetl_snapshots[1].description.contains(&hash_v1),
+        ztl_snapshots[1].description.contains(&hash_v1),
         "older snapshot must embed hash_v1"
     );
 }
@@ -821,9 +821,9 @@ fn test_104_watch_mode_snapshot_deduplication() {
 // ── History CLI tests (REQ-080, CON-025) ──────────────────────────────────────
 // TEST-105–108 cover task-history-cli.
 
-fn make_parsed_file(page_name: &str, link_targets: &[&str]) -> zetl::types::ParsedFile {
-    use zetl::types::WikiLink;
-    zetl::types::ParsedFile {
+fn make_parsed_file(page_name: &str, link_targets: &[&str]) -> ztl::types::ParsedFile {
+    use ztl::types::WikiLink;
+    ztl::types::ParsedFile {
         path: format!("{page_name}.md").into(),
         page_name: page_name.to_owned(),
         links: link_targets
@@ -850,7 +850,7 @@ fn make_parsed_file(page_name: &str, link_targets: &[&str]) -> zetl::types::Pars
 // TEST-105: compute_graph_delta detects added and removed pages and link counts.
 #[test]
 fn test_105_compute_graph_delta_basic() {
-    use zetl::history::core::compute_graph_delta;
+    use ztl::history::core::compute_graph_delta;
 
     let before = vec![
         make_parsed_file("alpha", &["beta"]),
@@ -873,7 +873,7 @@ fn test_105_compute_graph_delta_basic() {
 // TEST-106: compute_graph_delta handles page removals and link decreases.
 #[test]
 fn test_106_compute_graph_delta_removals() {
-    use zetl::history::core::compute_graph_delta;
+    use ztl::history::core::compute_graph_delta;
 
     let before = vec![
         make_parsed_file("a", &["b", "c"]),
@@ -897,7 +897,7 @@ fn test_106_compute_graph_delta_removals() {
 // TEST-107: collapse_timeline deduplicates identical vault_root_hash entries.
 #[test]
 fn test_107_collapse_timeline_deduplicates() {
-    use zetl::history::core::{collapse_timeline, HistoryEntry};
+    use ztl::history::core::{collapse_timeline, HistoryEntry};
 
     let entries = vec![
         HistoryEntry {
@@ -948,9 +948,9 @@ fn test_107_collapse_timeline_deduplicates() {
 #[test]
 fn test_108_build_vault_history_with_cache() {
     use chrono::{FixedOffset, TimeZone as _};
-    use zetl::history::cache::HistoricalIndexCache;
-    use zetl::history::core::build_vault_history;
-    use zetl::history::jj_backend::VcsBackend as _;
+    use ztl::history::cache::HistoricalIndexCache;
+    use ztl::history::core::build_vault_history;
+    use ztl::history::jj_backend::VcsBackend as _;
 
     let dir = tempfile::TempDir::new().unwrap();
     let vault_root = dir.path();
@@ -958,7 +958,7 @@ fn test_108_build_vault_history_with_cache() {
     // Snapshot 1: one page, no links.
     write(vault_root, "alpha.md", "# Alpha");
     let hash1 = "1".repeat(64);
-    zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
 
     let cache = HistoricalIndexCache::with_default_capacity();
     cache
@@ -968,8 +968,8 @@ fn test_108_build_vault_history_with_cache() {
     // Snapshot 2: two pages, alpha links to beta.
     write(vault_root, "beta.md", "# Beta");
     let hash2 = "2".repeat(64);
-    let _desc2 = format!("zetl-snapshot vault_root_hash={hash2}");
-    zetl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
+    let _desc2 = format!("ztl-snapshot vault_root_hash={hash2}");
+    ztl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
 
     cache
         .store(
@@ -1017,14 +1017,14 @@ fn test_108_build_vault_history_with_cache() {
 // ── Page history tests (REQ-081, CON-025) ─────────────────────────────────────
 // TEST-109–112 cover task-history-page-cli.
 
-use zetl::history::core::extract_page_history;
+use ztl::history::core::extract_page_history;
 
 // TEST-109: extract_page_history returns only snapshots where page neighbourhood
 // changed (forward links added/removed) — identical snapshots are collapsed.
 #[test]
 fn test_109_extract_page_history_link_changes() {
-    use zetl::history::cache::HistoricalIndexCache;
-    use zetl::history::jj_backend::VcsBackend as _;
+    use ztl::history::cache::HistoricalIndexCache;
+    use ztl::history::jj_backend::VcsBackend as _;
 
     let dir = tempfile::TempDir::new().unwrap();
     let vault_root = dir.path();
@@ -1032,7 +1032,7 @@ fn test_109_extract_page_history_link_changes() {
     // Snapshot 1: page exists, 0 links.
     write(vault_root, "target.md", "# Target");
     let hash1 = "a".repeat(64);
-    zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
     let cache = HistoricalIndexCache::with_default_capacity();
     cache
         .store(vault_root, &hash1, &[make_parsed_file("target", &[])])
@@ -1046,7 +1046,7 @@ fn test_109_extract_page_history_link_changes() {
         "target.md",
         "# Target (unchanged neighbourhood)",
     );
-    zetl::history::auto_snapshot(vault_root, Some(&hash1b)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&hash1b)).unwrap();
     // Intentionally store the same neighbourhood to simulate "no change".
     cache
         .store(vault_root, &hash1b, &[make_parsed_file("target", &[])])
@@ -1055,7 +1055,7 @@ fn test_109_extract_page_history_link_changes() {
     // Snapshot 3: target now links to alpha.
     write(vault_root, "alpha.md", "# Alpha");
     let hash2 = "c".repeat(64);
-    zetl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
     cache
         .store(
             vault_root,
@@ -1070,10 +1070,10 @@ fn test_109_extract_page_history_link_changes() {
     let backend = JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
     let snapshots = backend.list_changes(100).unwrap();
 
-    let files_per_snapshot: Vec<Option<Vec<zetl::types::ParsedFile>>> = snapshots
+    let files_per_snapshot: Vec<Option<Vec<ztl::types::ParsedFile>>> = snapshots
         .iter()
         .map(|snap| {
-            use zetl::history::core::extract_vault_root_hash_from_description;
+            use ztl::history::core::extract_vault_root_hash_from_description;
             let hash = extract_vault_root_hash_from_description(&snap.description)?;
             let file_map = cache.load(vault_root, &hash).ok().flatten()?;
             Some(file_map.into_values().collect())
@@ -1113,8 +1113,8 @@ fn test_109_extract_page_history_link_changes() {
 // removed from the vault between two snapshots.
 #[test]
 fn test_110_extract_page_history_disappearance() {
-    use zetl::history::cache::HistoricalIndexCache;
-    use zetl::history::jj_backend::VcsBackend as _;
+    use ztl::history::cache::HistoricalIndexCache;
+    use ztl::history::jj_backend::VcsBackend as _;
 
     let dir = tempfile::TempDir::new().unwrap();
     let vault_root = dir.path();
@@ -1123,7 +1123,7 @@ fn test_110_extract_page_history_disappearance() {
     write(vault_root, "target.md", "# Target\n[[linked]]");
     write(vault_root, "linked.md", "# Linked");
     let hash1 = "1".repeat(64);
-    zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
     let cache = HistoricalIndexCache::with_default_capacity();
     cache
         .store(
@@ -1139,7 +1139,7 @@ fn test_110_extract_page_history_disappearance() {
     // Snapshot 2: target removed from vault.
     std::fs::remove_file(vault_root.join("target.md")).unwrap();
     let hash2 = "2".repeat(64);
-    zetl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
     cache
         .store(vault_root, &hash2, &[make_parsed_file("linked", &[])])
         .unwrap();
@@ -1147,10 +1147,10 @@ fn test_110_extract_page_history_disappearance() {
     let backend = JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
     let snapshots = backend.list_changes(100).unwrap();
 
-    let files_per_snapshot: Vec<Option<Vec<zetl::types::ParsedFile>>> = snapshots
+    let files_per_snapshot: Vec<Option<Vec<ztl::types::ParsedFile>>> = snapshots
         .iter()
         .map(|snap| {
-            use zetl::history::core::extract_vault_root_hash_from_description;
+            use ztl::history::core::extract_vault_root_hash_from_description;
             let hash = extract_vault_root_hash_from_description(&snap.description)?;
             let file_map = cache.load(vault_root, &hash).ok().flatten()?;
             Some(file_map.into_values().collect())
@@ -1184,8 +1184,8 @@ fn test_110_extract_page_history_disappearance() {
 // forward-link changes (another page starts/stops linking to the target).
 #[test]
 fn test_111_extract_page_history_backlink_change() {
-    use zetl::history::cache::HistoricalIndexCache;
-    use zetl::history::jj_backend::VcsBackend as _;
+    use ztl::history::cache::HistoricalIndexCache;
+    use ztl::history::jj_backend::VcsBackend as _;
 
     let dir = tempfile::TempDir::new().unwrap();
     let vault_root = dir.path();
@@ -1194,7 +1194,7 @@ fn test_111_extract_page_history_backlink_change() {
     write(vault_root, "target.md", "# Target");
     write(vault_root, "source.md", "# Source");
     let hash1 = "d".repeat(64);
-    zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
     let cache = HistoricalIndexCache::with_default_capacity();
     cache
         .store(
@@ -1210,7 +1210,7 @@ fn test_111_extract_page_history_backlink_change() {
     // Snapshot 2: source now links to target (backlink added).
     write(vault_root, "source.md", "# Source\n[[target]]");
     let hash2 = "e".repeat(64);
-    zetl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
     cache
         .store(
             vault_root,
@@ -1225,10 +1225,10 @@ fn test_111_extract_page_history_backlink_change() {
     let backend = JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
     let snapshots = backend.list_changes(100).unwrap();
 
-    let files_per_snapshot: Vec<Option<Vec<zetl::types::ParsedFile>>> = snapshots
+    let files_per_snapshot: Vec<Option<Vec<ztl::types::ParsedFile>>> = snapshots
         .iter()
         .map(|snap| {
-            use zetl::history::core::extract_vault_root_hash_from_description;
+            use ztl::history::core::extract_vault_root_hash_from_description;
             let hash = extract_vault_root_hash_from_description(&snap.description)?;
             let file_map = cache.load(vault_root, &hash).ok().flatten()?;
             Some(file_map.into_values().collect())
@@ -1262,8 +1262,8 @@ fn test_111_extract_page_history_backlink_change() {
 // the newest N changed snapshots.
 #[test]
 fn test_112_extract_page_history_limit() {
-    use zetl::history::cache::HistoricalIndexCache;
-    use zetl::history::jj_backend::VcsBackend as _;
+    use ztl::history::cache::HistoricalIndexCache;
+    use ztl::history::jj_backend::VcsBackend as _;
 
     let dir = tempfile::TempDir::new().unwrap();
     let vault_root = dir.path();
@@ -1277,7 +1277,7 @@ fn test_112_extract_page_history_limit() {
 
     for (i, (hash, links)) in hashes.iter().zip(link_sets.iter()).enumerate() {
         write(vault_root, "p.md", format!("# P v{i}").as_str());
-        zetl::history::auto_snapshot(vault_root, Some(hash)).unwrap();
+        ztl::history::auto_snapshot(vault_root, Some(hash)).unwrap();
         let mut files = vec![make_parsed_file("p", links)];
         for t in *links {
             files.push(make_parsed_file(t, &[]));
@@ -1288,10 +1288,10 @@ fn test_112_extract_page_history_limit() {
     let backend = JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
     let snapshots = backend.list_changes(100).unwrap();
 
-    let files_per_snapshot: Vec<Option<Vec<zetl::types::ParsedFile>>> = snapshots
+    let files_per_snapshot: Vec<Option<Vec<ztl::types::ParsedFile>>> = snapshots
         .iter()
         .map(|snap| {
-            use zetl::history::core::extract_vault_root_hash_from_description;
+            use ztl::history::core::extract_vault_root_hash_from_description;
             let hash = extract_vault_root_hash_from_description(&snap.description)?;
             let file_map = cache.load(vault_root, &hash).ok().flatten()?;
             Some(file_map.into_values().collect())
@@ -1328,9 +1328,9 @@ fn test_113_change_info_commit_id_is_hex() {
     let vault_root = dir.path();
 
     write(vault_root, "a.md", "# A");
-    zetl::history::auto_snapshot(vault_root, Some("hash_a")).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some("hash_a")).unwrap();
     write(vault_root, "b.md", "# B");
-    zetl::history::auto_snapshot(vault_root, Some("hash_b")).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some("hash_b")).unwrap();
 
     let backend = JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
     let snapshots = backend.list_changes(100).unwrap();
@@ -1359,7 +1359,7 @@ fn test_114_single_snapshot_has_no_previous() {
     let vault_root = dir.path();
 
     write(vault_root, "only.md", "# Only page");
-    zetl::history::auto_snapshot(vault_root, Some("only_hash")).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some("only_hash")).unwrap();
 
     let backend = JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
     let snapshots = backend.list_changes(100).unwrap();
@@ -1377,37 +1377,37 @@ fn test_114_single_snapshot_has_no_previous() {
 
 /// Build a minimal WebState for a vault directory.
 #[cfg(test)]
-fn build_history_web_state(vault_root: &std::path::Path) -> zetl::web::WebState {
+fn build_history_web_state(vault_root: &std::path::Path) -> ztl::web::WebState {
     use std::sync::{Arc, RwLock};
-    use zetl::search_index::SearchIndex;
-    use zetl::web::engine::TemplateEngine;
+    use ztl::search_index::SearchIndex;
+    use ztl::web::engine::TemplateEngine;
 
-    let data = zetl::web::reindex(vault_root).expect("reindex");
+    let data = ztl::web::reindex(vault_root).expect("reindex");
     let search_index = SearchIndex::build(vault_root, &data.files).expect("build search index");
-    zetl::web::WebState {
+    ztl::web::WebState {
         data: Arc::new(RwLock::new(data)),
         vault_root: Arc::new(vault_root.to_path_buf()),
         search_index: Arc::new(search_index),
         engine: Arc::new(TemplateEngine::new(vault_root, "default", true, false)),
         theme: "default".to_string(),
         verbose: false,
-        sessions: zetl::web::session::SessionStore::new(),
-        recovery_challenges: Arc::new(zetl::user::recovery::RecoveryChallengeStore::new()),
+        sessions: ztl::web::session::SessionStore::new(),
+        recovery_challenges: Arc::new(ztl::user::recovery::RecoveryChallengeStore::new()),
         mnemonic_shown: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
         bootstrap_used: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        rate_limiters: zetl::web::rate_limit::AuthRateLimiters::new(),
+        rate_limiters: ztl::web::rate_limit::AuthRateLimiters::new(),
         collab: false,
         #[cfg(feature = "reason")]
-        acl_cache: std::sync::Arc::new(std::sync::Mutex::new(zetl::web::AclCache::new())),
+        acl_cache: std::sync::Arc::new(std::sync::Mutex::new(ztl::web::AclCache::new())),
         git_commit_lock: None,
-        ws_hub: zetl::web::ws::WsHub::new(),
-        ticket_store: zetl::web::ws::TicketStore::new(),
-        crdt_store: zetl::web::ws::CrdtDocStore::new(Arc::new(vault_root.to_path_buf())),
-        wal_store: Arc::new(zetl::web::wal::WalStore::new(vault_root)),
-        pending_writes: zetl::web::fs_watch::PendingWrites::new(),
+        ws_hub: ztl::web::ws::WsHub::new(),
+        ticket_store: ztl::web::ws::TicketStore::new(),
+        crdt_store: ztl::web::ws::CrdtDocStore::new(Arc::new(vault_root.to_path_buf())),
+        wal_store: Arc::new(ztl::web::wal::WalStore::new(vault_root)),
+        pending_writes: ztl::web::fs_watch::PendingWrites::new(),
         passkey_mgr: None,
         public_dir: None,
-        scan_options: zetl::scanner::ScanOptions::default(),
+        scan_options: ztl::scanner::ScanOptions::default(),
         tls: false,
         trust_proxy: false,
     }
@@ -1415,9 +1415,9 @@ fn build_history_web_state(vault_root: &std::path::Path) -> zetl::web::WebState 
 
 /// Build a Router with only the four history API routes.
 #[cfg(test)]
-fn history_api_router(state: zetl::web::WebState) -> axum::Router {
+fn history_api_router(state: ztl::web::WebState) -> axum::Router {
     use axum::routing::get;
-    use zetl::web::routes::{
+    use ztl::web::routes::{
         api_history_at_handler, api_history_diff_handler, api_history_log_handler,
         api_history_page_handler,
     };
@@ -1476,7 +1476,7 @@ async fn test_115_api_history_no_history_returns_404() {
 // TEST-116: GET /api/history returns 200 JSON when snapshots exist (REQ-087).
 #[tokio::test]
 async fn test_116_api_history_returns_timeline() {
-    use zetl::history::cache::HistoricalIndexCache;
+    use ztl::history::cache::HistoricalIndexCache;
 
     let dir = tempfile::TempDir::new().unwrap();
     let vault_root = dir.path();
@@ -1485,7 +1485,7 @@ async fn test_116_api_history_returns_timeline() {
     write(vault_root, "beta.md", "# Beta");
 
     let hash1 = "a".repeat(64);
-    zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
     let cache = HistoricalIndexCache::with_default_capacity();
     cache
         .store(
@@ -1584,7 +1584,7 @@ async fn test_118_api_history_diff_missing_params_returns_400() {
 // TEST-119: sample_trend with fewer entries than max returns all in oldest-first order.
 #[test]
 fn test_119_sample_trend_fewer_than_max() {
-    use zetl::history::core::{sample_trend, HistoryEntry};
+    use ztl::history::core::{sample_trend, HistoryEntry};
 
     let entries = vec![
         HistoryEntry {
@@ -1617,7 +1617,7 @@ fn test_119_sample_trend_fewer_than_max() {
 // TEST-120: sample_trend with more entries than max samples uniformly oldest-first.
 #[test]
 fn test_120_sample_trend_uniform_sampling() {
-    use zetl::history::core::{sample_trend, HistoryEntry};
+    use ztl::history::core::{sample_trend, HistoryEntry};
 
     // Build 10 entries newest-first with pages = index+1.
     let entries: Vec<HistoryEntry> = (0..10)
@@ -1646,7 +1646,7 @@ fn test_120_sample_trend_uniform_sampling() {
 // TEST-121: sample_trend on empty input returns empty vec.
 #[test]
 fn test_121_sample_trend_empty_input() {
-    use zetl::history::core::sample_trend;
+    use ztl::history::core::sample_trend;
     assert!(sample_trend(&[], 30).is_empty());
     assert!(sample_trend(&[], 0).is_empty());
 }
@@ -1655,7 +1655,7 @@ fn test_121_sample_trend_empty_input() {
 #[test]
 fn test_122_build_vault_history_context_empty_snapshots() {
     use chrono::{FixedOffset, TimeZone as _};
-    use zetl::history::core::build_vault_history_context;
+    use ztl::history::core::build_vault_history_context;
 
     let dir = tempfile::TempDir::new().unwrap();
     let now = FixedOffset::east_opt(0)
@@ -1670,9 +1670,9 @@ fn test_122_build_vault_history_context_empty_snapshots() {
 #[test]
 fn test_123_build_vault_history_context_populated() {
     use chrono::{FixedOffset, TimeZone as _};
-    use zetl::history::cache::HistoricalIndexCache;
-    use zetl::history::core::build_vault_history_context;
-    use zetl::history::jj_backend::VcsBackend as _;
+    use ztl::history::cache::HistoricalIndexCache;
+    use ztl::history::core::build_vault_history_context;
+    use ztl::history::jj_backend::VcsBackend as _;
 
     let dir = tempfile::TempDir::new().unwrap();
     let vault_root = dir.path();
@@ -1684,7 +1684,7 @@ fn test_123_build_vault_history_context_populated() {
     let hash1 = "a".repeat(64);
     let hash2 = "b".repeat(64);
 
-    zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
     let cache = HistoricalIndexCache::with_default_capacity();
     cache
         .store(
@@ -1697,7 +1697,7 @@ fn test_123_build_vault_history_context_populated() {
         )
         .unwrap();
 
-    zetl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
     cache
         .store(
             vault_root,
@@ -1711,7 +1711,7 @@ fn test_123_build_vault_history_context_populated() {
         .unwrap();
 
     let backend =
-        zetl::history::jj_backend::JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
+        ztl::history::jj_backend::JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
     let snapshots = backend.list_changes(100).unwrap();
 
     let now = FixedOffset::east_opt(0)
@@ -1741,7 +1741,7 @@ fn test_123_build_vault_history_context_populated() {
 fn test_124_build_template_history_context_no_workspace() {
     let dir = tempfile::TempDir::new().unwrap();
     // No jj workspace initialised.
-    let result = zetl::history::build_template_history_context(dir.path());
+    let result = ztl::history::build_template_history_context(dir.path());
     assert!(
         result.is_none(),
         "must return None when no workspace exists"
@@ -1751,12 +1751,12 @@ fn test_124_build_template_history_context_no_workspace() {
 // TEST-125: vault.history is null in template context when history unavailable (REQ-085).
 #[test]
 fn test_125_vault_history_null_when_no_history() {
-    use zetl::web::context::{StatsContext, VaultContext};
-    use zetl::web::engine::TemplateEngine;
+    use ztl::web::context::{StatsContext, VaultContext};
+    use ztl::web::engine::TemplateEngine;
 
     let tmp = tempfile::TempDir::new().unwrap();
     // Custom template that outputs vault.history as JSON.
-    let theme_dir = tmp.path().join(".zetl/themes/hist-test");
+    let theme_dir = tmp.path().join(".ztl/themes/hist-test");
     std::fs::create_dir_all(&theme_dir).unwrap();
     std::fs::write(
         theme_dir.join("index.html"),
@@ -1791,12 +1791,12 @@ fn test_125_vault_history_null_when_no_history() {
 // TEST-126: vault.history fields are accessible in template context when history exists (REQ-085).
 #[test]
 fn test_126_vault_history_populated_in_template() {
-    use zetl::history::core::{TrendPoint, VaultHistoryContext};
-    use zetl::web::context::{StatsContext, VaultContext};
-    use zetl::web::engine::TemplateEngine;
+    use ztl::history::core::{TrendPoint, VaultHistoryContext};
+    use ztl::web::context::{StatsContext, VaultContext};
+    use ztl::web::engine::TemplateEngine;
 
     let tmp = tempfile::TempDir::new().unwrap();
-    let theme_dir = tmp.path().join(".zetl/themes/hist-test2");
+    let theme_dir = tmp.path().join(".ztl/themes/hist-test2");
     std::fs::create_dir_all(&theme_dir).unwrap();
     std::fs::write(
         theme_dir.join("index.html"),
@@ -1853,7 +1853,7 @@ fn test_126_vault_history_populated_in_template() {
 #[test]
 fn test_127_build_page_history_context_none_when_no_history() {
     use chrono::{FixedOffset, TimeZone as _};
-    use zetl::history::core::build_page_history_context;
+    use ztl::history::core::build_page_history_context;
 
     let now = FixedOffset::east_opt(0)
         .unwrap()
@@ -1871,9 +1871,9 @@ fn test_128_build_page_history_context_summary_fields() {
     use chrono::{FixedOffset, TimeZone as _};
     use std::path::PathBuf;
     use std::time::SystemTime;
-    use zetl::history::core::build_page_history_context;
-    use zetl::history::jj_backend::ChangeInfo;
-    use zetl::types::{ParsedFile, WikiLink};
+    use ztl::history::core::build_page_history_context;
+    use ztl::history::jj_backend::ChangeInfo;
+    use ztl::types::{ParsedFile, WikiLink};
 
     fn ts(y: i32, m: u32, d: u32) -> chrono::DateTime<FixedOffset> {
         FixedOffset::east_opt(0)
@@ -1887,7 +1887,7 @@ fn test_128_build_page_history_context_summary_fields() {
             change_id: id.to_owned(),
             commit_id: "deadbeef0000".to_owned(),
             timestamp: t,
-            description: "zetl-snapshot".to_owned(),
+            description: "ztl-snapshot".to_owned(),
             author_name: "test".to_string(),
             author_email: "test@example".to_string(),
         }
@@ -1964,9 +1964,9 @@ fn test_129_sample_page_trend_oldest_first() {
     use chrono::{FixedOffset, TimeZone as _};
     use std::path::PathBuf;
     use std::time::SystemTime;
-    use zetl::history::core::build_page_history_context;
-    use zetl::history::jj_backend::ChangeInfo;
-    use zetl::types::{ParsedFile, WikiLink};
+    use ztl::history::core::build_page_history_context;
+    use ztl::history::jj_backend::ChangeInfo;
+    use ztl::types::{ParsedFile, WikiLink};
 
     fn ts(d: u32) -> chrono::DateTime<FixedOffset> {
         FixedOffset::east_opt(0)
@@ -1980,7 +1980,7 @@ fn test_129_sample_page_trend_oldest_first() {
             change_id: id.to_owned(),
             commit_id: "c0ffee".to_owned(),
             timestamp: ts(d),
-            description: "zetl-snapshot".to_owned(),
+            description: "ztl-snapshot".to_owned(),
             author_name: "test".to_string(),
             author_email: "test@example".to_string(),
         }
@@ -2043,11 +2043,11 @@ fn test_129_sample_page_trend_oldest_first() {
 // TEST-130: page.history is null in template when history field is Null (REQ-086).
 #[test]
 fn test_130_page_history_null_in_template() {
-    use zetl::web::context::{PageContext, StatsContext, VaultContext};
-    use zetl::web::engine::TemplateEngine;
+    use ztl::web::context::{PageContext, StatsContext, VaultContext};
+    use ztl::web::engine::TemplateEngine;
 
     let tmp = tempfile::TempDir::new().unwrap();
-    let theme_dir = tmp.path().join(".zetl/themes/phist-null");
+    let theme_dir = tmp.path().join(".ztl/themes/phist-null");
     std::fs::create_dir_all(&theme_dir).unwrap();
     std::fs::write(
         theme_dir.join("page.html"),
@@ -2098,12 +2098,12 @@ fn test_130_page_history_null_in_template() {
 // TEST-131: page.history fields are accessible in template when populated (REQ-086).
 #[test]
 fn test_131_page_history_populated_in_template() {
-    use zetl::history::core::{PageHistoryContext, PageTrendPoint};
-    use zetl::web::context::{PageContext, StatsContext, VaultContext};
-    use zetl::web::engine::TemplateEngine;
+    use ztl::history::core::{PageHistoryContext, PageTrendPoint};
+    use ztl::web::context::{PageContext, StatsContext, VaultContext};
+    use ztl::web::engine::TemplateEngine;
 
     let tmp = tempfile::TempDir::new().unwrap();
-    let theme_dir = tmp.path().join(".zetl/themes/phist-set");
+    let theme_dir = tmp.path().join(".ztl/themes/phist-set");
     std::fs::create_dir_all(&theme_dir).unwrap();
     std::fs::write(
         theme_dir.join("page.html"),
@@ -2175,8 +2175,8 @@ fn test_131_page_history_populated_in_template() {
 #[test]
 fn test_132_resolve_backlink_since_earliest_timestamp() {
     use chrono::{FixedOffset, TimeZone as _};
-    use zetl::history::core::resolve_backlink_since;
-    use zetl::history::jj_backend::ChangeInfo;
+    use ztl::history::core::resolve_backlink_since;
+    use ztl::history::jj_backend::ChangeInfo;
 
     let utc = FixedOffset::east_opt(0).unwrap();
     let ts1 = utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
@@ -2214,7 +2214,7 @@ fn test_132_resolve_backlink_since_earliest_timestamp() {
     // snap1 (oldest): source has no link to target yet.
     // snap2: source starts linking to target — this is the earliest occurrence.
     // snap3: source still links to target.
-    let fps: Vec<Option<Vec<zetl::types::ParsedFile>>> = vec![
+    let fps: Vec<Option<Vec<ztl::types::ParsedFile>>> = vec![
         Some(vec![make_parsed_file("source", &["target"])]), // snap3
         Some(vec![make_parsed_file("source", &["target"])]), // snap2 — earliest
         Some(vec![make_parsed_file("source", &[])]),         // snap1 — no link
@@ -2233,8 +2233,8 @@ fn test_132_resolve_backlink_since_earliest_timestamp() {
 #[test]
 fn test_133_resolve_backlink_since_none_when_no_link() {
     use chrono::{FixedOffset, TimeZone as _};
-    use zetl::history::core::resolve_backlink_since;
-    use zetl::history::jj_backend::ChangeInfo;
+    use ztl::history::core::resolve_backlink_since;
+    use ztl::history::jj_backend::ChangeInfo;
 
     let utc = FixedOffset::east_opt(0).unwrap();
     let ts1 = utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
@@ -2248,7 +2248,7 @@ fn test_133_resolve_backlink_since_none_when_no_link() {
         author_email: "test@example".to_string(),
     }];
     // source links to a different page, never to target.
-    let fps: Vec<Option<Vec<zetl::types::ParsedFile>>> =
+    let fps: Vec<Option<Vec<ztl::types::ParsedFile>>> =
         vec![Some(vec![make_parsed_file("source", &["other-page"])])];
 
     let result = resolve_backlink_since("source", "target", &snapshots, &fps);
@@ -2262,8 +2262,8 @@ fn test_133_resolve_backlink_since_none_when_no_link() {
 #[test]
 fn test_134_resolve_backlink_since_none_for_missing_cache() {
     use chrono::{FixedOffset, TimeZone as _};
-    use zetl::history::core::resolve_backlink_since;
-    use zetl::history::jj_backend::ChangeInfo;
+    use ztl::history::core::resolve_backlink_since;
+    use ztl::history::jj_backend::ChangeInfo;
 
     let utc = FixedOffset::east_opt(0).unwrap();
     let ts1 = utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
@@ -2277,7 +2277,7 @@ fn test_134_resolve_backlink_since_none_for_missing_cache() {
         author_email: "test@example".to_string(),
     }];
     // No cached index for any snapshot.
-    let fps: Vec<Option<Vec<zetl::types::ParsedFile>>> = vec![None];
+    let fps: Vec<Option<Vec<ztl::types::ParsedFile>>> = vec![None];
 
     let result = resolve_backlink_since("source", "target", &snapshots, &fps);
     assert!(
@@ -2293,8 +2293,8 @@ fn test_134_resolve_backlink_since_none_for_missing_cache() {
 #[test]
 fn test_135_hook_history_null_when_no_history() {
     let dir = tempfile::TempDir::new().unwrap();
-    // No .zetl/jj/ directory → open_history fails → must return Null.
-    let result = zetl::history::build_hook_history_context(dir.path());
+    // No .ztl/jj/ directory → open_history fails → must return Null.
+    let result = ztl::history::build_hook_history_context(dir.path());
     assert!(
         result.is_null(),
         "must be null when no history is available; got {result:?}"
@@ -2305,7 +2305,7 @@ fn test_135_hook_history_null_when_no_history() {
 // newest, and vault_root_hash after two distinct snapshots (REQ-090).
 #[test]
 fn test_136_hook_history_basic_fields() {
-    use zetl::history::cache::HistoricalIndexCache;
+    use ztl::history::cache::HistoricalIndexCache;
 
     let dir = tempfile::TempDir::new().unwrap();
     let vault_root = dir.path();
@@ -2314,10 +2314,10 @@ fn test_136_hook_history_basic_fields() {
     let hash2 = "2".repeat(64);
 
     write(vault_root, "alpha.md", "# Alpha");
-    zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
 
     write(vault_root, "beta.md", "# Beta");
-    zetl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
 
     let cache = HistoricalIndexCache::with_default_capacity();
     cache
@@ -2334,7 +2334,7 @@ fn test_136_hook_history_basic_fields() {
         )
         .unwrap();
 
-    let result = zetl::history::build_hook_history_context(vault_root);
+    let result = ztl::history::build_hook_history_context(vault_root);
     assert!(
         !result.is_null(),
         "must not be null when history is available"
@@ -2367,7 +2367,7 @@ fn test_136_hook_history_basic_fields() {
 // TEST-137: build_hook_history_context delta reflects changes between two snapshots (REQ-090).
 #[test]
 fn test_137_hook_history_delta_reflects_changes() {
-    use zetl::history::cache::HistoricalIndexCache;
+    use ztl::history::cache::HistoricalIndexCache;
 
     let dir = tempfile::TempDir::new().unwrap();
     let vault_root = dir.path();
@@ -2377,11 +2377,11 @@ fn test_137_hook_history_delta_reflects_changes() {
 
     // Snapshot 1: one page, no links.
     write(vault_root, "page_a.md", "# A");
-    zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
 
     // Snapshot 2: page_a gains a link to page_b; page_b added.
     write(vault_root, "page_b.md", "# B");
-    zetl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
 
     let cache = HistoricalIndexCache::with_default_capacity();
     cache
@@ -2398,7 +2398,7 @@ fn test_137_hook_history_delta_reflects_changes() {
         )
         .unwrap();
 
-    let result = zetl::history::build_hook_history_context(vault_root);
+    let result = ztl::history::build_hook_history_context(vault_root);
     assert!(
         !result.is_null(),
         "must not be null when history is available"
@@ -2427,7 +2427,7 @@ fn test_137_hook_history_delta_reflects_changes() {
 // PageHistoryContext directly and checks the serialised payload.
 #[test]
 fn test_138_serialize_history_index_structure() {
-    use zetl::history::core::{
+    use ztl::history::core::{
         serialize_history_index, PageHistoryContext, PageHistoryEntry, PageTrendPoint, TrendPoint,
         VaultHistoryContext,
     };
@@ -2519,7 +2519,7 @@ fn test_138_serialize_history_index_structure() {
 // TEST-139: serialize_history_index resamples page link_trend to ≤10 points (REQ-088).
 #[test]
 fn test_139_serialize_history_index_resamples_link_trend() {
-    use zetl::history::core::{
+    use ztl::history::core::{
         serialize_history_index, PageHistoryContext, PageTrendPoint, TrendPoint,
         VaultHistoryContext,
     };
@@ -2596,12 +2596,12 @@ fn test_nfr_026_snapshot_overhead_bounded() {
 
     // Seed the workspace with one real snapshot.
     let seed_hash = "0".repeat(64);
-    zetl::history::auto_snapshot(dir.path(), Some(&seed_hash)).unwrap();
+    ztl::history::auto_snapshot(dir.path(), Some(&seed_hash)).unwrap();
 
     // Measure 10 consecutive no-op calls (same hash → deduplication; no new commit).
     let start = std::time::Instant::now();
     for _ in 0..10 {
-        zetl::history::auto_snapshot(dir.path(), Some(&seed_hash)).unwrap();
+        ztl::history::auto_snapshot(dir.path(), Some(&seed_hash)).unwrap();
     }
     let elapsed_ms = start.elapsed().as_millis();
     let per_call_ms = elapsed_ms / 10;
@@ -2683,17 +2683,17 @@ fn test_nfr_029_cache_miss_latency() {
     }
     let h1 = "a".repeat(64);
     let h2 = "b".repeat(64);
-    zetl::history::auto_snapshot(vault_root, Some(&h1)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&h1)).unwrap();
     write(vault_root, "page00.md", "# Page 0 updated");
-    zetl::history::auto_snapshot(vault_root, Some(&h2)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&h2)).unwrap();
 
     let backend =
-        zetl::history::jj_backend::JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
+        ztl::history::jj_backend::JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
     let snapshots = backend.list_changes(100).unwrap();
     let now = chrono::Utc::now().fixed_offset();
 
     let t1 = std::time::Instant::now();
-    let _ = zetl::history::core::build_vault_history_context(&snapshots, vault_root, now);
+    let _ = ztl::history::core::build_vault_history_context(&snapshots, vault_root, now);
     let query_elapsed = t1.elapsed();
 
     assert!(
@@ -2718,9 +2718,9 @@ fn test_nfr_029_cache_miss_latency() {
 fn test_nfr_030_binary_size_delta() {
     // Documented procedure for NFR-030 verification (ADR-044):
     //   $ cargo build --release 2>/dev/null
-    //   $ SIZE_BASE=$(stat -f%z target/release/zetl)
+    //   $ SIZE_BASE=$(stat -f%z target/release/ztl)
     //   $ cargo build --release --features history 2>/dev/null
-    //   $ SIZE_HIST=$(stat -f%z target/release/zetl)
+    //   $ SIZE_HIST=$(stat -f%z target/release/ztl)
     //   $ DELTA=$(( (SIZE_HIST - SIZE_BASE) / 1024 / 1024 ))
     //   $ [ $DELTA -le 15 ] && echo PASS || echo "FAIL: ${DELTA}MB"
 }
@@ -2740,7 +2740,7 @@ fn test_nfr_030_binary_size_delta() {
 // the 500 KB target.
 #[test]
 fn test_nfr_032_history_index_size_bound() {
-    use zetl::history::core::{
+    use ztl::history::core::{
         serialize_history_index, PageHistoryContext, PageTrendPoint, TrendPoint,
         VaultHistoryContext,
     };
@@ -2836,15 +2836,15 @@ fn test_nfr_033_template_context_build_latency() {
     let h1 = "1".repeat(64);
     let h2 = "2".repeat(64);
     let h3 = "3".repeat(64);
-    zetl::history::auto_snapshot(vault_root, Some(&h1)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&h1)).unwrap();
     write(
         vault_root,
         "page00.md",
         "# Page 0 updated\n[[page01]]\n[[page02]]",
     );
-    zetl::history::auto_snapshot(vault_root, Some(&h2)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&h2)).unwrap();
     write(vault_root, "page01.md", "# Page 1 updated\n[[page03]]");
-    zetl::history::auto_snapshot(vault_root, Some(&h3)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&h3)).unwrap();
 
     // Populate the historical index cache for all three snapshots.
     let cache = HistoricalIndexCache::with_default_capacity();
@@ -2861,16 +2861,16 @@ fn test_nfr_033_template_context_build_latency() {
     cache.store(vault_root, &h3, &base_files).unwrap();
 
     let backend =
-        zetl::history::jj_backend::JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
+        ztl::history::jj_backend::JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
     let snapshots = backend.list_changes(100).unwrap();
     let now = chrono::Utc::now().fixed_offset();
 
     // Pre-load the files_per_snapshot slice (mirrors what cmd_build does).
-    let files_per_snapshot: Vec<Option<Vec<zetl::types::ParsedFile>>> = snapshots
+    let files_per_snapshot: Vec<Option<Vec<ztl::types::ParsedFile>>> = snapshots
         .iter()
         .map(|snap| {
             let hash =
-                zetl::history::core::extract_vault_root_hash_from_description(&snap.description);
+                ztl::history::core::extract_vault_root_hash_from_description(&snap.description);
             hash.and_then(|h| cache.load(vault_root, &h).ok().flatten())
                 .map(|m| m.into_values().collect())
         })
@@ -2879,12 +2879,12 @@ fn test_nfr_033_template_context_build_latency() {
     let start = std::time::Instant::now();
 
     // Build vault context (mirrors `build_template_history_context`).
-    let _ = zetl::history::core::build_vault_history_context(&snapshots, vault_root, now);
+    let _ = ztl::history::core::build_vault_history_context(&snapshots, vault_root, now);
 
     // Build page context for every page (mirrors per-page `build_template_page_history_context`).
     for i in 0..50_u32 {
         let page_name = format!("page{i:02}");
-        let _ = zetl::history::core::build_page_history_context(
+        let _ = ztl::history::core::build_page_history_context(
             &page_name,
             &snapshots,
             &files_per_snapshot,
@@ -2906,7 +2906,7 @@ fn test_nfr_033_template_context_build_latency() {
 fn test_140_build_history_index_json_no_history() {
     let dir = tempfile::TempDir::new().unwrap();
     // No jj workspace initialised → history unavailable.
-    let result = zetl::history::build_history_index_json(dir.path(), &[]);
+    let result = ztl::history::build_history_index_json(dir.path(), &[]);
     assert!(
         result.is_none(),
         "must return None when history is unavailable"
@@ -2916,7 +2916,7 @@ fn test_140_build_history_index_json_no_history() {
 // TEST-141: build_history_index_json produces valid JSON with vault and pages (REQ-088).
 #[test]
 fn test_141_build_history_index_json_with_history() {
-    use zetl::history::cache::HistoricalIndexCache;
+    use ztl::history::cache::HistoricalIndexCache;
 
     let dir = tempfile::TempDir::new().unwrap();
     let vault_root = dir.path();
@@ -2926,9 +2926,9 @@ fn test_141_build_history_index_json_with_history() {
     let hash1 = "c".repeat(64);
     let hash2 = "d".repeat(64);
 
-    zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
     write(vault_root, "beta.md", "# Beta updated");
-    zetl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
+    ztl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
 
     let cache = HistoricalIndexCache::with_default_capacity();
     cache
@@ -2945,7 +2945,7 @@ fn test_141_build_history_index_json_with_history() {
         )
         .unwrap();
 
-    let result = zetl::history::build_history_index_json(vault_root, &["alpha", "beta"]);
+    let result = ztl::history::build_history_index_json(vault_root, &["alpha", "beta"]);
     assert!(
         result.is_some(),
         "must produce JSON when history and cached indexes exist"

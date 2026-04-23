@@ -1,17 +1,17 @@
 ;; =============================================================================
-;; IMPL-001: zetl — Bi-directional Link Graph CLI (Rust)
+;; IMPL-001: ztl — Bi-directional Link Graph CLI (Rust)
 ;; Implementation plan for SPEC-001
 ;; =============================================================================
 
 (meta plan
   (id "IMPL-001")
-  (title "zetl — Bi-directional Link Graph CLI Implementation")
+  (title "ztl — Bi-directional Link Graph CLI Implementation")
   (version "1.0.0")
   (status "active")
   (created "2026-02-18")
   (author "agent:architect")
   (spec "SPEC-001")
-  (description "Implement zetl CLI in Rust: wikilink parser, link graph, SimHash fuzzy search, cache, and CLI commands"))
+  (description "Implement ztl CLI in Rust: wikilink parser, link graph, SimHash fuzzy search, cache, and CLI commands"))
 
 ;; =============================================================================
 ;; Agents — specialized workers for parallel execution
@@ -104,8 +104,8 @@
 
 (given task-file-scanner)
 (meta task-file-scanner
-  (description "Implement the file-walking scanner that ties together parsing components. Use the `ignore` crate to walk the vault directory recursively for **/*.md files, respecting .zetlignore (gitignore syntax) and default ignores (.git, node_modules, .zetl). For each file: read contents, apply md-filter to identify non-code regions, run wikilink parser on those regions, run syntax validator, collect results into ParsedFile structs. Per REQ-001 and REQ-012.")
-  (acceptance "Recursively finds all .md files; respects .zetlignore and default ignores; produces ParsedFile with all links and diagnostics; handles file read errors gracefully; unit test with test vault of 5 files per TEST-001"))
+  (description "Implement the file-walking scanner that ties together parsing components. Use the `ignore` crate to walk the vault directory recursively for **/*.md files, respecting .ztlignore (gitignore syntax) and default ignores (.git, node_modules, .ztl). For each file: read contents, apply md-filter to identify non-code regions, run wikilink parser on those regions, run syntax validator, collect results into ParsedFile structs. Per REQ-001 and REQ-012.")
+  (acceptance "Recursively finds all .md files; respects .ztlignore and default ignores; produces ParsedFile with all links and diagnostics; handles file read errors gracefully; unit test with test vault of 5 files per TEST-001"))
 
 (normally r-ready-file-scanner
   (and task-file-scanner completed-parser completed-md-filter completed-validator)
@@ -165,8 +165,8 @@
 
 (given task-cache)
 (meta task-cache
-  (description "Implement persistent cache in cache.rs per REQ-011. Serialize scanner output to .zetl/index.json with per-file mtimes. On load: read cached index, compare mtimes with current files, return list of files needing re-parse (changed/new/deleted). Support --no-cache flag to force full rescan. Cache format: JSON object with version field and map of file paths to {mtime, parsed_file_data}. Create .zetl/ directory if it doesn't exist.")
-  (acceptance "Cache writes to .zetl/index.json; subsequent runs skip unchanged files; modified files are re-parsed; deleted files removed from cache; --no-cache forces full rescan; TEST-011 scenarios pass"))
+  (description "Implement persistent cache in cache.rs per REQ-011. Serialize scanner output to .ztl/index.json with per-file mtimes. On load: read cached index, compare mtimes with current files, return list of files needing re-parse (changed/new/deleted). Support --no-cache flag to force full rescan. Cache format: JSON object with version field and map of file paths to {mtime, parsed_file_data}. Create .ztl/ directory if it doesn't exist.")
+  (acceptance "Cache writes to .ztl/index.json; subsequent runs skip unchanged files; modified files are re-parsed; deleted files removed from cache; --no-cache forces full rescan; TEST-011 scenarios pass"))
 
 (normally r-ready-cache
   (and task-cache completed-scaffold)
@@ -210,7 +210,7 @@
 
 (given task-integration-tests)
 (meta task-integration-tests
-  (description "Create comprehensive integration tests using a test vault fixture (tests/fixtures/vault/) with known files and links. Implement TEST-001 through TEST-012 from SPEC-001 section 8. Test via cargo test. Create test vault with: File A linking to B, C; File B linking to C; File D (orphan); File with syntax errors; File with code blocks containing links to ignore; .zetlignore with drafts/ exclusion; drafts/ directory with files to exclude. Each test runs zetl as a library call and validates output structure and values.")
+  (description "Create comprehensive integration tests using a test vault fixture (tests/fixtures/vault/) with known files and links. Implement TEST-001 through TEST-012 from SPEC-001 section 8. Test via cargo test. Create test vault with: File A linking to B, C; File B linking to C; File D (orphan); File with syntax errors; File with code blocks containing links to ignore; .ztlignore with drafts/ exclusion; drafts/ directory with files to exclude. Each test runs ztl as a library call and validates output structure and values.")
   (acceptance "All 12 test scenarios from SPEC-001 pass; test vault is self-contained in tests/fixtures/; tests cover: scan completeness, graph construction, forward links, backlinks, dead links, orphans, syntax validation, SimHash search, stats, shortest path, cache, ignore patterns"))
 
 (normally r-ready-integration-tests

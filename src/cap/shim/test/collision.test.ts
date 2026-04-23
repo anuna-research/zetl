@@ -449,7 +449,7 @@ test("renderCollisionPrompt renders the REQ-3425 wireframe with KEEP default-foc
   const win = new Window({ url: `${ORIGIN}/c/onboarding.html` });
   const doc = win.document;
   const main = doc.createElement("main");
-  main.setAttribute("data-zetl-capability", "");
+  main.setAttribute("data-ztl-capability", "");
   doc.body.appendChild(main);
 
   const pending = renderCollisionPrompt(
@@ -461,7 +461,7 @@ test("renderCollisionPrompt renders the REQ-3425 wireframe with KEEP default-foc
     doc as unknown as Document,
   );
 
-  const panel = doc.querySelector("[data-zetl-collision]");
+  const panel = doc.querySelector("[data-ztl-collision]");
   assert.ok(panel, "collision panel mounted");
   assert.ok(
     doc.body.textContent?.includes(COLLISION_TITLE),
@@ -475,9 +475,9 @@ test("renderCollisionPrompt renders the REQ-3425 wireframe with KEEP default-foc
     doc.body.textContent?.includes(COLLISION_DEFAULT_NOTE),
     "default-keep note rendered",
   );
-  const keep = doc.querySelector('[data-zetl-collision-choice="keep"]');
-  const add = doc.querySelector('[data-zetl-collision-choice="add"]');
-  const replace = doc.querySelector('[data-zetl-collision-choice="replace"]');
+  const keep = doc.querySelector('[data-ztl-collision-choice="keep"]');
+  const add = doc.querySelector('[data-ztl-collision-choice="add"]');
+  const replace = doc.querySelector('[data-ztl-collision-choice="replace"]');
   assert.ok(keep && add && replace, "three buttons present");
   assert.equal(keep!.textContent, COLLISION_BUTTON_KEEP);
   assert.equal(add!.textContent, COLLISION_BUTTON_ADD);
@@ -498,7 +498,7 @@ test("renderCollisionPrompt REPLACE path requires non-empty rationale before res
   const win = new Window({ url: `${ORIGIN}/c/onboarding.html` });
   const doc = win.document;
   const main = doc.createElement("main");
-  main.setAttribute("data-zetl-capability", "");
+  main.setAttribute("data-ztl-capability", "");
   doc.body.appendChild(main);
 
   const pending = renderCollisionPrompt(
@@ -511,17 +511,17 @@ test("renderCollisionPrompt REPLACE path requires non-empty rationale before res
   );
 
   const replace = doc.querySelector(
-    '[data-zetl-collision-choice="replace"]',
+    '[data-ztl-collision-choice="replace"]',
   ) as unknown as HTMLButtonElement;
   const rationale = doc.querySelector(
-    "[data-zetl-collision-rationale]",
+    "[data-ztl-collision-rationale]",
   ) as unknown as HTMLInputElement;
   assert.ok(replace && rationale);
 
   // First click: no rationale. Must not resolve; error must surface.
   replace.click();
   await new Promise((r) => setTimeout(r, 0));
-  const errEl = doc.querySelector("[data-zetl-collision-error]");
+  const errEl = doc.querySelector("[data-ztl-collision-error]");
   assert.ok(errEl, "error element present");
   assert.equal(errEl!.hasAttribute("hidden"), false);
 
@@ -539,7 +539,7 @@ test("renderCollisionPrompt ADD resolves without rationale", async () => {
   const win = new Window({ url: `${ORIGIN}/c/onboarding.html` });
   const doc = win.document;
   const main = doc.createElement("main");
-  main.setAttribute("data-zetl-capability", "");
+  main.setAttribute("data-ztl-capability", "");
   doc.body.appendChild(main);
 
   const pending = renderCollisionPrompt(
@@ -552,7 +552,7 @@ test("renderCollisionPrompt ADD resolves without rationale", async () => {
   );
 
   const add = doc.querySelector(
-    '[data-zetl-collision-choice="add"]',
+    '[data-ztl-collision-choice="add"]',
   ) as unknown as HTMLButtonElement;
   add.click();
   const decision = await pending;

@@ -3,7 +3,7 @@
 //! REQ-3314 extends REQ-3313's "is the ecosystem's interpreter present?"
 //! contract to "does the *plugin* on PATH match what the matrix was
 //! tested against?". These tests exercise the public
-//! [`zetl::ecosystems::version_drift`] surface from outside the crate
+//! [`ztl::ecosystems::version_drift`] surface from outside the crate
 //! (the way the composition layer will use it at probe time), pinning:
 //!
 //! - the REQ-3314 decision tree (Exact / MinorDrift / Incompatible) for
@@ -15,7 +15,7 @@
 //!   and a `plugin_version_incompatible` summary;
 //! - the remark-flavoured `package.json` fallback parses correctly;
 //! - every live matrix row's `version_range` parses — i.e. the seeded
-//!   ranges in `tools/zetl-ecosystem-matrix.toml` drive live drift
+//!   ranges in `tools/ztl-ecosystem-matrix.toml` drive live drift
 //!   classification without tripping the parser.
 
 #![cfg(unix)]
@@ -26,12 +26,12 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use zetl::ecosystems::version_drift::{
+use ztl::ecosystems::version_drift::{
     classify, diagnostic_for_incompatible, format_minor_drift_log, parse_range,
     probe_node_package_version, probe_plugin_version, IncompatReason, PluginProbeError,
     PluginVersionDrift, Version,
 };
-use zetl::hooks::diagnostic::{DiagnosticClass, Verbosity};
+use ztl::hooks::diagnostic::{DiagnosticClass, Verbosity};
 
 /// Retry `probe_plugin_version` on the Linux `ETXTBSY` (errno 26, "Text
 /// file busy") race, where a sibling test thread's fork holds an fd to
@@ -125,7 +125,7 @@ fn test_3314_minor_drift_via_mocked_probe_warns_and_continues() {
     );
     assert_eq!(
         log,
-        "[zetl] ecosystem pandoc: pandoc-crossref v0.3.16 is newer than last-tested v0.3.14; proceeding"
+        "[ztl] ecosystem pandoc: pandoc-crossref v0.3.16 is newer than last-tested v0.3.14; proceeding"
     );
 }
 
@@ -208,8 +208,8 @@ fn test_3314_incompatible_diagnostic_renders_five_parts() {
     // Render at default verbosity and assert every CON-3225 part is present.
     let rendered = diag.render(Verbosity::Default);
     let lines: Vec<&str> = rendered.lines().collect();
-    // (1) Summary with `[zetl] ` prefix and `:` terminator.
-    assert!(lines.first().unwrap().starts_with("[zetl] "));
+    // (1) Summary with `[ztl] ` prefix and `:` terminator.
+    assert!(lines.first().unwrap().starts_with("[ztl] "));
     assert!(lines.first().unwrap().ends_with(":"));
     // (2) Context lines (at least the version_range pointer).
     assert!(rendered.contains("version_range"));
@@ -221,17 +221,17 @@ fn test_3314_incompatible_diagnostic_renders_five_parts() {
     // (5) Hint: actionable, naming both the range and the check cmd.
     assert!(rendered.contains("Hint: "));
     assert!(rendered.contains(">=0.3.14 <0.4"));
-    assert!(rendered.contains("zetl ecosystem check"));
+    assert!(rendered.contains("ztl ecosystem check"));
 }
 
 // ── Probe failure modes ────────────────────────────────────────────────────
 
 #[test]
 fn test_3314_probe_missing_binary_surfaces_not_found() {
-    let err = probe_plugin_version("definitely-no-plugin-zetl-test-3314").unwrap_err();
+    let err = probe_plugin_version("definitely-no-plugin-ztl-test-3314").unwrap_err();
     match err {
         PluginProbeError::NotFound { binary } => {
-            assert_eq!(binary, "definitely-no-plugin-zetl-test-3314");
+            assert_eq!(binary, "definitely-no-plugin-ztl-test-3314");
         }
         other => panic!("expected NotFound, got {other:?}"),
     }
@@ -264,13 +264,13 @@ fn test_3314_remark_package_json_probe_round_trips() {
 
 #[test]
 fn test_3314_every_live_matrix_version_range_parses_and_classifies_its_own_lower_bound_as_exact() {
-    // Every `version_range` in tools/zetl-ecosystem-matrix.toml must
+    // Every `version_range` in tools/ztl-ecosystem-matrix.toml must
     // parse under the REQ-3314 parser. As a sanity check, feed the
     // parser's `tested_version()` back through `classify` — it should
     // always come out as Exact (fixed-point property of the tested
     // anchor).
     let matrix_path =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tools/zetl-ecosystem-matrix.toml");
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tools/ztl-ecosystem-matrix.toml");
     let body = std::fs::read_to_string(&matrix_path).expect("read matrix");
     let parsed: toml::Value = toml::from_str(&body).expect("parse matrix toml");
     let eco_table = parsed

@@ -26,7 +26,7 @@ related:
 | Date           | 2026-04-07                                                                |
 | Audience       | Agent, Human                                                              |
 | Trace          | USDD Agent Protocol v1.0.0                                                |
-| Parent         | SPEC-013: zetl search -- Tantivy Full-Text Search, Graph Scoping, Browser |
+| Parent         | SPEC-013: ztl search -- Tantivy Full-Text Search, Graph Scoping, Browser |
 | Related        | SPEC-018: Semantic Search, SPEC-002: Full-Text Search, SPEC-003: Agent Ergonomics, SPEC-001: Link Graph CLI |
 | Dependencies   | SPEC-013 search engine, SPEC-001 graph engine, SPEC-018 semantic search   |
 
@@ -34,7 +34,7 @@ related:
 
 ## 1. Overview
 
-SPEC-013 and SPEC-018 give zetl ranked search results with heading context, BM25 scores, and optional cosine similarity scores. Each result includes a page name, line number, heading, and a fixed-length `context` string (a character window around the match point). This is sufficient for programmatic filtering but insufficient for human or agent triage -- the context string may split mid-sentence, omit the paragraph's thesis, or strip the wikilinks that make the match meaningful in a graph-structured vault.
+SPEC-013 and SPEC-018 give ztl ranked search results with heading context, BM25 scores, and optional cosine similarity scores. Each result includes a page name, line number, heading, and a fixed-length `context` string (a character window around the match point). This is sufficient for programmatic filtering but insufficient for human or agent triage -- the context string may split mid-sentence, omit the paragraph's thesis, or strip the wikilinks that make the match meaningful in a graph-structured vault.
 
 This specification adds **graph-aware snippet extraction**: bounded, structure-respecting excerpts around match points that resolve wikilinks, report graph position, and consolidate multiple matches within a page into a coherent reading unit.
 
@@ -54,7 +54,7 @@ This specification adds **graph-aware snippet extraction**: bounded, structure-r
 
 The `context` field is a 60-character window centered on the match. It may cut off mid-clause. It does not indicate whether the surrounding paragraph is two sentences or twenty. It does not reveal that the snippet contains `[[Self-Organization]]`, a hub page with 14 backlinks. An agent making a retrieval decision needs more.
 
-**Why graph-awareness.** zetl's unique asset is the link graph. A snippet containing `[[Self-Organization]]` is more informative when the agent knows that Self-Organization is a hub (14 backlinks, central to the vault). A snippet from a page with zero backlinks (an orphan) signals different things than a snippet from a page with 30. Snippet extraction that ignores the graph wastes the investment in building it.
+**Why graph-awareness.** ztl's unique asset is the link graph. A snippet containing `[[Self-Organization]]` is more informative when the agent knows that Self-Organization is a hub (14 backlinks, central to the vault). A snippet from a page with zero backlinks (an orphan) signals different things than a snippet from a page with 30. Snippet extraction that ignores the graph wastes the investment in building it.
 
 **Why structure-respecting boundaries.** Markdown has natural semantic units: paragraphs, list items, code blocks, heading sections. A snippet that respects these boundaries is more readable than a fixed character window. A snippet that starts at a paragraph boundary and ends at the next paragraph boundary carries a complete thought.
 
@@ -77,16 +77,16 @@ The `context` field is a 60-character window centered on the match. It may cut o
 - Wikilink resolution within snippets (page existence, backlink count)
 - Graph context metadata on each result (backlink count, forward link count, hub/leaf classification)
 - Multi-match consolidation within a page
-- Integration with `zetl search` (all modes: BM25, semantic, hybrid)
-- Integration with `zetl backlinks` (show context where the backlink appears)
-- Integration with `zetl check` (show context around dead links)
+- Integration with `ztl search` (all modes: BM25, semantic, hybrid)
+- Integration with `ztl backlinks` (show context where the backlink appears)
+- Integration with `ztl check` (show context around dead links)
 - JSON and table output formats for snippets
 
 **Out of scope:**
 
 - Query-term highlighting (bold/color markup in snippets) -- defer to a presentation-layer spec
 - Snippet caching or pre-computation at index time
-- Snippet extraction for `zetl serve` or `zetl build` web interfaces -- defer to a web-layer spec
+- Snippet extraction for `ztl serve` or `ztl build` web interfaces -- defer to a web-layer spec
 - Intent-aware snippet steering (selecting which of several matches to feature based on inferred query intent)
 - Snippet ranking independent of the underlying search score
 
@@ -100,7 +100,7 @@ The existing user profiles from SPEC-001 (section 2) and SPEC-013 (section 2) ap
 
 ```
 Daily workflow (updated):
-  1. Run `zetl search "emergence" --snippet` to get ranked results
+  1. Run `ztl search "emergence" --snippet` to get ranked results
      with structure-respecting excerpts
   2. Each result includes a snippet bounded by the enclosing
      heading section or paragraph, plus graph metadata:
@@ -120,13 +120,13 @@ Daily workflow (updated):
 
 ```
 Daily workflow (updated):
-  1. Run `zetl search "emergence" --snippet -f table` to get
+  1. Run `ztl search "emergence" --snippet -f table` to get
      a scannable table of results with excerpts
   2. Each row shows the page, score, heading, and a paragraph-
      length excerpt -- enough to judge relevance at a glance
-  3. Run `zetl backlinks "Self-Organization" --snippet` to see
+  3. Run `ztl backlinks "Self-Organization" --snippet` to see
      where each backlink appears in context, not just page+line
-  4. Run `zetl check --snippet` to see dead links in their
+  4. Run `ztl check --snippet` to see dead links in their
      surrounding paragraph, making it easier to decide whether
      to create the target page or fix the link
 ```
@@ -135,12 +135,12 @@ Daily workflow (updated):
 
 ```
 Refactoring workflow:
-  1. Run `zetl check --snippet` to see all dead links with
+  1. Run `ztl check --snippet` to see all dead links with
      surrounding context
   2. For each dead link, the snippet shows the sentence and
      paragraph where the link appears, plus how many other
      pages link to the same dead target
-  3. Run `zetl backlinks "Old Page Name" --snippet` before
+  3. Run `ztl backlinks "Old Page Name" --snippet` before
      renaming a page, to see every usage in context and
      decide whether the link text needs updating
 ```
@@ -276,7 +276,7 @@ WITH the following fields added to each result:
     "leaf" (backlink_count ≤ 1 AND forward_link_count ≤ 3),
     or "node" (default, none of the above)
 AND graph_role computed from the current link graph (built
-  during zetl index or on-the-fly)
+  during ztl index or on-the-fly)
 AND the graph context fields present even when the snippet
   itself contains no wikilinks.
 
@@ -316,12 +316,12 @@ Trace:
 ```
 REQ-153: Snippet Extraction in backlinks and check Commands
 
-The system SHALL support the --snippet flag on `zetl backlinks`
-and `zetl check` commands,
+The system SHALL support the --snippet flag on `ztl backlinks`
+and `ztl check` commands,
 FOR all user roles
-WITH `zetl backlinks <PAGE> --snippet` extracting a snippet
+WITH `ztl backlinks <PAGE> --snippet` extracting a snippet
   around each occurrence of [[PAGE]] in the linking page
-AND `zetl check --snippet` extracting a snippet around each
+AND `ztl check --snippet` extracting a snippet around each
   dead link occurrence
 AND the same snippet extraction logic (structure boundaries,
   wikilink resolution, graph context) applied as in search
@@ -462,9 +462,9 @@ Consequences:
 
 1. **Search Engine -> Snippet Extractor.** After Tantivy returns matched documents with BM25 scores and the search module identifies per-occurrence line/column positions, the snippet extractor receives the file content and match positions. It extracts structure-bounded snippets.
 
-2. **Backlinks Command -> Snippet Extractor.** When `zetl backlinks <PAGE> --snippet` is invoked, the backlinks command identifies each file containing `[[PAGE]]` and passes the file content and link positions to the snippet extractor.
+2. **Backlinks Command -> Snippet Extractor.** When `ztl backlinks <PAGE> --snippet` is invoked, the backlinks command identifies each file containing `[[PAGE]]` and passes the file content and link positions to the snippet extractor.
 
-3. **Check Command -> Snippet Extractor.** When `zetl check --snippet` is invoked, the check command identifies dead link positions and passes them to the snippet extractor.
+3. **Check Command -> Snippet Extractor.** When `ztl check --snippet` is invoked, the check command identifies dead link positions and passes them to the snippet extractor.
 
 4. **Snippet Extractor -> Structure Parser.** The structure parser detects heading boundaries, paragraph boundaries (blank lines), code block boundaries (fenced and indented), and list item boundaries. It produces a `StructureMap` for the file.
 
@@ -665,7 +665,7 @@ struct SnippetSearchResult {
 ```
 CON-041: search --snippet (graph-aware snippet extraction)
 
-zetl search <QUERY> --snippet [OPTIONS]
+ztl search <QUERY> --snippet [OPTIONS]
 
 New options:
   --snippet            Enable snippet extraction on results
@@ -683,8 +683,8 @@ Retained options (from CON-013-001):
   -f <FORMAT>        Output format: json (default) or table
 
 Also applies to:
-  zetl backlinks <PAGE> --snippet [--snippet-mode M] [--snippet-max-len N]
-  zetl check --snippet [--snippet-mode M] [--snippet-max-len N]
+  ztl backlinks <PAGE> --snippet [--snippet-mode M] [--snippet-max-len N]
+  ztl check --snippet [--snippet-mode M] [--snippet-max-len N]
 
 Output fields (when --snippet, JSON format):
   Each result gains:
@@ -834,7 +834,7 @@ Verified by:
 | TEST-173 | Wikilink resolution: a snippet containing `[[Existing Page]]` and `[[Dead Link]]` produces `snippet_links` with `exists: true, backlink_count: 5` and `exists: false, backlink_count: 0` respectively; alias links `[[Target\|Display]]` resolve by target | Unit | REQ-150 |
 | TEST-174 | Graph context enrichment: a result page with 12 backlinks and 4 forward links has `graph_role: "hub"`; a page with 0 backlinks and 1 forward link has `graph_role: "leaf"`; a page with 4 backlinks and 5 forward links has `graph_role: "bridge"` | Unit | REQ-151 |
 | TEST-175 | Multi-match consolidation: two matches 3 lines apart (same paragraph) produce 1 snippet with `match_count: 2`; two matches 50 lines apart (different sections) produce 2 separate snippets in the `snippets` array | Unit | REQ-152 |
-| TEST-176 | Cross-command integration: `zetl backlinks "Page" --snippet` produces snippet output with resolved links and graph context; `zetl check --snippet` produces snippet output around dead links with the dead link's target in `snippet_links` with `exists: false` | Integration | REQ-153 |
+| TEST-176 | Cross-command integration: `ztl backlinks "Page" --snippet` produces snippet output with resolved links and graph context; `ztl check --snippet` produces snippet output around dead links with the dead link's target in `snippet_links` with `exists: false` | Integration | REQ-153 |
 
 ### Verification Strategy
 
@@ -854,10 +854,10 @@ Verified by:
 
 | ID | Signal | Type | Condition |
 |----|--------|------|-----------|
-| OBS-025-001 | `[zetl] snippet: results=N snippets=M links_resolved=K duration_ms=D` | Log (stderr) | When `--verbose` and `--snippet` are both set |
-| OBS-025-002 | `[zetl] snippet: mode=auto chose=heading section_len=L` | Log (stderr) | When `--verbose` and auto mode selects heading mode |
-| OBS-025-003 | `[zetl] snippet: mode=auto chose=paragraph section_len=L` | Log (stderr) | When `--verbose` and auto mode selects paragraph mode |
-| OBS-025-004 | `[zetl] snippet: consolidated M matches into N snippets for page P` | Log (stderr) | When `--verbose` and consolidation merges matches |
+| OBS-025-001 | `[ztl] snippet: results=N snippets=M links_resolved=K duration_ms=D` | Log (stderr) | When `--verbose` and `--snippet` are both set |
+| OBS-025-002 | `[ztl] snippet: mode=auto chose=heading section_len=L` | Log (stderr) | When `--verbose` and auto mode selects heading mode |
+| OBS-025-003 | `[ztl] snippet: mode=auto chose=paragraph section_len=L` | Log (stderr) | When `--verbose` and auto mode selects paragraph mode |
+| OBS-025-004 | `[ztl] snippet: consolidated M matches into N snippets for page P` | Log (stderr) | When `--verbose` and consolidation merges matches |
 
 ---
 
@@ -885,9 +885,9 @@ This specification adds no new crate dependencies. All functionality is implemen
 
 - **Query-term highlighting.** Snippets could include marker annotations (`<mark>...</mark>` or ANSI escape codes) around matched query terms. Deferred to a presentation-layer spec because the highlighting strategy differs between JSON output (markers), table output (ANSI), and web output (HTML).
 - **Intent-aware snippet steering.** When a page has many matches, an LLM could select the most relevant snippet based on inferred query intent. This requires an LLM call in the search path, which violates the local-first, zero-latency principle. Deferred pending user demand.
-- **Snippet caching.** For large vaults where the same pages are frequently queried, pre-computed structure maps could be cached in `.zetl/`. Deferred because the per-file cost of structure map building is < 1ms.
-- **Web integration.** `zetl serve` could return snippets in the `/api/search` response, and the Cmd+K modal could display them. `zetl build` could include pre-extracted snippets in the static search index. Deferred to a web-layer spec.
-- **Configurable graph role thresholds.** The hub/bridge/leaf thresholds (10, 3, 1) could be made configurable via `.zetl/config.toml` for vaults with unusual connectivity patterns.
+- **Snippet caching.** For large vaults where the same pages are frequently queried, pre-computed structure maps could be cached in `.ztl/`. Deferred because the per-file cost of structure map building is < 1ms.
+- **Web integration.** `ztl serve` could return snippets in the `/api/search` response, and the Cmd+K modal could display them. `ztl build` could include pre-extracted snippets in the static search index. Deferred to a web-layer spec.
+- **Configurable graph role thresholds.** The hub/bridge/leaf thresholds (10, 3, 1) could be made configurable via `.ztl/config.toml` for vaults with unusual connectivity patterns.
 
 ---
 

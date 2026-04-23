@@ -4,7 +4,7 @@ title: Redis vs Memcached
 
 # Redis vs Memcached
 
-We evaluated Redis and Memcached as caching backends for the zetl index layer. The decision was driven by benchmark data and operational simplicity requirements.
+We evaluated Redis and Memcached as caching backends for the ztl index layer. The decision was driven by benchmark data and operational simplicity requirements.
 
 ```spl
 (given redis-evaluated)
@@ -55,7 +55,7 @@ Memcached also clears the threshold, but Redis offers additional features (pub/s
 
 - Redis ships with `redis-cli` which simplifies debugging cache state during development.
 - Both are available in standard distro package managers.
-- Neither requires a separate service when running locally — zetl can be configured to skip caching entirely in read-only mode.
+- Neither requires a separate service when running locally — ztl can be configured to skip caching entirely in read-only mode.
 
 ^operational-notes
 

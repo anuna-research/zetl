@@ -1,11 +1,11 @@
-//! SPEC-032 TEST-3210 — `zetl-ast-js` helper library contract test.
+//! SPEC-032 TEST-3210 — `ztl-ast-js` helper library contract test.
 //!
 //! Spawns a minimal identity-transform hook written with
-//! `tools/zetl-ast-js` against the Rust-side `PersistentHook`
+//! `tools/ztl-ast-js` against the Rust-side `PersistentHook`
 //! driver and asserts round-trip equivalence for a small AST.
 //!
 //! Requires a pre-built `dist/esm/` (CI runs `npm run build` in
-//! `tools/zetl-ast-js/` before this test). Skips if Node is not on
+//! `tools/ztl-ast-js/` before this test). Skips if Node is not on
 //! PATH or the build output is missing.
 
 #![cfg(unix)]
@@ -18,9 +18,9 @@ use std::time::Duration;
 use serde_json::json;
 use tempfile::TempDir;
 
-use zetl::hooks::ast::{Document, DocumentKind, Inline, Paragraph, Position, Text, AST_VERSION};
-use zetl::hooks::persistent::{HookMessage, PersistentHook};
-use zetl::hooks::pipeline::Stage;
+use ztl::hooks::ast::{Document, DocumentKind, Inline, Paragraph, Position, Text, AST_VERSION};
+use ztl::hooks::persistent::{HookMessage, PersistentHook};
+use ztl::hooks::pipeline::Stage;
 
 fn node_available() -> bool {
     Command::new("node")
@@ -35,7 +35,7 @@ fn node_available() -> bool {
 
 fn helper_dist_root() -> PathBuf {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    manifest_dir.join("tools/zetl-ast-js/dist/esm")
+    manifest_dir.join("tools/ztl-ast-js/dist/esm")
 }
 
 fn write_hook_script(dir: &Path) -> PathBuf {
@@ -62,7 +62,7 @@ fn small_ast() -> Document {
         kind: DocumentKind::Document,
         position: Position::origin(),
         frontmatter: None,
-        children: vec![zetl::hooks::ast::Block::Paragraph(Paragraph {
+        children: vec![ztl::hooks::ast::Block::Paragraph(Paragraph {
             position: Position::origin(),
             children: vec![Inline::Text(Text {
                 position: Position::origin(),
@@ -81,7 +81,7 @@ fn helper_js_identity_round_trip() {
     let dist = helper_dist_root();
     if !dist.join("index.js").exists() {
         eprintln!(
-            "skip: helper-js dist is not built at {} (run `npm run build` in tools/zetl-ast-js)",
+            "skip: helper-js dist is not built at {} (run `npm run build` in tools/ztl-ast-js)",
             dist.display()
         );
         return;
@@ -95,7 +95,7 @@ fn helper_js_identity_round_trip() {
 
     let mut hook = PersistentHook::spawn(cmd, "identity-js", Stage::Transform).unwrap();
     assert_eq!(hook.handshake().hook, "identity-js");
-    assert_eq!(hook.handshake().zetl_ast, 1);
+    assert_eq!(hook.handshake().ztl_ast, 1);
 
     let init = hook.init(json!({"theme": "default"}), 2_000).unwrap();
     matches!(init, HookMessage::Result { .. });

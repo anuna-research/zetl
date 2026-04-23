@@ -5,15 +5,15 @@
 
 use std::sync::{Arc, Mutex, RwLock};
 
-use zetl::search_index::SearchIndex;
-use zetl::web::engine::TemplateEngine;
-use zetl::web::flush::flush_pipeline;
-use zetl::web::fs_watch::PendingWrites;
-use zetl::web::ws::{CrdtDocStore, OpEntry};
-use zetl::web::WebState;
+use ztl::search_index::SearchIndex;
+use ztl::web::engine::TemplateEngine;
+use ztl::web::flush::flush_pipeline;
+use ztl::web::fs_watch::PendingWrites;
+use ztl::web::ws::{CrdtDocStore, OpEntry};
+use ztl::web::WebState;
 
 fn main() -> anyhow::Result<()> {
-    let dir = std::path::PathBuf::from("/tmp/zetl-verify-attribution");
+    let dir = std::path::PathBuf::from("/tmp/ztl-verify-attribution");
     if dir.exists() {
         std::fs::remove_dir_all(&dir)?;
     }
@@ -38,7 +38,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     // Two user profiles.
-    let alice = zetl::user::UserProfile {
+    let alice = ztl::user::UserProfile {
         id: "alice-11111111".to_string(),
         name: "Alice Example".to_string(),
         created_at: "2026-04-18T00:00:00Z".to_string(),
@@ -48,7 +48,7 @@ fn main() -> anyhow::Result<()> {
         recovery_pubkey: String::new(),
         agent_token_generation: 0,
     };
-    let bob = zetl::user::UserProfile {
+    let bob = ztl::user::UserProfile {
         id: "bob-22222222".to_string(),
         name: "Bob Example".to_string(),
         created_at: "2026-04-18T00:00:00Z".to_string(),
@@ -58,12 +58,12 @@ fn main() -> anyhow::Result<()> {
         recovery_pubkey: String::new(),
         agent_token_generation: 0,
     };
-    zetl::user::save_profile(&dir, &alice)?;
-    zetl::user::save_profile(&dir, &bob)?;
+    ztl::user::save_profile(&dir, &alice)?;
+    ztl::user::save_profile(&dir, &bob)?;
 
     // Build a minimal WebState.
     let vault_root = Arc::new(dir.clone());
-    let data = zetl::web::reindex(&dir)?;
+    let data = ztl::web::reindex(&dir)?;
     let search_index = SearchIndex::build(&dir, &data.files)?;
     let engine = TemplateEngine::new(&dir, "default", false, false);
     let state = WebState {
@@ -76,22 +76,22 @@ fn main() -> anyhow::Result<()> {
         collab: false,
         tls: false,
         trust_proxy: false,
-        sessions: zetl::web::session::SessionStore::new(),
-        recovery_challenges: Arc::new(zetl::user::recovery::RecoveryChallengeStore::new()),
+        sessions: ztl::web::session::SessionStore::new(),
+        recovery_challenges: Arc::new(ztl::user::recovery::RecoveryChallengeStore::new()),
         mnemonic_shown: Arc::new(Mutex::new(std::collections::HashSet::new())),
         bootstrap_used: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        rate_limiters: zetl::web::rate_limit::AuthRateLimiters::new(),
+        rate_limiters: ztl::web::rate_limit::AuthRateLimiters::new(),
         #[cfg(feature = "reason")]
-        acl_cache: Arc::new(Mutex::new(zetl::web::AclCache::new())),
+        acl_cache: Arc::new(Mutex::new(ztl::web::AclCache::new())),
         git_commit_lock: Some(Arc::new(Mutex::new(repo))),
-        ws_hub: zetl::web::ws::WsHub::new(),
-        ticket_store: zetl::web::ws::TicketStore::new(),
+        ws_hub: ztl::web::ws::WsHub::new(),
+        ticket_store: ztl::web::ws::TicketStore::new(),
         crdt_store: CrdtDocStore::new(vault_root.clone()),
-        wal_store: Arc::new(zetl::web::wal::WalStore::new(&vault_root)),
+        wal_store: Arc::new(ztl::web::wal::WalStore::new(&vault_root)),
         pending_writes: PendingWrites::new(),
         passkey_mgr: None,
         public_dir: None,
-        scan_options: zetl::scanner::ScanOptions::default(),
+        scan_options: ztl::scanner::ScanOptions::default(),
         #[cfg(feature = "semantic")]
         vector_index: None,
     };
@@ -117,8 +117,8 @@ fn main() -> anyhow::Result<()> {
 
     #[cfg(feature = "history")]
     {
-        use zetl::history::jj_backend::VcsBackend;
-        let backend = zetl::history::jj_backend::JjBackend::open_or_init_at_vault_root(&dir)?;
+        use ztl::history::jj_backend::VcsBackend;
+        let backend = ztl::history::jj_backend::JjBackend::open_or_init_at_vault_root(&dir)?;
         let changes = backend.list_changes(1)?;
         if let Some(latest) = changes.first() {
             println!("\n── jj latest snapshot ─────────────────────────────────");
@@ -129,7 +129,7 @@ fn main() -> anyhow::Result<()> {
             for line in latest.description.lines() {
                 println!("  {line}");
             }
-            let co = zetl::history::core::parse_co_authored_by(&latest.description);
+            let co = ztl::history::core::parse_co_authored_by(&latest.description);
             println!("\nparsed co_authors: {co:?}");
         }
     }

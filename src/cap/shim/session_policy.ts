@@ -23,7 +23,7 @@
 export type SessionPolicy = "per-page" | "per-session" | "per-minute";
 export const SESSION_POLICY_DEFAULT: SessionPolicy = "per-page";
 export const SESSION_PER_MINUTE_TTL_MS = 60_000;
-export const SESSION_STORAGE_KEY_PREFIX = "zetl:cap:uv:";
+export const SESSION_STORAGE_KEY_PREFIX = "ztl:cap:uv:";
 
 export interface CacheKey {
   /// origin string (defence-in-depth; sessionStorage is already

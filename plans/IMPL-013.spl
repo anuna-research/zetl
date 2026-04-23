@@ -1,18 +1,18 @@
 ;; ════════════════════════════════════════════════════════════════════════════
-;; IMPL-013: zetl search — Tantivy Full-Text Search, Graph Scoping, and
+;; IMPL-013: ztl search — Tantivy Full-Text Search, Graph Scoping, and
 ;;           Browser Search
 ;; Implementation plan for SPEC-013
 ;; ════════════════════════════════════════════════════════════════════════════
 
 (meta plan
   (id "IMPL-013")
-  (title "zetl search — Tantivy Full-Text Search, Graph Scoping, and Browser Search")
+  (title "ztl search — Tantivy Full-Text Search, Graph Scoping, and Browser Search")
   (version "0.1.0")
   (status "active")
   (created "2026-03-01")
   (author "agent:claude")
   (spec "SPEC-013")
-  (description "Replace grep-based search with Tantivy inverted index. Phase 1: add tantivy, build search index during `zetl index`, refactor `zetl search` to query Tantivy with BM25 scoring, add heading-aware context, support lazy index construction. Phase 2: add --near/--depth graph-scoped search via bidirectional BFS. Phase 3: expose /api/search in serve mode and upgrade Cmd+K to full-text search. Phase 4: emit search-index.json during build and embed client-side JS BM25 scorer. Covers REQ-013-001 through REQ-013-015, ADR-013-001 through ADR-013-004."))
+  (description "Replace grep-based search with Tantivy inverted index. Phase 1: add tantivy, build search index during `ztl index`, refactor `ztl search` to query Tantivy with BM25 scoring, add heading-aware context, support lazy index construction. Phase 2: add --near/--depth graph-scoped search via bidirectional BFS. Phase 3: expose /api/search in serve mode and upgrade Cmd+K to full-text search. Phase 4: emit search-index.json during build and embed client-side JS BM25 scorer. Covers REQ-013-001 through REQ-013-015, ADR-013-001 through ADR-013-004."))
 
 ;; ════════════════════════════════════════════════════════════════════════════
 ;; Agents
@@ -24,8 +24,8 @@
 ;; Phase 1 — Tantivy Index & Core Search
 ;; ════════════════════════════════════════════════════════════════════════════
 ;;
-;; Goal: Replace grep-based search entirely with Tantivy. zetl index builds
-;; a search index alongside the link graph. zetl search queries Tantivy for
+;; Goal: Replace grep-based search entirely with Tantivy. ztl index builds
+;; a search index alongside the link graph. ztl search queries Tantivy for
 ;; BM25-scored results with line-level positions and heading context. Lazy
 ;; index construction when no index exists. All existing search tests must
 ;; be updated to the new output schema. This is the largest phase — it
@@ -64,13 +64,13 @@ Schema: Three fields per document:
 
 Tokenization: Tantivy's default tokenizer (lowercase, split on whitespace/punctuation).
 
-Index location: .zetl/search/ directory.
+Index location: .ztl/search/ directory.
 
 Public API:
   - SearchIndex::build(vault_root, files: &[ParsedFile]) -> Result<SearchIndex>
-    Creates/opens .zetl/search/, iterates files, extracts body text using scanner::body_text_ranges(), creates one Tantivy document per file. Clears and rebuilds the full index (incremental update handled at the caller level via cache).
+    Creates/opens .ztl/search/, iterates files, extracts body text using scanner::body_text_ranges(), creates one Tantivy document per file. Clears and rebuilds the full index (incremental update handled at the caller level via cache).
   - SearchIndex::open(vault_root) -> Result<Option<SearchIndex>>
-    Opens an existing index from .zetl/search/. Returns None if directory doesn't exist.
+    Opens an existing index from .ztl/search/. Returns None if directory doesn't exist.
   - SearchIndex::query(query_str, limit) -> Result<Vec<SearchHit>>
     Parses query with QueryParser against the body field, executes with TopDocs collector, returns Vec of (page_name, path, score) tuples.
   - SearchIndex::reader() -> Result<IndexReader>
@@ -83,7 +83,7 @@ Body text extraction: For each file, concatenate the byte ranges from body_text_
 Error handling: Return anyhow::Result with context about which file or query failed.
 
 REQ-013-001, ADR-013-001.")
-  (acceptance "SearchIndex compiles; build() creates .zetl/search/ with valid Tantivy index; open() reads existing index; query() returns BM25-scored results; body text excludes frontmatter/code/comments; cargo check passes"))
+  (acceptance "SearchIndex compiles; build() creates .ztl/search/ with valid Tantivy index; open() reads existing index; query() returns BM25-scored results; body text excludes frontmatter/code/comments; cargo check passes"))
 
 (normally r-ready-search-index-module
   (and task-search-index-module completed-add-tantivy)
@@ -121,16 +121,16 @@ REQ-013-010, REQ-013-011, ADR-013-003.")
   (and ready-heading-detection agent-claude-available)
   assign-to-heading-detection-claude)
 
-;; ── Task: Integrate search index into zetl index ──────────────────────────
+;; ── Task: Integrate search index into ztl index ──────────────────────────
 
 (given task-integrate-index)
 
 (meta task-integrate-index
-  (description "Extend cmd_index() in src/main.rs to build the Tantivy search index after building the link graph. Call SearchIndex::build() with the parsed files. Only build/rebuild for files that need re-indexing (use the same mtime cache invalidation as the graph — files_needing_reparse() already identifies changed files). For --no-cache, rebuild the entire index from scratch (delete .zetl/search/ and rebuild).
+  (description "Extend cmd_index() in src/main.rs to build the Tantivy search index after building the link graph. Call SearchIndex::build() with the parsed files. Only build/rebuild for files that need re-indexing (use the same mtime cache invalidation as the graph — files_needing_reparse() already identifies changed files). For --no-cache, rebuild the entire index from scratch (delete .ztl/search/ and rebuild).
 
 Add new JSON output fields per CON-013-002:
   - search_index_docs: number of documents in the search index
-  - search_index_size_kb: size of .zetl/search/ directory in KB
+  - search_index_size_kb: size of .ztl/search/ directory in KB
 
 Add verbose stderr output per OBS-013-001:
   - Documents indexed, index size, index build time (ms)
@@ -138,7 +138,7 @@ Add verbose stderr output per OBS-013-001:
 Note on incremental indexing: For v1, the simplest approach is to delete and rebuild the full index when any file changes. Tantivy index merging is complex; since NFR-013-001 requires ≤5s for 10,000 files, a full rebuild is acceptable. The cache layer at the cmd_index level already knows which files changed — the index layer just builds from the full file set.
 
 REQ-013-001, REQ-013-003, CON-013-002.")
-  (acceptance "zetl index builds search index in .zetl/search/; JSON output includes search_index_docs and search_index_size_kb; --no-cache forces full rebuild; --verbose shows index stats; index content matches body text of all vault files"))
+  (acceptance "ztl index builds search index in .ztl/search/; JSON output includes search_index_docs and search_index_size_kb; --no-cache forces full rebuild; --verbose shows index stats; index content matches body text of all vault files"))
 
 (normally r-ready-integrate-index
   (and task-integrate-index completed-search-index-module)
@@ -196,7 +196,7 @@ Retain: --case-sensitive flag (for re-scan), --path filter (applied to Tantivy r
 Remove: --regex flag, --all flag.
 
 REQ-013-002, REQ-013-005, CON-013-001.")
-  (acceptance "zetl search returns BM25-scored results from Tantivy; every result has score, heading, heading_level fields; line/column positions are accurate; --case-sensitive works; --path filter works; --context works; --regex and --all removed from CLI; results ordered by score desc, then path asc, then line asc"))
+  (acceptance "ztl search returns BM25-scored results from Tantivy; every result has score, heading, heading_level fields; line/column positions are accurate; --case-sensitive works; --path filter works; --context works; --regex and --all removed from CLI; results ordered by score desc, then path asc, then line asc"))
 
 (normally r-ready-refactor-search
   (and task-refactor-search completed-search-index-module completed-heading-detection)
@@ -245,18 +245,18 @@ REQ-013-002, CON-013-001.")
 (given task-lazy-index)
 
 (meta task-lazy-index
-  (description "Implement lazy index construction in the search path per REQ-013-004. When zetl search is invoked and no .zetl/search/ directory exists (SearchIndex::open returns None):
+  (description "Implement lazy index construction in the search path per REQ-013-004. When ztl search is invoked and no .ztl/search/ directory exists (SearchIndex::open returns None):
 
-  1. Print to stderr: 'Building search index (run `zetl index` to avoid this delay on future queries)'
+  1. Print to stderr: 'Building search index (run `ztl index` to avoid this delay on future queries)'
   2. Scan the vault (reuse the pipeline's scan_vault + parse flow).
   3. Build the index via SearchIndex::build().
-  4. Persist the index in .zetl/search/ for future queries.
+  4. Persist the index in .ztl/search/ for future queries.
   5. Continue with the search query.
 
-This should be integrated into the search_vault() function or cmd_search() in main.rs. The lazy build does NOT build the link graph (only the search index). This means --near is unavailable without zetl index, but basic search works without prior indexing.
+This should be integrated into the search_vault() function or cmd_search() in main.rs. The lazy build does NOT build the link graph (only the search index). This means --near is unavailable without ztl index, but basic search works without prior indexing.
 
 REQ-013-004.")
-  (acceptance "zetl search works without prior zetl index; stderr shows building message; .zetl/search/ created and persisted; subsequent searches use the persisted index; search results are BM25-scored"))
+  (acceptance "ztl search works without prior ztl index; stderr shows building message; .ztl/search/ created and persisted; subsequent searches use the persisted index; search results are BM25-scored"))
 
 (normally r-ready-lazy-index
   (and task-lazy-index completed-refactor-search)
@@ -273,16 +273,16 @@ REQ-013-004.")
 (meta task-verify-phase1
   (description "End-to-end verification of Phase 1. Test against the demo-vault or a purpose-built test vault:
 
-  1. zetl index builds .zetl/search/ — JSON output includes search_index_docs and search_index_size_kb.
-  2. zetl search 'term' returns BM25-scored results — every result has score, heading, heading_level fields.
+  1. ztl index builds .ztl/search/ — JSON output includes search_index_docs and search_index_size_kb.
+  2. ztl search 'term' returns BM25-scored results — every result has score, heading, heading_level fields.
   3. Relevance ranking: a page with many mentions of a term scores higher than one with a single mention (TEST-013-002).
   4. Exclusion zones: terms in frontmatter, code blocks, inline code, HTML comments are NOT found (TEST-013-001).
   5. Line-level results: multiple occurrences in the same file produce separate results with correct line/column, all sharing the same score (TEST-013-005).
   6. Heading context: matches under headings show correct heading/level; matches before first heading show null (TEST-013-010).
   7. Headings in code blocks are not used as enclosing headings (TEST-013-011).
-  8. Index invalidation: modify a file, re-run zetl index, verify new content is searchable (TEST-013-003).
+  8. Index invalidation: modify a file, re-run ztl index, verify new content is searchable (TEST-013-003).
   9. --no-cache forces full rebuild (TEST-013-003).
-  10. Lazy index: delete .zetl/search/, run zetl search — index built on the fly, stderr message shown (TEST-013-004).
+  10. Lazy index: delete .ztl/search/, run ztl search — index built on the fly, stderr message shown (TEST-013-004).
   11. --case-sensitive flag works.
   12. --path filter works.
   13. --context flag works.
@@ -306,7 +306,7 @@ TEST-013-001 through TEST-013-005, TEST-013-010, TEST-013-011.")
 ;;
 ;; Goal: Add --near <PAGE> --depth N flags to restrict search results to
 ;; pages within N bidirectional link-hops of an anchor page. Requires the
-;; link graph (built by zetl index). Adds neighbourhood() method to the
+;; link graph (built by ztl index). Adds neighbourhood() method to the
 ;; graph engine and wires it into the search pipeline.
 ;; ════════════════════════════════════════════════════════════════════════════
 
@@ -381,7 +381,7 @@ REQ-013-006, REQ-013-007, REQ-013-008, CON-013-001.")
 (meta task-wire-graph-scoping
   (description "Integrate graph-scoped search into the search pipeline in cmd_search() / search.rs:
 
-  1. When --near is specified, require that the link graph is available (zetl index must have been run — the lazy index build from Phase 1 only builds the search index, not the graph). If no graph, exit with error: 'Graph required for --near. Run `zetl index` first.'
+  1. When --near is specified, require that the link graph is available (ztl index must have been run — the lazy index build from Phase 1 only builds the search index, not the graph). If no graph, exit with error: 'Graph required for --near. Run `ztl index` first.'
   2. Compute the neighbourhood via graph.neighbourhood(anchor, depth).
   3. After Tantivy returns document-level results, filter to only those whose page_name is in the neighbourhood set.
   4. Continue with line-level expansion and heading detection as normal.
@@ -445,7 +445,7 @@ TEST-013-006 through TEST-013-009, TEST-013-016.")
 ;; Phase 3 — Serve Mode Browser Search
 ;; ════════════════════════════════════════════════════════════════════════════
 ;;
-;; Goal: Add GET /api/search to zetl serve that queries the Tantivy index.
+;; Goal: Add GET /api/search to ztl serve that queries the Tantivy index.
 ;; Upgrade the Cmd+K modal from fuzzy page-name matching to full-text
 ;; ranked search with heading context. The Tantivy index is opened at
 ;; server startup and held in WebState.
@@ -458,7 +458,7 @@ TEST-013-006 through TEST-013-009, TEST-013-016.")
 (meta task-tantivy-webstate
   (description "Extend WebState in src/web/mod.rs to hold a Tantivy IndexReader. During server startup in cmd_serve():
 
-  1. Build or open the Tantivy search index (same logic as zetl index).
+  1. Build or open the Tantivy search index (same logic as ztl index).
   2. Obtain an IndexReader from the SearchIndex.
   3. Store the reader (or the SearchIndex itself) in WebState alongside the existing VaultData.
 
@@ -566,7 +566,7 @@ REQ-013-013.")
 (meta task-verify-phase3
   (description "End-to-end verification of serve mode search:
 
-  1. Start zetl serve with an indexed vault.
+  1. Start ztl serve with an indexed vault.
   2. GET /api/search?q=algorithm returns 200 with BM25-scored results, heading context (TEST-013-012).
   3. GET /api/search?q= returns 400 (TEST-013-012).
   4. GET /api/search?q=test&limit=3 returns at most 3 results (TEST-013-012).
@@ -589,7 +589,7 @@ TEST-013-012, TEST-013-013.")
 ;; Phase 4 — Build Mode Static Search
 ;; ════════════════════════════════════════════════════════════════════════════
 ;;
-;; Goal: Emit search-index.json during zetl build with compact BM25 data.
+;; Goal: Emit search-index.json during ztl build with compact BM25 data.
 ;; Embed a ~50-line JS BM25 scorer in the layout HTML. Upgrade build mode
 ;; Cmd+K to perform client-side full-text search with no backend.
 ;; ════════════════════════════════════════════════════════════════════════════
@@ -698,7 +698,7 @@ REQ-013-015, ADR-013-004.")
 (meta task-verify-phase4
   (description "End-to-end verification of build mode search:
 
-  1. zetl build emits search-index.json in output directory (TEST-013-014).
+  1. ztl build emits search-index.json in output directory (TEST-013-014).
   2. search-index.json contains avgDl, docs (correct count), df (TEST-013-014).
   3. Each doc has n, s, dl, tf with correct term frequencies (TEST-013-014).
   4. Open built static site in browser, press Cmd+K — search-index.json fetched (TEST-013-015).
@@ -729,14 +729,14 @@ TEST-013-014, TEST-013-015.")
   (description "Comprehensive integration test covering the full SPEC-013 feature set. Create or use a test vault with: multiple pages with known content, known link structure, headings at various levels, exclusion zones (code blocks, frontmatter with searchable terms, HTML comments), and at least one isolated page.
 
 Verify:
-  1. zetl index builds both link graph and search index.
-  2. zetl search returns BM25-scored results with heading context — relevance ranking correct.
+  1. ztl index builds both link graph and search index.
+  2. ztl search returns BM25-scored results with heading context — relevance ranking correct.
   3. Exclusion zones: frontmatter/code/comments not indexed.
   4. --near restricts to neighbourhood correctly (bidirectional).
   5. --near composes with --path, --context, --case-sensitive, --limit.
-  6. zetl serve /api/search returns same results as CLI (minus graph scoping).
+  6. ztl serve /api/search returns same results as CLI (minus graph scoping).
   7. Serve mode Cmd+K shows full-text results with heading context.
-  8. zetl build emits valid search-index.json.
+  8. ztl build emits valid search-index.json.
   9. Build mode Cmd+K performs client-side BM25 search.
   10. Index invalidation: modify a file, re-index, verify search reflects changes.
   11. Lazy index: search without prior index works.
@@ -744,7 +744,7 @@ Verify:
   13. cargo test passes.
 
 All REQ-013-*, TEST-013-*, NFR-013-*.")
-  (acceptance "All 13 scenarios pass; full feature set from SPEC-013 operational; no regressions in existing zetl functionality; search parity across CLI, serve, and build interfaces"))
+  (acceptance "All 13 scenarios pass; full feature set from SPEC-013 operational; no regressions in existing ztl functionality; search parity across CLI, serve, and build interfaces"))
 
 (normally r-ready-integration-test
   (and task-integration-test completed-verify-phase3 completed-verify-phase4)

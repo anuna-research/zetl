@@ -2,8 +2,8 @@
 //!
 //! Implements the [`EcosystemAdapter`] trait for the mdBook ecosystem.
 //! Compiled behind the `ecosystem-mdbook` cargo feature (NFR-3304) so a
-//! minimal zetl build can drop this code entirely; the registry entry
-//! stays unconditional in [`crate::ecosystems::registry`] so `zetl
+//! minimal ztl build can drop this code entirely; the registry entry
+//! stays unconditional in [`crate::ecosystems::registry`] so `ztl
 //! ecosystem check` can still list `mdbook` on a stripped binary.
 //!
 //! ## Invocation contract (CON-3304)
@@ -15,7 +15,7 @@
 //! - `<exec>` — real run; stdin is a `[Context, Book]` JSON array,
 //!   stdout is the transformed `Book` JSON.
 //!
-//! The adapter runs at zetl's `pre-parse` stage (ADR-3303) because the
+//! The adapter runs at ztl's `pre-parse` stage (ADR-3303) because the
 //! protocol is text-in / text-out: the chapter's raw Markdown lives
 //! inside the envelope as a string field, and that's what preprocessors
 //! rewrite.
@@ -87,7 +87,7 @@ use crate::ecosystems::registry::{Ecosystem, EcosystemEntry};
 use crate::hooks::ast::Document;
 use crate::hooks::pipeline::Stage;
 use crate::hooks::translators::{
-    zetl_ext::ZetlExtTranslator, AstType, TranslationError, Translator,
+    ztl_ext::ztlExtTranslator, AstType, TranslationError, Translator,
 };
 
 /// `mdbook_version` string baked into the synthetic envelope (REQ-3309).
@@ -156,18 +156,18 @@ impl MdbookOptions {
 
 // ── Envelope construction (REQ-3309) ─────────────────────────────────────
 
-/// A single chapter inside the synthetic [`Book`]. The zetl adapter only
+/// A single chapter inside the synthetic [`Book`]. The ztl adapter only
 /// ever emits one chapter per invocation in v1 (one page per call), but
 /// the type is exposed so higher-layer callers can pre-batch whole-vault
 /// payloads for `scope = "vault"` preprocessors.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Chapter {
-    /// Chapter display name — the zetl page name field.
+    /// Chapter display name — the ztl page name field.
     pub name: String,
     /// Raw chapter Markdown. This is the field preprocessors rewrite;
     /// after the run, [`extract_chapter_content`] reads it back out.
     pub content: String,
-    /// Chapter path inside the synthetic book. zetl uses
+    /// Chapter path inside the synthetic book. ztl uses
     /// `<page.slug>.md` so preprocessors that resolve
     /// relative links stay happy.
     pub path: PathBuf,
@@ -266,17 +266,17 @@ pub fn build_envelope_for_page(
 
 /// Path to the envelope JSON Schema (REQ-3309 / CON-3309). The schema
 /// is the authoritative shape reference; [`validate_envelope`] is a
-/// hand-rolled fast-path that enforces the structural subset zetl
+/// hand-rolled fast-path that enforces the structural subset ztl
 /// actually depends on (the full schema is exercised in integration
 /// tests against `jsonschema::Validator`).
-pub const ENVELOPE_SCHEMA_PATH: &str = "tools/zetl-mdbook-envelope-schema-v1.json";
+pub const ENVELOPE_SCHEMA_PATH: &str = "tools/ztl-mdbook-envelope-schema-v1.json";
 
 /// Structurally validate the `[Context, Book]` envelope (REQ-3309).
 ///
 /// Hand-rolled rather than running `jsonschema` so the mdBook adapter
 /// has zero extra runtime deps; the full JSON Schema at
 /// [`ENVELOPE_SCHEMA_PATH`] is asserted in integration tests. The
-/// checks here are the structural subset zetl itself depends on:
+/// checks here are the structural subset ztl itself depends on:
 /// 2-element outer array, required Context fields, required Book
 /// fields, and one Chapter per section when sections are non-empty.
 /// Unknown fields on either side are tolerated — mdBook's own Book
@@ -368,7 +368,7 @@ fn validate_book(book: &Value) -> Result<(), EnvelopeError> {
 }
 
 /// Strict form of [`validate_book`] — asserts the `__non_exhaustive: null`
-/// marker is present. Used on the envelope zetl itself constructs so a
+/// marker is present. Used on the envelope ztl itself constructs so a
 /// regression in [`build_envelope_with_chapters`] is caught.
 /// Preprocessor responses use the lenient form because many
 /// preprocessors re-emit the Book through their own JSON library
@@ -408,7 +408,7 @@ fn validate_book_with(book: &Value, require_non_exhaustive: bool) -> Result<(), 
 }
 
 fn validate_section(section: &Value, index: usize) -> Result<(), EnvelopeError> {
-    // Accept every BookItem variant the schema allows. zetl only emits
+    // Accept every BookItem variant the schema allows. ztl only emits
     // `Chapter`, but preprocessors reading the Book back may re-emit
     // PartTitle / Separator; reject only genuinely unrecognised shapes.
     if let Some(s) = section.as_str() {
@@ -636,7 +636,7 @@ impl std::error::Error for SupportsError {}
 
 /// mdBook adapter (REQ-3304). See module docs for the full shape.
 pub struct MdbookAdapter {
-    translator: ZetlExtTranslator,
+    translator: ztlExtTranslator,
     /// Resolved path to the host `mdbook` binary, populated by
     /// [`Self::probe`]. The ecosystem-level probe is advisory: many
     /// users have preprocessors installed (`cargo install mdbook-mermaid`)
@@ -654,7 +654,7 @@ pub struct MdbookAdapter {
 impl Default for MdbookAdapter {
     fn default() -> Self {
         Self {
-            translator: ZetlExtTranslator,
+            translator: ztlExtTranslator,
             mdbook_path: PathBuf::from(MDBOOK_BINARY),
             mdbook_version: None,
             mdbook_available: false,
@@ -683,7 +683,7 @@ impl EcosystemAdapter for MdbookAdapter {
     }
 
     fn ast_type(&self) -> AstType {
-        AstType::ZetlExt
+        AstType::ztlExt
     }
 
     fn probe(&mut self) -> RuntimeStatus {
@@ -712,11 +712,11 @@ impl EcosystemAdapter for MdbookAdapter {
     }
 
     fn translate_to_foreign(&self, doc: &Document) -> Result<Value, TranslationError> {
-        self.translator.zetl_to_foreign(doc)
+        self.translator.ztl_to_foreign(doc)
     }
 
     fn translate_from_foreign(&self, foreign: Value) -> Result<Document, TranslationError> {
-        self.translator.foreign_to_zetl(foreign)
+        self.translator.foreign_to_ztl(foreign)
     }
 
     fn invoke_plugin(
@@ -1474,13 +1474,13 @@ mod tests {
     fn adapter_id_and_ast_type_match_registry() {
         let adapter = MdbookAdapter::default();
         assert_eq!(adapter.id(), "mdbook");
-        assert_eq!(adapter.ast_type(), AstType::ZetlExt);
+        assert_eq!(adapter.ast_type(), AstType::ztlExt);
         assert_eq!(adapter.supported_stages(), &[Stage::PreParse]);
     }
 
     #[test]
-    fn translate_round_trips_through_zetl_ext() {
-        // ZetlExt is an identity translator, so the round trip is
+    fn translate_round_trips_through_ztl_ext() {
+        // ztlExt is an identity translator, so the round trip is
         // byte-equivalent. Still asserting it here so a silent registry
         // swap to a lossy translator is caught.
         let adapter = MdbookAdapter::default();
@@ -1491,7 +1491,7 @@ mod tests {
             assert_eq!(
                 crate::hooks::contract::canonicalise(&back),
                 crate::hooks::contract::canonicalise(&fx.document),
-                "mdbook adapter's zetl-ext translator lost fidelity on fixture '{}'",
+                "mdbook adapter's ztl-ext translator lost fidelity on fixture '{}'",
                 fx.name
             );
         }
@@ -1524,7 +1524,7 @@ mod tests {
         );
         let ctx = HookContext::new(Stage::PreParse, "test-mdbook", &build);
         let manifest = sample_manifest(
-            "/definitely-not-a-real-mdbook-preprocessor-zetl-test",
+            "/definitely-not-a-real-mdbook-preprocessor-ztl-test",
             vec![],
             None,
         );
@@ -1572,7 +1572,7 @@ mod tests {
     #[test]
     fn supports_html_not_found_is_typed_error() {
         let err = supports_html(
-            std::path::Path::new("/definitely-missing-mdbook-binary-zetl-test"),
+            std::path::Path::new("/definitely-missing-mdbook-binary-ztl-test"),
             Duration::from_secs(1),
         )
         .unwrap_err();
@@ -1586,6 +1586,6 @@ mod tests {
     fn mdbook_adapter_ctor_returns_box_dyn() {
         let adapter: Box<dyn EcosystemAdapter> = mdbook_adapter_ctor();
         assert_eq!(adapter.id(), "mdbook");
-        assert_eq!(adapter.ast_type(), AstType::ZetlExt);
+        assert_eq!(adapter.ast_type(), AstType::ztlExt);
     }
 }

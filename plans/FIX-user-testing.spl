@@ -25,7 +25,7 @@
 (given no-deps-T2)
 (meta task-T2
   (description "Decouple Tantivy document limit from output limit. search_vault should query Tantivy with a generous doc limit, then truncate the final match list at config.limit. total_matches reflects pre-truncation count.")
-  (acceptance "zetl search 'install' --limit 1 reports total_matches=7 with results array of length 1"))
+  (acceptance "ztl search 'install' --limit 1 reports total_matches=7 with results array of length 1"))
 
 (normally r-ready-T2 (and task-T2 no-deps-T2) ready-T2)
 (normally r-assign-T2 (and ready-T2 agent-claude-available) assign-to-T2-claude)
@@ -35,7 +35,7 @@
 (given no-deps-T3)
 (meta task-T3
   (description "Make cmd_build respect cli.format. When --json, emit structured JSON with pages count, folder count, out_dir. When table, emit human-readable summary.")
-  (acceptance "zetl --json build produces valid JSON output"))
+  (acceptance "ztl --json build produces valid JSON output"))
 
 (normally r-ready-T3 (and task-T3 no-deps-T3) ready-T3)
 (normally r-assign-T3 (and ready-T3 agent-claude-available) assign-to-T3-claude)
@@ -45,7 +45,7 @@
 (given no-deps-T4)
 (meta task-T4
   (description "Add dead_links, orphans, syntax_errors, spl_errors rows to the check table summary section")
-  (acceptance "zetl -f table check shows dead link and orphan counts in summary table"))
+  (acceptance "ztl -f table check shows dead link and orphan counts in summary table"))
 
 (normally r-ready-T4 (and task-T4 no-deps-T4) ready-T4)
 (normally r-assign-T4 (and ready-T4 agent-claude-available) assign-to-T4-claude)
@@ -55,7 +55,7 @@
 (given no-deps-T5)
 (meta task-T5
   (description "Remove unnecessary mut qualifiers in src/web/build.rs to eliminate compiler warnings")
-  (acceptance "cargo build 2>&1 | grep warning shows zero warnings for zetl lib"))
+  (acceptance "cargo build 2>&1 | grep warning shows zero warnings for ztl lib"))
 
 (normally r-ready-T5 (and task-T5 no-deps-T5) ready-T5)
 (normally r-assign-T5 (and ready-T5 agent-claude-available) assign-to-T5-claude)

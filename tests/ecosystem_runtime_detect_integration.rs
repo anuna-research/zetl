@@ -1,14 +1,14 @@
 //! End-to-end coverage of SPEC-033 REQ-3313 graceful-absence behaviour.
 //!
-//! These tests exercise the [`zetl::ecosystems::detection`] surface from
-//! outside the crate (the way `zetl build` / `zetl serve` will use it),
+//! These tests exercise the [`ztl::ecosystems::detection`] surface from
+//! outside the crate (the way `ztl build` / `ztl serve` will use it),
 //! pinning the contract that:
 //!
 //! - probing each registered ecosystem at startup yields one
 //!   [`RuntimeStatus`] entry per ecosystem and never panics, regardless
 //!   of which runtimes are or aren't installed on the test host;
 //! - missing runtimes degrade gracefully (no crash, log line stays a
-//!   `[zetl] ecosystem ...` info line, diagnostic carries an actionable
+//!   `[ztl] ecosystem ...` info line, diagnostic carries an actionable
 //!   install hint);
 //! - the `--ecosystem-required=<name>` CI gate (REQ-3313 final paragraph)
 //!   surfaces a five-part [`HookDiagnostic`] of class
@@ -18,13 +18,13 @@
 
 use std::collections::BTreeMap;
 
-use zetl::ecosystems::detection::{
+use ztl::ecosystems::detection::{
     detect_all_ecosystems, diagnostic_for, enforce_required, format_log_line, install_hint_for,
     parse_version, probe_runtime_dep, EcosystemDetectionReport,
 };
-use zetl::ecosystems::registry::{by_id, Ecosystem, RuntimeDep, ECOSYSTEMS};
-use zetl::ecosystems::RuntimeStatus;
-use zetl::hooks::diagnostic::DiagnosticClass;
+use ztl::ecosystems::registry::{by_id, Ecosystem, RuntimeDep, ECOSYSTEMS};
+use ztl::ecosystems::RuntimeStatus;
+use ztl::hooks::diagnostic::DiagnosticClass;
 
 // ── REQ-3313: detection must never panic ─────────────────────────────────
 
@@ -55,7 +55,7 @@ fn detect_all_ecosystems_never_panics_regardless_of_host_state() {
 
 #[test]
 fn detect_all_ecosystems_log_lines_in_canonical_order() {
-    // SPEC-033 §6.1: every detection line is `[zetl] ecosystem <id>: ...`
+    // SPEC-033 §6.1: every detection line is `[ztl] ecosystem <id>: ...`
     // and the canonical ordering surfaces in the same registry order
     // (pandoc → mdbook → remark) so log-grep tooling can rely on the
     // shape.
@@ -64,7 +64,7 @@ fn detect_all_ecosystems_log_lines_in_canonical_order() {
     let lines: Vec<&str> = text.lines().collect();
     assert_eq!(lines.len(), ECOSYSTEMS.len());
     for (line, entry) in lines.iter().zip(ECOSYSTEMS.iter()) {
-        let prefix = format!("[zetl] ecosystem {}:", entry.id);
+        let prefix = format!("[ztl] ecosystem {}:", entry.id);
         assert!(
             line.starts_with(&prefix),
             "expected log line to start with {prefix:?}, got {line:?}"
@@ -80,13 +80,13 @@ fn missing_runtime_is_classified_not_thrown() {
     // failure surfaces as a typed `RuntimeStatus::Missing` so the
     // pipeline can disable the adapter and continue.
     let dep = RuntimeDep {
-        binary: "zetl-test-this-binary-does-not-exist-anywhere",
+        binary: "ztl-test-this-binary-does-not-exist-anywhere",
         min_version: "0.0.0",
     };
     let status = probe_runtime_dep(&dep);
     match status {
         RuntimeStatus::Missing { binary, hint } => {
-            assert_eq!(binary, "zetl-test-this-binary-does-not-exist-anywhere");
+            assert_eq!(binary, "ztl-test-this-binary-does-not-exist-anywhere");
             assert!(!hint.is_empty(), "missing runtime hint must not be empty");
         }
         other => panic!("expected Missing, got {other:?}"),
@@ -119,7 +119,7 @@ fn missing_runtime_yields_runtime_absence_diagnostic_with_hint() {
     // Render at default verbosity and assert the wire shape includes
     // the canonical labels.
     let rendered = diag.to_string();
-    assert!(rendered.starts_with("[zetl] "));
+    assert!(rendered.starts_with("[ztl] "));
     assert!(rendered.contains("Likely cause: "));
     assert!(rendered.contains("Hint: "));
 }
@@ -201,7 +201,7 @@ fn enforce_required_rejects_unknown_ecosystem_id() {
 
 #[test]
 fn available_log_line_matches_spec_example_format() {
-    // SPEC-033 REQ-3313's example text is `[zetl] ecosystem pandoc:
+    // SPEC-033 REQ-3313's example text is `[ztl] ecosystem pandoc:
     // detected v3.1.12.1`. The exact substring after `:` is implementation
     // detail (we preserve the binary's own version output), but the
     // prefix shape is part of the contract.
@@ -211,7 +211,7 @@ fn available_log_line_matches_spec_example_format() {
         version: "v3.1.12.1".into(),
     };
     let line = format_log_line(entry, &status);
-    assert_eq!(line, "[zetl] ecosystem pandoc: detected v3.1.12.1");
+    assert_eq!(line, "[ztl] ecosystem pandoc: detected v3.1.12.1");
 }
 
 // ── parse_version covers every v1 ecosystem's real --version output ────

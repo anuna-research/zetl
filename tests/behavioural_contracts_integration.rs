@@ -3,21 +3,21 @@
 //!
 //! Validates TEST-3224's preservation-diagnostic matrix, TEST-3222's
 //! `may_restructure` block-tree diff, and TEST-3224-idempotent's CI
-//! double-run check by wiring the [`zetl::hooks::contract`] validators
+//! double-run check by wiring the [`ztl::hooks::contract`] validators
 //! around fixture hooks. The property-test harness is exercised at the
 //! end as the user-facing entry point.
 
-use zetl::hooks::ast::{
+use ztl::hooks::ast::{
     Block, BlockQuote, Document, DocumentKind, Embed, Inline, Paragraph, Position, Text, Wikilink,
     AST_VERSION,
 };
-use zetl::hooks::contract::{
+use ztl::hooks::contract::{
     canonicalise, run_property_test, validate_idempotence, validate_may_restructure,
     validate_preserves, ContractSubReason, PropertyTestCase,
 };
-use zetl::hooks::failure_scoping::FailureReason;
-use zetl::hooks::manifest::ContractDecl;
-use zetl::hooks::pipeline::Stage;
+use ztl::hooks::failure_scoping::FailureReason;
+use ztl::hooks::manifest::ContractDecl;
+use ztl::hooks::pipeline::Stage;
 
 // ── Fixture builders ────────────────────────────────────────────────────
 
@@ -131,7 +131,7 @@ fn test_3224_multiple_preserved_types_only_flags_the_dropped_ones() {
     let input = doc(vec![
         para(vec![wikilink("A"), wikilink("B")]),
         embed("X"),
-        Block::CodeBlock(zetl::hooks::ast::CodeBlock {
+        Block::CodeBlock(ztl::hooks::ast::CodeBlock {
             position: Position::origin(),
             fenced: true,
             lang: Some("rust".into()),
@@ -140,7 +140,7 @@ fn test_3224_multiple_preserved_types_only_flags_the_dropped_ones() {
         }),
     ]);
     // Hook drops the wikilinks and the embed; preserves the code block.
-    let output = doc(vec![Block::CodeBlock(zetl::hooks::ast::CodeBlock {
+    let output = doc(vec![Block::CodeBlock(ztl::hooks::ast::CodeBlock {
         position: Position::origin(),
         fenced: true,
         lang: Some("rust".into()),
@@ -259,7 +259,7 @@ fn test_3224_idempotent_double_run_passes_for_short_circuiting_hook() {
     let input = doc(vec![para(vec![text("x")])]);
     // Wrap only paragraphs without the marker; re-entry is a no-op.
     let short_circuit = |d: Document| {
-        const MARKER: &str = "__zetl_wrapped__";
+        const MARKER: &str = "__ztl_wrapped__";
         let children = d
             .children
             .into_iter()

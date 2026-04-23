@@ -2,18 +2,18 @@
    Single persistent Sigma.js + graphology widget.
 
    Contract:
-   - Container:  <div id="zetl-graph"> — Sigma mounts here.
+   - Container:  <div id="ztl-graph"> — Sigma mounts here.
    - Mode:       parent element's [data-mode] attribute ∈ {local, vault, off}.
                  Mutations trigger a reducer-only refresh (no relayout).
-                 Persisted in sessionStorage under 'zetl:graph:mode'.
+                 Persisted in sessionStorage under 'ztl:graph:mode'.
    - Data:       inline {{ graph_index }} JSON when present (graph_inline=true),
                  otherwise fetched from {{ graph_index_url }}.
-   - Theming:    nodeReducer/edgeReducer read --zetl-graph-* CSS custom
+   - Theming:    nodeReducer/edgeReducer read --ztl-graph-* CSS custom
                  properties via getComputedStyle (REQ-114). Refreshed on
                  data-theme/class mutation or prefers-color-scheme change.
-   - Events:     listens to zetl:after-navigate (no Sigma re-instantiation).
-   - OBS-201:    performance.mark('zetl:graph:render:start') before layout,
-                 performance.measure('zetl:graph:render', ...) on layoutstop.
+   - Events:     listens to ztl:after-navigate (no Sigma re-instantiation).
+   - OBS-201:    performance.mark('ztl:graph:render:start') before layout,
+                 performance.measure('ztl:graph:render', ...) on layoutstop.
    - REQ-109:    graceful absence — <noscript> fallback, empty-state copy
                  when vault has zero pages / zero links, and tolerance of
                  theme-override removal: embedders MUST include the partial
@@ -21,41 +21,41 @@
                  theme author can delete this file without breaking the
                  sidebar entry or the /_graph route.
    - REQ-112:    dead-link treatment (task-dead-link-styling) — phantom
-                 (is_dead) nodes render with --zetl-graph-node-dead; edges
-                 terminating at a dead node render with --zetl-graph-edge-dead
+                 (is_dead) nodes render with --ztl-graph-node-dead; edges
+                 terminating at a dead node render with --ztl-graph-edge-dead
                  and Sigma's "dashed" edge type.
    - NFR-105:    keyboard / screen-reader fallback — a <details> page list
                  alongside the canvas, every slug a focusable <a>, so every
                  node is reachable by tab navigation and discoverable by
                  assistive tech regardless of JS state. #}
 
-{% set zetl_graph_stats = vault.stats | default({}) %}
-{% set zetl_graph_total_pages = zetl_graph_stats.total_pages | default(0) %}
-{% set zetl_graph_total_links = zetl_graph_stats.total_links | default(0) %}
+{% set ztl_graph_stats = vault.stats | default({}) %}
+{% set ztl_graph_total_pages = ztl_graph_stats.total_pages | default(0) %}
+{% set ztl_graph_total_links = ztl_graph_stats.total_links | default(0) %}
 
 <noscript>
-  <div class="zetl-graph-fallback" role="note">
+  <div class="ztl-graph-fallback" role="note">
     <p><strong>Graph view requires JavaScript.</strong>
       Every page is listed below, and is reachable from the
       <a href="{{ root_path | safe }}{{ index_file | safe }}">vault index</a>.</p>
   </div>
 </noscript>
 
-{% if zetl_graph_total_pages == 0 %}
-<div class="zetl-graph-empty" role="status" aria-live="polite">
+{% if ztl_graph_total_pages == 0 %}
+<div class="ztl-graph-empty" role="status" aria-live="polite">
   <p><strong>No pages yet.</strong>
     Create a page to start building your vault — a graph will appear here
     once two pages reference each other with <code>[[wikilinks]]</code>.</p>
 </div>
-{% elif zetl_graph_total_links == 0 %}
-<div class="zetl-graph-empty" role="status" aria-live="polite">
+{% elif ztl_graph_total_links == 0 %}
+<div class="ztl-graph-empty" role="status" aria-live="polite">
   <p><strong>No links yet.</strong>
     Add <code>[[wikilinks]]</code> between pages to build a graph.</p>
 </div>
 {% endif %}
 
-<div id="zetl-graph"
-     class="zetl-graph-canvas"
+<div id="ztl-graph"
+     class="ztl-graph-canvas"
      role="img"
      aria-label="Vault link graph (interactive canvas; a keyboard-accessible page list appears below)"></div>
 
@@ -64,13 +64,13 @@
    the visible footprint small for sighted users while leaving the list in
    the accessibility tree and in the DOM order. #}
 {% if vault.pages %}
-<details class="zetl-graph-fallback-list" data-zetl-graph-fallback>
-  <summary>Page list ({{ zetl_graph_total_pages }})</summary>
-  <ul class="zetl-graph-fallback-pages">
+<details class="ztl-graph-fallback-list" data-ztl-graph-fallback>
+  <summary>Page list ({{ ztl_graph_total_pages }})</summary>
+  <ul class="ztl-graph-fallback-pages">
     {% for page in vault.pages %}
     <li>
       <a href="{{ root_path | safe }}{{ page.slug | safe }}/{{ index_file | safe }}">{{ page.title }}</a>
-      {% if "/" in page.slug %}<small class="zetl-graph-fallback-slug">{{ page.slug }}</small>{% endif %}
+      {% if "/" in page.slug %}<small class="ztl-graph-fallback-slug">{{ page.slug }}</small>{% endif %}
     </li>
     {% endfor %}
   </ul>
@@ -78,41 +78,41 @@
 {% endif %}
 
 <style>
-  #zetl-graph { width: 100%; height: 100%; min-height: 100px; position: relative; }
-  [data-mode="off"] #zetl-graph { display: none; }
-  .zetl-graph-fallback,
-  .zetl-graph-empty { padding: 0.75rem 1rem; font-size: 0.85rem; opacity: 0.85; }
-  .zetl-graph-empty code {
+  #ztl-graph { width: 100%; height: 100%; min-height: 100px; position: relative; }
+  [data-mode="off"] #ztl-graph { display: none; }
+  .ztl-graph-fallback,
+  .ztl-graph-empty { padding: 0.75rem 1rem; font-size: 0.85rem; opacity: 0.85; }
+  .ztl-graph-empty code {
     padding: 0 0.25rem;
-    background: var(--zetl-shell-surface, rgba(0,0,0,0.05));
+    background: var(--ztl-shell-surface, rgba(0,0,0,0.05));
     border-radius: 0.125rem;
   }
-  .zetl-graph-fallback-list {
+  .ztl-graph-fallback-list {
     font-size: 0.85rem;
     margin: 0.5rem 1rem;
-    border-top: 1px solid var(--zetl-shell-border, rgba(0,0,0,0.1));
+    border-top: 1px solid var(--ztl-shell-border, rgba(0,0,0,0.1));
     padding-top: 0.5rem;
   }
-  .zetl-graph-fallback-list > summary { cursor: pointer; opacity: 0.8; }
-  .zetl-graph-fallback-list > summary:focus-visible,
-  .zetl-graph-fallback-pages a:focus-visible {
-    outline: 2px solid var(--zetl-graph-node-active, #f59e0b);
+  .ztl-graph-fallback-list > summary { cursor: pointer; opacity: 0.8; }
+  .ztl-graph-fallback-list > summary:focus-visible,
+  .ztl-graph-fallback-pages a:focus-visible {
+    outline: 2px solid var(--ztl-graph-node-active, #f59e0b);
     outline-offset: 2px;
   }
-  .zetl-graph-fallback-pages { margin: 0.25rem 0 0.5rem; padding-left: 1.25rem; }
-  .zetl-graph-fallback-slug { margin-left: 0.35rem; opacity: 0.6; }
+  .ztl-graph-fallback-pages { margin: 0.25rem 0 0.5rem; padding-left: 1.25rem; }
+  .ztl-graph-fallback-slug { margin-left: 0.35rem; opacity: 0.6; }
   /* Hide the keyboard/SR fallback when the canvas is actually rendering —
      the accessibility tree keeps it reachable via the <details>/<summary>
      toggle, and we avoid visual duplication for sighted users with JS on.
      JS-disabled users still see the list (no-js defeats this rule). */
-  html.js [data-mode] .zetl-graph-fallback-list { margin-top: 0.25rem; }
+  html.js [data-mode] .ztl-graph-fallback-list { margin-top: 0.25rem; }
 </style>
 
 {% if graph_index %}
-<script type="application/json" id="zetl-graph-index">{{ graph_index | safe }}</script>
+<script type="application/json" id="ztl-graph-index">{{ graph_index | safe }}</script>
 {% endif %}
 
-{# Vendor bundles are NOT preloaded — window.__zetlEnsureGraph (defined in
+{# Vendor bundles are NOT preloaded — window.__ztlEnsureGraph (defined in
    base.html) lazy-injects graphology + FA2 + sigma only when the widget is
    actually expanded or when the full-page /_graph route is rendered. Saves
    the ~150 kB bundle on every non-graph page view. #}
@@ -121,7 +121,7 @@
 /* Inline config read by the external graph-boot.js. Keeping these three
    strings in HTML (vs. hard-coding in JS) means the JS file stays template-
    free and cacheable across all vaults / root paths. ~150 bytes of waste. */
-window.__zetlGraphConfig = {
+window.__ztlGraphConfig = {
   root: "{{ root_path | safe }}",
   indexFile: "{{ index_file }}",
   graphUrl: "{{ graph_index_url | default('') | safe }}"

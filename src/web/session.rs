@@ -7,7 +7,7 @@ use axum::http::request::Parts;
 use axum::http::{HeaderName, StatusCode};
 
 /// Cookie name for the session token.
-pub const SESSION_COOKIE_NAME: &str = "zetl_session";
+pub const SESSION_COOKIE_NAME: &str = "ztl_session";
 
 /// Session is destroyed after this duration of inactivity.
 const IDLE_TIMEOUT: Duration = Duration::from_secs(30 * 60); // 30 minutes
@@ -285,7 +285,7 @@ pub async fn csrf_token_header(
         );
         // Also set a non-HttpOnly cookie so page.html inline JS can read it
         if let Ok(cookie_val) =
-            axum::http::HeaderValue::from_str(&format!("zetl_csrf={csrf}; Path=/; SameSite=Strict"))
+            axum::http::HeaderValue::from_str(&format!("ztl_csrf={csrf}; Path=/; SameSite=Strict"))
         {
             response
                 .headers_mut()
@@ -556,7 +556,7 @@ mod tests {
         assert!(c.contains("HttpOnly"));
         assert!(c.contains("SameSite=Strict"));
         assert!(c.contains("Path=/"));
-        assert!(c.contains("zetl_session=abc123"));
+        assert!(c.contains("ztl_session=abc123"));
         assert!(!c.contains("Secure"));
     }
 
@@ -566,7 +566,7 @@ mod tests {
         assert!(c.contains("HttpOnly"));
         assert!(c.contains("SameSite=Strict"));
         assert!(c.contains("Secure"));
-        assert!(c.contains("zetl_session=abc123"));
+        assert!(c.contains("ztl_session=abc123"));
     }
 
     #[test]
@@ -580,7 +580,7 @@ mod tests {
         let mut headers = axum::http::HeaderMap::new();
         headers.insert(
             axum::http::header::COOKIE,
-            "foo=bar; zetl_session=deadbeef; baz=qux".parse().unwrap(),
+            "foo=bar; ztl_session=deadbeef; baz=qux".parse().unwrap(),
         );
         assert_eq!(token_from_cookies(&headers), Some("deadbeef".to_string()));
     }
@@ -834,7 +834,7 @@ mod tests {
         let resp = app
             .oneshot(
                 Request::get("/test")
-                    .header("Cookie", format!("zetl_session={session_token}"))
+                    .header("Cookie", format!("ztl_session={session_token}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -864,7 +864,7 @@ mod tests {
         let resp = app
             .oneshot(
                 Request::get("/test")
-                    .header("Cookie", format!("zetl_session={session_token}"))
+                    .header("Cookie", format!("ztl_session={session_token}"))
                     .body(Body::empty())
                     .unwrap(),
             )

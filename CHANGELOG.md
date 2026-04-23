@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Capability-URL distribution (SPEC-034 v0.4.0).** A new
-  `zetl build --capability` build mode encrypts every page with
+  `ztl build --capability` build mode encrypts every page with
   [`age`](https://age-encryption.org) and signs the resulting envelope
   with an Ed25519 vault-signing key, so a purely static host can serve
   a reader-scoped wiki without any server-side auth. Two authentication
@@ -37,25 +37,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rebuild-and-redeploy; forward secrecy is an explicit non-goal
   (NFR-3414).
 
-  A new `zetl cap` subcommand suite covers the full operator lifecycle:
+  A new `ztl cap` subcommand suite covers the full operator lifecycle:
 
   ```sh
-  zetl cap genkey                      # mint ZETL_CAP_SECRET + Ed25519 vault-signing key
-  zetl cap invite <name> --cohort <id> # issue an invite URL (delegated-URL) or entry URL (hardened)
+  ztl cap genkey                      # mint ztl_CAP_SECRET + Ed25519 vault-signing key
+  ztl cap invite <name> --cohort <id> # issue an invite URL (delegated-URL) or entry URL (hardened)
       [--expires <d>] [--pages <filter>] [--split-key]
-  zetl cap list    [--cohort <id>] [--output json|text]
-  zetl cap revoke  <grant-id>
-  zetl cap rotate  --cohort <id>       # new content salt; path-caps stable (REQ-3402)
-  zetl cap finalise <grant-id>         # set bound=true post-confirmation
-  zetl cap rotate-signing-key          # rotate Ed25519 key + rebuild all pages
-  zetl cap check                       # stale-grant + public-repo-safety audit
-  zetl cap sweep                       # mark past-expires revoked
-  zetl cap pair                        # SPAKE2 pubkey handoff
-  zetl cap audit-diff <old> <new>      # PR-gate malicious-author check (REQ-3424)
-  zetl cap emergency-shutdown          # live incident-response checklist
+  ztl cap list    [--cohort <id>] [--output json|text]
+  ztl cap revoke  <grant-id>
+  ztl cap rotate  --cohort <id>       # new content salt; path-caps stable (REQ-3402)
+  ztl cap finalise <grant-id>         # set bound=true post-confirmation
+  ztl cap rotate-signing-key          # rotate Ed25519 key + rebuild all pages
+  ztl cap check                       # stale-grant + public-repo-safety audit
+  ztl cap sweep                       # mark past-expires revoked
+  ztl cap pair                        # SPAKE2 pubkey handoff
+  ztl cap audit-diff <old> <new>      # PR-gate malicious-author check (REQ-3424)
+  ztl cap emergency-shutdown          # live incident-response checklist
   ```
 
-  Configuration lives under `[access]` in `zetl.toml`
+  Configuration lives under `[access]` in `ztl.toml`
   (`[access.signing]`, `[access.split_key]`, `[access.sw_hygiene]`,
   cohort tables); `grants.toml` and `recipients.toml` track issued
   grants and out-of-band public keys. Deploy artifacts include
@@ -76,11 +76,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Render-pipeline hooks (SPEC-032).** A new three-stage hook pipeline
   — `pre-parse` (raw markdown), `transform` (typed AST), `post-render`
   (HTML fragment) — runs alongside the existing SPEC-016 lifecycle
-  hooks. Hooks live under `.zetl/hooks/<stage>.d/` and stay resident
+  hooks. Hooks live under `.ztl/hooks/<stage>.d/` and stay resident
   via a JSON-lines persistent-mode protocol over stdin/stdout (CON-3201;
   release p95 ≈ 896 µs for a 500-node AST echo). The pipeline carries
-  a typed AST (`zetl-ast` schema v1.0; published as
-  `tools/zetl-ast-schema-v1.json`), a `BuildContext` snapshot, and a
+  a typed AST (`ztl-ast` schema v1.0; published as
+  `tools/ztl-ast-schema-v1.json`), a `BuildContext` snapshot, and a
   shared `build_data` channel with cross-page visibility.
 
   Composition resolves theme + vault `<stage>.d/` directories, runs a
@@ -95,16 +95,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write → run → diff → fix loop:
 
   ```sh
-  zetl hook new <stage> <name> [--lang py|js|sh] [--ecosystem ...]
-  zetl hook test <name> [--update]
-  zetl hook fixture --from <page> --hook <name>
-  zetl hook watch <name>          # restarts persistent process on edit
-  zetl hook coverage [--stage X]  # matched pages, invocations, latency
-  zetl hook dry-run <stage>/<name>
-  zetl hook capabilities [--stage X] [--json]
+  ztl hook new <stage> <name> [--lang py|js|sh] [--ecosystem ...]
+  ztl hook test <name> [--update]
+  ztl hook fixture --from <page> --hook <name>
+  ztl hook watch <name>          # restarts persistent process on edit
+  ztl hook coverage [--stage X]  # matched pages, invocations, latency
+  ztl hook dry-run <stage>/<name>
+  ztl hook capabilities [--stage X] [--json]
   ```
 
-  Plus `zetl ast sample <file>` and `zetl ast diff <a> <b>` for AST
+  Plus `ztl ast sample <file>` and `ztl ast diff <a> <b>` for AST
   introspection. Each scaffolded hook ships with a starter fixture +
   golden so `hook test` passes immediately on the fresh skeleton.
 
@@ -121,8 +121,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no longer abort the build. A `FailureRecord` per failure lands in
   `diagnostics.json`.
 
-- **Helper libraries.** `tools/zetl-ast-js/` (TypeScript / npm) and
-  `tools/zetl-ast-py/` (Python, hatchling) ship typed AST classes,
+- **Helper libraries.** `tools/ztl-ast-js/` (TypeScript / npm) and
+  `tools/ztl-ast-py/` (Python, hatchling) ship typed AST classes,
   `walk()`/`map_nodes()` traversal, an `@on_node` dispatch decorator,
   and a persistent-mode protocol client. A cross-impl conformance gate
   (`make helper-contracts`) drives all three implementations through
@@ -136,49 +136,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per-ecosystem fields the chosen adapter requires (`exec`/`lua_filter`,
   `exec`+`scope`, `package`+`version`+`options`); the pipeline routes
   them through the matching adapter and translates the foreign AST back
-  to `zetl-ast` for downstream stages.
+  to `ztl-ast` for downstream stages.
 
-  The new `zetl ecosystem check` subcommand reports per-ecosystem
+  The new `ztl ecosystem check` subcommand reports per-ecosystem
   runtime detection (binary path + version), the count of configured
   hooks, and the set of reachable plugins — exit 0 unless a configured
   ecosystem's runtime is missing.
 
   Mixed-parser misconfigurations (a hook expecting Pandoc AST attached
   to a CommonMark-parsed page) surface a five-part diagnostic with
-  remediation suggestions; `zetl build --strict-parsers` upgrades the
+  remediation suggestions; `ztl build --strict-parsers` upgrades the
   warning to a fatal error. A per-ecosystem compatibility matrix lives
-  at `tools/zetl-ecosystem-matrix.toml` (gated by structural + tier-
+  at `tools/ztl-ecosystem-matrix.toml` (gated by structural + tier-
   downgrade tests in CI).
 
-- **Safe mode and security policy.** `zetl build --safe-mode` /
-  `zetl serve --safe-mode` skips every vault hook and only runs theme
+- **Safe mode and security policy.** `ztl build --safe-mode` /
+  `ztl serve --safe-mode` skips every vault hook and only runs theme
   hooks declared in the theme's `[[theme.hooks]]` manifest table.
   Persistent hooks spawn under a default `SecurityPolicy` that
   redacts the host environment to a small allowlist
   (PATH/HOME/USER/LANG/...), caps stderr at 1 MiB with a truncation
   marker, and rejects messages over 10 MiB in either direction.
 
-- **Capability probes.** `zetl hook capabilities` issues a `probe`
+- **Capability probes.** `ztl hook capabilities` issues a `probe`
   message to every composed hook and reports its supported stages,
   AST types, and AST schema version; mismatches against the running
   binary's schema version exit non-zero so CI catches drift before
   `build`.
 
 - **Observability.** Hooks emit per-invocation log lines
-  (`[zetl] hook: stage=X id=Y page=Z duration_ms=N`) and a build-end
-  totals line (`[zetl] hooks: total_invocations=N total_duration_ms=M
+  (`[ztl] hook: stage=X id=Y page=Z duration_ms=N`) and a build-end
+  totals line (`[ztl] hooks: total_invocations=N total_duration_ms=M
   failures=K`). Failures additionally surface `status=failed
   reason=<r>` regardless of verbosity.
 
 - **Documentation.** New guides under `docs/`:
   `docs/canonical-extensions.md`, `docs/hook-security.md`,
-  `docs/zetl-ast-reference.md` (auto-generated, CI-gated),
+  `docs/ztl-ast-reference.md` (auto-generated, CI-gated),
   `docs/ecosystems/{pandoc,mdbook,remark}.md`, and
   `docs/ecosystems/matrix-contribution.md`.
 
 ### Fixed
 
-- **`zetl hook new` writes the composition-canonical sidecar manifest.**
+- **`ztl hook new` writes the composition-canonical sidecar manifest.**
   The scaffolder previously wrote `<name>.toml`, but
   `compose_stage` looks for `<name>.<ext>.toml` (e.g. `callouts.py.toml`).
   Freshly scaffolded hooks were silently invisible to the pipeline until
@@ -186,7 +186,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   canonical form directly; `find_scaffolded_hook` (used by `hook test`
   and `hook watch`) accepts both the canonical and legacy filenames so
   hooks scaffolded by older builds keep working.
-- **`zetl hook new --ecosystem <id>` seeds the SPEC-033 REQ-3312
+- **`ztl hook new --ecosystem <id>` seeds the SPEC-033 REQ-3312
   required fields.** Previously the scaffolded manifest carried only
   `ecosystem = "<id>"` and an explanatory comment, so the per-ecosystem
   manifest parser rejected it with the cryptic *"pandoc manifest must
@@ -200,7 +200,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `node_modules/`).
 
   The convention hint also strips ecosystem prefixes from the hook name
-  so `zetl hook new transform pandoc-smallcaps --ecosystem pandoc` no
+  so `ztl hook new transform pandoc-smallcaps --ecosystem pandoc` no
   longer suggests `exec = "pandoc-pandoc-smallcaps"`.
 
 ### Changed
@@ -212,7 +212,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it shipped unconditionally because the schema converged faster than
   expected, so no `--no-hooks-v2` opt-out is provided (there is nothing
   to opt out of). To skip every hook, use the existing
-  `zetl build --no-hooks` flag. (SPEC-032 §12 Phase D)
+  `ztl build --no-hooks` flag. (SPEC-032 §12 Phase D)
 - **`--features ecosystems-v1` umbrella retired.** All three
   ecosystem adapters (Pandoc, mdBook, remark) have shipped stable
   across two consecutive releases, so the preview umbrella that
@@ -251,19 +251,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   widget and remembered in `sessionStorage`. Clicking a node navigates
   to that page. Dead-link nodes and edges render in a muted, dashed
   treatment. A new `/_graph` route (and `_graph.html` under
-  `zetl build`) exposes the full-screen view, and the sidebar gains a
+  `ztl build`) exposes the full-screen view, and the sidebar gains a
   **Graph** link. Dependencies are vendored under
   `themes/default/static/vendor/sigma/` (no CDN at runtime). (SPEC-028)
 - **SPA navigation shell.** When `theme.toml` sets `[spa] enabled=true`
   (default on for the bundled theme), a small (<100 loc) vanilla JS
   module intercepts same-origin link clicks, fetches the next document,
-  and swaps the `<main data-zetl-volatile>` element in place —
+  and swaps the `<main data-ztl-volatile>` element in place —
   preserving the WebGL context, Sigma camera state, and any other
   persistent-shell state across navigations. Modifier clicks
   (meta/ctrl/shift/middle-click, `target=_blank`, cross-origin) fall
   back to native behaviour, `popstate` is handled, and inline `<script>`
   tags in swapped content are re-executed. The shell dispatches
-  cancelable `zetl:before-navigate` and `zetl:after-navigate` window
+  cancelable `ztl:before-navigate` and `ztl:after-navigate` window
   events around each transition so themes and widgets can react without
   re-instantiating. (SPEC-028 / REQ-113 / REQ-115)
 - **Persistent widget placement.** Default placement is a docked
@@ -271,13 +271,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to `/_graph`). `theme.toml [graph.placement]` opts into `tabs` or
   `stacked` layouts via a `data-placement` attribute on the shell
   container — no template editing required. Below
-  `--zetl-graph-widget-breakpoint` (default 900 px) the widget hides
+  `--ztl-graph-widget-breakpoint` (default 900 px) the widget hides
   and is reachable via a top-bar toggle that expands to a full-screen
   overlay (focus ring, Enter/Space to open, Escape to dismiss);
   visibility-only toggling keeps the same Sigma instance live.
   (REQ-116, REQ-117)
-- **CSS custom-property theming contract.** The full `--zetl-graph-*`
-  and `--zetl-shell-*` variable surface is declared with sensible
+- **CSS custom-property theming contract.** The full `--ztl-graph-*`
+  and `--ztl-shell-*` variable surface is declared with sensible
   defaults; Sigma node/edge reducers read them via `getComputedStyle`,
   so themes restyle the graph with CSS alone (no JS override). The
   theme authoring reference documents every variable, the
@@ -291,21 +291,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `_graph.html`. `axe-core` reports zero critical violations on
   `/_graph`. (REQ-109, NFR-105)
 - `graph-index.json` — graphology-serialised directed graph
-  (`format: "zetl-graph/v1"`, stable alphabetical ordering,
+  (`format: "ztl-graph/v1"`, stable alphabetical ordering,
   per-node `{label, slug, outlink_count, backlink_count, is_orphan,
   is_dead, tags}`). Written to `<out>/graph-index.json` by
-  `zetl build`, served at `GET /graph-index.json` by `zetl serve`, and
+  `ztl build`, served at `GET /graph-index.json` by `ztl serve`, and
   injected into templates as `graph_index_url` (always) plus
   `graph_index` (when `theme.toml` sets `graph_inline=true`).
   (REQ-101 / REQ-102 / REQ-103 / REQ-104 / REQ-105 / CON-101 / CON-102)
-- `zetl stats` gains a **Graph:** section (bytes / nodes / edges) in
+- `ztl stats` gains a **Graph:** section (bytes / nodes / edges) in
   table output and a `graph` field in `--json` output.
-- Client-side performance marks: `zetl:graph:render:start` +
-  `zetl:graph:render` around FA2 layout, and `zetl:navigate` around SPA
+- Client-side performance marks: `ztl:graph:render:start` +
+  `ztl:graph:render` around FA2 layout, and `ztl:navigate` around SPA
   transitions, for devtools / NFR harness consumption. (OBS-201 /
   OBS-113)
-- Verbose logging: `[zetl] graph-export: pages=N edges=M
-  duration_ms=X bytes=Y` under `zetl build --verbose`. (OBS-101)
+- Verbose logging: `[ztl] graph-export: pages=N edges=M
+  duration_ms=X bytes=Y` under `ztl build --verbose`. (OBS-101)
 
 ### Performance
 
@@ -326,7 +326,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- CI: disable `git2`'s default features (`https`, `ssh`). zetl only
+- CI: disable `git2`'s default features (`https`, `ssh`). ztl only
   uses git2 for local repo inspection and auto-commits (no network),
   so both are dead weight. Dropping `https` also eliminates
   libgit2-sys's unconditional `stransport.c` compile on Apple targets
@@ -365,7 +365,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installed only the gcc toolchain, not the aarch64 OpenSSL headers.
   Now enables Debian arm64 multiarch + `libssl-dev:arm64` and
   configures `pkg-config` for cross queries. Re-enables shipping arm64
-  Linux binaries to `files.anuna.io/zetl/v0.2.3/`.
+  Linux binaries to `files.anuna.io/ztl/v0.2.3/`.
 
 ## [0.2.2] - 2026-04-15
 
@@ -378,7 +378,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `zetl hook run` / in-process hook execution: retry `spawn()` on Linux
+- `ztl hook run` / in-process hook execution: retry `spawn()` on Linux
   `ETXTBSY` ("Text file busy") up to 20× with 10ms backoff. Defeats a
   kernel-level race when a hook script is written and immediately
   executed from the same process (common in tests, theme installers,
@@ -390,16 +390,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Vault scan now skips dotdirs by default.** Directories whose name starts with
   `.` (e.g. `.claude/`, `.obsidian/`, `.vscode/`, `.cache/`, `.venv/`,
-  `.terraform/`) are no longer walked by `zetl build`, `zetl serve`,
-  `zetl index`, `zetl search`, or `zetl watch`. Previously these were scanned
+  `.terraform/`) are no longer walked by `ztl build`, `ztl serve`,
+  `ztl index`, `ztl search`, or `ztl watch`. Previously these were scanned
   unless explicitly ignored, causing tool-state and AI-agent scratchpads to
   leak into `dist/` and pollute the link graph and search index. The
-  hardcoded force-ignores (`.git/`, `.zetl/`, `node_modules/`) behave as
+  hardcoded force-ignores (`.git/`, `.ztl/`, `node_modules/`) behave as
   before. Dotfiles at the vault root (e.g. `.hidden-note.md`,
-  `.zetlignore`, `.gitignore`) are still walked. (SPEC-026)
+  `.ztlignore`, `.gitignore`) are still walked. (SPEC-026)
 
   **Migration:** if you intentionally publish a dotdir, either pass
-  `--include-hidden` or add a negated pattern to a `.zetlignore` file at
+  `--include-hidden` or add a negated pattern to a `.ztlignore` file at
   the vault root (e.g. `!.archive/`).
 
 ### Added
@@ -407,20 +407,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **History UI surfaces on the default theme.** Every page now shows an
   inline metadata strip with `Last changed`, a humanised `stable` label
   (e.g. `3d`, `2w`, `9mo`), and a `history` link. A new `/_history`
-  route (and `_history.html` under `zetl build`) surfaces vault-wide
+  route (and `_history.html` under `ztl build`) surfaces vault-wide
   recent changes with a link-count trend sparkline and a
   reverse-chronological list of added / modified / removed pages. The
   sidebar gains a "Recent changes" link. All surfaces degrade silently
   when history is absent (SPEC-027 / REQ-305). Static builds now emit
   `pages/<slug>/_history.html` alongside `index.html` so deployed vaults
-  get the same temporal affordances as `zetl serve`. Requires the
+  get the same temporal affordances as `ztl serve`. Requires the
   `history` feature (enabled in default builds).
 - `--exclude PATTERN` (repeatable) and `--include-hidden` flags on
-  `zetl build`, `zetl index`, `zetl serve`, `zetl search`, and `zetl watch`.
+  `ztl build`, `ztl index`, `ztl serve`, `ztl search`, and `ztl watch`.
   `--exclude` accepts gitignore-syntax patterns; `--include-hidden` disables
-  the new dotdir default while preserving the level-1 `.git/`/`.zetl/`/
+  the new dotdir default while preserving the level-1 `.git/`/`.ztl/`/
   `node_modules/` force-ignore. (SPEC-026)
-- `.zetlignore` is now a documented first-class feature. Patterns use
+- `.ztlignore` is now a documented first-class feature. Patterns use
   gitignore syntax and are evaluated relative to the vault root. Negated
   patterns (`!foo`) override the default dotdir exclusion.
 - With `--verbose`, the scanner prints one stderr line per skipped path
@@ -429,27 +429,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `zetl stats`: `grounded_spl_blocks` could exceed `spl_blocks` when the theory
+- `ztl stats`: `grounded_spl_blocks` could exceed `spl_blocks` when the theory
   cache outlived deleted SPL blocks. Grounded / grounding counts are now joined
   against the live pipeline so only currently-present blocks are counted.
   (BUG-001)
-- `zetl serve`: unknown pages now respond `404 Not Found` instead of `200 OK`.
+- `ztl serve`: unknown pages now respond `404 Not Found` instead of `200 OK`.
   The "create this page" body is preserved — only the status code changes —
   so uptime probes, crawlers and monitoring see the correct signal. (BUG-002)
-- `zetl build`: accept `--out` and `-o` as aliases for `--out-dir`. (BUG-005)
+- `ztl build`: accept `--out` and `-o` as aliases for `--out-dir`. (BUG-005)
 
 ### Added
 
-- `zetl completions <shell>` — generate shell completion scripts for bash, zsh, fish, elvish, and powershell.
-- `zetl man` — generate a roff(7) man page on stdout. `make install` places it at `$(PREFIX)/share/man/man1/zetl.1` so `man zetl` works out of the box.
-- `--no-input` global flag for unattended / CI usage; disables interactive prompts such as the `zetl view` page picker.
+- `ztl completions <shell>` — generate shell completion scripts for bash, zsh, fish, elvish, and powershell.
+- `ztl man` — generate a roff(7) man page on stdout. `make install` places it at `$(PREFIX)/share/man/man1/ztl.1` so `man ztl` works out of the box.
+- `--no-input` global flag for unattended / CI usage; disables interactive prompts such as the `ztl view` page picker.
 - Release profile tuning: `lto = true`, `codegen-units = 1`, `strip = true` (cuts binary size ~40%).
 - Release pipeline: `release.sh`, `install.sh`, and `.woodpecker/release.yaml` for cross-platform binary distribution via Cloudflare R2.
 
 ### Changed
 
-- Global flags (`--json`, `--format`, `--dir`, `--quiet`, `--verbose`, `--no-color`, `--no-cache`, `--at`) now propagate to subcommands — `zetl list --json` works, not just `zetl --json list`.
-- JSON error output now goes to stderr instead of stdout, so `zetl … | jq` consumers get clean stdout on both success and failure.
+- Global flags (`--json`, `--format`, `--dir`, `--quiet`, `--verbose`, `--no-color`, `--no-cache`, `--at`) now propagate to subcommands — `ztl list --json` works, not just `ztl --json list`.
+- JSON error output now goes to stderr instead of stdout, so `ztl … | jq` consumers get clean stdout on both success and failure.
 - README: regrouped feature bullets into six themed sections; tagline broadened from "personal knowledge management" to "knowledge management, solo or team" to reflect the multi-user collab feature set.
 - `make install` now also installs the man page and bash/zsh/fish completions under `$(PREFIX)/share/`.
 
@@ -457,7 +457,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Cargo.toml` license field corrected from `MIT` to `AGPL-3.0-or-later` (LICENSE file has always been AGPL).
 - `Makefile` SPDX header corrected from `MIT` to `AGPL-3.0-or-later`.
-- Stale `github.com/anuna/zetl` link in `--help` footer now points at `codeberg.org/anuna/zetl`.
+- Stale `github.com/anuna/ztl` link in `--help` footer now points at `codeberg.org/anuna/ztl`.
 
 ## [0.1.0] — unreleased
 

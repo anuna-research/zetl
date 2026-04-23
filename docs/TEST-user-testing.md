@@ -1,15 +1,15 @@
 ---
 id: TEST-USER
-title: Comprehensive User Testing of zetl
+title: Comprehensive User Testing of ztl
 status: completed
 version: 1.0
 tested-date: 2026-04-07
 detecting-model: Claude Opus 4.6 (1M context)
 detection-method: synthetic user simulation + direct CLI exercise
-vault-under-test: zetl-vault (13 pages, 192 links, 120 dead links)
+vault-under-test: ztl-vault (13 pages, 192 links, 120 dead links)
 ---
 
-# TEST-USER: Comprehensive User Testing of zetl
+# TEST-USER: Comprehensive User Testing of ztl
 
 ## Synthetic User Profiles
 
@@ -20,24 +20,24 @@ vault-under-test: zetl-vault (13 pages, 192 links, 120 dead links)
 **Constraints:** Moderate CLI proficiency, expects standard flag conventions, uses both terminal and web browser
 **Daily workflow:**
 
-1. Run `zetl check` for vault health
-2. Search for topics with `zetl search`
-3. Browse connections with `zetl links` / `zetl backlinks`
-4. View notes in TUI with `zetl view`
-5. Build/serve a static site with `zetl build` or `zetl serve`
+1. Run `ztl check` for vault health
+2. Search for topics with `ztl search`
+3. Browse connections with `ztl links` / `ztl backlinks`
+4. View notes in TUI with `ztl view`
+5. Build/serve a static site with `ztl build` or `ztl serve`
 
 ### User: AI Agent (AgentBot)
 
-**Role:** LLM agent consuming zetl output programmatically
+**Role:** LLM agent consuming ztl output programmatically
 **Goals:** Query vault structure, parse JSON output, integrate into automated workflows
 **Constraints:** Requires structured JSON, non-zero exit codes for errors, deterministic output
 **Daily workflow:**
 
-1. `zetl list --json` to discover pages
-2. `zetl links <page> --json` for graph traversal
-3. `zetl search <query> --json` for content discovery
-4. `zetl check --json --fail-on error` for CI/CD gates
-5. `zetl export --json` for full graph analysis
+1. `ztl list --json` to discover pages
+2. `ztl links <page> --json` for graph traversal
+3. `ztl search <query> --json` for content discovery
+4. `ztl check --json --fail-on error` for CI/CD gates
+5. `ztl export --json` for full graph analysis
 
 ---
 
@@ -45,12 +45,12 @@ vault-under-test: zetl-vault (13 pages, 192 links, 120 dead links)
 
 ### Happy Path: Vault Health Check
 
-**Preconditions:** zetl installed, vault directory exists with markdown files
+**Preconditions:** ztl installed, vault directory exists with markdown files
 **Steps:**
 
-1. `zetl check -d vault/` -> JSON report of dead links, orphans, syntax errors
-2. `zetl check -d vault/ --dead-links` -> filtered to dead links only
-3. `zetl check -d vault/ --fail-on error` -> non-zero exit if errors found
+1. `ztl check -d vault/` -> JSON report of dead links, orphans, syntax errors
+2. `ztl check -d vault/ --dead-links` -> filtered to dead links only
+3. `ztl check -d vault/ --fail-on error` -> non-zero exit if errors found
 
 **Postconditions:** User knows vault health status; CI pipeline can gate on result
 **Failure modes:** Non-existent vault dir, empty vault, vault with no markdown files
@@ -60,11 +60,11 @@ vault-under-test: zetl-vault (13 pages, 192 links, 120 dead links)
 **Preconditions:** Vault indexed
 **Steps:**
 
-1. `zetl list -d vault/` -> list of all pages
-2. `zetl links "Page Name" -d vault/` -> forward links from page
-3. `zetl backlinks "Page Name" -d vault/` -> backlinks to page
-4. `zetl path "From" "To" -d vault/` -> shortest path between pages
-5. `zetl similar "query" -d vault/` -> fuzzy page name matches
+1. `ztl list -d vault/` -> list of all pages
+2. `ztl links "Page Name" -d vault/` -> forward links from page
+3. `ztl backlinks "Page Name" -d vault/` -> backlinks to page
+4. `ztl path "From" "To" -d vault/` -> shortest path between pages
+5. `ztl similar "query" -d vault/` -> fuzzy page name matches
 
 **Postconditions:** User understands the link topology around their topic
 **Failure modes:** Page name typo, disconnected graph, no results
@@ -74,7 +74,7 @@ vault-under-test: zetl-vault (13 pages, 192 links, 120 dead links)
 **Preconditions:** Vault exists with content
 **Steps:**
 
-1. `zetl build -d vault/ --out-dir dist/` -> generate static HTML
+1. `ztl build -d vault/ --out-dir dist/` -> generate static HTML
 2. Open `dist/index.html` in browser -> sidebar, page list, search works
 3. Search in the static site -> BM25 client-side search returns results
 
@@ -93,7 +93,7 @@ vault-under-test: zetl-vault (13 pages, 192 links, 120 dead links)
 | Search | search (basic, context, case, path, near, regex) | 11 | 0 | 1 UX |
 | Diagnostics | check (dead-links, orphans, syntax, fail-on) | 8 | 0 | 1 UX |
 | View TUI | 18 unit tests (TestBackend) | 18 | 0 | 0 |
-| TUI Dashboard | zetl tui help, integration tests | 60 | 0 | 0 |
+| TUI Dashboard | ztl tui help, integration tests | 60 | 0 | 0 |
 | Web Serve | serve, API endpoints (pages, search, graph) | 5 | 0 | 0 |
 | Web Build | build (default, themed, structure) | 4 | 1 | 1 BUG |
 | Themes | theme list, theme export | 3 | 0 | 0 |
@@ -124,11 +124,11 @@ vault-under-test: zetl-vault (13 pages, 192 links, 120 dead links)
 
 #### Environment
 
-- zetl 0.1.0, macOS Darwin 25.2.0, Rust (dev build)
+- ztl 0.1.0, macOS Darwin 25.2.0, Rust (dev build)
 
 #### Description
 
-The test `test_013_015_html_embeds_bm25_index` asserts that `index.html` must contain an inline `<script id="zetl-bm25-index">` element. However, the BM25 index was intentionally moved to an external file (`search-index.json`) because the inline payload was too large, bloating every HTML page.
+The test `test_013_015_html_embeds_bm25_index` asserts that `index.html` must contain an inline `<script id="ztl-bm25-index">` element. However, the BM25 index was intentionally moved to an external file (`search-index.json`) because the inline payload was too large, bloating every HTML page.
 
 The implementation at `src/web/build.rs:306` deliberately sets `bm25_json = String::new()` and writes the search index as a standalone JSON file via `write_search_index_json()`. The template conditional `{% if bm25_index %}` correctly skips the inline embed. The client-side JS in the templates already has a fallback that fetches `search-index.json` when the inline element is absent.
 
@@ -157,12 +157,12 @@ The implementation at `src/web/build.rs:306` deliberately sets `bm25_json = Stri
 
 #### Environment
 
-- zetl 0.1.0, macOS Darwin 25.2.0
+- ztl 0.1.0, macOS Darwin 25.2.0
 
 #### Steps to Reproduce
 
-1. Run `zetl -d zetl-vault search "install"` -> reports `total_matches: 7`
-2. Run `zetl -d zetl-vault search "install" --limit 1` -> reports `total_matches: 4` (not 7)
+1. Run `ztl -d ztl-vault search "install"` -> reports `total_matches: 7`
+2. Run `ztl -d ztl-vault search "install" --limit 1` -> reports `total_matches: 4` (not 7)
 
 #### Expected Behaviour
 
@@ -194,8 +194,8 @@ The implementation at `src/web/build.rs:306` deliberately sets `bm25_json = Stri
 
 #### Steps to Reproduce
 
-1. Run `zetl -d zetl-vault --json build --out-dir /tmp/test`
-2. Observe output is always the human-readable string: `zetl build -> 13 pages + 3 folder indexes written to ...`
+1. Run `ztl -d ztl-vault --json build --out-dir /tmp/test`
+2. Observe output is always the human-readable string: `ztl build -> 13 pages + 3 folder indexes written to ...`
 
 #### Expected Behaviour
 
@@ -222,7 +222,7 @@ The build command always outputs a human-readable string regardless of the forma
 
 #### Steps to Reproduce
 
-1. Run `zetl -d zetl-vault -f table check`
+1. Run `ztl -d ztl-vault -f table check`
 2. Observe the Summary table section
 
 #### Expected Behaviour
@@ -241,23 +241,23 @@ The summary table only shows SPL/drift-related metrics (total SPL blocks, drifte
 
 - **Step:** Any command with `-d`, `-f`, `--json`, `--no-cache`, `--no-color`, `-q`, `-v` flags
 - **Category:** Friction
-- **Description:** Global flags (`-d`, `-f`, `--json`, `--no-cache`, etc.) must be placed BEFORE the subcommand. Running `zetl links "Page" -d vault/` or `zetl list -f table` produces a confusing error: `error: unexpected argument '-d' found`. Users naturally place flags after the subcommand or after arguments.
+- **Description:** Global flags (`-d`, `-f`, `--json`, `--no-cache`, etc.) must be placed BEFORE the subcommand. Running `ztl links "Page" -d vault/` or `ztl list -f table` produces a confusing error: `error: unexpected argument '-d' found`. Users naturally place flags after the subcommand or after arguments.
 - **User impact:** Confusion and repeated failed commands, especially for new users. The error message (`tip: to pass '-d' as a value, use '-- -d'`) is misleading since the user isn't trying to pass `-d` as a value.
-- **Proposed resolution:** Either (a) accept global flags in any position (clap's `SubcommandPrecedenceOver` or similar), or (b) improve the error message to say "Global flags like -d must appear before the subcommand: `zetl -d vault/ links 'Page'`".
+- **Proposed resolution:** Either (a) accept global flags in any position (clap's `SubcommandPrecedenceOver` or similar), or (b) improve the error message to say "Global flags like -d must appear before the subcommand: `ztl -d vault/ links 'Page'`".
 - **Trace:** Enhancement (not a bug — the CLI works as documented, but the convention is surprising)
 
 ### Finding 002: JSON Error Responses Lack Fuzzy Suggestions
 
-- **Step:** `zetl links "Instl" --json` (non-existent page)
+- **Step:** `ztl links "Instl" --json` (non-existent page)
 - **Category:** Gap
-- **Description:** When a page is not found, the table-format output helpfully shows: `Hint: run 'zetl list' to see all pages, or use --fuzzy for approximate matching.` However, the JSON error response only contains `{"error": "Page not found: 'Instl'", "code": 1}` with no `suggestions` or `did_you_mean` field.
+- **Description:** When a page is not found, the table-format output helpfully shows: `Hint: run 'ztl list' to see all pages, or use --fuzzy for approximate matching.` However, the JSON error response only contains `{"error": "Page not found: 'Instl'", "code": 1}` with no `suggestions` or `did_you_mean` field.
 - **User impact:** AI agents parsing JSON output cannot auto-correct page name typos. Human users in JSON mode get less help than table mode users.
-- **Proposed resolution:** Add a `suggestions` array to the JSON error response containing the top 3 fuzzy matches (same data as `zetl similar`), e.g.: `{"error": "Page not found: 'Instl'", "code": 1, "suggestions": ["Install"]}`
+- **Proposed resolution:** Add a `suggestions` array to the JSON error response containing the top 3 fuzzy matches (same data as `ztl similar`), e.g.: `{"error": "Page not found: 'Instl'", "code": 1, "suggestions": ["Install"]}`
 - **Trace:** Amends SPEC-003 (Agent Ergonomics) — agents should be able to recover from typos programmatically
 
 ### Finding 003: Dead Links Do Not Trigger `--fail-on error`
 
-- **Step:** `zetl check --dead-links --fail-on error`
+- **Step:** `ztl check --dead-links --fail-on error`
 - **Category:** Ambiguity
 - **Description:** The vault has 120 dead links, but `--fail-on error` still exits with code 0. Dead links are reported in the JSON output but are apparently not classified as "errors" for the purpose of exit code determination.
 - **User impact:** CI/CD pipelines using `--fail-on error` to gate deployments will not catch dead links. Users must write custom scripts to parse the JSON and check `summary.dead_links > 0`.
@@ -266,7 +266,7 @@ The summary table only shows SPL/drift-related metrics (total SPL blocks, drifte
 
 ### Finding 004: Search `--context` Semantics May Confuse Users
 
-- **Step:** `zetl search "install" --context 2`
+- **Step:** `ztl search "install" --context 2`
 - **Category:** Friction (minor)
 - **Description:** The `--context` flag for search takes a CHARACTER count, not a LINE count. Running `--context 2` produces extremely truncated context like `". Install o"`. While the help text correctly says "Include N characters of surrounding text", users familiar with `grep -C` (which takes line counts) may be surprised.
 - **User impact:** Mild confusion; users quickly learn the correct semantics from the help text.
@@ -275,20 +275,20 @@ The summary table only shows SPL/drift-related metrics (total SPL blocks, drifte
 
 ### Finding 005: Export Shows `null` Paths for Dead Link Targets
 
-- **Step:** `zetl export`
+- **Step:** `ztl export`
 - **Category:** Gap (minor)
 - **Description:** The export command outputs nodes for both real pages and dead link targets. Dead link targets have `"path": null`. This is technically correct but may confuse consumers who expect only real pages.
 - **User impact:** Consumers must filter nodes by `path != null` to get only real pages. The `is_real` field is available in the graph API (`/api/graph`) but not in the CLI `export` output.
 - **Proposed resolution:** Add an `is_real` boolean field to export nodes (matching the API), or add a `--real-only` filter flag. Low priority.
 - **Trace:** Amends SPEC-001 / export contract
 
-### Finding 006: `zetl build` Exit Code 0 with 120 Dead Links
+### Finding 006: `ztl build` Exit Code 0 with 120 Dead Links
 
-- **Step:** `zetl build --out-dir dist/`
+- **Step:** `ztl build --out-dir dist/`
 - **Category:** Gap
 - **Description:** The build command succeeds (exit 0) even when the vault has 120 dead links. The generated HTML will contain broken internal links. There is no `--fail-on` flag for build.
-- **User impact:** CI/CD pipelines deploying static sites won't catch broken links unless they also run `zetl check` separately.
-- **Proposed resolution:** Add `--fail-on dead-links` to the build command, or document that `zetl check --fail-on warning` should be run before `zetl build` in CI pipelines.
+- **User impact:** CI/CD pipelines deploying static sites won't catch broken links unless they also run `ztl check` separately.
+- **Proposed resolution:** Add `--fail-on dead-links` to the build command, or document that `ztl check --fail-on warning` should be run before `ztl build` in CI pipelines.
 - **Trace:** Enhancement for build command
 
 ### Finding 007: Compiler Warnings (3 unused `mut`)
@@ -297,12 +297,12 @@ The summary table only shows SPL/drift-related metrics (total SPL blocks, drifte
 - **Category:** Friction (minor, developer-facing)
 - **Description:** Three `unused mut` warnings during compilation in `src/web/build.rs`
 - **User impact:** None for end users; cosmetic for contributors.
-- **Proposed resolution:** Remove unnecessary `mut` qualifiers. Run `cargo fix --lib -p zetl`.
+- **Proposed resolution:** Remove unnecessary `mut` qualifiers. Run `cargo fix --lib -p ztl`.
 - **Trace:** No spec impact
 
 ### Finding 008: `diff` Timestamps Always Null
 
-- **Step:** `zetl -d zetl-vault diff`
+- **Step:** `ztl -d ztl-vault diff`
 - **Category:** Gap
 - **Description:** The `from.timestamp` and `to.timestamp` fields in diff output are always `null`. These should contain the commit timestamps for context.
 - **User impact:** Consumers cannot determine the time range of the diff without running `git log` separately.
@@ -311,7 +311,7 @@ The summary table only shows SPL/drift-related metrics (total SPL blocks, drifte
 
 ### Finding 009: Default Theme Requires CDN Access
 
-- **Step:** `zetl build` then open `dist/index.html` offline
+- **Step:** `ztl build` then open `dist/index.html` offline
 - **Category:** Friction
 - **Description:** The default theme loads CSS/JS from CDNs (`cdn.jsdelivr.net` for DaisyUI, `cdn.tailwindcss.com`). Static builds opened without internet access render as unstyled HTML.
 - **User impact:** Offline/airgapped users get a broken-looking site. The `minimal` theme works offline since it has inline CSS.
@@ -320,7 +320,7 @@ The summary table only shows SPL/drift-related metrics (total SPL blocks, drifte
 
 ### Finding 010: `-q` (Quiet) Flag Has No Visible Effect on Most Commands
 
-- **Step:** `zetl -d zetl-vault -q list` vs `zetl -d zetl-vault list`
+- **Step:** `ztl -d ztl-vault -q list` vs `ztl -d ztl-vault list`
 - **Category:** Friction (minor)
 - **Description:** The `-q` flag suppresses "non-essential output" per the help text, but most commands already produce only JSON in pipe mode. The flag has a visible effect only on `index` (suppresses progress info) and possibly `build`.
 - **User impact:** Users may wonder if the flag is working. No harm, just confusing.
@@ -329,7 +329,7 @@ The summary table only shows SPL/drift-related metrics (total SPL blocks, drifte
 
 ### Finding 011: Search Does Not Support Regex Patterns
 
-- **Step:** `zetl -d zetl-vault search ".*link.*"` returns 0 results
+- **Step:** `ztl -d ztl-vault search ".*link.*"` returns 0 results
 - **Category:** Gap
 - **Description:** The search command uses BM25 full-text search, not regex matching. Regex patterns like `.*link.*` are searched literally and return no results. There is no `--regex` flag.
 - **User impact:** Users familiar with grep may expect regex support. The search silently returns no results for patterns that look valid.
@@ -351,8 +351,8 @@ The summary table only shows SPL/drift-related metrics (total SPL blocks, drifte
 
 - **OS:** macOS Darwin 25.2.0
 - **Rust:** dev profile (unoptimized + debuginfo)
-- **zetl version:** 0.1.0
-- **Vault:** zetl-vault (13 real pages, 61 unique forward link targets, 120 dead links)
+- **ztl version:** 0.1.0
+- **Vault:** ztl-vault (13 real pages, 61 unique forward link targets, 120 dead links)
 - **Features tested:** default (no `reason`, `history`, `semantic`, or `mcp` features)
 
 ### Automated Test Suite Results
@@ -392,7 +392,7 @@ The 1 failure is BUG-001 (BM25 index not embedded in build output).
 
 ### Overall Assessment
 
-zetl is in excellent shape. The core graph commands, search, diagnostics, web serve/build, themes, hooks, diff, and watch all function correctly. The test suite is comprehensive (230 automated tests). Four bugs were found:
+ztl is in excellent shape. The core graph commands, search, diagnostics, web serve/build, themes, hooks, diff, and watch all function correctly. The test suite is comprehensive (230 automated tests). Four bugs were found:
 
 - **1 moderate (S3):** `--limit` corrupts `total_matches` count in search
 - **3 minor (S4):** Stale test for inline BM25 (moved to external file); `build` ignores format flag; `check` table summary incomplete

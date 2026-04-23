@@ -1,5 +1,5 @@
 // CLI: `node --experimental-strip-types scripts/build.ts <size>`
-// Seeds if needed, then runs `zetl build` into .dist/vault-<size>.
+// Seeds if needed, then runs `ztl build` into .dist/vault-<size>.
 
 import { seedVault } from "../harness/fixtures.ts";
 import { buildDist } from "../harness/build.ts";
@@ -18,5 +18,5 @@ const dist = distPath(size);
 console.log(`seed → ${vault}`);
 await seedVault(vault, size);
 console.log(`build → ${dist}`);
-await buildDist({ vaultRoot: vault, distDir: dist, zetlBin: process.env.ZETL_BIN });
+await buildDist({ vaultRoot: vault, distDir: dist, ztlBin: process.env.ztl_BIN });
 console.log("done");

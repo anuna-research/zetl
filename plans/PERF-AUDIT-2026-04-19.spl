@@ -58,8 +58,8 @@
 (given task-extract-graph-boot-script)
 (meta task-extract-graph-boot-script
   (priority "P1")
-  (description "Move the ~55 KB inline <script> in _graph.html (window.__zetlBootGraph) into themes/default/static/graph-boot.js. The file is included via {% include %} so it's duplicated into multiple pages — externalising it means the browser fetches once and caches.")
-  (acceptance "_graph.html renders with a <script src='.../graph-boot.js' defer>; window.__zetlBootGraph still available; /_graph functionality unchanged."))
+  (description "Move the ~55 KB inline <script> in _graph.html (window.__ztlBootGraph) into themes/default/static/graph-boot.js. The file is included via {% include %} so it's duplicated into multiple pages — externalising it means the browser fetches once and caches.")
+  (acceptance "_graph.html renders with a <script src='.../graph-boot.js' defer>; window.__ztlBootGraph still available; /_graph functionality unchanged."))
 
 ;; ---- P1: asset hints + search index ---------------------------------------
 
@@ -72,7 +72,7 @@
 (given task-search-index-external)
 (meta task-search-index-external
   (priority "P2")
-  (description "Drop the inlined <script type='application/json' id='zetl-search-index'> from base.html; fetch it via /search-index.json with Cache-Control. Build mode already emits that file.")
+  (description "Drop the inlined <script type='application/json' id='ztl-search-index'> from base.html; fetch it via /search-index.json with Cache-Control. Build mode already emits that file.")
   (acceptance "Inline search index removed from every page; /search-index.json reachable in serve mode with 1h cache; search UI still works offline after first fetch."))
 
 ;; ---- P1: font optimisation -----------------------------------------------
@@ -94,7 +94,7 @@
 (given task-graph-vendor-defer)
 (meta task-graph-vendor-defer
   (priority "P1")
-  (description "Audit window.__zetlEnsureGraph — verify the ~190 KB Sigma+graphology bundle is NOT fetched on non-/_graph pages until the user hovers/expands the docked widget. If it's eager, make it lazy.")
+  (description "Audit window.__ztlEnsureGraph — verify the ~190 KB Sigma+graphology bundle is NOT fetched on non-/_graph pages until the user hovers/expands the docked widget. If it's eager, make it lazy.")
   (acceptance "Chrome Network tab on / shows 0 bytes fetched for /_static/vendor/sigma/*.js until the graph widget is interacted with; /_graph still eager-loads as before."))
 
 ;; ---- P2: CSS purge --------------------------------------------------------
@@ -116,7 +116,7 @@
 (given task-brotli-precompress-build)
 (meta task-brotli-precompress-build
   (priority "P3")
-  (description "In zetl build, pre-compress .html, .css, .js, .json to .br files alongside the originals. Most static hosts (Netlify/Cloudflare/nginx) serve the .br variant automatically when supported.")
+  (description "In ztl build, pre-compress .html, .css, .js, .json to .br files alongside the originals. Most static hosts (Netlify/Cloudflare/nginx) serve the .br variant automatically when supported.")
   (acceptance "dist/*.{html,css,js,json} each has a sibling .br file roughly 1/4 the size; _headers entries unchanged."))
 
 ;; ---- P3: server-side render sidebar --------------------------------------

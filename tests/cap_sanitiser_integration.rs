@@ -10,7 +10,7 @@
 //!   element survives with its core attributes.
 //! - Drift check: the Rust policy matches `tools/sanitiser-config.toml`.
 
-use zetl::cap::sanitiser::{
+use ztl::cap::sanitiser::{
     sanitise, ALLOWED_TAGS, ALLOWED_URL_SCHEMES, DENIED_ATTRIBUTES, GENERIC_ATTRIBUTES,
     STRIP_CONTENT_TAGS,
 };
@@ -302,7 +302,7 @@ fn config_mirrors_spec_allowlist() {
     // Cheap drift check: parse the TOML and compare tag/scheme sets
     // against the Rust consts. If someone updates one without the
     // other, this fails with a useful diff.
-    let toml_str = zetl::cap::sanitiser::CONFIG_TOML;
+    let toml_str = ztl::cap::sanitiser::CONFIG_TOML;
     let value: toml::Value = toml::from_str(toml_str).expect("sanitiser-config.toml parses");
 
     let toml_tags: Vec<String> = value["tags"]["allow"]

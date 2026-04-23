@@ -1,16 +1,16 @@
-//! Shared proptest generators for zetl-ext AST documents
+//! Shared proptest generators for ztl-ext AST documents
 //! (SPEC-033 NFR-3305 / TEST-3305-fidelity).
 //!
-//! Exposes [`Strategy`]-building functions for every zetl-ext node
+//! Exposes [`Strategy`]-building functions for every ztl-ext node
 //! type, plus compositions that produce well-formed documents with the
-//! zetl-specific marker nodes ([`Wikilink`], [`Embed`], [`SplBlock`],
+//! ztl-specific marker nodes ([`Wikilink`], [`Embed`], [`SplBlock`],
 //! [`Frontmatter`]) called out by the task acceptance criteria.
 //!
 //! The strategies live at the translator layer rather than in each
 //! ecosystem crate because the round-trip property is stated over
-//! zetl-ext documents (both sides of the equivalence are zetl-ext after
-//! `foreign_to_zetl`); the *same* generator feeds the pandoc-ext,
-//! mdast-ext, and zetl-ext harnesses in [`super::roundtrip`].
+//! ztl-ext documents (both sides of the equivalence are ztl-ext after
+//! `foreign_to_ztl`); the *same* generator feeds the pandoc-ext,
+//! mdast-ext, and ztl-ext harnesses in [`super::roundtrip`].
 //!
 //! ## Shape caps
 //!
@@ -86,7 +86,7 @@ pub fn arb_wikilink() -> impl Strategy<Value = Wikilink> {
 }
 
 /// Arbitrary [`Embed`]. Like [`arb_wikilink`] but no `alias` (embeds
-/// don't carry one in zetl-ext).
+/// don't carry one in ztl-ext).
 pub fn arb_embed() -> impl Strategy<Value = Embed> {
     (
         arb_position(),
@@ -294,7 +294,7 @@ pub fn arb_block() -> impl Strategy<Value = Block> {
     ]
 }
 
-/// Arbitrary zetl-ext [`Document`]. Top-level: optional frontmatter
+/// Arbitrary ztl-ext [`Document`]. Top-level: optional frontmatter
 /// plus 0..4 block children drawn from [`arb_block`].
 pub fn arb_document() -> impl Strategy<Value = Document> {
     (

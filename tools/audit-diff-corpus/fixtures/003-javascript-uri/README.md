@@ -5,4 +5,4 @@ drops it at render, but the audit gate surfaces the author's intent.
 
 **Expected:** `dangerous-scheme`.
 
-**Source:** OWASP XSS cheatsheet + historical zetl BUG-016 scenario.
+**Source:** OWASP XSS cheatsheet + historical ztl BUG-016 scenario.

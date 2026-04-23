@@ -7,7 +7,7 @@ tags: [writing, tags, frontmatter, metadata]
 
 Tags are how you group pages without forcing them into folders. Frontmatter
 is how you attach any other structured data — dates, statuses, authors,
-book ISBNs, whatever your vault needs — that zetl and your templates can
+book ISBNs, whatever your vault needs — that ztl and your templates can
 both see.
 
 ## YAML frontmatter basics
@@ -30,13 +30,13 @@ rating: 5
 ```
 
 Anything inside the fences is frontmatter; everything after the closing `---`
-is the body. zetl reads frontmatter on every scan and exposes it to
+is the body. ztl reads frontmatter on every scan and exposes it to
 templates, search, and hooks. See [[Frontmatter]] for the conceptual model
 and [[Frontmatter Fields]] for the reserved-key reference.
 
 ## Tagging — two syntaxes
 
-zetl recognises tags in two places.
+ztl recognises tags in two places.
 
 **Frontmatter tags.** A YAML list under the `tags:` key:
 
@@ -55,26 +55,26 @@ first-class, they show up in templates, and they don't clutter your prose.
 Working through #rust #async patterns today. The `tokio` runtime...
 ```
 
-Both forms work; zetl surfaces them together. Inline tags are convenient for
+Both forms work; ztl surfaces them together. Inline tags are convenient for
 tagging a paragraph mid-thought; frontmatter tags are better for page-level
 classification. A typical page uses frontmatter for 2–4 durable tags and
 skips inline tags entirely.
 
 ## Finding pages by tag
 
-There's no dedicated `--tag` flag, but `zetl search` is frontmatter-aware and
+There's no dedicated `--tag` flag, but `ztl search` is frontmatter-aware and
 matches tag text directly:
 
 ```bash
-zetl search 'rust'               # any page with 'rust' anywhere
-zetl search 'tags:.*rust'        # regex — frontmatter list entries
-zetl search '#rust'              # inline hashtag form
+ztl search 'rust'               # any page with 'rust' anywhere
+ztl search 'tags:.*rust'        # regex — frontmatter list entries
+ztl search '#rust'              # inline hashtag form
 ```
 
 For anything programmatic, export the graph and filter:
 
 ```bash
-zetl export --json | jq '.pages[] | select(.tags[] | contains("rust"))'
+ztl export --json | jq '.pages[] | select(.tags[] | contains("rust"))'
 ```
 
 See [[Searching]] for the full set of search options and [[Following Links]]
@@ -82,7 +82,7 @@ for graph export.
 
 ## Frontmatter beyond tags
 
-zetl treats frontmatter as an open map. You can attach any keys you like, and
+ztl treats frontmatter as an open map. You can attach any keys you like, and
 templates see them via `page.frontmatter.<key>`. Some common patterns:
 
 ```yaml
@@ -96,7 +96,7 @@ follow-up: 2026-04-25
 ---
 ```
 
-A few reserved keys have special meaning to zetl or to the default theme —
+A few reserved keys have special meaning to ztl or to the default theme —
 `title`, `tags`, `date`, `status`, `draft`, `aliases`. See
 [[Frontmatter Fields]] for the full list and the semantics. Custom keys are
 left alone: `attendees`, `rating`, `isbn`, `project` — pick whatever schema
@@ -104,7 +104,7 @@ fits your vault.
 
 ## Templates see your frontmatter
 
-Anything you put in frontmatter is available when `zetl build` renders the
+Anything you put in frontmatter is available when `ztl build` renders the
 page. If your theme's `page.html` includes:
 
 ```jinja

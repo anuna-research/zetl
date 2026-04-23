@@ -22,20 +22,20 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use tempfile::TempDir;
 
-use zetl::cap::build::{run_capability_build, BuildConfig, BuildError, PageInput, Visibility};
-use zetl::cap::genkey::{build_secret, decode_secret, encode_secret, SECRET_VERSION_V1};
-use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
-use zetl::cap::recipients::parsing::{
+use ztl::cap::build::{run_capability_build, BuildConfig, BuildError, PageInput, Visibility};
+use ztl::cap::genkey::{build_secret, decode_secret, encode_secret, SECRET_VERSION_V1};
+use ztl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
+use ztl::cap::recipients::parsing::{
     Cohort, CohortMode, RecipientsFile, VaultSection, AGE_RECIPIENT_V1_PREFIX,
 };
-use zetl::cap::scoping::access_config::{
+use ztl::cap::scoping::access_config::{
     AccessConfig, AccessConfigError, BacklinksConfig, BacklinksMode, SearchConfig, SearchMode,
 };
-use zetl::cap::scoping::backlinks::{
+use ztl::cap::scoping::backlinks::{
     scope_backlinks_for_target, scope_backlinks_per_cohort, RawBacklink,
 };
-use zetl::cap::scoping::cohort_index::{CohortIndex, CohortScope, PageRef};
-use zetl::cap::sign::VaultSigningKey;
+use ztl::cap::scoping::cohort_index::{CohortIndex, CohortScope, PageRef};
+use ztl::cap::sign::VaultSigningKey;
 
 // ─── helpers (trimmed copies of the ones in the build-driver test
 // file — duplicated rather than factored out because integration
@@ -62,7 +62,7 @@ fn fresh_identity_pair() -> (x25519::Identity, [u8; 32]) {
     (id, pk)
 }
 
-fn sample_secret() -> zetl::cap::genkey::ParsedSecret {
+fn sample_secret() -> ztl::cap::genkey::ParsedSecret {
     let random = [0x7Eu8; 32];
     let bytes = build_secret(SECRET_VERSION_V1, &random);
     decode_secret(&encode_secret(&bytes)).expect("secret round-trips")

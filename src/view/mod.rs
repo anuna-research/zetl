@@ -1,4 +1,4 @@
-//! `zetl view` — Xanadu-inspired transclusion TUI (SPEC-009, IMPL-009).
+//! `ztl view` — Xanadu-inspired transclusion TUI (SPEC-009, IMPL-009).
 //!
 //! A focused two-pane layout: a main note pane on the left, context cards
 //! on the right, connected by a bridge column — a terminal-native take on

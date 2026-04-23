@@ -4,7 +4,7 @@
 // `docs/reader.html` (served from dist/) with per-error-kind anchors,
 // and `docs/reader-troubleshooting.md` as the markdown mirror. The
 // shim's `renderError` deep-links to those anchors via a sibling
-// `[data-zetl-error-help]` element. This test pins:
+// `[data-ztl-error-help]` element. This test pins:
 //
 //   1. Every `ErrorKind` yields an `#err-<kind>` href.
 //   2. `renderError` emits the help link alongside the byte-stable
@@ -57,16 +57,16 @@ test("helpHrefFor returns `${READER_DOC_BASE}#err-<kind>` for every kind", () =>
   }
 });
 
-test("renderError emits a data-zetl-error-help link alongside the byte-stable summary", () => {
+test("renderError emits a data-ztl-error-help link alongside the byte-stable summary", () => {
   const kind: ErrorKind = "signature-failed";
   renderError(kind);
 
-  const host = document.querySelector("main[data-zetl-capability]");
+  const host = document.querySelector("main[data-ztl-capability]");
   assert.ok(host, "capability host present");
 
   // The summary copy is pinned byte-stable by REQ-3427 — a help link
   // must not be appended into this paragraph.
-  const summary = host!.querySelector("[data-zetl-error-summary]");
+  const summary = host!.querySelector("[data-ztl-error-summary]");
   assert.ok(summary, "summary element present");
   assert.equal(
     summary!.textContent,
@@ -74,7 +74,7 @@ test("renderError emits a data-zetl-error-help link alongside the byte-stable su
     "help link wiring must not change the summary copy",
   );
 
-  const help = host!.querySelector("[data-zetl-error-help] a");
+  const help = host!.querySelector("[data-ztl-error-help] a");
   assert.ok(help, "help link element present");
   assert.equal(help!.getAttribute("href"), helpHrefFor(kind));
   assert.equal(help!.getAttribute("rel"), "noopener noreferrer");
@@ -84,8 +84,8 @@ test("renderError emits a data-zetl-error-help link alongside the byte-stable su
 test("renderError attaches a help link for every error kind", () => {
   for (const kind of ALL_KINDS) {
     renderError(kind);
-    const host = document.querySelector("main[data-zetl-capability]");
-    const help = host!.querySelector("[data-zetl-error-help] a");
+    const host = document.querySelector("main[data-ztl-capability]");
+    const help = host!.querySelector("[data-ztl-error-help] a");
     assert.ok(help, `help link present for ${kind}`);
     assert.equal(help!.getAttribute("href"), helpHrefFor(kind));
   }

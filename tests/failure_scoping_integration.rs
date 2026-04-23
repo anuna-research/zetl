@@ -17,14 +17,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 
-use zetl::hooks::ast::{
+use ztl::hooks::ast::{
     Block, Document, DocumentKind, Inline, Paragraph, Position, Text, AST_VERSION,
 };
-use zetl::hooks::build_context::{BuildContext, BuildMode, PageMeta};
-use zetl::hooks::failure_scoping::{
+use ztl::hooks::build_context::{BuildContext, BuildMode, PageMeta};
+use ztl::hooks::failure_scoping::{
     exit_code_for, write_diagnostics_json, FailureRecord, HookFailOn,
 };
-use zetl::hooks::pipeline::{
+use ztl::hooks::pipeline::{
     run_page, AstDocument, HookError, HookPipeline, PostRenderHook, PreParseHook, Stage,
     TransformHook,
 };

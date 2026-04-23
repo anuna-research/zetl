@@ -1,7 +1,7 @@
 //! Ecosystem adapter layer (SPEC-033).
 //!
 //! SPEC-033 introduces a first-class notion of a **plugin ecosystem** —
-//! Pandoc filters, mdBook preprocessors, remark plugins — that zetl
+//! Pandoc filters, mdBook preprocessors, remark plugins — that ztl
 //! bridges to via the SPEC-032 hook runtime. This module owns:
 //!
 //! - the [`registry`] that enumerates the ecosystems (REQ-3301 / CON-3301)
@@ -45,7 +45,7 @@ pub use detection::{
 pub use manifest::{
     parse as parse_ecosystem_specific, validate as validate_ecosystem_specific,
     EcosystemManifestError, EcosystemSpecific, MdbookManifestFields, MdbookScope,
-    PandocManifestFields, RemarkManifestFields, ZetlNativeManifestFields, BASE_MANIFEST_KEYS,
+    PandocManifestFields, RemarkManifestFields, ztlNativeManifestFields, BASE_MANIFEST_KEYS,
 };
 pub use registry::{all, by_id, Ecosystem, EcosystemEntry, RuntimeDep};
 pub use version_drift::{

@@ -11,7 +11,7 @@
 //!   _redirects                         ← Netlify / Cloudflare Pages redirects
 //!   vercel.json                        ← Vercel rewrites + headers
 //!   <vault>-<cohort>.html              ← optional single-file bundle
-//!   _zetl/
+//!   _ztl/
 //!     _gone.map                        ← nginx map for 410-Gone tombstones
 //!     deploy-nginx.conf                ← complete nginx recipe (headers + _gone.map include)
 //!     deploy-caddy.conf                ← complete Caddy recipe
@@ -21,7 +21,7 @@
 //! ```
 //!
 //! The top-level `_redirects` + `vercel.json` are *in addition to* the
-//! copy-paste recipe under `_zetl/`; Netlify and Vercel both read the
+//! copy-paste recipe under `_ztl/`; Netlify and Vercel both read the
 //! root-level files verbatim, so shipping them in the dist tree means
 //! the operator does not have to manually merge anything to get the
 //! baseline Cache-Control + Clear-Site-Data + tombstone wiring.
@@ -55,11 +55,11 @@ use crate::cap::scoping::access_config::SingleFileConfig;
 /// Generated-file marker that every deploy artifact carries at the top
 /// of its body. Tests grep for this to assert the file came from the
 /// build driver and not an operator-maintained override.
-pub const GENERATED_MARKER: &str = "zetl capability-mode deploy artifact";
+pub const GENERATED_MARKER: &str = "ztl capability-mode deploy artifact";
 
 /// Nginx variable that [`render_gone_map`] writes into and the
 /// deploy-nginx recipe reads back.
-pub const GONE_MAP_VARIABLE: &str = "$zetl_gone";
+pub const GONE_MAP_VARIABLE: &str = "$ztl_gone";
 
 /// One envelope inside a [`CohortBundle`] — `(slug, bytes)`. The
 /// bundle renderer base64-encodes the bytes verbatim so the envelope
@@ -97,7 +97,7 @@ pub struct DeployArtifactsInput<'a> {
     pub cohort_bundles: Vec<CohortBundle>,
 }
 
-/// Render `<out_dir>/_zetl/_gone.map` — an nginx `map` block that
+/// Render `<out_dir>/_ztl/_gone.map` — an nginx `map` block that
 /// maps tombstone paths to a flag variable the server config inspects
 /// to return 410 Gone.
 pub fn render_gone_map(tombstones: &[String]) -> String {
@@ -201,7 +201,7 @@ pub fn render_top_vercel_json(spec: &HeaderSpec, tombstones: &[String]) -> Strin
     out
 }
 
-/// Render `<out_dir>/_zetl/deploy-nginx.conf` — the complete nginx
+/// Render `<out_dir>/_ztl/deploy-nginx.conf` — the complete nginx
 /// recipe an operator can copy-paste into a `server { }` block. Pulls
 /// the header directives from [`HeaderSpec`] and references the
 /// `_gone.map` file by path so tombstones flow through automatically.
@@ -209,7 +209,7 @@ pub fn render_deploy_nginx(spec: &HeaderSpec, tombstones: &[String]) -> String {
     let mut out = String::new();
     out.push_str(&format!("# {GENERATED_MARKER}: nginx.\n"));
     out.push_str("# Paste inside an nginx `server { }` block. Also include\n");
-    out.push_str("# `include _zetl/_gone.map;` in your enclosing `http {}` context.\n");
+    out.push_str("# `include _ztl/_gone.map;` in your enclosing `http {}` context.\n");
     out.push_str(&format!(
         "location ^~ {CIPHERTEXT_PATH_PREFIX} {{\n    \
          if ({GONE_MAP_VARIABLE} = 1) {{ return 410; }}\n    \
@@ -247,25 +247,25 @@ pub fn render_deploy_nginx(spec: &HeaderSpec, tombstones: &[String]) -> String {
     out
 }
 
-/// Render `<out_dir>/_zetl/deploy-caddy.conf`.
+/// Render `<out_dir>/_ztl/deploy-caddy.conf`.
 pub fn render_deploy_caddy(spec: &HeaderSpec, tombstones: &[String]) -> String {
     let mut out = String::new();
     out.push_str(&format!("# {GENERATED_MARKER}: Caddy.\n"));
     out.push_str("# Paste inside your site block.\n\n");
     out.push_str(&format!(
-        "@zetl_cap path {CIPHERTEXT_PATH_PREFIX}*\n\
-         header @zetl_cap Cache-Control \"{}\"\n\
-         header @zetl_cap Content-Security-Policy \"{}\"\n\n",
+        "@ztl_cap path {CIPHERTEXT_PATH_PREFIX}*\n\
+         header @ztl_cap Cache-Control \"{}\"\n\
+         header @ztl_cap Content-Security-Policy \"{}\"\n\n",
         spec.cap_cache_control, spec.csp
     ));
     for path in tombstones {
         out.push_str(&format!(
-            "@zetl_gone_{hash} path {path}\nrespond @zetl_gone_{hash} 410\n\n",
+            "@ztl_gone_{hash} path {path}\nrespond @ztl_gone_{hash} 410\n\n",
             hash = short_hash(path),
         ));
     }
     for (idx, path) in CLEAR_SITE_DATA_PATHS.iter().enumerate() {
-        let matcher = format!("@zetl_csd_{idx}");
+        let matcher = format!("@ztl_csd_{idx}");
         out.push_str(&format!(
             "{matcher} path {path}\nheader {matcher} Clear-Site-Data `{}`\n",
             spec.clear_site_data
@@ -279,14 +279,14 @@ pub fn render_deploy_caddy(spec: &HeaderSpec, tombstones: &[String]) -> String {
         out.push('\n');
     }
     out.push_str(&format!(
-        "@zetl_shim path {SHIM_PATH}\nheader @zetl_shim Cache-Control \"{}\"\n",
+        "@ztl_shim path {SHIM_PATH}\nheader @ztl_shim Cache-Control \"{}\"\n",
         spec.shim_cache_control
     ));
     out
 }
 
-/// Render `<out_dir>/_zetl/deploy-netlify.conf` — same format as the
-/// Netlify `_headers` file, emitted under `_zetl/` so the operator
+/// Render `<out_dir>/_ztl/deploy-netlify.conf` — same format as the
+/// Netlify `_headers` file, emitted under `_ztl/` so the operator
 /// treats it as a copy-paste recipe. The top-level `_redirects` owns
 /// the tombstone list (Netlify applies it at edge before headers).
 pub fn render_deploy_netlify(spec: &HeaderSpec, tombstones: &[String]) -> String {
@@ -308,7 +308,7 @@ pub fn render_deploy_netlify(spec: &HeaderSpec, tombstones: &[String]) -> String
     out
 }
 
-/// Render `<out_dir>/_zetl/deploy-vercel.conf` — a JSON snippet an
+/// Render `<out_dir>/_ztl/deploy-vercel.conf` — a JSON snippet an
 /// operator can merge into their own `vercel.json`. Mirrors the
 /// top-level `vercel.json` shape, minus the outer wrapper, so it is
 /// easy to paste into an existing `{ "headers": [...] }` array.
@@ -320,7 +320,7 @@ pub fn render_deploy_vercel(spec: &HeaderSpec, tombstones: &[String]) -> String 
     out
 }
 
-/// Render `<out_dir>/_zetl/deploy-cloudflare.conf`. Cloudflare Pages
+/// Render `<out_dir>/_ztl/deploy-cloudflare.conf`. Cloudflare Pages
 /// accepts the Netlify `_headers` + `_redirects` format verbatim, but
 /// the recipe notes the redirects file carries tombstones + that
 /// Workers / Page Rules are the alternative path.
@@ -345,7 +345,7 @@ pub fn render_deploy_cloudflare(spec: &HeaderSpec, tombstones: &[String]) -> Str
 
 /// Render a single-file offline bundle HTML (SPEC-034 REQ-3418,
 /// `[access.single_file]`). Each envelope is base64-encoded and
-/// inlined as a `<template data-zetl-envelope data-slug="...">` block
+/// inlined as a `<template data-ztl-envelope data-slug="...">` block
 /// keyed by slug. The v1 bundle is a scaffold — the loader wiring
 /// envelopes back to the decryption shim is a downstream task.
 pub fn render_single_file_bundle(
@@ -360,7 +360,7 @@ pub fn render_single_file_bundle(
     out.push_str("<meta charset=\"utf-8\">\n");
     out.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
     out.push_str(&format!(
-        "<title>{} ({}) — zetl capability bundle</title>\n",
+        "<title>{} ({}) — ztl capability bundle</title>\n",
         html_escape(vault_name),
         html_escape(cohort_id),
     ));
@@ -368,22 +368,22 @@ pub fn render_single_file_bundle(
         "<meta name=\"generator\" content=\"{GENERATED_MARKER}: single-file bundle\">\n"
     ));
     out.push_str(&format!(
-        "<meta name=\"zetl-vault\" content=\"{}\">\n",
+        "<meta name=\"ztl-vault\" content=\"{}\">\n",
         html_escape(vault_name),
     ));
     out.push_str(&format!(
-        "<meta name=\"zetl-cohort\" content=\"{}\">\n",
+        "<meta name=\"ztl-cohort\" content=\"{}\">\n",
         html_escape(cohort_id),
     ));
     out.push_str(&format!(
-        "<meta name=\"zetl-envelope-count\" content=\"{}\">\n",
+        "<meta name=\"ztl-envelope-count\" content=\"{}\">\n",
         envelopes.len(),
     ));
     out.push_str("</head>\n<body>\n");
-    out.push_str("<main data-zetl-capability data-zetl-bundle></main>\n");
+    out.push_str("<main data-ztl-capability data-ztl-bundle></main>\n");
     for env in envelopes {
         out.push_str(&format!(
-            "<template data-zetl-envelope data-slug=\"{}\">\n",
+            "<template data-ztl-envelope data-slug=\"{}\">\n",
             html_escape(&env.slug),
         ));
         out.push_str(&B64_STANDARD.encode(&env.envelope_bytes));
@@ -400,10 +400,10 @@ pub fn write_deploy_artifacts(
     input: &DeployArtifactsInput,
 ) -> Result<Vec<PathBuf>, io::Error> {
     let mut written = Vec::new();
-    let zetl_dir = out_dir.join("_zetl");
-    fs::create_dir_all(&zetl_dir)?;
+    let ztl_dir = out_dir.join("_ztl");
+    fs::create_dir_all(&ztl_dir)?;
 
-    let gone_map = zetl_dir.join("_gone.map");
+    let gone_map = ztl_dir.join("_gone.map");
     fs::write(&gone_map, render_gone_map(&input.tombstones))?;
     written.push(gone_map);
 
@@ -440,7 +440,7 @@ pub fn write_deploy_artifacts(
             render_deploy_cloudflare(input.spec, &input.tombstones),
         ),
     ] {
-        let path = zetl_dir.join(name);
+        let path = ztl_dir.join(name);
         fs::write(&path, body)?;
         written.push(path);
     }
@@ -620,7 +620,7 @@ mod tests {
     #[test]
     fn gone_map_empty_still_declares_map_block() {
         let body = render_gone_map(&[]);
-        assert!(body.contains("map $request_uri $zetl_gone"));
+        assert!(body.contains("map $request_uri $ztl_gone"));
         assert!(body.contains("default 0;"));
         assert!(body.ends_with("}\n"));
     }
@@ -691,7 +691,7 @@ mod tests {
     fn deploy_nginx_wires_gone_map_check() {
         let body = render_deploy_nginx(&default_spec(), &[]);
         assert!(
-            body.contains("if ($zetl_gone = 1)"),
+            body.contains("if ($ztl_gone = 1)"),
             "nginx recipe must check gone map: {body}"
         );
         assert!(body.contains("location ^~ /c/"));
@@ -707,9 +707,9 @@ mod tests {
     #[test]
     fn deploy_caddy_emits_respond_410_per_tombstone() {
         let body = render_deploy_caddy(&default_spec(), &["/c/xyz/page.html".to_string()]);
-        assert!(body.contains("@zetl_cap path /c/*"));
+        assert!(body.contains("@ztl_cap path /c/*"));
         assert!(body.contains("path /c/xyz/page.html"));
-        assert!(body.contains("respond @zetl_gone_"));
+        assert!(body.contains("respond @ztl_gone_"));
         assert!(body.contains("410"));
     }
 
@@ -758,7 +758,7 @@ mod tests {
             ],
         );
         assert!(body.contains("<title>wiki (engineering)"));
-        assert!(body.contains("<meta name=\"zetl-envelope-count\" content=\"2\">"));
+        assert!(body.contains("<meta name=\"ztl-envelope-count\" content=\"2\">"));
         assert!(body.contains("data-slug=\"welcome\""));
         // Path separators are preserved in data-slug (HTML-safe).
         assert!(body.contains("data-slug=\"deep/slug\""));
@@ -774,7 +774,7 @@ mod tests {
         let sf = SingleFileConfig::default();
         write_deploy_artifacts(tmp.path(), &default_input(&spec, &sf)).unwrap();
 
-        let zetl = tmp.path().join("_zetl");
+        let ztl = tmp.path().join("_ztl");
         for name in [
             "_gone.map",
             "deploy-nginx.conf",
@@ -783,7 +783,7 @@ mod tests {
             "deploy-vercel.conf",
             "deploy-cloudflare.conf",
         ] {
-            let path = zetl.join(name);
+            let path = ztl.join(name);
             assert!(path.is_file(), "missing {}", path.display());
             let body = fs::read_to_string(&path).unwrap();
             assert!(body.contains(GENERATED_MARKER), "{name} missing marker");
@@ -861,7 +861,7 @@ mod tests {
         let vj = render_top_vercel_json(&spec, &tombstones);
         let parsed: serde_json::Value = serde_json::from_str(&vj).unwrap();
         assert_eq!(parsed["redirects"][0]["source"], "/c/deadbeef/secret.html");
-        // The recipe under _zetl/ mentions the tombstone inline as a
+        // The recipe under _ztl/ mentions the tombstone inline as a
         // hint so an operator auditing one file sees every platform's
         // view of the retired path.
         let nginx = render_deploy_nginx(&spec, &tombstones);

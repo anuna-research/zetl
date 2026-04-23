@@ -3,7 +3,7 @@
 //! Implements the precedence stack from SPEC-026 §REQ-205. The pure entry
 //! point is [`classify_entry`], which decides whether a single filesystem
 //! entry should be included in the scan. Levels 3–5 (.gitignore,
-//! .zetlignore, `--exclude`) are handled by the `ignore` crate's
+//! .ztlignore, `--exclude`) are handled by the `ignore` crate's
 //! `WalkBuilder` chain at the call site; this module contributes levels
 //! 1–2 (hardcoded force-ignores + nested vault + dotdir default).
 
@@ -21,7 +21,7 @@ pub struct ScanOptions {
     /// When true, disables the level-2 dotdir default exclusion. Level-1
     /// force-ignores are unaffected.
     pub include_hidden: bool,
-    /// Emit OBS-200 `[zetl] scan: skipped ...` lines on stderr when an
+    /// Emit OBS-200 `[ztl] scan: skipped ...` lines on stderr when an
     /// entry is excluded. Wired to the global `--verbose` flag.
     pub verbose: bool,
 }
@@ -49,11 +49,11 @@ impl ScanOptions {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExcludeReason {
-    /// `.git/`, `.zetl/`, `node_modules/` — never overridable.
+    /// `.git/`, `.ztl/`, `node_modules/` — never overridable.
     Hardcoded,
-    /// Directory contains its own `.zetl/`, marking it as a child vault.
+    /// Directory contains its own `.ztl/`, marking it as a child vault.
     NestedVault,
-    /// Default dotdir exclusion (REQ-200), not overridden by `.zetlignore`.
+    /// Default dotdir exclusion (REQ-200), not overridden by `.ztlignore`.
     Dotdir,
 }
 
@@ -75,7 +75,7 @@ pub enum Decision {
 
 /// Pure entry-point classifier. Decides whether a single filesystem entry
 /// should be included in the scan, given a pre-loaded "whitelist" matcher
-/// (typically `.gitignore` + `.zetlignore` combined) and an injected
+/// (typically `.gitignore` + `.ztlignore` combined) and an injected
 /// nested-vault probe.
 ///
 /// The function performs no IO directly; the `is_nested_vault` closure is
@@ -116,21 +116,21 @@ pub fn classify_entry_os(
     // cannot slip past as "".
     if is_dir
         && (basename_os == OsStr::new(".git")
-            || basename_os == OsStr::new(".zetl")
+            || basename_os == OsStr::new(".ztl")
             || basename_os == OsStr::new("node_modules"))
     {
         return Decision::Exclude(ExcludeReason::Hardcoded);
     }
 
     // Level 1b: nested vault. A child directory that contains its own
-    // `.zetl/` belongs to a different vault and must not be absorbed.
+    // `.ztl/` belongs to a different vault and must not be absorbed.
     if is_dir && is_nested_vault() {
         return Decision::Exclude(ExcludeReason::NestedVault);
     }
 
     // Level 2: dotdir default. Skip directories whose basename starts with
     // `.`, unless `--include-hidden` is set or the whitelist matcher
-    // (built from `.gitignore` + `.zetlignore`) has a `!pattern` match
+    // (built from `.gitignore` + `.ztlignore`) has a `!pattern` match
     // for this path or any parent. Files (including dotfiles) are not
     // excluded by this rule — only directories.
     let starts_with_dot = basename_str.map(|s| s.starts_with('.')).unwrap_or_else(|| {
@@ -178,8 +178,8 @@ mod tests {
         assert_eq!(r, Decision::Exclude(ExcludeReason::Hardcoded));
 
         let r = classify_entry(
-            &PathBuf::from(".zetl"),
-            ".zetl",
+            &PathBuf::from(".ztl"),
+            ".ztl",
             true,
             &opts,
             no_nested,
@@ -193,8 +193,8 @@ mod tests {
         // REQ-205: level-1 force-ignores are not overridable.
         let opts = ScanOptions::default().with_include_hidden(true);
         let r = classify_entry(
-            &PathBuf::from(".zetl"),
-            ".zetl",
+            &PathBuf::from(".ztl"),
+            ".ztl",
             true,
             &opts,
             no_nested,
@@ -261,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn zetlignore_negation_overrides_dotdir_default() {
+    fn ztlignore_negation_overrides_dotdir_default() {
         let opts = ScanOptions::default();
         let mut gi = ignore::gitignore::GitignoreBuilder::new("/vault");
         gi.add_line(None, "!.archive/").unwrap();
@@ -279,15 +279,15 @@ mod tests {
     }
 
     #[test]
-    fn zetlignore_negation_does_not_override_hardcoded() {
+    fn ztlignore_negation_does_not_override_hardcoded() {
         let opts = ScanOptions::default();
         let mut gi = ignore::gitignore::GitignoreBuilder::new("/vault");
-        gi.add_line(None, "!.zetl/").unwrap();
+        gi.add_line(None, "!.ztl/").unwrap();
         let matcher = gi.build().unwrap();
 
         let r = classify_entry(
-            &PathBuf::from(".zetl"),
-            ".zetl",
+            &PathBuf::from(".ztl"),
+            ".ztl",
             true,
             &opts,
             no_nested,

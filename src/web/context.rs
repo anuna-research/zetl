@@ -58,7 +58,7 @@ pub struct StatsContext {
 }
 
 #[derive(Serialize)]
-pub struct ZetlMeta {
+pub struct ztlMeta {
     pub version: String,
 }
 
@@ -325,9 +325,9 @@ pub fn filter_vault_context_for_visibility(
     apply_denied_style(&mut ctx.sidebar_tree, denied_pages);
 }
 
-/// Build a `ZetlMeta` using the crate version from Cargo.toml.
-pub fn build_zetl_meta() -> ZetlMeta {
-    ZetlMeta {
+/// Build a `ztlMeta` using the crate version from Cargo.toml.
+pub fn build_ztl_meta() -> ztlMeta {
+    ztlMeta {
         version: env!("CARGO_PKG_VERSION").to_string(),
     }
 }
@@ -684,8 +684,8 @@ mod tests {
     }
 
     #[test]
-    fn test_build_zetl_meta() {
-        let meta = build_zetl_meta();
+    fn test_build_ztl_meta() {
+        let meta = build_ztl_meta();
         assert!(!meta.version.is_empty());
     }
 
@@ -792,11 +792,11 @@ mod tests {
     fn test_page_context_parses_frontmatter() {
         let files = vec![make_file("A", vec![])];
         let data = make_vault_data(files);
-        let raw = "---\ntitle: My Page\ntags:\n  - rust\n  - zetl\n---\n# Hello";
+        let raw = "---\ntitle: My Page\ntags:\n  - rust\n  - ztl\n---\n# Hello";
         let ctx = build_page_context(&data, "A", "A", "<h1>Hello</h1>", raw);
         assert_eq!(ctx.frontmatter["title"], "My Page");
         assert_eq!(ctx.frontmatter["tags"][0], "rust");
-        assert_eq!(ctx.frontmatter["tags"][1], "zetl");
+        assert_eq!(ctx.frontmatter["tags"][1], "ztl");
     }
 
     #[test]

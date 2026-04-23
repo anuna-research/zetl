@@ -42,7 +42,7 @@
 (given task-graph-search-highlight)
 (meta task-graph-search-highlight
   (priority "P1")
-  (description "Text input on /_graph that dims non-matching nodes using the existing zetl-search-index JSON already embedded in <head>.")
+  (description "Text input on /_graph that dims non-matching nodes using the existing ztl-search-index JSON already embedded in <head>.")
   (acceptance "Typing filters visually without full re-render; clearing restores; reuses the same search index as sidebar."))
 
 (given task-graph-folder-color)
@@ -114,7 +114,7 @@
 (given task-wordmark-clickable)
 (meta task-wordmark-clickable
   (priority "P3")
-  (description "The 'zetl' wordmark top-left should look and behave like a clickable home link in the default theme: underline-on-hover, pointer cursor, links to '/'.")
+  (description "The 'ztl' wordmark top-left should look and behave like a clickable home link in the default theme: underline-on-hover, pointer cursor, links to '/'.")
   (acceptance "Hover renders underline + pointer on default theme; click returns to vault index."))
 
 ;; ---- P2 graph pill ------------------------------------------------------

@@ -4,7 +4,7 @@ title: Performance
 
 # Performance
 
-zetl is designed for large vaults — tens of thousands of notes — without sacrificing startup speed or interactive responsiveness.
+ztl is designed for large vaults — tens of thousands of notes — without sacrificing startup speed or interactive responsiveness.
 
 ```spl
 (given fast-startup)
@@ -15,7 +15,7 @@ zetl is designed for large vaults — tens of thousands of notes — without sac
 
 ## Requirements
 
-zetl must cold-start in under 200 ms on a vault of 10 000 Markdown files, complete incremental re-index in under 50 ms when fewer than 100 files have changed, and serve graph queries in under 10 ms at p99 on a fully-indexed vault of 50 000 nodes.
+ztl must cold-start in under 200 ms on a vault of 10 000 Markdown files, complete incremental re-index in under 50 ms when fewer than 100 files have changed, and serve graph queries in under 10 ms at p99 on a fully-indexed vault of 50 000 nodes.
 
 ^perf-numbers
 
@@ -33,7 +33,7 @@ The [[Scanner]] only re-parses files whose mtime has advanced since the last run
 
 ### Merkle-based change detection
 
-BLAKE3 content hashes let zetl skip unchanged files even when mtimes are unreliable (e.g. after a `git checkout`). Each file's Merkle root is stored in the [[Cache]] alongside its mtime.
+BLAKE3 content hashes let ztl skip unchanged files even when mtimes are unreliable (e.g. after a `git checkout`). Each file's Merkle root is stored in the [[Cache]] alongside its mtime.
 
 ```spl
 ; Merkle hashing enables reliable drift detection

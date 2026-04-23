@@ -1,29 +1,29 @@
-/* Resolve relative URLs in __zetlGraphConfig at script-load time, before
+/* Resolve relative URLs in __ztlGraphConfig at script-load time, before
    the SPA shell can move document.baseURI. The boot function runs later
    (vendor lazy-load → user opens mobile overlay), which in build mode
    may be after an SPA nav — at which point "../graph-index.json" would
    resolve against the wrong page and 404. Pinning here fixes the fetch
    and keeps click-nav from slipping across subsequent navigations. */
 (function(){
-  var CFG = (typeof window !== 'undefined' && window.__zetlGraphConfig) || null;
-  if (!CFG || CFG.__zetlResolved) return;
+  var CFG = (typeof window !== 'undefined' && window.__ztlGraphConfig) || null;
+  if (!CFG || CFG.__ztlResolved) return;
   try {
     if ('root' in CFG) CFG.root = new URL(CFG.root, document.baseURI).href;
     if (CFG.graphUrl) CFG.graphUrl = new URL(CFG.graphUrl, document.baseURI).href;
   } catch (e) {}
-  CFG.__zetlResolved = true;
+  CFG.__ztlResolved = true;
 })();
 
-window.__zetlBootGraph = function(){
-  if (window.__zetlGraphBooted) return;
-  window.__zetlGraphBooted = true;
+window.__ztlBootGraph = function(){
+  if (window.__ztlGraphBooted) return;
+  window.__ztlGraphBooted = true;
 
-  /* Config is emitted inline from _graph.html into window.__zetlGraphConfig
+  /* Config is emitted inline from _graph.html into window.__ztlGraphConfig
      so this file itself is template-free and cacheable. Note: indexFile
      is legitimately the empty string in serve mode (URLs end in "/"), so
      we can't use `||` — that would coerce "" to the build-mode default
      and break node-click navigation in serve mode. */
-  var CFG = (typeof window !== 'undefined' && window.__zetlGraphConfig) || {};
+  var CFG = (typeof window !== 'undefined' && window.__ztlGraphConfig) || {};
   var ROOT = 'root' in CFG ? CFG.root : "";
   var INDEX_FILE = 'indexFile' in CFG ? CFG.indexFile : "index.html";
   var GRAPH_URL = 'graphUrl' in CFG ? CFG.graphUrl : "";
@@ -35,10 +35,10 @@ window.__zetlBootGraph = function(){
   var BASE_HREF;
   try { BASE_HREF = new URL(ROOT, document.baseURI).href; }
   catch (e) { BASE_HREF = document.baseURI; }
-  var MODE_KEY = "zetl:graph:mode";
+  var MODE_KEY = "ztl:graph:mode";
   var MODE_FALLBACK = "local";
 
-  var container = document.getElementById('zetl-graph');
+  var container = document.getElementById('ztl-graph');
   if (!container) return;
   var widget = container.closest('[data-mode]') || container.parentElement || container;
 
@@ -51,15 +51,15 @@ window.__zetlBootGraph = function(){
   }
   function readPalette() {
     return {
-      node:       cssVar('--zetl-graph-node',       '#6366f1'),
-      nodeDead:   cssVar('--zetl-graph-node-dead',  '#9ca3af'),
-      nodeFaded:  cssVar('--zetl-graph-node-faded', 'rgba(99,102,241,0.25)'),
-      nodeActive: cssVar('--zetl-graph-node-active','#f59e0b'),
-      edge:       cssVar('--zetl-graph-edge',       '#9ca3af'),
-      edgeDead:   cssVar('--zetl-graph-edge-dead',  'rgba(156,163,175,0.6)'),
-      edgeFaded:  cssVar('--zetl-graph-edge-faded', 'rgba(156,163,175,0.15)'),
-      label:      cssVar('--zetl-graph-label',      '#1f2937'),
-      labelFont:  cssVar('--zetl-graph-label-font', 'ui-sans-serif, system-ui, sans-serif')
+      node:       cssVar('--ztl-graph-node',       '#6366f1'),
+      nodeDead:   cssVar('--ztl-graph-node-dead',  '#9ca3af'),
+      nodeFaded:  cssVar('--ztl-graph-node-faded', 'rgba(99,102,241,0.25)'),
+      nodeActive: cssVar('--ztl-graph-node-active','#f59e0b'),
+      edge:       cssVar('--ztl-graph-edge',       '#9ca3af'),
+      edgeDead:   cssVar('--ztl-graph-edge-dead',  'rgba(156,163,175,0.6)'),
+      edgeFaded:  cssVar('--ztl-graph-edge-faded', 'rgba(156,163,175,0.15)'),
+      label:      cssVar('--ztl-graph-label',      '#1f2937'),
+      labelFont:  cssVar('--ztl-graph-label-font', 'ui-sans-serif, system-ui, sans-serif')
     };
   }
   var palette = readPalette();
@@ -96,7 +96,7 @@ window.__zetlBootGraph = function(){
   }
 
   /* ── External filter (task-graph-search-highlight, task-graph-filter-degree)
-     The fullscreen /_graph host calls window.__zetlGraph.setFilter({search,minDegree}).
+     The fullscreen /_graph host calls window.__ztlGraph.setFilter({search,minDegree}).
      Nodes not matching become fully hidden from the visible graph; matching
      nodes render at full prominence. Edges whose endpoints are hidden vanish
      too. Both predicates AND together. */
@@ -335,7 +335,7 @@ window.__zetlBootGraph = function(){
 
   /* ── Data loading (inline → fetch) ───────────────────────────────────── */
   function loadGraph(){
-    var inline = document.getElementById('zetl-graph-index');
+    var inline = document.getElementById('ztl-graph-index');
     if (inline && inline.textContent.trim()) {
       try { return Promise.resolve(JSON.parse(inline.textContent)); }
       catch (e) { /* fall through to fetch */ }
@@ -386,10 +386,10 @@ window.__zetlBootGraph = function(){
   }
 
   function onLayoutStop(){
-    try { performance.measure('zetl:graph:render', 'zetl:graph:render:start'); }
+    try { performance.measure('ztl:graph:render', 'ztl:graph:render:start'); }
     catch (e) { /* marks may be disabled */ }
     if (renderer) renderer.refresh();
-    window.dispatchEvent(new CustomEvent('zetl:graph:layoutstop'));
+    window.dispatchEvent(new CustomEvent('ztl:graph:layoutstop'));
   }
 
   /* ── Boot: runs after vendor scripts load ────────────────────────────── */
@@ -428,7 +428,7 @@ window.__zetlBootGraph = function(){
         if (renderer) return true;
         if (!hasSize()) return false;
 
-        try { performance.mark('zetl:graph:render:start'); } catch (e) {}
+        try { performance.mark('ztl:graph:render:start'); } catch (e) {}
 
         /* REQ-112: register a "dashed" edge program so edges emitted with
            type:'dashed' by the reducer render with a broken stroke. Falls
@@ -485,7 +485,7 @@ window.__zetlBootGraph = function(){
            - Modifier keys (meta / ctrl / shift): open the slug in a new tab,
              mirroring the native <a>-click muscle memory.
            - SPA shell mounted: synthesise an anchor click so the
-             document-level interceptor swaps `[data-zetl-volatile]` without a
+             document-level interceptor swaps `[data-ztl-volatile]` without a
              full reload.
            - SPA disabled / failed to boot: fall through to `location.href`
              for a standard full-page navigation. */
@@ -526,10 +526,10 @@ window.__zetlBootGraph = function(){
             window.open(href, '_blank', 'noopener');
             return;
           }
-          if (window.__zetlSpaMounted) {
+          if (window.__ztlSpaMounted) {
             var a = document.createElement('a');
             a.href = href;
-            a.rel = 'zetl-graph-nav';
+            a.rel = 'ztl-graph-nav';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -559,7 +559,7 @@ window.__zetlBootGraph = function(){
             url.searchParams.set('focus', slug);
             url.searchParams.set('depth', '1');
             history.replaceState(null, '', url.toString());
-            window.dispatchEvent(new CustomEvent('zetl:graph:focus-changed', {
+            window.dispatchEvent(new CustomEvent('ztl:graph:focus-changed', {
               detail: { slug: slug, depth: 1 }
             }));
           } catch (e) {}
@@ -604,7 +604,7 @@ window.__zetlBootGraph = function(){
         runLayout();
         applyMode();
 
-        window.__zetlGraph = {
+        window.__ztlGraph = {
           getRenderer: function(){ return renderer; },
           getGraph: function(){ return graph; },
           setMode: setMode,
@@ -658,7 +658,7 @@ window.__zetlBootGraph = function(){
             return m;
           }
         };
-        try { window.dispatchEvent(new CustomEvent('zetl:graph:ready', { detail: { legend: folderLegend() } })); } catch (e) {}
+        try { window.dispatchEvent(new CustomEvent('ztl:graph:ready', { detail: { legend: folderLegend() } })); } catch (e) {}
         return true;
       }
 
@@ -740,9 +740,9 @@ window.__zetlBootGraph = function(){
 
   /* SPA navigation lifecycle (REQ-115): update active slug + mode, refresh,
      no Sigma re-instantiation. */
-  window.addEventListener('zetl:after-navigate', function(e){
+  window.addEventListener('ztl:after-navigate', function(e){
     var detail = e && e.detail ? e.detail : {};
-    var root = detail.contentRoot || document.querySelector('[data-zetl-volatile]') || document.body;
+    var root = detail.contentRoot || document.querySelector('[data-ztl-volatile]') || document.body;
     activeSlug = detail.slug || root.getAttribute('data-slug') || document.body.getAttribute('data-slug') || '';
     var url = detail.url || (typeof location !== 'undefined' ? location.pathname : '');
     var isVault = /(^|\/)_graph(\.html)?($|[?#])/.test(url) || url === ROOT || url === '/' || url === (ROOT + INDEX_FILE);

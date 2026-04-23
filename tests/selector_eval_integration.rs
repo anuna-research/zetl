@@ -12,8 +12,8 @@ use std::time::Instant;
 
 use serde_json::json;
 
-use zetl::hooks::manifest::parse_manifest;
-use zetl::hooks::selector::{
+use ztl::hooks::manifest::parse_manifest;
+use ztl::hooks::selector::{
     compile, eval_frontmatter, match_path, run_content_probe, selector_passes, SelectorInput,
 };
 

@@ -238,7 +238,7 @@ fn write_search_index_json(data: &VaultData, vault_root: &Path, out_dir: &Path) 
 /// JSON string so it can be embedded as a template variable when a theme opts
 /// in via `graph_inline = true` (SPEC-028 REQ-102, REQ-105).
 ///
-/// Emits OBS-101 `[zetl] graph-export: pages=N edges=M duration_ms=X bytes=Y`
+/// Emits OBS-101 `[ztl] graph-export: pages=N edges=M duration_ms=X bytes=Y`
 /// under `--verbose`, mirroring the existing `history-export:` instrumentation.
 fn write_graph_index_json(
     data: &VaultData,
@@ -293,7 +293,7 @@ fn write_graph_index_json(
             .map(|a| a.len())
             .unwrap_or(0);
         eprintln!(
-            "[zetl] graph-export: pages={} edges={} duration_ms={} bytes={}",
+            "[ztl] graph-export: pages={} edges={} duration_ms={} bytes={}",
             pages,
             edges,
             export_start.elapsed().as_millis(),
@@ -307,8 +307,8 @@ fn write_graph_index_json(
 /// Build a `GraphIndexContext` from the current vault snapshot.
 ///
 /// Pure data assembly on top of `VaultData` + frontmatter I/O (for `tags`).
-/// Shared between `zetl build` (writes `graph-index.json` to disk) and
-/// `zetl serve` (`GET /graph-index.json`) so the two outputs are byte-equal
+/// Shared between `ztl build` (writes `graph-index.json` to disk) and
+/// `ztl serve` (`GET /graph-index.json`) so the two outputs are byte-equal
 /// for the same vault state — REQ-102 / REQ-103.
 pub fn build_graph_index_context<'a>(
     data: &VaultData,
@@ -440,7 +440,7 @@ fn write_history_index_json(
     if verbose {
         let size_kb = json_str.len() / 1024;
         eprintln!(
-            "[zetl] history-export: wrote history-index.json ({} KB, {} pages) duration_ms={}",
+            "[ztl] history-export: wrote history-index.json ({} KB, {} pages) duration_ms={}",
             size_kb,
             page_names.len(),
             export_ms
@@ -490,7 +490,7 @@ pub fn build_static(
             let hist_ms = hist_start.elapsed().as_millis();
             if verbose {
                 eprintln!(
-                    "[zetl] history-context: vault trend={} points recent={} changes duration_ms={}",
+                    "[ztl] history-context: vault trend={} points recent={} changes duration_ms={}",
                     hist.trend.len(),
                     hist.recent_changes.len(),
                     hist_ms
@@ -540,7 +540,7 @@ pub fn build_static(
 
     // ── OG images ───────────────────────────────────────────────────────
     // Generate a 1200×630 PNG per page for social sharing. A user-supplied
-    // background (at .zetl/static/og-background.png or the theme's static
+    // background (at .ztl/static/og-background.png or the theme's static
     // directory) is composited underneath when present.
     let og_bg = crate::web::og::load_background(vault_root, None);
     let og_start = std::time::Instant::now();
@@ -548,7 +548,7 @@ pub fn build_static(
         Ok(bytes) => std::fs::write(out.join("og.png"), &bytes).context("writing vault og.png")?,
         Err(e) => {
             if verbose {
-                eprintln!("[zetl] og: skipping vault image: {e}");
+                eprintln!("[ztl] og: skipping vault image: {e}");
             }
         }
     }
@@ -599,7 +599,7 @@ pub fn build_static(
                 let hist_ms = hist_start.elapsed().as_millis();
                 if verbose {
                     eprintln!(
-                        "[zetl] history-context: page {:?} trend={} points created={} duration_ms={}",
+                        "[ztl] history-context: page {:?} trend={} points created={} duration_ms={}",
                         file.page_name,
                         hist.link_trend.len(),
                         hist.created_at,
@@ -701,7 +701,7 @@ pub fn build_static(
             std::fs::write(page_dir.join("_history.html"), ph_html)?;
             if verbose {
                 eprintln!(
-                    "[zetl] history-static: page {:?} slug={:?} bytes={} duration_ms={}",
+                    "[ztl] history-static: page {:?} slug={:?} bytes={} duration_ms={}",
                     file.page_name,
                     slug,
                     hist_bytes,
@@ -717,7 +717,7 @@ pub fn build_static(
                 og_count += 1;
             }
             Err(e) if verbose => {
-                eprintln!("[zetl] og: skipping {}: {e}", file.page_name);
+                eprintln!("[ztl] og: skipping {}: {e}", file.page_name);
             }
             Err(_) => {}
         }
@@ -726,7 +726,7 @@ pub fn build_static(
     }
     if verbose {
         eprintln!(
-            "[zetl] og: wrote {og_count} images in {} ms",
+            "[ztl] og: wrote {og_count} images in {} ms",
             og_start.elapsed().as_millis()
         );
     }
@@ -801,7 +801,7 @@ pub fn build_static(
             copy_dir_recursive(pub_path, out)?;
             if verbose {
                 eprintln!(
-                    "[zetl] public overlay: copied {} → {}",
+                    "[ztl] public overlay: copied {} → {}",
                     pub_path.display(),
                     out.display()
                 );
@@ -819,7 +819,7 @@ pub fn build_static(
     // Written after the public overlay so the operator's own
     // `public/robots.txt` (if any) forms the base of the merge. Emitted
     // unconditionally — even when `--capability` is off, the `/c/` and
-    // `/_zetl/` paths are reserved for the capability build and should
+    // `/_ztl/` paths are reserved for the capability build and should
     // stay off search-engine index for any vault that will ever ship
     // encrypted pages. Operator's content is preserved verbatim;
     // stricter rules (e.g. `Disallow: /`) are never relaxed.
@@ -870,14 +870,14 @@ pub fn build_static(
                 std::fs::write(out.join("_history.html"), html)?;
                 if verbose {
                     eprintln!(
-                        "[zetl] history-static: vault entries={} duration_ms={}",
+                        "[ztl] history-static: vault entries={} duration_ms={}",
                         recent_changes.len(),
                         vh_start.elapsed().as_millis()
                     );
                 }
             }
             Err(e) => {
-                eprintln!("[zetl] history-static: vault render failed: {e}");
+                eprintln!("[ztl] history-static: vault render failed: {e}");
             }
         }
     }
@@ -898,7 +898,7 @@ pub fn build_static(
                 std::fs::write(tc_dir.join("index.html"), html)?;
                 if verbose {
                     eprintln!(
-                        "[zetl] tag-cloud: tags={} tagged_pages={}",
+                        "[ztl] tag-cloud: tags={} tagged_pages={}",
                         tag_cloud_ctx.total_tags, tag_cloud_ctx.total_tagged_pages
                     );
                 }
@@ -921,17 +921,17 @@ pub fn build_static(
         (false, false) => "",
     };
     eprintln!(
-        "zetl build  →  {count} pages + {folder_count} folder indexes written to {out_dir}/{suffix}",
+        "ztl build  →  {count} pages + {folder_count} folder indexes written to {out_dir}/{suffix}",
     );
 
     // Brotli pre-compression (task-brotli-precompress-build). Walk the output
     // and emit `{file}.br` alongside each `.html`, `.css`, `.js`, `.json` so
     // static hosts (Netlify, Cloudflare, nginx with brotli_static on) can
-    // serve the precompressed byte-for-byte. Opt-out via ZETL_NO_BROTLI=1.
-    if std::env::var("ZETL_NO_BROTLI").ok().as_deref() != Some("1") {
+    // serve the precompressed byte-for-byte. Opt-out via ztl_NO_BROTLI=1.
+    if std::env::var("ztl_NO_BROTLI").ok().as_deref() != Some("1") {
         let (files, bytes_in, bytes_out) = precompress_brotli(out, verbose)?;
         if verbose {
-            eprintln!("[zetl] brotli: {files} files precompressed, {bytes_in} → {bytes_out} bytes");
+            eprintln!("[ztl] brotli: {files} files precompressed, {bytes_in} → {bytes_out} bytes");
         } else if files > 0 {
             eprintln!("  brotli: {files} files precompressed");
         }
@@ -976,7 +976,7 @@ fn precompress_brotli(out: &Path, verbose: bool) -> Result<(usize, u64, u64)> {
                 Ok(b) => b,
                 Err(e) => {
                     if verbose {
-                        eprintln!("[zetl] brotli: skip {} ({e})", path.display());
+                        eprintln!("[ztl] brotli: skip {} ({e})", path.display());
                     }
                     continue;
                 }
@@ -988,7 +988,7 @@ fn precompress_brotli(out: &Path, verbose: bool) -> Result<(usize, u64, u64)> {
                 let mut w = brotli::CompressorWriter::new(&mut encoded, 4096, 5, 22);
                 if let Err(e) = w.write_all(&raw) {
                     if verbose {
-                        eprintln!("[zetl] brotli: encode failed for {} ({e})", path.display());
+                        eprintln!("[ztl] brotli: encode failed for {} ({e})", path.display());
                     }
                     continue;
                 }
@@ -1006,7 +1006,7 @@ fn precompress_brotli(out: &Path, verbose: bool) -> Result<(usize, u64, u64)> {
             if let Err(e) = std::fs::write(&br_path, &encoded) {
                 if verbose {
                     eprintln!(
-                        "[zetl] brotli: write failed for {} ({e})",
+                        "[ztl] brotli: write failed for {} ({e})",
                         br_path.display()
                     );
                 }
@@ -1054,11 +1054,11 @@ pub fn graph_index_size_warning(out_dir: &Path, page_count: usize) -> Option<Str
         ),
     };
     Some(format!(
-        "{detail} — consider `zetl serve` (server-mode deployment) or link-graph filtering"
+        "{detail} — consider `ztl serve` (server-mode deployment) or link-graph filtering"
     ))
 }
 
-/// Copy static assets from `.zetl/static/`, `.zetl/themes/<theme>/static/`, and
+/// Copy static assets from `.ztl/static/`, `.ztl/themes/<theme>/static/`, and
 /// the bundled theme's `static/` directory into `{out}/_static/`.
 ///
 /// Priority (lowest to highest): bundled default → bundled <theme> → vault
@@ -1068,8 +1068,8 @@ pub fn graph_index_size_warning(out_dir: &Path, page_count: usize) -> Option<Str
 /// isn't broken.
 /// Returns `true` if any files were copied.
 fn copy_static_assets(vault_root: &Path, out: &Path, theme: &str) -> Result<bool> {
-    let shared_static = vault_root.join(".zetl/static");
-    let theme_static = vault_root.join(format!(".zetl/themes/{theme}/static"));
+    let shared_static = vault_root.join(".ztl/static");
+    let theme_static = vault_root.join(format!(".ztl/themes/{theme}/static"));
 
     let shared_exists = shared_static.is_dir();
     let theme_exists = theme != "default" && theme_static.is_dir();
@@ -1249,7 +1249,7 @@ mod tests {
     #[test]
     fn shared_static_copies() {
         let tmp = tempfile::tempdir().unwrap();
-        let shared = tmp.path().join(".zetl/static");
+        let shared = tmp.path().join(".ztl/static");
         std::fs::create_dir_all(&shared).unwrap();
         std::fs::write(shared.join("app.css"), "body{}").unwrap();
 
@@ -1267,7 +1267,7 @@ mod tests {
     #[test]
     fn theme_static_copies() {
         let tmp = tempfile::tempdir().unwrap();
-        let theme_dir = tmp.path().join(".zetl/themes/ocean/static");
+        let theme_dir = tmp.path().join(".ztl/themes/ocean/static");
         std::fs::create_dir_all(&theme_dir).unwrap();
         std::fs::write(theme_dir.join("theme.js"), "alert(1)").unwrap();
 
@@ -1285,11 +1285,11 @@ mod tests {
     #[test]
     fn theme_overwrites_shared_on_conflict() {
         let tmp = tempfile::tempdir().unwrap();
-        let shared = tmp.path().join(".zetl/static");
+        let shared = tmp.path().join(".ztl/static");
         std::fs::create_dir_all(&shared).unwrap();
         std::fs::write(shared.join("style.css"), "shared").unwrap();
 
-        let theme_dir = tmp.path().join(".zetl/themes/custom/static");
+        let theme_dir = tmp.path().join(".ztl/themes/custom/static");
         std::fs::create_dir_all(&theme_dir).unwrap();
         std::fs::write(theme_dir.join("style.css"), "theme").unwrap();
 
@@ -1306,7 +1306,7 @@ mod tests {
     #[test]
     fn preserves_nested_directory_structure() {
         let tmp = tempfile::tempdir().unwrap();
-        let shared = tmp.path().join(".zetl/static/fonts/woff2");
+        let shared = tmp.path().join(".ztl/static/fonts/woff2");
         std::fs::create_dir_all(&shared).unwrap();
         std::fs::write(shared.join("inter.woff2"), "fontdata").unwrap();
 
@@ -1323,11 +1323,11 @@ mod tests {
     #[test]
     fn both_sources_merge_non_conflicting() {
         let tmp = tempfile::tempdir().unwrap();
-        let shared = tmp.path().join(".zetl/static");
+        let shared = tmp.path().join(".ztl/static");
         std::fs::create_dir_all(&shared).unwrap();
         std::fs::write(shared.join("shared.js"), "shared").unwrap();
 
-        let theme_dir = tmp.path().join(".zetl/themes/duo/static");
+        let theme_dir = tmp.path().join(".ztl/themes/duo/static");
         std::fs::create_dir_all(&theme_dir).unwrap();
         std::fs::write(theme_dir.join("theme.js"), "theme").unwrap();
 

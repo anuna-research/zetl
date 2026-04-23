@@ -5,7 +5,7 @@ tags: [reasoning, hypothetical, abduction]
 
 # What-if and Abduction
 
-Two commands — `zetl reason what-if` and `zetl reason require` — let you play with the theory without actually editing it. One asks "what changes if I add this fact?". The other asks "what facts would I need to prove this goal?". Both are indispensable when planning.
+Two commands — `ztl reason what-if` and `ztl reason require` — let you play with the theory without actually editing it. One asks "what changes if I add this fact?". The other asks "what facts would I need to prove this goal?". Both are indispensable when planning.
 
 > **Requires `--features reason` at install.** See [[Installation]].
 
@@ -14,7 +14,7 @@ Two commands — `zetl reason what-if` and `zetl reason require` — let you pla
 `what-if` takes a snippet of SPL, temporarily adds it to the theory, recomputes conclusions, and reports the diff. Your vault files are not touched.
 
 ```bash
-zetl reason what-if "(given acme-legal-cleared)"
+ztl reason what-if "(given acme-legal-cleared)"
 ```
 
 Output: every conclusion that changed — literals that newly hold, literals that stopped holding, tags that flipped between `+d` and `-d`. The rest is filtered out.
@@ -24,7 +24,7 @@ Output: every conclusion that changed — literals that newly hold, literals tha
 `--goal` narrows the diff to a single literal you care about. Answers the question "if I add this, does *this* become provable?":
 
 ```bash
-zetl reason what-if "(given acme-legal-cleared)" --goal "acme-ready-to-start"
+ztl reason what-if "(given acme-legal-cleared)" --goal "acme-ready-to-start"
 ```
 
 ### From a file
@@ -38,7 +38,7 @@ cat > /tmp/experiment.spl <<'SPL'
 (prefer r-acme-ready d-acme-legal)
 SPL
 
-zetl reason what-if --file /tmp/experiment.spl --goal "acme-ready-to-start"
+ztl reason what-if --file /tmp/experiment.spl --goal "acme-ready-to-start"
 ```
 
 Useful when you are exploring "what if we relaxed this constraint?" without committing to the change.
@@ -54,10 +54,10 @@ Useful when you are exploring "what if we relaxed this constraint?" without comm
 `require` is the inverse question: you have a goal in mind, and you want to know **what facts you'd need to add** to make it provable. This is abductive reasoning — inference from goal to premises.
 
 ```bash
-zetl reason require "acme-ready-to-start"
+ztl reason require "acme-ready-to-start"
 ```
 
-zetl returns the minimal sets of missing facts that would complete the derivation. Each set is a separate solution — there may be several ways to prove the goal, via different rules.
+ztl returns the minimal sets of missing facts that would complete the derivation. Each set is a separate solution — there may be several ways to prove the goal, via different rules.
 
 ### Example output
 
@@ -80,7 +80,7 @@ Read this as a to-do list. Each required fact is something you (or the project) 
 The `--assume` flag lets you say "treat these as already given" and ask what else is still needed:
 
 ```bash
-zetl reason require "acme-ready-to-start" \
+ztl reason require "acme-ready-to-start" \
   --assume "(given acme-approved)" \
   --assume "(given acme-has-owner)"
 ```

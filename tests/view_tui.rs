@@ -1,4 +1,4 @@
-// Tests TEST-071 through TEST-079 for SPEC-009 (zetl view).
+// Tests TEST-071 through TEST-079 for SPEC-009 (ztl view).
 //
 // Uses ratatui's TestBackend to render frames into an in-memory buffer,
 // then inspects buffer contents to verify correct rendering without
@@ -14,7 +14,7 @@ static ENV_LOCK: Mutex<()> = Mutex::new(());
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 
-use zetl::view::{FocusState, ViewApp};
+use ztl::view::{FocusState, ViewApp};
 
 // ── Test fixture helpers ───────────────────────────────────────────────────
 
@@ -123,7 +123,7 @@ fn test_071_basic_launch() {
     // Status bar (last row) contains page info.
     let status = lines.last().unwrap();
     assert!(
-        status.contains("zetl view") && status.contains("PageA"),
+        status.contains("ztl view") && status.contains("PageA"),
         "unexpected status bar: {status:?}"
     );
 
@@ -581,7 +581,7 @@ fn test_078_no_color_mode() {
             create_test_vault(&[("PageA", "See [[PageB]].\n"), ("PageB", "PageB content.\n")]);
         let vault_root = tmp.path().to_path_buf();
         let mut app = make_app("PageA", file_index, vault_root, HashMap::new(), 3);
-        assert_eq!(app.color_mode, zetl::view::ColorMode::NoColor);
+        assert_eq!(app.color_mode, ztl::view::ColorMode::NoColor);
 
         let lines = render_80x24(&mut app);
 

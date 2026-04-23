@@ -1,7 +1,7 @@
 # Reader Troubleshooting
 
 > **Scope.** This document is for **readers** — people who received an
-> invite link or enrolment URL to a capability-mode zetl wiki and hit an
+> invite link or enrolment URL to a capability-mode ztl wiki and hit an
 > error page in their browser. It mirrors the troubleshooting section of
 > the static `docs/reader.html` onboarding page that the wiki can ship
 > from `dist/`. Operators deploying a capability-mode wiki should link
@@ -9,10 +9,10 @@
 >
 > The in-browser error page (the red banner the shim renders via
 > `renderError` in `src/cap/shim/errors.ts`) contains an
-> `[data-zetl-error-help]` link that deep-links to the matching anchor
+> `[data-ztl-error-help]` link that deep-links to the matching anchor
 > below — e.g. `#err-signature-failed`. Operators who host this
 > document at a different URL can override the link base with the
-> `ZETL_READER_TROUBLESHOOTING_BASE` build-time env var (see
+> `ztl_READER_TROUBLESHOOTING_BASE` build-time env var (see
 > `docs/capability-security.md`).
 
 Every entry has the same shape:
@@ -75,7 +75,7 @@ move is to **stop**, not to retry.
    - the message "signature did not verify",
    - the approximate time you saw it.
 5. The operator can check whether they recently rotated the vault
-   signing key (`zetl cap rotate-signing-key`) without flushing the
+   signing key (`ztl cap rotate-signing-key`) without flushing the
    CDN cache; that sequence is what produces this error under normal
    operation.
 6. Once they confirm the fix — usually "cache purged, retry now" —
@@ -271,7 +271,7 @@ a very old OS you may need to update the OS.
 
 **What you saw.**
 
-> Capability-mode mount point &lt;main data-zetl-capability&gt; is
+> Capability-mode mount point &lt;main data-ztl-capability&gt; is
 > missing from the HTML shell.
 
 **What it means.** The HTML scaffolding the shim mounts into is not

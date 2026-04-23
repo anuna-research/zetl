@@ -12,7 +12,7 @@
 // CON-3409 protocol:
 //
 //     challenge  = crypto.getRandomValues(32)                   // BUG-005
-//     prf_salt   = SHA-256("zetl/webauthn-prf/v1/" || origin
+//     prf_salt   = SHA-256("ztl/webauthn-prf/v1/" || origin
 //                          || "/" || cohort_id)                 // REQ-3414
 //     credential = navigator.credentials.create({
 //                    publicKey: { challenge, rp, user,
@@ -21,7 +21,7 @@
 //                                 extensions: { prf: {
 //                                   eval: { first: prf_salt } }}}})
 //     prf_output = credential.getClientExtensionResults().prf.results.first
-//     K_wrap     = HKDF-SHA256(prf_output, "", "zetl/tofu-wrap/v1", 32)
+//     K_wrap     = HKDF-SHA256(prf_output, "", "ztl/tofu-wrap/v1", 32)
 //     iv         = crypto.getRandomValues(12)
 //     aad        = utf8(origin || "/" || cohort_id)
 //     wrap       = AES-256-GCM(K_wrap, iv, aad, priv_A)
@@ -46,12 +46,12 @@ import {
 /// HKDF info string pinning the TOFU wrap-key derivation. A change
 /// here would desync with every reader already bound on the
 /// existing deployment.
-export const TOFU_WRAP_INFO = "zetl/tofu-wrap/v1";
+export const TOFU_WRAP_INFO = "ztl/tofu-wrap/v1";
 
 /// Relying-party display name used in the WebAuthn `rp.name`
 /// field. Not security-critical (RP identity is pinned by `rp.id`)
 /// but kept as a constant so test assertions stay stable.
-export const RP_NAME = "Zetl Wiki";
+export const RP_NAME = "ztl Wiki";
 
 /// Binary lengths pinned by CON-3409.
 export const CHALLENGE_LEN = 32;
@@ -141,8 +141,8 @@ export async function performTofu(
     rp: { id: deriveRpId(input.origin), name: RP_NAME },
     user: {
       id: userHandle,
-      name: `zetl:${input.cohortId}`,
-      displayName: `zetl reader (${input.cohortId})`,
+      name: `ztl:${input.cohortId}`,
+      displayName: `ztl reader (${input.cohortId})`,
     },
     challenge,
     pubKeyCredParams: [

@@ -1,6 +1,6 @@
 //! Hook-manifest parser (SPEC-032 REQ-3203 / CON-3203).
 //!
-//! Parses `.zetl/hooks/<stage>.d/<name>.toml` sidecar manifests into a
+//! Parses `.ztl/hooks/<stage>.d/<name>.toml` sidecar manifests into a
 //! typed [`Manifest`] with full field coverage:
 //!
 //! - Top-level: `stage`, `mode`, `timeout_ms`, `memory_mib`, `ast_type`,
@@ -137,7 +137,7 @@ impl Default for SelectorSpec {
 ///
 /// Tier-1 fields (`preserves`, `idempotent`, `may_restructure`) are
 /// enforced in v1. Tier-2 fields (`pure`, `expansion_bound`) are
-/// reserved: v1 surfaces them in `zetl theme show` / `hook coverage`
+/// reserved: v1 surfaces them in `ztl theme show` / `hook coverage`
 /// as trust labels without runtime enforcement.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ContractDecl {
@@ -165,7 +165,7 @@ pub struct ContractDecl {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Manifest {
     /// Declared stage. `None` means the manifest omitted the field and
-    /// zetl must infer it from the parent `<stage>.d/` directory
+    /// ztl must infer it from the parent `<stage>.d/` directory
     /// (CON-3203).
     pub stage: Option<Stage>,
     /// Execution mode — one-shot subprocess or persistent long-lived
@@ -176,7 +176,7 @@ pub struct Manifest {
     /// Memory budget in mebibytes. Default 64.
     pub memory_mib: u32,
     /// AST ecosystem this hook operates against (REQ-3221). Default
-    /// [`AstType::ZetlExt`].
+    /// [`AstType::ztlExt`].
     pub ast_type: AstType,
     /// npm-style semver range against [`Self::ast_type`]'s version
     /// scheme (REQ-3221). `None` means no range declared.
@@ -197,7 +197,7 @@ pub struct Manifest {
     pub contract: ContractDecl,
     /// Per-ecosystem manifest block (SPEC-033 REQ-3312 / CON-3312).
     /// `None` when the manifest does not declare an `ecosystem = "..."`
-    /// field — those hooks are strict SPEC-032 zetl-native hooks and
+    /// field — those hooks are strict SPEC-032 ztl-native hooks and
     /// carry no adapter-specific fields.
     pub extra: Option<EcosystemSpecific>,
 }
@@ -225,7 +225,7 @@ impl Default for Manifest {
 /// Result of loading a manifest file from disk.
 ///
 /// `Missing` means no sidecar `.toml` exists next to the executable —
-/// REQ-3203 says zetl SHALL still run the hook with default selector
+/// REQ-3203 says ztl SHALL still run the hook with default selector
 /// and emit a "recommend a manifest" warning. `Present` carries the
 /// parsed result.
 #[derive(Debug, Clone, PartialEq)]
@@ -301,7 +301,7 @@ impl ManifestError {
                     "valid top-level fields: stage, mode, timeout_ms, memory_mib,\n\
                      ast_type, ast_version, extension_id, optional, before, after,\n\
                      ordering, select, contract, ecosystem. See:\n  \
-                     https://zetl.codeberg.page/docs/hook-authoring/manifest-fields",
+                     https://ztl.codeberg.page/docs/hook-authoring/manifest-fields",
                 );
                 d
             }
@@ -353,7 +353,7 @@ impl From<ManifestError> for HookDiagnostic {
 ///
 /// `path_hint`, when supplied, is attached to any resulting error so
 /// diagnostics can name the offending file. Passing `None` is fine for
-/// in-memory parsing (e.g. tests, `zetl hook new`'s dry-run preview).
+/// in-memory parsing (e.g. tests, `ztl hook new`'s dry-run preview).
 ///
 /// When the manifest declares `ecosystem = "..."`, every top-level key
 /// outside [`crate::ecosystems::manifest::BASE_MANIFEST_KEYS`] is
@@ -685,7 +685,7 @@ expansion_bound = 3.0
         assert_eq!(m.mode, Mode::OneShot);
         assert_eq!(m.timeout_ms, DEFAULT_TIMEOUT_MS);
         assert_eq!(m.memory_mib, DEFAULT_MEMORY_MIB);
-        assert_eq!(m.ast_type, AstType::ZetlExt);
+        assert_eq!(m.ast_type, AstType::ztlExt);
         assert!(m.ast_version.is_none());
         assert!(!m.optional);
         assert!(m.before.is_empty());
@@ -968,7 +968,7 @@ after = ["canonical-after"]
         let diag: HookDiagnostic = err.into();
         assert_eq!(diag.class, DiagnosticClass::ManifestParse);
         let rendered = diag.to_string();
-        assert!(rendered.starts_with("[zetl] "));
+        assert!(rendered.starts_with("[ztl] "));
     }
 
     // ── Round-trip: the CON-3224 worked example parses ────────────────────
@@ -1191,12 +1191,12 @@ exec = "pandoc-crossref"
     }
 
     #[test]
-    fn zetl_native_ecosystem_allowed_with_base_fields() {
-        // Declaring `ecosystem = "zetl-native"` explicitly must compose
+    fn ztl_native_ecosystem_allowed_with_base_fields() {
+        // Declaring `ecosystem = "ztl-native"` explicitly must compose
         // with the base SPEC-032 fields — the extraction must not
         // swallow base keys or reject the manifest.
         let text = r#"
-ecosystem = "zetl-native"
+ecosystem = "ztl-native"
 stage = "transform"
 timeout_ms = 150
 "#;
@@ -1205,7 +1205,7 @@ timeout_ms = 150
         assert_eq!(m.timeout_ms, 150);
         assert!(matches!(
             m.extra,
-            Some(crate::ecosystems::manifest::EcosystemSpecific::ZetlNative(
+            Some(crate::ecosystems::manifest::EcosystemSpecific::ztlNative(
                 _
             ))
         ));
@@ -1246,7 +1246,7 @@ stage = "transform"
 mode = "persistent"
 timeout_ms = 100
 memory_mib = 64
-ast_type = "zetl-ext"
+ast_type = "ztl-ext"
 ast_version = ">=1.0 <2"
 
 [select]
@@ -1261,7 +1261,7 @@ require_probe_match = "any"
         assert_eq!(m.mode, Mode::Persistent);
         assert_eq!(m.timeout_ms, 100);
         assert_eq!(m.memory_mib, 64);
-        assert_eq!(m.ast_type, AstType::ZetlExt);
+        assert_eq!(m.ast_type, AstType::ztlExt);
         assert_eq!(m.ast_version.as_deref(), Some(">=1.0 <2"));
     }
 }

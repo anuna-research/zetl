@@ -9,19 +9,19 @@
 //! canonical-form equivalence:
 //!
 //! ```text
-//!   ∀ A ∈ zetl-ext:
-//!     canonicalise(foreign_to_zetl(zetl_to_foreign(A))) == canonicalise(A)
+//!   ∀ A ∈ ztl-ext:
+//!     canonicalise(foreign_to_ztl(ztl_to_foreign(A))) == canonicalise(A)
 //! ```
 //!
-//! This module defines `canonicalise` as a per-ast_type zetl-ext
+//! This module defines `canonicalise` as a per-ast_type ztl-ext
 //! normaliser. It is applied to *both* sides of the equation, so the
 //! foreign AST's representation-level degrees of freedom show up as
-//! differences that survive [`Translator::foreign_to_zetl`] but get
+//! differences that survive [`Translator::foreign_to_ztl`] but get
 //! collapsed by `canonicalise` before comparison.
 //!
 //! ## Applied transformations
 //!
-//! | Transformation                           | zetl-ext | mdast-ext | pandoc-ext |
+//! | Transformation                           | ztl-ext | mdast-ext | pandoc-ext |
 //! | ---------------------------------------- | -------- | --------- | ---------- |
 //! | Strip source positions                   |   ✓      |    ✓      |    ✓       |
 //! | Merge adjacent `Text` nodes              |   —      |    —      |    ✓       |
@@ -32,13 +32,13 @@
 //! `Text` nodes (`"a"`, `" "`, `"b"`), but a third-party pandoc filter
 //! may coalesce them into a single `Str "a b"` token. Both forms are
 //! semantically identical, so the canonicaliser merges adjacent
-//! `Text` runs inside every inline container. Mdast and zetl-ext have
+//! `Text` runs inside every inline container. Mdast and ztl-ext have
 //! no such ambiguity in v1 — their translators emit one `Text` per
-//! zetl-ext Text node.
+//! ztl-ext Text node.
 //!
 //! Ordered-list `start` is similarly representation-level: pandoc's
 //! `OrderedList` attr triple always carries an integer start number,
-//! so zetl's `start: None` is serialised as `1` and comes back as
+//! so ztl's `start: None` is serialised as `1` and comes back as
 //! `Some(1)`. Under canonical equivalence `None` and `Some(1)` are
 //! the same ordered list.
 //!
@@ -154,7 +154,7 @@ fn canonicalise_inline(ast_type: AstType, inline: &mut Inline) {
 /// Whether `ast_type` collapses `[Text "a", Text "b"]` into
 /// `[Text "ab"]` under its canonical-form equivalence. Pandoc does
 /// (third-party filters freely rewrite `Str`/`Space` runs); mdast and
-/// zetl-ext do not (each emits one `Text` per zetl-ext Text node and
+/// ztl-ext do not (each emits one `Text` per ztl-ext Text node and
 /// has no wire-level splitting convention).
 fn ast_type_merges_adjacent_text(ast_type: AstType) -> bool {
     matches!(ast_type, AstType::PandocExt)
@@ -163,7 +163,7 @@ fn ast_type_merges_adjacent_text(ast_type: AstType) -> bool {
 /// Whether `ast_type`'s wire form always carries an ordered-list
 /// start integer (so `List.start = None` on an ordered list must
 /// canonicalise to `Some(1)`). Pandoc does; mdast represents start
-/// as `null | number` natively; zetl-ext is the reference shape.
+/// as `null | number` natively; ztl-ext is the reference shape.
 fn ast_type_normalises_ordered_start(ast_type: AstType) -> bool {
     matches!(ast_type, AstType::PandocExt)
 }
@@ -221,7 +221,7 @@ mod tests {
             position: Position::new(3, 1, 3, 80),
             children: vec![text(Position::new(3, 1, 3, 5), "hi")],
         })]);
-        for t in [AstType::ZetlExt, AstType::MdastExt, AstType::PandocExt] {
+        for t in [AstType::ztlExt, AstType::MdastExt, AstType::PandocExt] {
             let c = canonicalise(t, &doc);
             assert_eq!(c.position, Position::origin());
             if let Block::Paragraph(p) = &c.children[0] {
@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn pandoc_canonical_merges_adjacent_text_nodes() {
         // Three consecutive Text nodes — the pandoc canonicalised form
-        // collapses them into one; mdast/zetl-ext leave them alone.
+        // collapses them into one; mdast/ztl-ext leave them alone.
         let doc = doc_with(vec![Block::Paragraph(Paragraph {
             position: Position::origin(),
             children: vec![
@@ -272,7 +272,7 @@ mod tests {
             position: Position::new(99, 1, 99, 99),
             children: vec![text(Position::new(99, 9, 99, 11), "hi")],
         })]);
-        assert!(canonical_eq(AstType::ZetlExt, &a, &b));
+        assert!(canonical_eq(AstType::ztlExt, &a, &b));
         assert!(canonical_eq(AstType::MdastExt, &a, &b));
         assert!(canonical_eq(AstType::PandocExt, &a, &b));
     }

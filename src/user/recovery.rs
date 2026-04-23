@@ -155,7 +155,7 @@ pub fn encode_openssh_ed25519(private_key: &[u8; 32], public_key: &[u8; 32]) -> 
     use base64::engine::general_purpose::STANDARD;
     use base64::Engine;
 
-    let comment = b"zetl-collab";
+    let comment = b"ztl-collab";
 
     // Public key blob: "ssh-ed25519" + public key
     let mut pubkey_blob = Vec::new();

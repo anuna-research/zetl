@@ -1,6 +1,6 @@
-; zetl design principles as defeasible logic
+; ztl design principles as defeasible logic
 ; These rules capture the reasoning behind architectural decisions.
-; Run: zetl reason status --positive -d .
+; Run: ztl reason status --positive -d .
 
 ; Good CLI tool: fast, single binary, type-safe
 (normally r-good-cli

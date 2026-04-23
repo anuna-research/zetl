@@ -8,7 +8,7 @@ parent: SPEC-002
 
 # SPEC-018: Semantic Search
 
-Adds semantic (meaning-based) search to zetl by embedding vault content as vectors and combining cosine similarity with the existing BM25 keyword scoring. Complements SPEC-002's full-text search: BM25 finds exact terms, semantic search finds conceptually related content that shares no keywords.
+Adds semantic (meaning-based) search to ztl by embedding vault content as vectors and combining cosine similarity with the existing BM25 keyword scoring. Complements SPEC-002's full-text search: BM25 finds exact terms, semantic search finds conceptually related content that shares no keywords.
 
 ```spl
 (given spec-018-documented)
@@ -24,22 +24,22 @@ BM25 search (SPEC-002) returns results only when query terms appear literally in
 
 **Refactoring a vault**: A user searches "authentication" to consolidate scattered notes. BM25 misses notes titled "login flow," "session management," and "OAuth2 setup" that don't contain the literal word. Semantic search retrieves all of them.
 
-**Agent-assisted discovery**: An LLM agent uses `zetl search --semantic` to find context for a user's question. The agent's natural-language query maps poorly to BM25 terms but maps well to vector space.
+**Agent-assisted discovery**: An LLM agent uses `ztl search --semantic` to find context for a user's question. The agent's natural-language query maps poorly to BM25 terms but maps well to vector space.
 
 ## Key Requirements
 
 | ID | Requirement |
 |----|-------------|
 | REQ-092 | Generate 384-dimensional embeddings from vault page body text using a local ONNX model |
-| REQ-093 | Store embeddings alongside the Tantivy index at `.zetl/search/vectors/` |
-| REQ-094 | `zetl search --semantic <QUERY>` performs pure vector search, returning pages ranked by cosine similarity |
-| REQ-095 | `zetl search --hybrid <QUERY>` fuses BM25 and vector results via reciprocal rank fusion |
-| REQ-096 | Default `zetl search <QUERY>` remains BM25-only (no behaviour change to existing users) |
-| REQ-097 | Embeddings are rebuilt during `zetl index`; stale embeddings are detected via content hash comparison |
+| REQ-093 | Store embeddings alongside the Tantivy index at `.ztl/search/vectors/` |
+| REQ-094 | `ztl search --semantic <QUERY>` performs pure vector search, returning pages ranked by cosine similarity |
+| REQ-095 | `ztl search --hybrid <QUERY>` fuses BM25 and vector results via reciprocal rank fusion |
+| REQ-096 | Default `ztl search <QUERY>` remains BM25-only (no behaviour change to existing users) |
+| REQ-097 | Embeddings are rebuilt during `ztl index`; stale embeddings are detected via content hash comparison |
 | REQ-098 | The feature is gated behind `--features semantic` (compile-time opt-in); when the feature is disabled, `--semantic` and `--hybrid` flags produce a clear error message |
-| REQ-099 | `zetl search --semantic` results include a normalised similarity score in `[0.0, 1.0]` |
+| REQ-099 | `ztl search --semantic` results include a normalised similarity score in `[0.0, 1.0]` |
 | REQ-100 | Heading-level chunking: long pages are split at `## ` boundaries before embedding, with each chunk stored and retrievable independently |
-| REQ-101 | `zetl search --hybrid` supports `--near` graph scoping (intersect fused results with the existing neighbourhood filter from SPEC-002) |
+| REQ-101 | `ztl search --hybrid` supports `--near` graph scoping (intersect fused results with the existing neighbourhood filter from SPEC-002) |
 
 ## Architecture
 
@@ -59,7 +59,7 @@ BM25 search (SPEC-002) returns results only when query terms appear literally in
                         ▼
                  ┌──────────────┐
                  │ VectorIndex  │
-                 │  .build()    ├──► .zetl/search/vectors/
+                 │  .build()    ├──► .ztl/search/vectors/
                  └──────────────┘
 ```
 
@@ -95,7 +95,7 @@ RRF is chosen because it requires no weight tuning — it is parameter-free beyo
 ### Storage Layout
 
 ```
-.zetl/
+.ztl/
 ├── search/
 │   ├── meta.json          (existing tantivy)
 │   ├── *.fast, *.idx ...  (existing tantivy)
@@ -146,14 +146,14 @@ Dependencies point inward: shell → core. Core MUST NOT import from shell. The 
 **Decision**: Use `ort` (Rust bindings to ONNX Runtime) with the `all-MiniLM-L6-v2` model exported to ONNX format.
 
 **Rationale**:
-- **Local-first**: No network calls, no API keys, no privacy leakage. Consistent with zetl's design philosophy (files are truth, zero config, agent-friendly).
+- **Local-first**: No network calls, no API keys, no privacy leakage. Consistent with ztl's design philosophy (files are truth, zero config, agent-friendly).
 - **Single binary**: `ort` links ONNX Runtime statically or dynamically; no Python dependency.
 - **Proven model**: `all-MiniLM-L6-v2` is 22MB (ONNX), 384 dimensions, ~50ms per chunk on CPU. Widely benchmarked for semantic similarity tasks.
 - **Portable**: ONNX Runtime runs on macOS (ARM/x86), Linux, Windows.
 
 **Trade-offs**:
 - Binary size increases ~20-30MB (ONNX Runtime shared library).
-- First build downloads the model or requires bundling. Mitigated by caching in `.zetl/models/`.
+- First build downloads the model or requires bundling. Mitigated by caching in `.ztl/models/`.
 - `candle` would avoid the C++ dependency but has less mature tokenizer support and model ecosystem.
 - Cloud APIs would give better embeddings (e.g., `text-embedding-3-small`) but violate local-first principle.
 
@@ -211,15 +211,15 @@ Dependencies point inward: shell → core. Core MUST NOT import from shell. The 
 
 ## Contracts
 
-### CON-028: `zetl search --semantic` CLI Contract
+### CON-028: `ztl search --semantic` CLI Contract
 
 ```
 Endpoint: CLI subcommand
-Command: zetl search --semantic <QUERY> [--limit N] [--path GLOB]
+Command: ztl search --semantic <QUERY> [--limit N] [--path GLOB]
 
 Pre-conditions:
   - QUERY is non-empty
-  - Vector index exists at .zetl/search/vectors/ (built by `zetl index`)
+  - Vector index exists at .ztl/search/vectors/ (built by `ztl index`)
   - Binary compiled with --features semantic
 
 Post-conditions:
@@ -228,7 +228,7 @@ Post-conditions:
   - Results are capped at --limit (default 20)
 
 Error model:
-  - Missing vector index → "Vector index not found. Run `zetl index` first."
+  - Missing vector index → "Vector index not found. Run `ztl index` first."
   - Feature not compiled → "Semantic search requires --features semantic"
   - Empty query → "Empty search query" (existing behaviour)
 
@@ -242,11 +242,11 @@ Verified by:
   - TEST-115
 ```
 
-### CON-029: `zetl search --hybrid` CLI Contract
+### CON-029: `ztl search --hybrid` CLI Contract
 
 ```
 Endpoint: CLI subcommand
-Command: zetl search --hybrid <QUERY> [--limit N] [--near PAGE] [--depth N] [--path GLOB]
+Command: ztl search --hybrid <QUERY> [--limit N] [--near PAGE] [--depth N] [--path GLOB]
 
 Pre-conditions:
   - QUERY is non-empty
@@ -260,7 +260,7 @@ Post-conditions:
   - --near scoping applied after fusion (intersect fused results with neighbourhood)
 
 Error model:
-  - Missing either index → "Search index not found. Run `zetl index` first."
+  - Missing either index → "Search index not found. Run `ztl index` first."
   - Feature not compiled → "Semantic search requires --features semantic"
 
 Implements:
@@ -283,7 +283,7 @@ impl VectorIndex {
     /// Build vector index from parsed files. Embeds all chunks via ONNX.
     pub fn build(vault_root: &Path, files: &[ParsedFile]) -> Result<Self>;
 
-    /// Open existing vector index from .zetl/search/vectors/.
+    /// Open existing vector index from .ztl/search/vectors/.
     pub fn open(vault_root: &Path) -> Result<Option<Self>>;
 
     /// Query by embedding vector. Returns top-N chunks by cosine similarity.
@@ -307,7 +307,7 @@ Pre-conditions:
   - embed_query: query is non-empty
 
 Post-conditions:
-  - build: .zetl/search/vectors/ directory created with index.bin, chunks.json, model.json
+  - build: .ztl/search/vectors/ directory created with index.bin, chunks.json, model.json
   - open: returns None if vectors/ directory absent
   - query: returns ≤ limit hits sorted by descending score
   - embed_query: returns 384-dimensional normalised vector
@@ -338,10 +338,10 @@ Verified by:
 
 | ID | Signal | Type | Condition |
 |----|--------|------|-----------|
-| OBS-017 | `[zetl] embed: chunks=N duration_ms=M model=all-MiniLM-L6-v2` | Log (stderr) | Always during `zetl index` when semantic feature is enabled |
-| OBS-018 | `[zetl] vector-query: chunks_scanned=N results=M duration_ms=K` | Log (stderr) | When `--verbose` flag is set on search |
-| OBS-019 | `[zetl] hybrid-fusion: bm25_results=A vector_results=B fused=C duration_ms=D` | Log (stderr) | When `--verbose` flag is set on hybrid search |
-| OBS-020 | `semantic` field in `zetl stats` JSON output | Metric | When semantic feature is compiled in; fields: chunk_count, index_size_mb, model_name |
+| OBS-017 | `[ztl] embed: chunks=N duration_ms=M model=all-MiniLM-L6-v2` | Log (stderr) | Always during `ztl index` when semantic feature is enabled |
+| OBS-018 | `[ztl] vector-query: chunks_scanned=N results=M duration_ms=K` | Log (stderr) | When `--verbose` flag is set on search |
+| OBS-019 | `[ztl] hybrid-fusion: bm25_results=A vector_results=B fused=C duration_ms=D` | Log (stderr) | When `--verbose` flag is set on hybrid search |
+| OBS-020 | `semantic` field in `ztl stats` JSON output | Metric | When semantic feature is compiled in; fields: chunk_count, index_size_mb, model_name |
 
 ## Test Specifications
 
@@ -380,14 +380,14 @@ Verified by:
 
 ### Model Acquisition
 
-The ONNX model file is NOT bundled in the binary. On first `zetl index` with `--features semantic`:
+The ONNX model file is NOT bundled in the binary. On first `ztl index` with `--features semantic`:
 
-1. Check `.zetl/models/all-MiniLM-L6-v2.onnx`
+1. Check `.ztl/models/all-MiniLM-L6-v2.onnx`
 2. If absent, download from HuggingFace Hub (with user confirmation)
 3. Validate SHA-256 hash
-4. Cache permanently in `.zetl/models/`
+4. Cache permanently in `.ztl/models/`
 
-Alternative: user sets `ZETL_MODEL_PATH` environment variable to a local ONNX file.
+Alternative: user sets `ztl_MODEL_PATH` environment variable to a local ONNX file.
 
 ## Incremental Rebuild (REQ-097)
 
@@ -400,11 +400,11 @@ For each page:
   5. Write updated vectors and metadata
 ```
 
-This avoids re-embedding the entire vault on every `zetl index`. Only changed or new content pays the embedding cost.
+This avoids re-embedding the entire vault on every `ztl index`. Only changed or new content pays the embedding cost.
 
 ## Web Integration
 
-### Serve Mode (`zetl serve`)
+### Serve Mode (`ztl serve`)
 
 - `GET /api/search?q=QUERY&mode=semantic&limit=N` — vector search
 - `GET /api/search?q=QUERY&mode=hybrid&limit=N` — hybrid search
@@ -412,7 +412,7 @@ This avoids re-embedding the entire vault on every `zetl index`. Only changed or
 
 The `mode` parameter is optional; omitting it preserves existing BM25 behaviour.
 
-### Build Mode (`zetl build`)
+### Build Mode (`ztl build`)
 
 - Vector index is not exported to static output (too large, not useful without a runtime)
 - BM25 index export (existing `bm25_index` template variable) is unchanged
@@ -420,10 +420,10 @@ The `mode` parameter is optional; omitting it preserves existing BM25 behaviour.
 
 ## Future Considerations
 
-- **Fine-tuned models**: Users with domain-specific vocabularies could train and swap in custom ONNX models via `ZETL_MODEL_PATH`.
+- **Fine-tuned models**: Users with domain-specific vocabularies could train and swap in custom ONNX models via `ztl_MODEL_PATH`.
 - **ANN indexing**: If brute-force becomes too slow at scale (> 100k chunks), add HNSW via `usearch` or `hnsw_rs` behind the same `VectorIndex` API (ADR-052).
 - **Cross-vault federation**: Semantic search across federated vaults (SPEC-004) would require a shared embedding space (same model).
-- **Similarity command**: `zetl similar` currently uses SimHash on page names. A future enhancement could add `zetl similar --semantic <PAGE>` that uses the page's embedding to find conceptually similar pages.
+- **Similarity command**: `ztl similar` currently uses SimHash on page names. A future enhancement could add `ztl similar --semantic <PAGE>` that uses the page's embedding to find conceptually similar pages.
 
 ## Relationship to Existing Specs
 

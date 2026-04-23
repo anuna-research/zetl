@@ -132,9 +132,9 @@ fn seed_vault(root: &Path, n: usize) {
     }
 }
 
-/// Invoke `zetl build -d <vault> -o <out>` and capture the process's stderr.
+/// Invoke `ztl build -d <vault> -o <out>` and capture the process's stderr.
 fn run_build(vault: &Path, out: &Path) -> assert_cmd::assert::Assert {
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     cmd.arg("-d")
         .arg(vault.as_os_str())
         .arg("--no-cache")
@@ -158,7 +158,7 @@ fn test_204_warning_when_graph_index_over_budget() {
     let oversized = vec![b' '; (GRAPH_INDEX_MAX_BYTES as usize) + 16];
     fs::write(out.join("graph-index.json"), &oversized).unwrap();
 
-    let warning = zetl::web::build::graph_index_size_warning(&out, 1)
+    let warning = ztl::web::build::graph_index_size_warning(&out, 1)
         .expect("TEST-204: oversize graph-index.json must produce a warning");
 
     assert!(
@@ -170,7 +170,7 @@ fn test_204_warning_when_graph_index_over_budget() {
         "TEST-204: warning must reference the 1 MB budget. got: {warning}"
     );
     assert!(
-        warning.contains("zetl serve") || warning.contains("server-mode"),
+        warning.contains("ztl serve") || warning.contains("server-mode"),
         "TEST-204: warning must recommend server-mode deployment. got: {warning}"
     );
 }
@@ -259,7 +259,7 @@ fn test_204_warning_for_5k_vault() {
         "TEST-204: 5 000-page vault must emit the NFR-104 warning. stderr:\n{stderr}"
     );
     assert!(
-        stderr.contains("zetl serve") || stderr.contains("server-mode"),
+        stderr.contains("ztl serve") || stderr.contains("server-mode"),
         "TEST-204: 5 000-page vault warning must recommend server-mode. stderr:\n{stderr}"
     );
 }

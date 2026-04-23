@@ -977,9 +977,9 @@ pub fn evaluate_with_theory(
     Ok((final_decision, overlay, result))
 }
 
-/// Load `.zetl/collab/access.spl` as a single SPL block.
+/// Load `.ztl/collab/access.spl` as a single SPL block.
 fn load_access_spl(vault_root: &Path) -> Result<Option<SplBlock>> {
-    let path = vault_root.join(".zetl/collab/access.spl");
+    let path = vault_root.join(".ztl/collab/access.spl");
     if !path.exists() {
         return Ok(None);
     }
@@ -993,7 +993,7 @@ fn load_access_spl(vault_root: &Path) -> Result<Option<SplBlock>> {
 
     let line_count = content.lines().count().max(1) as u32;
     Ok(Some(SplBlock {
-        source_file: PathBuf::from(".zetl/collab/access.spl"),
+        source_file: PathBuf::from(".ztl/collab/access.spl"),
         source_page: String::from("<access-policy>"),
         start_line: 1,
         end_line: line_count,
@@ -1010,7 +1010,7 @@ fn load_access_spl(vault_root: &Path) -> Result<Option<SplBlock>> {
 /// Looks for `(given (scope "<user>" "<pattern>"))` facts and returns only
 /// the patterns assigned to the given `user_id`.
 fn extract_user_scopes_from_access_spl(vault_root: &Path, user_id: &str) -> Vec<String> {
-    let path = vault_root.join(".zetl/collab/access.spl");
+    let path = vault_root.join(".ztl/collab/access.spl");
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
         Err(_) => return vec![],
@@ -1188,8 +1188,8 @@ mod tests {
 
     fn setup_vault(tmp: &TempDir) -> PathBuf {
         let root = tmp.path().to_path_buf();
-        std::fs::create_dir_all(root.join(".zetl/collab")).unwrap();
-        std::fs::create_dir_all(root.join(".zetl/users")).unwrap();
+        std::fs::create_dir_all(root.join(".ztl/collab")).unwrap();
+        std::fs::create_dir_all(root.join(".ztl/users")).unwrap();
         root
     }
 
@@ -1318,7 +1318,7 @@ mod tests {
         let access_spl = format!(
             "(given (role \"{bob_id}\" editor))\n(given (scope \"{bob_id}\" \"projects/*\"))\n"
         );
-        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+        std::fs::write(vault.join(".ztl/collab/access.spl"), &access_spl).unwrap();
 
         let pages = vec![
             "projects/roadmap".to_string(),
@@ -1364,7 +1364,7 @@ mod tests {
         // Vault policy: Bob is an editor with ** scope (can read everything)
         let access_spl =
             format!("(given (role \"{bob_id}\" editor))\n(given (scope \"{bob_id}\" \"**\"))\n");
-        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+        std::fs::write(vault.join(".ztl/collab/access.spl"), &access_spl).unwrap();
 
         // Page-level override: defeater argues for negation to block reads
         let page_override = format!(
@@ -1407,7 +1407,7 @@ mod tests {
         // Give agent admin role
         let access_spl =
             format!("(given (admin \"{agent_id}\"))\n(given (role \"{agent_id}\" admin))\n");
-        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+        std::fs::write(vault.join(".ztl/collab/access.spl"), &access_spl).unwrap();
 
         let q = AclQuery {
             user_id: agent_id,
@@ -1540,7 +1540,7 @@ mod tests {
         // Malicious access.spl tries to grant Bob owner status
         let access_spl =
             format!("(given (owner \"{bob_id}\"))\n(given (role \"{bob_id}\" reader))\n",);
-        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+        std::fs::write(vault.join(".ztl/collab/access.spl"), &access_spl).unwrap();
 
         // Bob should NOT be able to edit (owner fact was stripped)
         let q = AclQuery {
@@ -1764,7 +1764,7 @@ mod tests {
   (can-edit "{bob_id}" "notes"))
 "#
         );
-        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+        std::fs::write(vault.join(".ztl/collab/access.spl"), &access_spl).unwrap();
 
         // At time 1500 (within interval) → allowed
         let q = AclQuery {
@@ -1797,7 +1797,7 @@ mod tests {
   (can-edit "{bob_id}" "notes"))
 "#
         );
-        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+        std::fs::write(vault.join(".ztl/collab/access.spl"), &access_spl).unwrap();
 
         // At time 2001 (after interval) → denied
         let q = AclQuery {
@@ -1829,7 +1829,7 @@ mod tests {
   (can-edit "{bob_id}" "notes"))
 "#
         );
-        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+        std::fs::write(vault.join(".ztl/collab/access.spl"), &access_spl).unwrap();
 
         // At time 500 (before interval) → denied
         let q = AclQuery {
@@ -1862,7 +1862,7 @@ mod tests {
   (can-edit "{bob_id}" "review"))
 "#
         );
-        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+        std::fs::write(vault.join(".ztl/collab/access.spl"), &access_spl).unwrap();
 
         // Within interval → allowed
         let q = AclQuery {
@@ -1905,7 +1905,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let vault = setup_vault(&tmp);
         std::fs::write(
-            vault.join(".zetl/collab/access.spl"),
+            vault.join(".ztl/collab/access.spl"),
             "(given (visibility-mode hidden))\n",
         )
         .unwrap();
@@ -1918,7 +1918,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let vault = setup_vault(&tmp);
         std::fs::write(
-            vault.join(".zetl/collab/access.spl"),
+            vault.join(".ztl/collab/access.spl"),
             "(given (visibility-mode transparent))\n",
         )
         .unwrap();
@@ -1973,7 +1973,7 @@ mod tests {
   (forbidden (edit "{bob_id}" "Audit Log")))
 "#
         );
-        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+        std::fs::write(vault.join(".ztl/collab/access.spl"), &access_spl).unwrap();
 
         // Bob can edit regular pages
         let q = AclQuery {
@@ -2031,7 +2031,7 @@ mod tests {
   (forbidden (edit "{bob_id}" "Audit Log")))
 "#
         );
-        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+        std::fs::write(vault.join(".ztl/collab/access.spl"), &access_spl).unwrap();
 
         let q = AclQuery {
             user_id: bob_id.clone(),
@@ -2070,7 +2070,7 @@ mod tests {
   (may (edit "{bob_id}" "docs")))
 "#
         );
-        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+        std::fs::write(vault.join(".ztl/collab/access.spl"), &access_spl).unwrap();
 
         let q = AclQuery {
             user_id: bob_id.clone(),
@@ -2107,7 +2107,7 @@ mod tests {
   (must (review "{bob_id}" "flagged-page")))
 "#
         );
-        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+        std::fs::write(vault.join(".ztl/collab/access.spl"), &access_spl).unwrap();
 
         let q = AclQuery {
             user_id: bob_id.clone(),
@@ -2166,7 +2166,7 @@ mod tests {
   (forbidden (read "{bob_id}" "classified")))
 "#
         );
-        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+        std::fs::write(vault.join(".ztl/collab/access.spl"), &access_spl).unwrap();
 
         let q = AclQuery {
             user_id: bob_id.clone(),

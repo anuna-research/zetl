@@ -30,7 +30,7 @@ pub struct McpState {
 pub struct DelegateClaims {
     /// User / issuer identifier.
     pub iss: String,
-    /// Subject — always `"zetl-mcp"`.
+    /// Subject — always `"ztl-mcp"`.
     pub sub: String,
     /// Vault identifier (audience).
     pub aud: String,
@@ -90,7 +90,7 @@ mod tests {
     fn sample_claims() -> DelegateClaims {
         DelegateClaims {
             iss: "alice".to_string(),
-            sub: "zetl-mcp".to_string(),
+            sub: "ztl-mcp".to_string(),
             aud: "my-vault".to_string(),
             iat: 1_000_000,
             exp: 2_000_000,
@@ -111,7 +111,7 @@ mod tests {
     fn delegate_claims_empty_tools_omitted() {
         let claims = DelegateClaims {
             iss: "bob".to_string(),
-            sub: "zetl-mcp".to_string(),
+            sub: "ztl-mcp".to_string(),
             aud: "vault-x".to_string(),
             iat: 500,
             exp: 0,

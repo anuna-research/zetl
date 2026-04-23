@@ -23,12 +23,12 @@ use axum::routing::get;
 use axum::Router;
 use tower::ServiceExt;
 
-use zetl::search_index::SearchIndex;
-use zetl::web::engine::TemplateEngine;
-use zetl::web::routes::{
+use ztl::search_index::SearchIndex;
+use ztl::web::engine::TemplateEngine;
+use ztl::web::routes::{
     index_handler, page_handler, preview_handler, save_handler, static_handler,
 };
-use zetl::web::WebState;
+use ztl::web::WebState;
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -40,9 +40,9 @@ fn write_file(root: &Path, relative: &str, content: &str) {
     fs::write(&full, content).expect("write test file");
 }
 
-/// CLI helper: returns a Command for the zetl binary with -d and --no-cache.
-fn zetl_cmd(vault: &Path) -> assert_cmd::Command {
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+/// CLI helper: returns a Command for the ztl binary with -d and --no-cache.
+fn ztl_cmd(vault: &Path) -> assert_cmd::Command {
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("ztl");
     cmd.arg("-d").arg(vault.as_os_str());
     cmd.arg("--no-cache");
     cmd
@@ -50,7 +50,7 @@ fn zetl_cmd(vault: &Path) -> assert_cmd::Command {
 
 /// Build a WebState by re-indexing a vault directory (uses the real scanner/graph).
 fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
-    let data = zetl::web::reindex(vault_root).expect("reindex");
+    let data = ztl::web::reindex(vault_root).expect("reindex");
     let search_index = SearchIndex::build(vault_root, &data.files).expect("build search index");
     WebState {
         data: Arc::new(RwLock::new(data)),
@@ -59,25 +59,25 @@ fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
         engine: Arc::new(TemplateEngine::new(vault_root, theme, true, false)),
         theme: theme.to_string(),
         verbose: false,
-        sessions: zetl::web::session::SessionStore::new(),
-        recovery_challenges: Arc::new(zetl::user::recovery::RecoveryChallengeStore::new()),
+        sessions: ztl::web::session::SessionStore::new(),
+        recovery_challenges: Arc::new(ztl::user::recovery::RecoveryChallengeStore::new()),
         mnemonic_shown: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
         bootstrap_used: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        rate_limiters: zetl::web::rate_limit::AuthRateLimiters::new(),
+        rate_limiters: ztl::web::rate_limit::AuthRateLimiters::new(),
         collab: false,
         tls: false,
         trust_proxy: false,
         #[cfg(feature = "reason")]
-        acl_cache: Arc::new(std::sync::Mutex::new(zetl::web::AclCache::new())),
+        acl_cache: Arc::new(std::sync::Mutex::new(ztl::web::AclCache::new())),
         git_commit_lock: None,
-        ws_hub: zetl::web::ws::WsHub::new(),
-        ticket_store: zetl::web::ws::TicketStore::new(),
-        crdt_store: zetl::web::ws::CrdtDocStore::new(Arc::new(vault_root.to_path_buf())),
-        wal_store: Arc::new(zetl::web::wal::WalStore::new(vault_root)),
-        pending_writes: zetl::web::fs_watch::PendingWrites::new(),
+        ws_hub: ztl::web::ws::WsHub::new(),
+        ticket_store: ztl::web::ws::TicketStore::new(),
+        crdt_store: ztl::web::ws::CrdtDocStore::new(Arc::new(vault_root.to_path_buf())),
+        wal_store: Arc::new(ztl::web::wal::WalStore::new(vault_root)),
+        pending_writes: ztl::web::fs_watch::PendingWrites::new(),
         passkey_mgr: None,
         public_dir: None,
-        scan_options: zetl::scanner::ScanOptions::default(),
+        scan_options: ztl::scanner::ScanOptions::default(),
         #[cfg(feature = "semantic")]
         vector_index: None,
     }
@@ -145,7 +145,7 @@ async fn put_body(app: &Router, uri: &str, body: &str) -> StatusCode {
 ///   dead-link-page.md    (contains [[NonExistent]] dead link)
 ///   subfolder/
 ///     nested-page.md     (links to page-one via backlink)
-///   .zetl/
+///   .ztl/
 ///     themes/
 ///       custom/
 ///         page.html      (overrides page.html with frontmatter-conditional rendering)
@@ -227,7 +227,7 @@ A page in a subfolder linking to [[Page One]].
     // - Falls back to built-in base.html (cross-tier inheritance)
     write_file(
         root,
-        ".zetl/themes/custom/page.html",
+        ".ztl/themes/custom/page.html",
         r#"{% extends "base.html" %}
 
 {% block title %}CUSTOM: {{ page.title }}{% endblock %}
@@ -283,17 +283,17 @@ A page in a subfolder linking to [[Page One]].
     );
 
     // ── static assets ─────────────────────────────────────────────────────
-    write_file(root, ".zetl/static/shared.js", "console.log('shared');");
-    write_file(root, ".zetl/static/common.css", "body{color:shared}");
+    write_file(root, ".ztl/static/shared.js", "console.log('shared');");
+    write_file(root, ".ztl/static/common.css", "body{color:shared}");
 
     write_file(
         root,
-        ".zetl/themes/custom/static/custom.css",
+        ".ztl/themes/custom/static/custom.css",
         "body{color:custom}",
     );
     write_file(
         root,
-        ".zetl/themes/custom/static/common.css",
+        ".ztl/themes/custom/static/common.css",
         "body{color:theme-override}",
     );
 }
@@ -364,7 +364,7 @@ fn test_build_default_theme_produces_output() {
     build_test_vault(tmp.path());
 
     let out_dir = tmp.path().join("dist");
-    zetl_cmd(tmp.path())
+    ztl_cmd(tmp.path())
         .arg("build")
         .arg("-o")
         .arg(out_dir.as_os_str())
@@ -480,7 +480,7 @@ fn test_build_custom_theme_produces_output() {
     build_test_vault(tmp.path());
 
     let out_dir = tmp.path().join("dist");
-    zetl_cmd(tmp.path())
+    ztl_cmd(tmp.path())
         .arg("build")
         .arg("-o")
         .arg(out_dir.as_os_str())
@@ -509,13 +509,13 @@ fn test_build_custom_theme_produces_output() {
 }
 
 #[test]
-fn test_cli_theme_default_works_without_zetl_dir() {
+fn test_cli_theme_default_works_without_ztl_dir() {
     let tmp = tempfile::tempdir().unwrap();
-    // A vault with just one markdown file, no .zetl/ directory at all
+    // A vault with just one markdown file, no .ztl/ directory at all
     write_file(tmp.path(), "hello.md", "# Hello\n\nWorld.\n");
 
     let out_dir = tmp.path().join("dist");
-    zetl_cmd(tmp.path())
+    ztl_cmd(tmp.path())
         .arg("build")
         .arg("-o")
         .arg(out_dir.as_os_str())
@@ -531,9 +531,9 @@ fn test_cli_theme_nonexistent_gives_error() {
     let tmp = tempfile::tempdir().unwrap();
     write_file(tmp.path(), "hello.md", "# Hello\n");
     // Create a different theme so the hint lists it
-    write_file(tmp.path(), ".zetl/themes/existing/page.html", "x");
+    write_file(tmp.path(), ".ztl/themes/existing/page.html", "x");
 
-    let output = zetl_cmd(tmp.path())
+    let output = ztl_cmd(tmp.path())
         .arg("build")
         .arg("--theme")
         .arg("nonexistent")
@@ -557,7 +557,7 @@ fn test_cli_theme_path_traversal_rejected() {
     let tmp = tempfile::tempdir().unwrap();
     write_file(tmp.path(), "hello.md", "# Hello\n");
 
-    let output = zetl_cmd(tmp.path())
+    let output = ztl_cmd(tmp.path())
         .arg("build")
         .arg("--theme")
         .arg("../escape")
@@ -577,7 +577,7 @@ fn test_cli_theme_with_slash_rejected() {
     let tmp = tempfile::tempdir().unwrap();
     write_file(tmp.path(), "hello.md", "# Hello\n");
 
-    let output = zetl_cmd(tmp.path())
+    let output = ztl_cmd(tmp.path())
         .arg("build")
         .arg("--theme")
         .arg("bad/theme")
@@ -679,20 +679,20 @@ async fn test_context_theme_variable_accessible() {
 }
 
 #[tokio::test]
-async fn test_context_zetl_version() {
+async fn test_context_ztl_version() {
     let tmp = tempfile::tempdir().unwrap();
     build_test_vault(tmp.path());
 
     let state = build_web_state(tmp.path(), "default");
     let app = full_router(state);
 
-    // The default base.html should include zetl version somewhere
+    // The default base.html should include ztl version somewhere
     let (status, body, _ct) = get_response(&app, "/").await;
     assert_eq!(status, StatusCode::OK);
     // Version from Cargo.toml is "0.1.0"
     assert!(
-        body.contains("0.1.0") || body.contains("zetl"),
-        "zetl version or name present in output"
+        body.contains("0.1.0") || body.contains("ztl"),
+        "ztl version or name present in output"
     );
 }
 
@@ -775,7 +775,7 @@ async fn test_serve_static_404_missing() {
 async fn test_serve_static_path_traversal_blocked() {
     let tmp = tempfile::tempdir().unwrap();
     build_test_vault(tmp.path());
-    // Put a secret outside .zetl
+    // Put a secret outside .ztl
     write_file(tmp.path(), "secret.txt", "top secret");
 
     let state = build_web_state(tmp.path(), "default");
@@ -793,12 +793,12 @@ async fn test_serve_static_mime_types() {
     let tmp = tempfile::tempdir().unwrap();
 
     // Create assets with various extensions
-    write_file(tmp.path(), ".zetl/static/app.js", "js");
-    write_file(tmp.path(), ".zetl/static/style.css", "css");
-    write_file(tmp.path(), ".zetl/static/image.png", "png");
-    write_file(tmp.path(), ".zetl/static/photo.jpg", "jpg");
-    write_file(tmp.path(), ".zetl/static/icon.svg", "svg");
-    write_file(tmp.path(), ".zetl/static/font.woff2", "woff2");
+    write_file(tmp.path(), ".ztl/static/app.js", "js");
+    write_file(tmp.path(), ".ztl/static/style.css", "css");
+    write_file(tmp.path(), ".ztl/static/image.png", "png");
+    write_file(tmp.path(), ".ztl/static/photo.jpg", "jpg");
+    write_file(tmp.path(), ".ztl/static/icon.svg", "svg");
+    write_file(tmp.path(), ".ztl/static/font.woff2", "woff2");
     write_file(tmp.path(), "dummy.md", "# Dummy\n");
 
     let state = build_web_state(tmp.path(), "default");
@@ -823,7 +823,7 @@ async fn test_serve_static_mime_types() {
 #[tokio::test]
 async fn test_serve_static_no_dirs_no_error() {
     let tmp = tempfile::tempdir().unwrap();
-    // No .zetl directory at all
+    // No .ztl directory at all
     write_file(tmp.path(), "hello.md", "# Hello\n");
 
     let state = build_web_state(tmp.path(), "default");
@@ -844,7 +844,7 @@ fn test_build_static_assets_merged() {
     build_test_vault(tmp.path());
 
     let out_dir = tmp.path().join("dist");
-    zetl_cmd(tmp.path())
+    ztl_cmd(tmp.path())
         .arg("build")
         .arg("-o")
         .arg(out_dir.as_os_str())
@@ -878,7 +878,7 @@ fn test_build_default_theme_copies_only_shared_static() {
     build_test_vault(tmp.path());
 
     let out_dir = tmp.path().join("dist");
-    zetl_cmd(tmp.path())
+    ztl_cmd(tmp.path())
         .arg("build")
         .arg("-o")
         .arg(out_dir.as_os_str())
@@ -909,7 +909,7 @@ fn test_build_no_static_dirs_no_static_output() {
     write_file(tmp.path(), "hello.md", "# Hello\n");
 
     let out_dir = tmp.path().join("dist");
-    zetl_cmd(tmp.path())
+    ztl_cmd(tmp.path())
         .arg("build")
         .arg("-o")
         .arg(out_dir.as_os_str())
@@ -918,7 +918,7 @@ fn test_build_no_static_dirs_no_static_output() {
 
     // The default theme now ships bundled static assets (Inter fonts,
     // theme.css), so `_static/` is populated from the embedded bundle
-    // even when no user-side .zetl/static/ exists. Assert the bundled
+    // even when no user-side .ztl/static/ exists. Assert the bundled
     // content lands in _static/ and that no user-side files leaked in.
     let static_dir = out_dir.join("_static");
     assert!(
@@ -937,12 +937,12 @@ fn test_build_preserves_nested_static_dirs() {
     write_file(tmp.path(), "hello.md", "# Hello\n");
     write_file(
         tmp.path(),
-        ".zetl/static/fonts/woff2/inter.woff2",
+        ".ztl/static/fonts/woff2/inter.woff2",
         "fontdata",
     );
 
     let out_dir = tmp.path().join("dist");
-    zetl_cmd(tmp.path())
+    ztl_cmd(tmp.path())
         .arg("build")
         .arg("-o")
         .arg(out_dir.as_os_str())
@@ -1039,7 +1039,7 @@ fn test_build_frontmatter_in_custom_theme() {
     build_test_vault(tmp.path());
 
     let out_dir = tmp.path().join("dist");
-    zetl_cmd(tmp.path())
+    ztl_cmd(tmp.path())
         .arg("build")
         .arg("-o")
         .arg(out_dir.as_os_str())
@@ -1087,7 +1087,7 @@ async fn test_frontmatter_malformed_returns_empty() {
         .find(|f| f.page_name == "malformed")
         .unwrap();
     let content = fs::read_to_string(tmp.path().join(&file.path)).unwrap();
-    let fm = zetl::web::markdown::parse_frontmatter(&content);
+    let fm = ztl::web::markdown::parse_frontmatter(&content);
     // Should be an empty object (malformed YAML)
     assert!(fm.is_object(), "malformed yaml returns object");
     // The object should be empty since the YAML is invalid
@@ -1123,7 +1123,7 @@ fn test_build_mode_no_edit_controls() {
     build_test_vault(tmp.path());
 
     let out_dir = tmp.path().join("dist");
-    zetl_cmd(tmp.path())
+    ztl_cmd(tmp.path())
         .arg("build")
         .arg("-o")
         .arg(out_dir.as_os_str())
@@ -1168,7 +1168,7 @@ fn test_default_theme_build_no_edit_mode() {
     build_test_vault(tmp.path());
 
     let out_dir = tmp.path().join("dist");
-    zetl_cmd(tmp.path())
+    ztl_cmd(tmp.path())
         .arg("build")
         .arg("-o")
         .arg(out_dir.as_os_str())
@@ -1178,7 +1178,7 @@ fn test_default_theme_build_no_edit_mode() {
     let page_one = fs::read_to_string(out_dir.join("page-one/index.html")).unwrap();
     // Build mode should not include the edit toggle button or save handler
     assert!(
-        !page_one.contains("zetl-edit-toggle"),
+        !page_one.contains("ztl-edit-toggle"),
         "build output should not have edit toggle"
     );
 }
@@ -1196,7 +1196,7 @@ async fn test_serve_template_error_returns_error_page() {
     // Create a broken theme with a syntax error in page.html
     write_file(
         tmp.path(),
-        ".zetl/themes/broken/page.html",
+        ".ztl/themes/broken/page.html",
         "{% extends 'base.html' %}{% block content %}{{ undefined_fn() }{% endblock %}",
     );
 
@@ -1222,11 +1222,11 @@ fn test_build_template_error_exits_nonzero() {
     write_file(tmp.path(), "hello.md", "# Hello\n");
     write_file(
         tmp.path(),
-        ".zetl/themes/broken/page.html",
+        ".ztl/themes/broken/page.html",
         "{% extends 'base.html' %}{% block content %}{{ undefined_fn() }{% endblock %}",
     );
 
-    let output = zetl_cmd(tmp.path())
+    let output = ztl_cmd(tmp.path())
         .arg("build")
         .arg("--theme")
         .arg("broken")
@@ -1256,7 +1256,7 @@ fn test_cli_serve_accepts_theme_flag() {
     build_test_vault(tmp.path());
 
     let out_dir = tmp.path().join("dist");
-    zetl_cmd(tmp.path())
+    ztl_cmd(tmp.path())
         .arg("build")
         .arg("-o")
         .arg(out_dir.as_os_str())
@@ -1344,7 +1344,7 @@ fn test_build_dead_links_marked_red() {
     build_test_vault(tmp.path());
 
     let out_dir = tmp.path().join("dist");
-    zetl_cmd(tmp.path())
+    ztl_cmd(tmp.path())
         .arg("build")
         .arg("-o")
         .arg(out_dir.as_os_str())
@@ -1370,7 +1370,7 @@ fn test_build_subfolder_with_nested_pages() {
     build_test_vault(tmp.path());
 
     let out_dir = tmp.path().join("dist");
-    zetl_cmd(tmp.path())
+    ztl_cmd(tmp.path())
         .arg("build")
         .arg("-o")
         .arg(out_dir.as_os_str())
@@ -1414,7 +1414,7 @@ fn test_build_all_pages_rendered() {
     build_test_vault(tmp.path());
 
     let out_dir = tmp.path().join("dist");
-    zetl_cmd(tmp.path())
+    ztl_cmd(tmp.path())
         .arg("build")
         .arg("-o")
         .arg(out_dir.as_os_str())
@@ -1451,7 +1451,7 @@ fn test_build_all_pages_rendered() {
 // TEST-014-005: Theme Listing
 // REQ-014-003: Bundled themes embedded at compile time
 // REQ-014-004: Three-tier resolution order
-// REQ-014-005: zetl theme list output
+// REQ-014-005: ztl theme list output
 // NFR-014-002: Binary size impact ≤ 100 KB
 // OBS-014-002: --verbose shows template resolution tier
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1459,7 +1459,7 @@ fn test_build_all_pages_rendered() {
 /// TEST-014-003: All required bundled templates exist for both default and minimal themes.
 #[test]
 fn test_bundled_default_theme_has_all_templates() {
-    use zetl::web::engine::bundled_template;
+    use ztl::web::engine::bundled_template;
     for name in &["base.html", "index.html", "page.html", "folder.html"] {
         assert!(
             bundled_template("default", name).is_some(),
@@ -1470,7 +1470,7 @@ fn test_bundled_default_theme_has_all_templates() {
 
 #[test]
 fn test_bundled_minimal_theme_has_all_templates() {
-    use zetl::web::engine::bundled_template;
+    use ztl::web::engine::bundled_template;
     for name in &["base.html", "index.html", "page.html", "folder.html"] {
         assert!(
             bundled_template("minimal", name).is_some(),
@@ -1481,7 +1481,7 @@ fn test_bundled_minimal_theme_has_all_templates() {
 
 #[test]
 fn test_bundled_minimal_theme_has_no_cdn_links() {
-    use zetl::web::engine::bundled_template;
+    use ztl::web::engine::bundled_template;
     let cdn_patterns = [
         "cdn.jsdelivr.net",
         "fonts.googleapis.com",
@@ -1499,13 +1499,13 @@ fn test_bundled_minimal_theme_has_no_cdn_links() {
     }
 }
 
-/// TEST-014-004 (scenario 1): zetl serve --theme minimal renders with bundled minimal templates.
+/// TEST-014-004 (scenario 1): ztl serve --theme minimal renders with bundled minimal templates.
 #[tokio::test]
 async fn test_serve_minimal_theme_uses_bundled_templates() {
     let tmp = tempfile::tempdir().unwrap();
     build_test_vault(tmp.path());
 
-    // No .zetl/themes/minimal/ on disk — must resolve from bundled minimal theme (Tier 2).
+    // No .ztl/themes/minimal/ on disk — must resolve from bundled minimal theme (Tier 2).
     let state = build_web_state(tmp.path(), "minimal");
     let app = full_router(state);
 
@@ -1527,14 +1527,14 @@ async fn test_serve_minimal_theme_uses_bundled_templates() {
     );
 }
 
-/// TEST-014-004 (scenario 1): zetl build --theme minimal produces valid static site.
+/// TEST-014-004 (scenario 1): ztl build --theme minimal produces valid static site.
 #[test]
 fn test_build_minimal_theme_produces_valid_site() {
     let tmp = tempfile::tempdir().unwrap();
     build_test_vault(tmp.path());
 
     let out_dir = tmp.path().join("dist-minimal");
-    zetl_cmd(tmp.path())
+    ztl_cmd(tmp.path())
         .arg("build")
         .arg("-o")
         .arg(out_dir.as_os_str())
@@ -1567,13 +1567,13 @@ fn test_build_minimal_theme_produces_valid_site() {
     );
 }
 
-/// TEST-014-005 (scenario 1): zetl theme list shows bundled themes (no .zetl/themes/).
+/// TEST-014-005 (scenario 1): ztl theme list shows bundled themes (no .ztl/themes/).
 #[test]
 fn test_theme_list_shows_bundled_themes() {
     let tmp = tempfile::tempdir().unwrap();
     write_file(tmp.path(), "hello.md", "# Hello\n\nWorld.\n");
 
-    let output = zetl_cmd(tmp.path())
+    let output = ztl_cmd(tmp.path())
         .arg("theme")
         .arg("list")
         .output()
@@ -1601,7 +1601,7 @@ fn test_theme_list_shows_bundled_themes() {
         "theme list should include 'minimal' bundled theme, got: {names:?}"
     );
 
-    // All listed themes should show source = "bundled" when no .zetl/themes/ exists
+    // All listed themes should show source = "bundled" when no .ztl/themes/ exists
     for theme in themes {
         let source = theme["source"].as_str().unwrap_or("");
         assert!(
@@ -1628,8 +1628,8 @@ fn test_theme_list_shows_bundled_themes() {
     }
 }
 
-/// TEST-014-005 (scenario 3): .zetl/themes/minimal/ shadows bundled minimal.
-/// zetl theme list shows 'installed (shadows bundled)'.
+/// TEST-014-005 (scenario 3): .ztl/themes/minimal/ shadows bundled minimal.
+/// ztl theme list shows 'installed (shadows bundled)'.
 #[test]
 fn test_theme_list_minimal_shadows_bundled() {
     let tmp = tempfile::tempdir().unwrap();
@@ -1638,11 +1638,11 @@ fn test_theme_list_minimal_shadows_bundled() {
     // Create an on-disk minimal theme override (Tier 1 override)
     write_file(
         tmp.path(),
-        ".zetl/themes/minimal/page.html",
+        ".ztl/themes/minimal/page.html",
         r#"{% extends "base.html" %}{% block title %}DISK-MINIMAL: {{ page.title }}{% endblock %}{% block content %}<p>disk-minimal-page</p>{% endblock %}"#,
     );
 
-    let output = zetl_cmd(tmp.path())
+    let output = ztl_cmd(tmp.path())
         .arg("theme")
         .arg("list")
         .output()
@@ -1666,7 +1666,7 @@ fn test_theme_list_minimal_shadows_bundled() {
     );
 }
 
-/// TEST-014-004 (scenario 2): .zetl/themes/minimal/page.html overrides bundled minimal.
+/// TEST-014-004 (scenario 2): .ztl/themes/minimal/page.html overrides bundled minimal.
 /// page.html resolves from disk (Tier 1), base.html from bundled minimal (Tier 2).
 #[tokio::test]
 async fn test_serve_minimal_theme_disk_page_overrides_bundled() {
@@ -1676,7 +1676,7 @@ async fn test_serve_minimal_theme_disk_page_overrides_bundled() {
     // Create an on-disk page.html override for the minimal theme
     write_file(
         tmp.path(),
-        ".zetl/themes/minimal/page.html",
+        ".ztl/themes/minimal/page.html",
         r#"{% extends "base.html" %}{% block title %}DISK-MINIMAL: {{ page.title }}{% endblock %}{% block content %}<div class="disk-minimal-marker">DISK_MINIMAL_OVERRIDE</div>{{ page.content_html | safe }}{% endblock %}"#,
     );
 
@@ -1689,7 +1689,7 @@ async fn test_serve_minimal_theme_disk_page_overrides_bundled() {
     // Tier 1: disk page.html override should be used
     assert!(
         body.contains("DISK_MINIMAL_OVERRIDE"),
-        "disk .zetl/themes/minimal/page.html should override bundled minimal page.html (Tier 1)"
+        "disk .ztl/themes/minimal/page.html should override bundled minimal page.html (Tier 1)"
     );
     assert!(
         body.contains("DISK-MINIMAL: page-one") || body.contains("DISK-MINIMAL:"),
@@ -1709,7 +1709,7 @@ async fn test_serve_minimal_theme_disk_page_overrides_bundled() {
     );
 }
 
-/// TEST-014-004 (scenario 3): .zetl/themes/custom/ with only page.html.
+/// TEST-014-004 (scenario 3): .ztl/themes/custom/ with only page.html.
 /// page.html from disk (Tier 1), base.html from bundled default (Tier 3 fallback).
 /// This is already tested in test_serve_custom_theme_overrides_page / test_serve_custom_theme_falls_back_to_default_base
 /// but adding explicit Tier 3 verification here.
@@ -1718,7 +1718,7 @@ async fn test_three_tier_custom_theme_tier3_fallback() {
     let tmp = tempfile::tempdir().unwrap();
     build_test_vault(tmp.path());
 
-    // The test vault already has .zetl/themes/custom/page.html
+    // The test vault already has .ztl/themes/custom/page.html
     // Index and base.html are NOT overridden — must fall back to Tier 3 (bundled default)
     let state = build_web_state(tmp.path(), "custom");
     let app = full_router(state);
@@ -1751,7 +1751,7 @@ fn test_verbose_shows_template_resolution_tiers() {
     build_test_vault(tmp.path());
 
     let out_dir = tmp.path().join("dist-verbose");
-    let output = zetl_cmd(tmp.path())
+    let output = ztl_cmd(tmp.path())
         .arg("--verbose")
         .arg("build")
         .arg("-o")
@@ -1774,7 +1774,7 @@ fn test_verbose_shows_template_resolution_tiers() {
     // page.html should show as disk (Tier 1) for custom theme
     assert!(
         stderr.contains("page.html")
-            && (stderr.contains("disk") || stderr.contains(".zetl/themes")),
+            && (stderr.contains("disk") || stderr.contains(".ztl/themes")),
         "verbose output should show page.html resolved from disk for custom theme"
     );
 
@@ -1802,7 +1802,7 @@ fn test_verbose_shows_template_resolution_tiers() {
 ///                     that necessarily lives in the templates.)
 #[test]
 fn test_bundled_theme_size_within_budget() {
-    use zetl::web::engine::{bundled_template, bundled_theme_names};
+    use ztl::web::engine::{bundled_template, bundled_theme_names};
     let template_names = &[
         "base.html",
         "index.html",

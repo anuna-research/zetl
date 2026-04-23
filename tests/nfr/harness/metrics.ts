@@ -94,7 +94,7 @@ export async function scriptedDragFps(
 ): Promise<number> {
   const durationMs = opts.durationMs ?? 2000;
   const radiusPx = opts.radiusPx ?? 80;
-  const selector = opts.selector ?? "#zetl-graph canvas";
+  const selector = opts.selector ?? "#ztl-graph canvas";
   const stepMs = opts.stepMs ?? 25;
 
   const locator = page.locator(selector).first();

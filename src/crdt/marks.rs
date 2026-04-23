@@ -4,7 +4,7 @@
 //! surface [`crate::crdt::CrdtBackend`] hands back to callers, so no
 //! third-party CRDT types leak into the trait.
 //!
-//! `Scalar` is intentionally the narrow subset of scalar values zetl ever
+//! `Scalar` is intentionally the narrow subset of scalar values ztl ever
 //! stores on a mark (bool / string, plus reserved int/null for forward
 //! compatibility) — not counters, timestamps, or bytes. This keeps
 //! (de)serialisation cheap and the wire format stable.
@@ -30,7 +30,7 @@ pub enum ExpandMark {
 
 /// Project-owned scalar value carried on a mark.
 ///
-/// Kept to the subset zetl actually stores so (de)serialisation is cheap and
+/// Kept to the subset ztl actually stores so (de)serialisation is cheap and
 /// wire-stable. `Int` / `Null` are reserved for future mark types (e.g. a
 /// severity-carrying callout mark) so adding them doesn't require a wire bump.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

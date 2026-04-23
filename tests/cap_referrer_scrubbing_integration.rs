@@ -26,15 +26,15 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use tempfile::TempDir;
 
-use zetl::cap::build::{run_capability_build, BuildConfig, PageInput, Visibility};
-use zetl::cap::genkey::{build_secret, decode_secret, encode_secret, SECRET_VERSION_V1};
-use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
-use zetl::cap::html_shell::{self, REFERRER_META};
-use zetl::cap::recipients::parsing::{
+use ztl::cap::build::{run_capability_build, BuildConfig, PageInput, Visibility};
+use ztl::cap::genkey::{build_secret, decode_secret, encode_secret, SECRET_VERSION_V1};
+use ztl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
+use ztl::cap::html_shell::{self, REFERRER_META};
+use ztl::cap::recipients::parsing::{
     Cohort, CohortMode, RecipientsFile, VaultSection, AGE_RECIPIENT_V1_PREFIX,
 };
-use zetl::cap::scoping::access_config::AccessConfig;
-use zetl::cap::sign::{parse_envelope, VaultSigningKey};
+use ztl::cap::scoping::access_config::AccessConfig;
+use ztl::cap::sign::{parse_envelope, VaultSigningKey};
 
 fn pubkey_from_age1(s: &str) -> [u8; 32] {
     let (hrp, data) = bech32::decode(s).expect("valid bech32");
@@ -60,7 +60,7 @@ fn signing_key() -> VaultSigningKey {
     VaultSigningKey::from_bytes(&[0x17u8; 32])
 }
 
-fn sample_secret() -> zetl::cap::genkey::ParsedSecret {
+fn sample_secret() -> ztl::cap::genkey::ParsedSecret {
     let random = [0xA1u8; 32];
     let bytes = build_secret(SECRET_VERSION_V1, &random);
     let encoded = encode_secret(&bytes);
@@ -287,7 +287,7 @@ fn test_3413_shell_carries_referrer_no_referrer_meta() {
 
     let shell_path = tmp
         .path()
-        .join("_zetl")
+        .join("_ztl")
         .join(html_shell::CAPABILITY_SHELL_FILENAME);
     let shell = std::fs::read_to_string(&shell_path).expect("shell emitted");
     assert!(
@@ -329,7 +329,7 @@ fn test_3413_shell_meta_present_even_with_opt_out() {
 
     let shell = std::fs::read_to_string(
         tmp.path()
-            .join("_zetl")
+            .join("_ztl")
             .join(html_shell::CAPABILITY_SHELL_FILENAME),
     )
     .unwrap();

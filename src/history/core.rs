@@ -147,7 +147,7 @@ pub fn resolve_snapshot<'a>(
 // ─── Snapshot description helpers ────────────────────────────────────────────
 
 /// Extract the `vault_root_hash` value embedded in a jj snapshot description
-/// of the form `"zetl-snapshot vault_root_hash=<64-hex-char-hash>"`.
+/// of the form `"ztl-snapshot vault_root_hash=<64-hex-char-hash>"`.
 ///
 /// Returns `None` when the description does not contain a 64-character
 /// lowercase hex hash.
@@ -155,14 +155,14 @@ pub fn resolve_snapshot<'a>(
 /// # Examples
 ///
 /// ```
-/// use zetl::history::core::extract_vault_root_hash_from_description;
+/// use ztl::history::core::extract_vault_root_hash_from_description;
 ///
 /// // Exactly 64 hex digits after the key.
 /// let hash = "a".repeat(64);
-/// let desc = format!("zetl-snapshot vault_root_hash={hash}");
+/// let desc = format!("ztl-snapshot vault_root_hash={hash}");
 /// assert!(extract_vault_root_hash_from_description(&desc).is_some());
 ///
-/// assert!(extract_vault_root_hash_from_description("zetl-snapshot").is_none());
+/// assert!(extract_vault_root_hash_from_description("ztl-snapshot").is_none());
 /// ```
 pub fn extract_vault_root_hash_from_description(description: &str) -> Option<String> {
     for part in description.split_whitespace() {
@@ -1615,7 +1615,7 @@ mod page_history_tests {
             change_id: change_id.to_owned(),
             commit_id: format!("{change_id}commit"),
             timestamp: base + chrono::Duration::hours(ts_offset),
-            description: format!("zetl-snapshot vault_root_hash={}", "a".repeat(64)),
+            description: format!("ztl-snapshot vault_root_hash={}", "a".repeat(64)),
             author_name: "test".to_string(),
             author_email: "test@example".to_string(),
         }
@@ -1825,7 +1825,7 @@ mod page_history_tests {
     #[test]
     fn parse_coauthors_empty_description() {
         assert!(parse_co_authored_by("").is_empty());
-        assert!(parse_co_authored_by("zetl-snapshot vault_root_hash=ab").is_empty());
+        assert!(parse_co_authored_by("ztl-snapshot vault_root_hash=ab").is_empty());
     }
 
     #[test]

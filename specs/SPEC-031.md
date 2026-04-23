@@ -41,30 +41,30 @@ related:
 
 ## 1. Overview
 
-`zetl`'s compatibility claim with Obsidian today is "we both parse `[[wikilinks]]`" — the file layout, frontmatter semantics, and link syntax are shared. What isn't shared is the plugin ecosystem that turns Obsidian from a Markdown editor into a richly composable PKM platform. Users importing an Obsidian vault into `zetl` lose every affordance their plugins provided: Tasks checkboxes with query syntax, Callouts blocks, Footnote++ expansions, Dataview-style inline queries, and the hundreds of less-popular transforms that make a vault feel "theirs."
+`ztl`'s compatibility claim with Obsidian today is "we both parse `[[wikilinks]]`" — the file layout, frontmatter semantics, and link syntax are shared. What isn't shared is the plugin ecosystem that turns Obsidian from a Markdown editor into a richly composable PKM platform. Users importing an Obsidian vault into `ztl` lose every affordance their plugins provided: Tasks checkboxes with query syntax, Callouts blocks, Footnote++ expansions, Dataview-style inline queries, and the hundreds of less-popular transforms that make a vault feel "theirs."
 
-This spec introduces **selective Obsidian plugin compatibility** via an embedded JavaScript runtime and a minimal, declaratively scoped shim of the public Obsidian plugin API. The scope is deliberately narrow — **`MarkdownPostProcessor`-class plugins only**, executed at render time in `zetl serve` and `zetl build`, with no editor, workspace, or sync plugin support. The bet is that most of what Obsidian users *publish* (as opposed to what they *do while editing*) is produced by post-processors, and that a well-bounded shim plus a published support matrix captures the 80% of user value at 10% of the compatibility-engineering surface.
+This spec introduces **selective Obsidian plugin compatibility** via an embedded JavaScript runtime and a minimal, declaratively scoped shim of the public Obsidian plugin API. The scope is deliberately narrow — **`MarkdownPostProcessor`-class plugins only**, executed at render time in `ztl serve` and `ztl build`, with no editor, workspace, or sync plugin support. The bet is that most of what Obsidian users *publish* (as opposed to what they *do while editing*) is produced by post-processors, and that a well-bounded shim plus a published support matrix captures the 80% of user value at 10% of the compatibility-engineering surface.
 
 This is a **transformer**, not an Obsidian re-implementation. Plugins that reach outside the shim fail loudly and skippably; the feature is designed to be safe-by-default with failure modes that preserve build output.
 
 ### 1.1 Motivation
 
-- **Migration friction is the main adoption barrier.** Users considering `zetl` for an existing Obsidian vault stop at "but my Callouts won't render." A narrow compatibility shim removes this block for published/exported vaults without committing `zetl` to being an Obsidian clone.
+- **Migration friction is the main adoption barrier.** Users considering `ztl` for an existing Obsidian vault stop at "but my Callouts won't render." A narrow compatibility shim removes this block for published/exported vaults without committing `ztl` to being an Obsidian clone.
 - **Published-vault plugins are a tractable subset.** Tasks, Callouts, Footnote++, Admonitions, and dozens of theme-adjacent plugins act as pure `Markdown → HTML` transforms. They need no workspace, no editor, no sync — just a DOM node and a small slice of vault metadata.
 - **Theme-layer precedent works (SPEC-028).** The graph view demonstrated that serve-mode and build-mode can reach parity via a small static asset + a rendered template. The plugin transformer follows the same principle: the Rust binary orchestrates; the JS runs in a sandbox; themes compose the result.
 - **API is discoverable, not proprietary.** The Obsidian plugin API is published as a TypeScript declaration file (the `obsidian` npm package) under a redistribution-restricted licence, but APIs themselves are not copyrightable (*Oracle v. Google*, 2021). Plugin source on GitHub reveals the *actually-used* subset, which is far smaller than the declared surface and can be reimplemented from scratch.
-- **Agent/CI value.** Obsidian's desktop-only execution model means automated publishing of an Obsidian vault requires running Electron in CI. `zetl` with plugin compatibility can replace that pipeline with a single Rust binary.
+- **Agent/CI value.** Obsidian's desktop-only execution model means automated publishing of an Obsidian vault requires running Electron in CI. `ztl` with plugin compatibility can replace that pipeline with a single Rust binary.
 
 ### 1.2 Design Principles
 
-1. **Post-render, not pre-parse.** Plugins run after `zetl`'s Markdown-to-HTML pipeline produces a fragment. The shim hands each plugin a `DocumentFragment` and a minimal context; the plugin mutates the fragment in place. This matches Obsidian's own `MarkdownPostProcessor` contract.
+1. **Post-render, not pre-parse.** Plugins run after `ztl`'s Markdown-to-HTML pipeline produces a fragment. The shim hands each plugin a `DocumentFragment` and a minimal context; the plugin mutates the fragment in place. This matches Obsidian's own `MarkdownPostProcessor` contract.
 2. **Declarative allow-list, not best-effort.** Every supported plugin has a test row in the compatibility matrix (REQ-3111). Plugins outside the matrix run, but their output is unsupported and flagged. This replaces "mostly works" with "known-works or known-fails."
-3. **Shim is tiny by design.** The shim covers only symbols needed by allow-listed plugins plus a high-frequency baseline from a published symbol-frequency scan. Unimplemented symbols throw a typed `ZetlShimNotSupportedError` so plugin failures are observable and attributable.
+3. **Shim is tiny by design.** The shim covers only symbols needed by allow-listed plugins plus a high-frequency baseline from a published symbol-frequency scan. Unimplemented symbols throw a typed `ztlShimNotSupportedError` so plugin failures are observable and attributable.
 4. **No host escape.** The JS runtime has no filesystem, network, process, or FFI access. Any I/O a plugin needs is brokered through the shim, which enforces the vault sandbox.
-5. **Failure is a rendered page, not a failed build.** A plugin that throws, exceeds its time budget, or calls unsupported API gets its fragment returned unchanged plus a themed diagnostic. `zetl build` never fails because a user's plugin is buggy.
-6. **Serve/build parity.** A plugin that renders under `zetl serve` MUST produce the same HTML under `zetl build` for the same input. The runtime is identical in both modes.
-7. **Feature-flagged.** The runtime is opt-in via `--features obsidian-plugins`. Default builds don't link the JS engine. This preserves `zetl`'s single-binary startup characteristics and keeps supply-chain exposure opt-in.
-8. **Honour `.obsidian/` layout.** Plugins live in `<vault>/.obsidian/plugins/<id>/main.js`, enablement follows `<vault>/.obsidian/community-plugins.json`. Users do not install plugins *into* `zetl`; they point `zetl` at an existing Obsidian vault.
+5. **Failure is a rendered page, not a failed build.** A plugin that throws, exceeds its time budget, or calls unsupported API gets its fragment returned unchanged plus a themed diagnostic. `ztl build` never fails because a user's plugin is buggy.
+6. **Serve/build parity.** A plugin that renders under `ztl serve` MUST produce the same HTML under `ztl build` for the same input. The runtime is identical in both modes.
+7. **Feature-flagged.** The runtime is opt-in via `--features obsidian-plugins`. Default builds don't link the JS engine. This preserves `ztl`'s single-binary startup characteristics and keeps supply-chain exposure opt-in.
+8. **Honour `.obsidian/` layout.** Plugins live in `<vault>/.obsidian/plugins/<id>/main.js`, enablement follows `<vault>/.obsidian/community-plugins.json`. Users do not install plugins *into* `ztl`; they point `ztl` at an existing Obsidian vault.
 
 ### 1.3 Scope
 
@@ -73,11 +73,11 @@ This is a **transformer**, not an Obsidian re-implementation. Plugins that reach
 - An embedded, sandboxed JavaScript runtime (QuickJS via `rquickjs`) linked under a new `--features obsidian-plugins` cargo flag.
 - A Rust shim exposing a bounded subset of the Obsidian plugin API: `App`, `Vault`, `MetadataCache`, `TFile`, `CachedMetadata`, `Component`, `MarkdownPostProcessor`, `MarkdownPostProcessorContext`, and supporting types.
 - Plugin loading from `<vault>/.obsidian/plugins/<id>/main.js` with enablement from `<vault>/.obsidian/community-plugins.json`; CLI overrides for both lists.
-- A render-pipeline hook invoked on every page's HTML fragment in `zetl serve` and `zetl build`, after Markdown conversion and before template composition.
+- A render-pipeline hook invoked on every page's HTML fragment in `ztl serve` and `ztl build`, after Markdown conversion and before template composition.
 - A declarative compatibility matrix (`obsidian-plugin-matrix.toml`) enumerating tested plugins, pinned versions, and tier (supported, partial, unsupported).
-- An offline symbol-frequency scanner (`zetl obsidian scan-symbols`) that clones top-N community plugins and tabulates API-surface usage, producing the priority list that drives shim coverage.
-- A coverage report (`zetl obsidian coverage`) that, for a given vault, lists enabled plugins, tier, shim symbols they call, and any unsupported-symbol attempts from the last build.
-- Per-plugin CPU and memory budgets enforced by the runtime; typed `ZetlShimNotSupportedError` on unsupported calls.
+- An offline symbol-frequency scanner (`ztl obsidian scan-symbols`) that clones top-N community plugins and tabulates API-surface usage, producing the priority list that drives shim coverage.
+- A coverage report (`ztl obsidian coverage`) that, for a given vault, lists enabled plugins, tier, shim symbols they call, and any unsupported-symbol attempts from the last build.
+- Per-plugin CPU and memory budgets enforced by the runtime; typed `ztlShimNotSupportedError` on unsupported calls.
 - A themed diagnostic partial rendered inline when a plugin fails (shown to vault-author audience; suppressed for public static export via flag).
 - Documentation: README "Obsidian plugin compatibility" section, published compatibility matrix, theme authoring notes for the diagnostic partial.
 
@@ -88,9 +88,9 @@ This is a **transformer**, not an Obsidian re-implementation. Plugins that reach
 - Sync plugins: Obsidian Sync, Remotely Save, Self-hosted LiveSync.
 - Dataview's full query language — the `dataview` plugin's inline-query post-processor is candidate-in-scope, but the full DQL engine is deferred to a successor (may be re-implemented natively in Rust).
 - Templater — deeply couples to Obsidian internals (`InternalPlugins`, workspace, command palette) and runs pre-render.
-- Obsidian *themes* (distinct from plugins; CSS-only) — if demand emerges, a separate SPEC adapts Obsidian theme CSS conventions to `zetl`'s theme system.
-- Plugin installation UI, auto-updates, or a community plugin registry mirror. Users continue to manage plugins via Obsidian proper; `zetl` is a consumer.
-- Plugin settings UI. If a plugin reads `data.json` via the shim, `zetl` exposes the file but does not render a settings pane.
+- Obsidian *themes* (distinct from plugins; CSS-only) — if demand emerges, a separate SPEC adapts Obsidian theme CSS conventions to `ztl`'s theme system.
+- Plugin installation UI, auto-updates, or a community plugin registry mirror. Users continue to manage plugins via Obsidian proper; `ztl` is a consumer.
+- Plugin settings UI. If a plugin reads `data.json` via the shim, `ztl` exposes the file but does not render a settings pane.
 - The plugin's own `onunload` / `onload` lifecycle for long-lived background tasks. Each render is stateless; `onload` runs once per process, `onunload` runs on shutdown only. Plugins assuming persistent event loops will not work.
 - GPL-license compatibility analysis of every matrix plugin. The matrix records each plugin's licence; AGPL-3.0 users are responsible for their own compliance.
 
@@ -101,50 +101,50 @@ This is a **transformer**, not an Obsidian re-implementation. Plugins that reach
 ### 2.1 User: Obsidian migrant publishing a static site
 
 **Role:** Existing Obsidian user with a 500-page vault who wants to deploy it as a public site without keeping Electron in the pipeline.
-**Goal:** Run `zetl build` and get output visually equivalent to Obsidian's Publish export, at least for plugins in the supported tier.
+**Goal:** Run `ztl build` and get output visually equivalent to Obsidian's Publish export, at least for plugins in the supported tier.
 **Constraints:** CI environment (GitHub Actions); no GUI; deterministic output expected; no willingness to edit plugin source.
 
 **Happy path:**
 
 1. User clones their vault (`.obsidian/` included) into CI.
-2. `cargo install zetl --features obsidian-plugins` (or uses a prebuilt).
-3. `zetl build --out-dir dist` → output includes a line per enabled plugin: `[zetl] obsidian: loaded Callouts v1.0.4 (supported), Tasks v7.8.0 (supported), Dataview v0.5.67 (partial: queries only)`.
-4. Published site renders Callouts and Tasks identically to Obsidian; Dataview inline `$= ...` blocks render as a `<div class="zetl-unsupported-block">` with a diagnostic message.
-5. `zetl obsidian coverage --vault .` produces a JSON report the user commits as evidence of what did/didn't render.
+2. `cargo install ztl --features obsidian-plugins` (or uses a prebuilt).
+3. `ztl build --out-dir dist` → output includes a line per enabled plugin: `[ztl] obsidian: loaded Callouts v1.0.4 (supported), Tasks v7.8.0 (supported), Dataview v0.5.67 (partial: queries only)`.
+4. Published site renders Callouts and Tasks identically to Obsidian; Dataview inline `$= ...` blocks render as a `<div class="ztl-unsupported-block">` with a diagnostic message.
+5. `ztl obsidian coverage --vault .` produces a JSON report the user commits as evidence of what did/didn't render.
 
 **Failure modes:**
 
 - A plugin declares an `onload` that throws → plugin is disabled for this run, warning logged, build continues.
-- A plugin calls `fs.readFileSync` → `ZetlShimNotSupportedError` thrown, plugin disabled, diagnostic inlined where it would have rendered.
+- A plugin calls `fs.readFileSync` → `ztlShimNotSupportedError` thrown, plugin disabled, diagnostic inlined where it would have rendered.
 - A plugin's `main.js` is > 10 MB or uses features QuickJS lacks (e.g. SharedArrayBuffer, WASM) → plugin disabled with a skip reason.
 
-### 2.2 User: Vault author running `zetl serve` locally
+### 2.2 User: Vault author running `ztl serve` locally
 
-**Role:** Solo knowledge-worker who alternates between Obsidian (for editing) and `zetl serve` (for graph view and agent access).
-**Goal:** See their existing vault render with Callouts and Tasks when opened in the `zetl` web UI, without editing any Markdown.
+**Role:** Solo knowledge-worker who alternates between Obsidian (for editing) and `ztl serve` (for graph view and agent access).
+**Goal:** See their existing vault render with Callouts and Tasks when opened in the `ztl` web UI, without editing any Markdown.
 **Constraints:** Localhost browser; expects live reload on save; tolerant of minor visual deltas from Obsidian.
 
 **Happy path:**
 
-1. `zetl -d ~/vault serve`.
-2. On first serve, `zetl` loads `.obsidian/community-plugins.json`, instantiates enabled plugins from the matrix, and logs `[zetl] obsidian: 3 plugins loaded, 1 partial, 0 unsupported`.
+1. `ztl -d ~/vault serve`.
+2. On first serve, `ztl` loads `.obsidian/community-plugins.json`, instantiates enabled plugins from the matrix, and logs `[ztl] obsidian: 3 plugins loaded, 1 partial, 0 unsupported`.
 3. Opening any page: callout syntax `> [!note]` renders with the themed callout block; Tasks checkboxes render with due-date pills.
 4. Saving a page triggers re-render; plugin post-processors re-run on the new fragment.
 
 **Failure modes:**
 
-- User has a plugin not in the matrix → it runs, a `[zetl] obsidian: <name> not in matrix; output unvalidated` warning is logged once per session. Output is used.
+- User has a plugin not in the matrix → it runs, a `[ztl] obsidian: <name> not in matrix; output unvalidated` warning is logged once per session. Output is used.
 - User explicitly disables plugin compatibility (`--no-obsidian-plugins`) → all plugins skipped; plain Markdown rendering is used.
 
 ### 2.3 User: Plugin shim maintainer
 
-**Role:** `zetl` contributor expanding the supported plugin matrix.
+**Role:** `ztl` contributor expanding the supported plugin matrix.
 **Goal:** Quickly identify which API symbols a candidate plugin needs and whether the shim already covers them.
 **Constraints:** Works from a reproducible scanner output; does not want to read every plugin line-by-line.
 
 **Happy path:**
 
-1. `zetl obsidian scan-symbols --top 100` clones the top-100 community plugins (by installs per the community manifest) into a cache and emits `scan-symbols.json`: a frequency-ranked map of `App.metadataCache.getFileCache` → 87, `Vault.read` → 72, etc.
+1. `ztl obsidian scan-symbols --top 100` clones the top-100 community plugins (by installs per the community manifest) into a cache and emits `scan-symbols.json`: a frequency-ranked map of `App.metadataCache.getFileCache` → 87, `Vault.read` → 72, etc.
 2. Report identifies a candidate plugin's required symbols not yet in the shim.
 3. Maintainer implements missing shim methods, adds the plugin to the matrix at tier `partial` or `supported`, and adds a golden-HTML integration test (`TEST-3105`) that diffs plugin output against a recorded Obsidian baseline.
 4. Mutation testing (`cargo mutants`) on the shim verifies the new tests distinguish correct behaviour from regressions.
@@ -154,16 +154,16 @@ This is a **transformer**, not an Obsidian re-implementation. Plugins that reach
 - Scanner encounters a plugin using TypeScript `reflect-metadata` or custom decorators → flagged as "scanner-incomplete," manual review required.
 - A plugin calls a symbol the shim has *stubbed* with a no-op → scanner reports zero missing symbols, but golden HTML diffs against Obsidian; this is the test-gap the matrix exists to catch.
 
-### 2.4 User: AI agent querying `zetl` MCP with Obsidian-plugin-rendered pages
+### 2.4 User: AI agent querying `ztl` MCP with Obsidian-plugin-rendered pages
 
-**Role:** Claude or another MCP client consuming vault content via `zetl`'s MCP server.
+**Role:** Claude or another MCP client consuming vault content via `ztl`'s MCP server.
 **Goal:** Receive HTML that reflects the user's actual vault presentation, including plugin transformations, so agent-facing and human-facing views match.
 **Constraints:** Sub-second response; deterministic output; must not fail on plugin errors.
 
 **Happy path:**
 
 1. Agent calls `get_page` on a page using Callouts and Tasks.
-2. `zetl` renders the page, runs enabled post-processors, and returns the resulting HTML.
+2. `ztl` renders the page, runs enabled post-processors, and returns the resulting HTML.
 3. Output is identical whether the agent calls MCP, hits `/api/pages/<slug>`, or loads the static `/page/<slug>/index.html`.
 
 **Failure modes:**
@@ -176,7 +176,7 @@ This is a **transformer**, not an Obsidian re-implementation. Plugins that reach
 
 ### REQ-3101: Embedded JavaScript Runtime
 
-The system SHALL embed a sandboxed JavaScript runtime (QuickJS via `rquickjs`) AVAILABLE under the `--features obsidian-plugins` cargo flag WITH no filesystem, network, process, FFI, or host `import` access exposed to plugin code WITHIN a single `zetl` process. The runtime SHALL support ECMAScript 2020 (the QuickJS baseline) and SHALL NOT support WebAssembly, SharedArrayBuffer, or `eval` of dynamically fetched code.
+The system SHALL embed a sandboxed JavaScript runtime (QuickJS via `rquickjs`) AVAILABLE under the `--features obsidian-plugins` cargo flag WITH no filesystem, network, process, FFI, or host `import` access exposed to plugin code WITHIN a single `ztl` process. The runtime SHALL support ECMAScript 2020 (the QuickJS baseline) and SHALL NOT support WebAssembly, SharedArrayBuffer, or `eval` of dynamically fetched code.
 
 Trace:
 
@@ -187,7 +187,7 @@ Trace:
 
 ### REQ-3102: Plugin Discovery from `.obsidian/`
 
-The system SHALL discover plugins by reading `<vault>/.obsidian/plugins/<id>/main.js` and `<vault>/.obsidian/plugins/<id>/manifest.json` FOR every plugin ID listed as enabled in `<vault>/.obsidian/community-plugins.json` WITHIN the pre-render phase of `zetl serve` and `zetl build`. Plugins whose `main.js` exceeds 10 MiB, whose `manifest.json` is malformed, or whose `manifest.json` declares `isDesktopOnly: true` SHALL be skipped with a logged reason.
+The system SHALL discover plugins by reading `<vault>/.obsidian/plugins/<id>/main.js` and `<vault>/.obsidian/plugins/<id>/manifest.json` FOR every plugin ID listed as enabled in `<vault>/.obsidian/community-plugins.json` WITHIN the pre-render phase of `ztl serve` and `ztl build`. Plugins whose `main.js` exceeds 10 MiB, whose `manifest.json` is malformed, or whose `manifest.json` declares `isDesktopOnly: true` SHALL be skipped with a logged reason.
 
 Trace:
 
@@ -197,7 +197,7 @@ Trace:
 
 ### REQ-3103: Markdown Post-Processor Execution
 
-The system SHALL invoke every registered `MarkdownPostProcessor` on every rendered page's HTML fragment AFTER `zetl`'s Markdown-to-HTML conversion AND BEFORE Minijinja template composition FOR both `zetl serve` (per request) AND `zetl build` (per page, once) WITH each plugin receiving the fragment in the order of plugin load (stable, sorted by plugin ID). Post-processors SHALL be able to mutate the fragment in place via the shimmed DOM.
+The system SHALL invoke every registered `MarkdownPostProcessor` on every rendered page's HTML fragment AFTER `ztl`'s Markdown-to-HTML conversion AND BEFORE Minijinja template composition FOR both `ztl serve` (per request) AND `ztl build` (per page, once) WITH each plugin receiving the fragment in the order of plugin load (stable, sorted by plugin ID). Post-processors SHALL be able to mutate the fragment in place via the shimmed DOM.
 
 Trace:
 
@@ -219,7 +219,7 @@ The system SHALL expose to plugin code the following baseline API surface (minim
 - `Plugin` / `Plugin_2` base class — `addCommand` (no-op, logged), `registerMarkdownPostProcessor(fn)`, `registerMarkdownCodeBlockProcessor(lang, fn)`, `loadData()`, `saveData(data)`.
 - Global DOM shim: `document`, `HTMLElement` methods restricted to `createElement`, `createDiv`, `createSpan`, `createEl`, `setText`, `setAttr`, `addClass`, `appendChild`, `insertBefore`, `remove`, `empty`, `innerHTML` (getter/setter), `outerHTML` (getter), `querySelector`/`querySelectorAll`.
 
-All other symbols from the `obsidian` package SHALL be accessible as stubs that throw `ZetlShimNotSupportedError(symbol, pluginId)` on invocation.
+All other symbols from the `obsidian` package SHALL be accessible as stubs that throw `ztlShimNotSupportedError(symbol, pluginId)` on invocation.
 
 Trace:
 
@@ -241,9 +241,9 @@ Trace:
 
 ### REQ-3106: Symbol Frequency Scanner
 
-The system SHALL provide a subcommand `zetl obsidian scan-symbols [--top N] [--out PATH]` that fetches the top-N community plugins (by install count, from the Obsidian community manifest feed pinned to a dated snapshot), parses their bundled `main.js` via a JavaScript AST, and emits a JSON report listing every identifier reachable via `require('obsidian')` or the global `obsidian` namespace along with its frequency of use across the scanned set.
+The system SHALL provide a subcommand `ztl obsidian scan-symbols [--top N] [--out PATH]` that fetches the top-N community plugins (by install count, from the Obsidian community manifest feed pinned to a dated snapshot), parses their bundled `main.js` via a JavaScript AST, and emits a JSON report listing every identifier reachable via `require('obsidian')` or the global `obsidian` namespace along with its frequency of use across the scanned set.
 
-The scanner SHALL be pure with respect to its inputs: given the same snapshot and the same N, it produces byte-identical output. Network fetches SHALL be cached under `~/.cache/zetl/obsidian-scan/` and re-used on subsequent runs.
+The scanner SHALL be pure with respect to its inputs: given the same snapshot and the same N, it produces byte-identical output. Network fetches SHALL be cached under `~/.cache/ztl/obsidian-scan/` and re-used on subsequent runs.
 
 Trace:
 
@@ -252,7 +252,7 @@ Trace:
 
 ### REQ-3107: Plugin Execution Budget
 
-The system SHALL enforce a wall-clock execution budget of 50 ms per plugin per page (default; configurable via `obsidian.plugin_timeout_ms` in `.zetl/config.toml`) AND a memory budget of 16 MiB per QuickJS context. A plugin exceeding either budget SHALL have its fragment reverted to the pre-plugin state, the plugin SHALL be disabled for the remainder of the current render pass, and the violation SHALL be logged with `plugin_id`, `budget`, and `observed`.
+The system SHALL enforce a wall-clock execution budget of 50 ms per plugin per page (default; configurable via `obsidian.plugin_timeout_ms` in `.ztl/config.toml`) AND a memory budget of 16 MiB per QuickJS context. A plugin exceeding either budget SHALL have its fragment reverted to the pre-plugin state, the plugin SHALL be disabled for the remainder of the current render pass, and the violation SHALL be logged with `plugin_id`, `budget`, and `observed`.
 
 Trace:
 
@@ -263,7 +263,7 @@ Trace:
 
 ### REQ-3108: Graceful Failure and Fallback
 
-The system SHALL, when a plugin throws, exceeds its budget, or calls an unsupported shim symbol, REVERT the page fragment to the pre-plugin state, RENDER an inline diagnostic element (`<div class="zetl-obsidian-error" data-plugin="<id>" data-reason="<reason>">`) at the originally-intended render location (when known; otherwise omit), LOG the failure with stack trace and plugin ID, and CONTINUE rendering subsequent plugins. The build or serve operation SHALL NOT fail as a result of plugin failure.
+The system SHALL, when a plugin throws, exceeds its budget, or calls an unsupported shim symbol, REVERT the page fragment to the pre-plugin state, RENDER an inline diagnostic element (`<div class="ztl-obsidian-error" data-plugin="<id>" data-reason="<reason>">`) at the originally-intended render location (when known; otherwise omit), LOG the failure with stack trace and plugin ID, and CONTINUE rendering subsequent plugins. The build or serve operation SHALL NOT fail as a result of plugin failure.
 
 Trace:
 
@@ -273,7 +273,7 @@ Trace:
 
 ### REQ-3109: Public-Output Diagnostic Suppression
 
-The system SHALL accept a `--obsidian-suppress-diagnostics` flag on `zetl build` that SUPPRESSES the inline diagnostic element (REQ-3108) from output HTML (replacing it with an empty comment `<!-- zetl: plugin <id> failed -->`) WHILE still writing the full diagnostic to `<out-dir>/obsidian-diagnostics.json`. Default behaviour under `zetl build` SHALL include the inline diagnostic; default under `zetl serve` SHALL include it unconditionally.
+The system SHALL accept a `--obsidian-suppress-diagnostics` flag on `ztl build` that SUPPRESSES the inline diagnostic element (REQ-3108) from output HTML (replacing it with an empty comment `<!-- ztl: plugin <id> failed -->`) WHILE still writing the full diagnostic to `<out-dir>/obsidian-diagnostics.json`. Default behaviour under `ztl build` SHALL include the inline diagnostic; default under `ztl serve` SHALL include it unconditionally.
 
 Trace:
 
@@ -281,7 +281,7 @@ Trace:
 
 ### REQ-3110: Coverage Report Subcommand
 
-The system SHALL provide a subcommand `zetl obsidian coverage [--vault PATH] [--json]` that, for the target vault, lists every enabled plugin, its tier from the matrix, the shim symbols it invokes during a test render, the symbols it called that are not supported (if any), and a summary coverage score `(covered_calls / total_calls)`. Output defaults to a human-readable table; `--json` emits structured output for CI.
+The system SHALL provide a subcommand `ztl obsidian coverage [--vault PATH] [--json]` that, for the target vault, lists every enabled plugin, its tier from the matrix, the shim symbols it invokes during a test render, the symbols it called that are not supported (if any), and a summary coverage score `(covered_calls / total_calls)`. Output defaults to a human-readable table; `--json` emits structured output for CI.
 
 Trace:
 
@@ -299,7 +299,7 @@ Trace:
 
 ### REQ-3112: Opt-Out and Configuration
 
-The system SHALL accept a global `--no-obsidian-plugins` CLI flag that SKIPS the plugin-loading phase entirely for the current invocation AND a `.zetl/config.toml` `[obsidian]` table with keys `enabled` (bool, default true when feature flag is compiled in), `plugin_timeout_ms` (int, default 50), `plugin_memory_mib` (int, default 16), and `plugin_allow_list` (array of plugin IDs; when present, only listed plugins run regardless of `community-plugins.json`).
+The system SHALL accept a global `--no-obsidian-plugins` CLI flag that SKIPS the plugin-loading phase entirely for the current invocation AND a `.ztl/config.toml` `[obsidian]` table with keys `enabled` (bool, default true when feature flag is compiled in), `plugin_timeout_ms` (int, default 50), `plugin_memory_mib` (int, default 16), and `plugin_allow_list` (array of plugin IDs; when present, only listed plugins run regardless of `community-plugins.json`).
 
 Trace:
 
@@ -308,7 +308,7 @@ Trace:
 
 ### REQ-3113: Plugin Data File Access
 
-The system SHALL expose `plugin.loadData()` and `plugin.saveData(data)` reading and writing `<vault>/.obsidian/plugins/<id>/data.json` WITHIN the shim's vault sandbox. Writes SHALL be atomic (temp-file-plus-rename). Writes SHALL NOT occur during `zetl build` — instead, `saveData` SHALL succeed in-memory only, the write SHALL be elided, and a debug log SHALL note the elision.
+The system SHALL expose `plugin.loadData()` and `plugin.saveData(data)` reading and writing `<vault>/.obsidian/plugins/<id>/data.json` WITHIN the shim's vault sandbox. Writes SHALL be atomic (temp-file-plus-rename). Writes SHALL NOT occur during `ztl build` — instead, `saveData` SHALL succeed in-memory only, the write SHALL be elided, and a debug log SHALL note the elision.
 
 Trace:
 
@@ -321,7 +321,7 @@ Trace:
 
 ### NFR-3101: Build Failure Isolation
 
-Under conditions where any single enabled plugin fails (throw, budget exceed, unsupported symbol), `zetl build` exit code SHALL be `0` (success) WITH `1` log line per failing plugin ON vaults of up to 10,000 pages and up to 50 enabled plugins. Build success SHALL NOT depend on plugin success.
+Under conditions where any single enabled plugin fails (throw, budget exceed, unsupported symbol), `ztl build` exit code SHALL be `0` (success) WITH `1` log line per failing plugin ON vaults of up to 10,000 pages and up to 50 enabled plugins. Build success SHALL NOT depend on plugin success.
 
 Trace:
 
@@ -330,7 +330,7 @@ Trace:
 
 ### NFR-3102: Render Latency Overhead — Supported Tier
 
-Under `zetl serve` with up to 10 enabled plugins at tier `supported` OR `partial`, the P95 additional rendering latency per page SHALL be ≤ 200 ms relative to a build with `--no-obsidian-plugins`, measured on a 2,000-page demo vault on an M-series Mac or equivalent Linux runner.
+Under `ztl serve` with up to 10 enabled plugins at tier `supported` OR `partial`, the P95 additional rendering latency per page SHALL be ≤ 200 ms relative to a build with `--no-obsidian-plugins`, measured on a 2,000-page demo vault on an M-series Mac or equivalent Linux runner.
 
 Trace:
 
@@ -339,7 +339,7 @@ Trace:
 
 ### NFR-3103: Plugin Isolation — Memory
 
-Each plugin's QuickJS context SHALL have a heap ceiling of 16 MiB (default). Allocation beyond that SHALL cause QuickJS to throw `InternalError: out of memory` within the plugin's sandbox without impacting the parent `zetl` process's memory. Total resident set of the `zetl` process WITH 50 enabled plugins loaded SHALL NOT exceed the baseline plus 1 GiB under default budgets.
+Each plugin's QuickJS context SHALL have a heap ceiling of 16 MiB (default). Allocation beyond that SHALL cause QuickJS to throw `InternalError: out of memory` within the plugin's sandbox without impacting the parent `ztl` process's memory. Total resident set of the `ztl` process WITH 50 enabled plugins loaded SHALL NOT exceed the baseline plus 1 GiB under default budgets.
 
 Trace:
 
@@ -348,7 +348,7 @@ Trace:
 
 ### NFR-3104: Deterministic Output
 
-Given a fixed vault, a fixed plugin set at pinned versions, and a fixed `zetl` version, `zetl build` SHALL produce byte-identical HTML output across runs and across platforms (macOS, Linux x86_64, Linux aarch64). Plugin execution order SHALL be deterministic (alphabetical by plugin ID).
+Given a fixed vault, a fixed plugin set at pinned versions, and a fixed `ztl` version, `ztl build` SHALL produce byte-identical HTML output across runs and across platforms (macOS, Linux x86_64, Linux aarch64). Plugin execution order SHALL be deterministic (alphabetical by plugin ID).
 
 Trace:
 
@@ -389,7 +389,7 @@ Trace:
 
 ```rust
 pub struct ObsidianRuntime {
-    // One QuickJS Runtime per zetl process; Contexts per plugin.
+    // One QuickJS Runtime per ztl process; Contexts per plugin.
 }
 
 impl ObsidianRuntime {
@@ -464,7 +464,7 @@ Verified by: TEST-3103.
 
 ### CON-3104: Shim Surface Versioning
 
-The shim declares a `ZETL_SHIM_VERSION` constant (semver) and records it in every log line. Breaking changes to the shim interface (removed symbols, changed return shapes) bump the major. Additive changes (new symbols, new optional fields) bump the minor. The shim version is independent of `zetl`'s binary version.
+The shim declares a `ztl_SHIM_VERSION` constant (semver) and records it in every log line. Breaking changes to the shim interface (removed symbols, changed return shapes) bump the major. Additive changes (new symbols, new optional fields) bump the minor. The shim version is independent of `ztl`'s binary version.
 
 Matrix entries record the shim major version they were tested against; CI refuses to run a matrix test whose recorded shim major does not match the current build.
 
@@ -523,7 +523,7 @@ Verified by: TEST-3110.
 
 ### CON-3112: Configuration Schema
 
-`.zetl/config.toml` excerpt:
+`.ztl/config.toml` excerpt:
 
 ```toml
 [obsidian]
@@ -540,8 +540,8 @@ Verified by: TEST-3112.
 ### CON-3113: Plugin Data File Semantics
 
 - `loadData()` → reads `<vault>/.obsidian/plugins/<id>/data.json`; returns `null` if absent; returns parsed JSON otherwise.
-- `saveData(data)` under `zetl serve` → atomic write (temp + rename) to `data.json`.
-- `saveData(data)` under `zetl build` → in-memory only, debug-logged elision.
+- `saveData(data)` under `ztl serve` → atomic write (temp + rename) to `data.json`.
+- `saveData(data)` under `ztl build` → in-memory only, debug-logged elision.
 
 No plugin SHALL read or write outside its own `data.json` via the shim.
 
@@ -554,7 +554,7 @@ Verified by: TEST-3113.
 
 ### ADR-3101: Use QuickJS over V8 or Node.js Subprocess
 
-**Context:** `zetl` is a single-binary Rust CLI. Running plugin JS requires a JS engine. Three obvious options: embed QuickJS (`rquickjs`), embed V8 (`rusty_v8`), or shell out to a Node.js subprocess.
+**Context:** `ztl` is a single-binary Rust CLI. Running plugin JS requires a JS engine. Three obvious options: embed QuickJS (`rquickjs`), embed V8 (`rusty_v8`), or shell out to a Node.js subprocess.
 
 **Decision:** Embed QuickJS via `rquickjs`.
 
@@ -564,7 +564,7 @@ Verified by: TEST-3113.
 - **Startup cost.** QuickJS initialises in < 5 ms. V8 snapshot creation takes hundreds of ms; Node.js subprocess startup is 20-100 ms, paid per page render under `serve`.
 - **Sandboxing primitives.** QuickJS has no default IO, no built-in `fetch`, no `require` unless the host provides one. V8 isolates also give this but with heavier config. Node.js is the opposite — you start with the world and have to carve it back.
 - **Determinism.** QuickJS semantics are smaller and more predictable; V8 optimisations and GC timing introduce non-determinism that harms byte-identical output (NFR-3104).
-- **Platform reach.** QuickJS builds cleanly on every platform `zetl` supports; V8 has known issues on less-common targets.
+- **Platform reach.** QuickJS builds cleanly on every platform `ztl` supports; V8 has known issues on less-common targets.
 
 **Trade-offs accepted:**
 
@@ -607,17 +607,17 @@ Status: Proposed.
 
 ### ADR-3103: Untrusted-Code Threat Model
 
-**Context:** Running arbitrary user-installed JavaScript inside `zetl` is, in security terms, executing untrusted code. The threat model must be explicit so defences and residual risks are both visible.
+**Context:** Running arbitrary user-installed JavaScript inside `ztl` is, in security terms, executing untrusted code. The threat model must be explicit so defences and residual risks are both visible.
 
 **Decision:**
 
-- **Trust boundary:** The plugin is untrusted code; `zetl` is the trusted host; the vault filesystem is trusted content.
+- **Trust boundary:** The plugin is untrusted code; `ztl` is the trusted host; the vault filesystem is trusted content.
 - **In-scope attacks:** (1) Plugin tries to read files outside the vault; (2) plugin tries to open network sockets; (3) plugin tries to `exec` a process; (4) plugin tries to escape QuickJS into the host process; (5) plugin tries to DoS the build via CPU/memory.
-- **Out-of-scope attacks:** (1) Plugin produces misleading rendered output (content-layer trust is the user's responsibility); (2) timing side-channels within the sandbox; (3) crypto weakness in the host (`zetl` does not expose crypto to plugins in v1).
+- **Out-of-scope attacks:** (1) Plugin produces misleading rendered output (content-layer trust is the user's responsibility); (2) timing side-channels within the sandbox; (3) crypto weakness in the host (`ztl` does not expose crypto to plugins in v1).
 - **Defences:** QuickJS has no built-in IO; shim provides only vault-scoped read access; no network shim; no `process` or `exec`; CPU/memory budgets (REQ-3107, NFR-3103); `isDesktopOnly: true` plugins rejected (often proxies for native IO).
 - **Residual risks:** QuickJS engine CVEs (pinned version, monitored); unknown-unknowns in the shim API; plugins reading vault files they shouldn't (REQ-3113 restricts to own `data.json` for writes; reads are not per-plugin-scoped in v1).
 
-**Rationale:** A written threat model makes the security posture auditable and gives reviewers something to attack. It also sets user expectations: installing a plugin in Obsidian already means trusting its author; `zetl` does not reduce that trust but does not amplify it either.
+**Rationale:** A written threat model makes the security posture auditable and gives reviewers something to attack. It also sets user expectations: installing a plugin in Obsidian already means trusting its author; `ztl` does not reduce that trust but does not amplify it either.
 
 **Trade-offs accepted:**
 
@@ -634,7 +634,7 @@ Status: Proposed.
 
 **Rationale:**
 
-- Obsidian itself publishes a plugin catalogue with install counts. A parallel `zetl` matrix is a familiar artefact.
+- Obsidian itself publishes a plugin catalogue with install counts. A parallel `ztl` matrix is a familiar artefact.
 - Tier-based support makes the commitment per-plugin rather than global, avoiding regret if a plugin breaks after an API change.
 - CI gating on matrix entries (REQ-3111) prevents silent regressions.
 
@@ -735,7 +735,7 @@ Verifies: REQ-3104.
 
 ### TEST-3104-determinism: Byte-Identical Output
 
-On a fixed demo vault with a fixed plugin set, run `zetl build` three times; diff the output tree. Assert zero differences. Run on Linux x86_64 and macOS aarch64 in CI; assert cross-platform byte-identity.
+On a fixed demo vault with a fixed plugin set, run `ztl build` three times; diff the output tree. Assert zero differences. Run on Linux x86_64 and macOS aarch64 in CI; assert cross-platform byte-identity.
 
 Verifies: NFR-3104.
 
@@ -744,7 +744,7 @@ Verifies: NFR-3104.
 For each plugin at tier `supported` in `obsidian-plugin-matrix.toml`:
 
 1. Recorded baseline HTML from Obsidian Publish for a canonical test vault lives under `tests/obsidian-goldens/<plugin>/expected.html`.
-2. Test runs `zetl build` with that plugin enabled on the same input vault.
+2. Test runs `ztl build` with that plugin enabled on the same input vault.
 3. Both outputs are normalised (whitespace-collapse within preformatted-block boundaries; attribute sort; no-op element removal).
 4. Assert 0 character-level differences post-normalisation.
 
@@ -754,13 +754,13 @@ Verifies: REQ-3105, REQ-3111.
 
 ### TEST-3105-startup: Opt-In Cold-Start Cost
 
-Benchmark: compile with `--features obsidian-plugins`; invoke `zetl --no-obsidian-plugins index` on a trivial vault. Compare to a build compiled without the feature. Assert delta ≤ 10 ms at P95 over 100 runs.
+Benchmark: compile with `--features obsidian-plugins`; invoke `ztl --no-obsidian-plugins index` on a trivial vault. Compare to a build compiled without the feature. Assert delta ≤ 10 ms at P95 over 100 runs.
 
 Verifies: NFR-3105.
 
 ### TEST-3106: Scanner Determinism and Cache
 
-Run `zetl obsidian scan-symbols --top 10` twice against a fixed snapshot. Assert byte-identical output. Delete the network cache; run again; assert re-populated cache matches. Inject a non-JS plugin file into the cache; assert it is skipped with a reason and does not fail the scan.
+Run `ztl obsidian scan-symbols --top 10` twice against a fixed snapshot. Assert byte-identical output. Delete the network cache; run again; assert re-populated cache matches. Inject a non-JS plugin file into the cache; assert it is skipped with a reason and does not fail the scan.
 
 Verifies: REQ-3106.
 
@@ -772,7 +772,7 @@ Verifies: NFR-3106.
 
 ### TEST-3107: Budget Enforcement and Escape Containment
 
-**CPU budget:** Plugin that runs `while(true){}`. Assert execution terminates within `plugin_timeout_ms + epsilon`; assert the plugin is disabled for the remainder of the pass; assert the host `zetl` process is unaffected.
+**CPU budget:** Plugin that runs `while(true){}`. Assert execution terminates within `plugin_timeout_ms + epsilon`; assert the plugin is disabled for the remainder of the pass; assert the host `ztl` process is unaffected.
 
 **Memory budget:** Plugin that allocates until OOM. Assert QuickJS throws within its heap ceiling; host RSS delta ≤ ceiling + fragmentation overhead.
 
@@ -786,19 +786,19 @@ Verifies: REQ-3107, NFR-3103, NFR-3107.
 
 Plugin that throws synchronously on `onload`; assert fragment is unchanged, diagnostic is emitted, subsequent plugins run.
 Plugin that throws async (Promise rejection) during post-processing; same assertions.
-Plugin that calls an unsupported shim symbol; assert `ZetlShimNotSupportedError` is raised, logged, and rendered as diagnostic; subsequent plugins run.
+Plugin that calls an unsupported shim symbol; assert `ztlShimNotSupportedError` is raised, logged, and rendered as diagnostic; subsequent plugins run.
 
 Verifies: REQ-3108, NFR-3101.
 
 ### TEST-3109: Diagnostic Suppression Flag
 
-`zetl build` with a deliberately-failing plugin and `--obsidian-suppress-diagnostics`. Assert output HTML contains `<!-- zetl: plugin ... failed -->` and `obsidian-diagnostics.json` exists and contains the full details.
+`ztl build` with a deliberately-failing plugin and `--obsidian-suppress-diagnostics`. Assert output HTML contains `<!-- ztl: plugin ... failed -->` and `obsidian-diagnostics.json` exists and contains the full details.
 
 Verifies: REQ-3109.
 
 ### TEST-3110: Coverage Report
 
-Run `zetl obsidian coverage` against a fixture vault with two matrix plugins (one at each tier). Assert human output matches a golden. Run with `--json`; assert schema conformance and content equivalence with the human output.
+Run `ztl obsidian coverage` against a fixture vault with two matrix plugins (one at each tier). Assert human output matches a golden. Run with `--json`; assert schema conformance and content equivalence with the human output.
 
 Verifies: REQ-3110.
 
@@ -825,8 +825,8 @@ Verifies: REQ-3112.
 ### TEST-3113: Data File Semantics
 
 `loadData()` with no file → `null`.
-`saveData(data)` under `zetl serve` → file exists, parseable, atomic (interrupt mid-write; assert no partial file).
-`saveData(data)` under `zetl build` → file not created on disk; debug log emitted.
+`saveData(data)` under `ztl serve` → file exists, parseable, atomic (interrupt mid-write; assert no partial file).
+`saveData(data)` under `ztl build` → file not created on disk; debug log emitted.
 
 Verifies: REQ-3113.
 
@@ -844,24 +844,24 @@ A synthetic user (per USDD §Synthetic User Protocol) walks Profile 2.1 (publish
 
 ### OBS-3101: Runtime Lifecycle
 
-Log line on process start (feature compiled): `[zetl] obsidian: runtime init status=<ok|disabled|failed> reason=<...>`.
-Log line on plugin load: `[zetl] obsidian: loaded <id> v<version> tier=<supported|partial|unsupported|unvalidated>`.
-Log line on skip: `[zetl] obsidian: skipped <id> reason=<...>`.
+Log line on process start (feature compiled): `[ztl] obsidian: runtime init status=<ok|disabled|failed> reason=<...>`.
+Log line on plugin load: `[ztl] obsidian: loaded <id> v<version> tier=<supported|partial|unsupported|unvalidated>`.
+Log line on skip: `[ztl] obsidian: skipped <id> reason=<...>`.
 
-Metric: `zetl_obsidian_runtime_init_total{status}` counter.
+Metric: `ztl_obsidian_runtime_init_total{status}` counter.
 
 Trace: REQ-3101.
 
 ### OBS-3102: Plugin Load Outcomes
 
-Metric: `zetl_obsidian_plugin_load_total{plugin_id, outcome}` counter; `outcome` ∈ {loaded, skipped_desktop_only, skipped_invalid_manifest, skipped_oversize, skipped_missing_main}.
+Metric: `ztl_obsidian_plugin_load_total{plugin_id, outcome}` counter; `outcome` ∈ {loaded, skipped_desktop_only, skipped_invalid_manifest, skipped_oversize, skipped_missing_main}.
 
 Trace: REQ-3102.
 
 ### OBS-3103: Unsupported-Symbol Invocation Rate
 
-Metric: `zetl_obsidian_unsupported_call_total{plugin_id, symbol}` counter.
-Log line: `[zetl] obsidian: unsupported call plugin=<id> symbol=<Obj.method>`.
+Metric: `ztl_obsidian_unsupported_call_total{plugin_id, symbol}` counter.
+Log line: `[ztl] obsidian: unsupported call plugin=<id> symbol=<Obj.method>`.
 
 This metric is the most load-bearing signal for "which symbols should the next shim release cover?" and is consumed by the scanner (REQ-3106) cross-referenced output.
 
@@ -869,29 +869,29 @@ Trace: REQ-3104.
 
 ### OBS-3104: Matrix Tier Distribution
 
-On every render pass, emit a summary log: `[zetl] obsidian: plugins=<N> supported=<A> partial=<B> unvalidated=<C> unsupported=<D>`.
+On every render pass, emit a summary log: `[ztl] obsidian: plugins=<N> supported=<A> partial=<B> unvalidated=<C> unsupported=<D>`.
 
-Metric: `zetl_obsidian_plugins_by_tier{tier}` gauge.
+Metric: `ztl_obsidian_plugins_by_tier{tier}` gauge.
 
 Trace: REQ-3105.
 
 ### OBS-3105: Budget Violations
 
-Metric: `zetl_obsidian_budget_violation_total{plugin_id, kind}` counter; `kind` ∈ {cpu, memory}.
-Log line: `[zetl] obsidian: budget <kind> plugin=<id> limit=<N> observed=<M> action=disabled`.
+Metric: `ztl_obsidian_budget_violation_total{plugin_id, kind}` counter; `kind` ∈ {cpu, memory}.
+Log line: `[ztl] obsidian: budget <kind> plugin=<id> limit=<N> observed=<M> action=disabled`.
 
 Trace: REQ-3107, NFR-3103.
 
 ### OBS-3106: Plugin Failure Rate
 
-Metric: `zetl_obsidian_plugin_failure_total{plugin_id, reason}` counter; `reason` ∈ {throw, budget_cpu, budget_memory, unsupported_symbol}.
-`zetl build` exit report includes a failure count: `[zetl] obsidian: 2 plugin failure(s); build succeeded`.
+Metric: `ztl_obsidian_plugin_failure_total{plugin_id, reason}` counter; `reason` ∈ {throw, budget_cpu, budget_memory, unsupported_symbol}.
+`ztl build` exit report includes a failure count: `[ztl] obsidian: 2 plugin failure(s); build succeeded`.
 
 Trace: REQ-3108, NFR-3101.
 
 ### OBS-3107: Render Latency with Plugins
 
-Timing log under `--verbose`: `[zetl] obsidian: post-process slug=<...> total_ms=<N> plugins=<M>`.
+Timing log under `--verbose`: `[ztl] obsidian: post-process slug=<...> total_ms=<N> plugins=<M>`.
 Per-plugin timing also recorded in coverage report.
 
 Trace: NFR-3102.
@@ -910,11 +910,11 @@ Security is addressed across three layers; ADR-3103 records the overall threat m
 - The only writable path per plugin is its own `data.json`.
 - No shim method performs network I/O or process spawning in v1. If future versions add `requestUrl` or similar, it gets its own ADR and becomes opt-in per-plugin.
 
-**Layer 3 — Budgets.** Time and memory ceilings (REQ-3107, NFR-3103) bound denial-of-service. Without them, a pathological plugin could hang `zetl build` indefinitely.
+**Layer 3 — Budgets.** Time and memory ceilings (REQ-3107, NFR-3103) bound denial-of-service. Without them, a pathological plugin could hang `ztl build` indefinitely.
 
 **Residual risks documented.** Vault-wide read access (a plugin can read any page in the vault via `Vault.read`) is not mitigated in v1. This matches Obsidian's own posture and is called out in documentation. Users who need stricter isolation should not enable the feature.
 
-**Supply-chain note.** QuickJS pinned version is recorded in `Cargo.toml`; the crate advisory feed is monitored. A QuickJS CVE becomes a `zetl` security release.
+**Supply-chain note.** QuickJS pinned version is recorded in `Cargo.toml`; the crate advisory feed is monitored. A QuickJS CVE becomes a `ztl` security release.
 
 **AI Trust Boundary classification:** This feature is **Review Tier 2** (core business logic, untrusted-input processing). Implementation requires cross-model review per USDD §Multi-Model Cognitive Diversity. The shim itself is not cryptographic nor authentication core, so it does not reach Tier 1.
 
@@ -933,7 +933,7 @@ Security is addressed across three layers; ADR-3103 records the overall threat m
 
 **New file `docs/obsidian-plugin-matrix.md`** — rendered view of the matrix with per-plugin notes, auto-generated from `tools/obsidian-plugin-matrix.toml` on CI.
 
-**Theme authoring reference** — document the `zetl-obsidian-error` class and data attributes so theme authors can style the diagnostic element (diagnostic visibility is controlled by REQ-3109).
+**Theme authoring reference** — document the `ztl-obsidian-error` class and data attributes so theme authors can style the diagnostic element (diagnostic visibility is controlled by REQ-3109).
 
 **User profile coverage:** Profiles 2.1–2.4 each receive a section in `docs/user-guides/` describing the workflow end-to-end.
 
@@ -948,7 +948,7 @@ Phased delivery to limit blast radius and gather convergence signals.
 - Land `rquickjs` integration, plugin discovery, baseline shim surface, budgets, diagnostics.
 - Matrix starts empty; every plugin runs at `unvalidated`.
 - Feature is off in the default binary; users opt in via `cargo install --features obsidian-plugins`.
-- Ship `zetl obsidian scan-symbols` and `zetl obsidian coverage`.
+- Ship `ztl obsidian scan-symbols` and `ztl obsidian coverage`.
 
 **Phase B — Matrix seeding:**
 
@@ -962,7 +962,7 @@ Phased delivery to limit blast radius and gather convergence signals.
 
 **Phase D — Community-contributed matrix entries:**
 
-- Externalise the plugin addition process; document "how to add a plugin to the zetl matrix" so external contributors can submit fixtures.
+- Externalise the plugin addition process; document "how to add a plugin to the ztl matrix" so external contributors can submit fixtures.
 
 **Rollback:** If post-release data shows the budget or failure-rate NFRs are missed, the feature is reverted to "unsupported / experimental" in docs and the default-off cargo flag remains unchanged. No user is worse off than before.
 
@@ -973,9 +973,9 @@ Phased delivery to limit blast radius and gather convergence signals.
 These require stakeholder resolution before status advances from `draft` to `approved`. Each is tagged with a proposed resolution to accelerate discussion.
 
 1. **Plugin-identity vs. matrix-identity.** If two forks of a plugin share a plugin ID (common on GitHub forks), how do we disambiguate matrix entries? *Proposed:* matrix key is `(plugin_id, version)`; forks must re-ID.
-2. **Licence compatibility policy.** Running GPL-licensed plugin code inside an AGPL-3.0 `zetl` is straightforward (compatible). MIT plugin code is trivially compatible. What about proprietary closed-source plugins distributed as binary `main.js`? *Proposed:* loader does not enforce; users' compliance responsibility; documentation notes AGPL implications for self-hosted public deployments.
+2. **Licence compatibility policy.** Running GPL-licensed plugin code inside an AGPL-3.0 `ztl` is straightforward (compatible). MIT plugin code is trivially compatible. What about proprietary closed-source plugins distributed as binary `main.js`? *Proposed:* loader does not enforce; users' compliance responsibility; documentation notes AGPL implications for self-hosted public deployments.
 3. **`Vault.read` scope.** Should a plugin be able to read *any* vault page or only the current page being rendered? *Proposed:* any page (matches Obsidian). Counter-argument: a stricter-by-default posture is easier to loosen later.
-4. **Diagnostic visibility for `zetl serve` multi-user / collab mode.** Public-facing collab deployments might not want every visitor to see plugin diagnostics. *Proposed:* `collab` mode defaults to `--obsidian-suppress-diagnostics` equivalent; admins can override per-session.
+4. **Diagnostic visibility for `ztl serve` multi-user / collab mode.** Public-facing collab deployments might not want every visitor to see plugin diagnostics. *Proposed:* `collab` mode defaults to `--obsidian-suppress-diagnostics` equivalent; admins can override per-session.
 5. **Scheduling of the community-plugins snapshot.** The scanner pins to a dated snapshot of Obsidian's `community-plugins.json` feed. Who bumps the snapshot date and on what cadence? *Proposed:* monthly, automated via a scheduled workflow; delta vs. previous snapshot attached to the PR for review.
 6. **Handling `Plugin_2` base class.** Obsidian has deprecated-but-used aliases; how comprehensive should our alias coverage be? *Proposed:* alias in the shim to the same target; log when alias is used so we can measure deprecation pressure.
 7. **MCP exposure of coverage report.** Should `get_page` via MCP include the coverage attribution in a response metadata field? *Proposed:* off by default; opt-in via MCP tool parameter `include_obsidian_coverage=true`.

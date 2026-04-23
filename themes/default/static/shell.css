@@ -282,13 +282,13 @@
     }
     /* Sidebar actions group, wordmark hover, drawer z-index over graph
        overlays, and mobile breadcrumb truncation — DESIGN-REVIEW-2026-04-18. */
-    .zetl-actions{margin-bottom:.5rem}
-    .zetl-actions-heading{font-size:.65rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;opacity:.5;padding:0 .5rem;margin:.25rem 0 .35rem}
-    .zetl-action{display:flex;align-items:center;gap:.5rem;padding:.3rem .5rem;border-radius:.3rem;font-size:.8rem;color:oklch(var(--bc));opacity:.85;line-height:1.2}
-    .zetl-action:hover{background:oklch(var(--b3)/.6);opacity:1}
-    .zetl-action-icon{width:1rem;text-align:center;opacity:.6;font-size:.85rem;line-height:1}
-    .zetl-action:hover .zetl-action-icon{opacity:1}
-    .zetl-wordmark{cursor:pointer}
+    .ztl-actions{margin-bottom:.5rem}
+    .ztl-actions-heading{font-size:.65rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;opacity:.5;padding:0 .5rem;margin:.25rem 0 .35rem}
+    .ztl-action{display:flex;align-items:center;gap:.5rem;padding:.3rem .5rem;border-radius:.3rem;font-size:.8rem;color:oklch(var(--bc));opacity:.85;line-height:1.2}
+    .ztl-action:hover{background:oklch(var(--b3)/.6);opacity:1}
+    .ztl-action-icon{width:1rem;text-align:center;opacity:.6;font-size:.85rem;line-height:1}
+    .ztl-action:hover .ztl-action-icon{opacity:1}
+    .ztl-wordmark{cursor:pointer}
     .drawer-side{z-index:50}
     @media (max-width:420px){
       .breadcrumbs ul>li:not(:first-child):not(:last-child){display:none}
@@ -311,23 +311,23 @@
        without touching the template, so theme authors restyle by redeclaring
        these vars on :root. */
     :root {
-      --zetl-graph-widget-width: 400px;
-      --zetl-graph-widget-height: 320px;
-      --zetl-graph-widget-right: 16px;
-      --zetl-graph-widget-bottom: 16px;
-      --zetl-graph-widget-breakpoint: 900px;
-      --zetl-graph-widget-min-width: 180px;
-      --zetl-graph-widget-min-height: 140px;
+      --ztl-graph-widget-width: 400px;
+      --ztl-graph-widget-height: 320px;
+      --ztl-graph-widget-right: 16px;
+      --ztl-graph-widget-bottom: 16px;
+      --ztl-graph-widget-breakpoint: 900px;
+      --ztl-graph-widget-min-width: 180px;
+      --ztl-graph-widget-min-height: 140px;
     }
 
-    .zetl-graph-widget {
+    .ztl-graph-widget {
       position: fixed;
-      width: var(--zetl-graph-widget-width, 280px);
-      height: var(--zetl-graph-widget-height, 200px);
-      right: var(--zetl-graph-widget-right, 16px);
-      bottom: var(--zetl-graph-widget-bottom, 16px);
-      min-width: var(--zetl-graph-widget-min-width, 180px);
-      min-height: var(--zetl-graph-widget-min-height, 140px);
+      width: var(--ztl-graph-widget-width, 280px);
+      height: var(--ztl-graph-widget-height, 200px);
+      right: var(--ztl-graph-widget-right, 16px);
+      bottom: var(--ztl-graph-widget-bottom, 16px);
+      min-width: var(--ztl-graph-widget-min-width, 180px);
+      min-height: var(--ztl-graph-widget-min-height, 140px);
       box-sizing: border-box;
       background: oklch(var(--b1));
       border: 1px solid oklch(var(--b3));
@@ -337,8 +337,8 @@
       z-index: 40;
       resize: both;
     }
-    .zetl-graph-widget[data-placement="fullscreen"],
-    [data-placement="docked"] .zetl-graph-widget[data-placement="fullscreen"] {
+    .ztl-graph-widget[data-placement="fullscreen"],
+    [data-placement="docked"] .ztl-graph-widget[data-placement="fullscreen"] {
       position: relative !important;
       width: 100% !important;
       height: 100% !important;
@@ -350,14 +350,14 @@
          the daisyUI mobile drawer (position:fixed) overlays it correctly. */
       z-index: auto !important;
     }
-    .zetl-graph-widget__canvas {
+    .ztl-graph-widget__canvas {
       position: absolute;
       inset: 0;
       /* Sigma mounts here once vendor bundle lands (task-graph-partial). Until
          then the canvas is an empty placeholder — the placement geometry is
          what this task asserts. */
     }
-    .zetl-graph-widget__expand {
+    .ztl-graph-widget__expand {
       position: absolute;
       top: 4px;
       right: 6px;
@@ -373,21 +373,21 @@
       opacity: 0.85;
       transition: opacity 0.15s ease;
     }
-    .zetl-graph-widget__expand:hover,
-    .zetl-graph-widget__expand:focus-visible {
+    .ztl-graph-widget__expand:hover,
+    .ztl-graph-widget__expand:focus-visible {
       opacity: 1;
       text-decoration: underline;
     }
 
     /* Default "docked" placement: fixed mini-map, bottom-right, user-resizable. */
-    [data-placement="docked"] .zetl-graph-widget {
+    [data-placement="docked"] .ztl-graph-widget {
       position: fixed;
-      right: var(--zetl-graph-widget-right);
-      bottom: var(--zetl-graph-widget-bottom);
-      width: var(--zetl-graph-widget-width);
-      height: var(--zetl-graph-widget-height);
-      min-width: var(--zetl-graph-widget-min-width);
-      min-height: var(--zetl-graph-widget-min-height);
+      right: var(--ztl-graph-widget-right);
+      bottom: var(--ztl-graph-widget-bottom);
+      width: var(--ztl-graph-widget-width);
+      height: var(--ztl-graph-widget-height);
+      min-width: var(--ztl-graph-widget-min-width);
+      min-height: var(--ztl-graph-widget-min-height);
       /* Native CSS resize handle — bottom-right grip (REQ-116). The widget
          only grows from the corner anchored at the opposite viewport edge, so
          `resize: both` drags from bottom-right without flipping. */
@@ -398,7 +398,7 @@
        via a two-tab header. Themes that opt in render the graph as a
        right-rail sibling; when this placement is active the fixed docked
        widget is suppressed. */
-    [data-placement="tabs"] .zetl-graph-widget {
+    [data-placement="tabs"] .ztl-graph-widget {
       position: relative;
       width: 100%;
       height: 320px;
@@ -412,7 +412,7 @@
 
     /* "stacked" placement: widget sits above the transclusion cards in the
        right rail, without the tab UI. */
-    [data-placement="stacked"] .zetl-graph-widget {
+    [data-placement="stacked"] .ztl-graph-widget {
       position: relative;
       width: 100%;
       height: 240px;
@@ -421,12 +421,12 @@
 
     /* Mobile behaviour (SPEC-028 REQ-117): below the breakpoint the docked
        widget is hidden by default and reachable via the top-bar toggle
-       (.zetl-graph-toggle) that expands it to a full-screen overlay. The
+       (.ztl-graph-toggle) that expands it to a full-screen overlay. The
        Sigma instance inside the widget is never unmounted — we only switch
        the `--open` modifier class, so WebGL context identity is preserved.
        tabs/stacked placements flow inline with the content and remain
        visible unchanged. */
-    .zetl-graph-toggle {
+    .ztl-graph-toggle {
       display: none;
       align-items: center;
       justify-content: center;
@@ -441,14 +441,14 @@
       font-size: 0.85rem;
       cursor: pointer;
     }
-    .zetl-graph-toggle:hover {
+    .ztl-graph-toggle:hover {
       background: oklch(var(--b3) / 0.5);
     }
-    .zetl-graph-toggle:focus-visible {
+    .ztl-graph-toggle:focus-visible {
       outline: 2px solid oklch(var(--p));
       outline-offset: 2px;
     }
-    .zetl-graph-widget__close {
+    .ztl-graph-widget__close {
       /* Visible on desktop so readers can dismiss the docked mini-map. On
          mobile, the widget itself is hidden by default (see media query
          below), which cascades to hide this button too — the --open
@@ -468,7 +468,7 @@
       cursor: pointer;
       z-index: 2;
     }
-    .zetl-graph-widget__close:focus-visible {
+    .ztl-graph-widget__close:focus-visible {
       outline: 2px solid oklch(var(--p));
       outline-offset: 2px;
     }
@@ -480,13 +480,13 @@
        the persisted preference is expanded, inverting the two rules below.
        Only applies to the "docked" placement (tabs / stacked flow inline
        with content and are always visible). */
-    .zetl-graph-widget-launcher {
+    .ztl-graph-widget-launcher {
       display: inline-flex;
       align-items: center;
       gap: 0.4rem;
       position: fixed;
-      right: var(--zetl-graph-widget-right, 16px);
-      bottom: var(--zetl-graph-widget-bottom, 16px);
+      right: var(--ztl-graph-widget-right, 16px);
+      bottom: var(--ztl-graph-widget-bottom, 16px);
       padding: 0.4rem 0.8rem;
       background: oklch(var(--b1));
       color: oklch(var(--bc));
@@ -497,10 +497,10 @@
       cursor: pointer;
       z-index: 40;
     }
-    .zetl-graph-widget-launcher:hover {
+    .ztl-graph-widget-launcher:hover {
       background: oklch(var(--b2));
     }
-    .zetl-graph-widget-launcher:focus-visible {
+    .ztl-graph-widget-launcher:focus-visible {
       outline: 2px solid oklch(var(--p));
       outline-offset: 2px;
     }
@@ -510,36 +510,36 @@
        redundant there. Scoping to min-width ensures the `data-graph`
        attribute never forces a non-overlay widget on narrow viewports. */
     @media (min-width: 900px) {
-      [data-placement="docked"] .zetl-graph-widget:not([data-placement="fullscreen"]) {
+      [data-placement="docked"] .ztl-graph-widget:not([data-placement="fullscreen"]) {
         display: none;
       }
-      html[data-graph="expanded"] [data-placement="docked"] .zetl-graph-widget:not([data-placement="fullscreen"]) {
+      html[data-graph="expanded"] [data-placement="docked"] .ztl-graph-widget:not([data-placement="fullscreen"]) {
         display: block;
       }
-      html[data-graph="expanded"] [data-placement="docked"] .zetl-graph-widget-launcher {
+      html[data-graph="expanded"] [data-placement="docked"] .ztl-graph-widget-launcher {
         display: none;
       }
     }
-    /* Suppress the launcher on mobile — the navbar `.zetl-graph-toggle`
+    /* Suppress the launcher on mobile — the navbar `.ztl-graph-toggle`
        already provides the reveal affordance, and a second button would
        be noise at narrow widths. */
     @media (max-width: 899px) {
-      .zetl-graph-widget-launcher {
+      .ztl-graph-widget-launcher {
         display: none;
       }
     }
 
     @media (max-width: 899px) {
-      [data-placement="docked"] .zetl-graph-toggle {
+      [data-placement="docked"] .ztl-graph-toggle {
         display: inline-flex;
       }
-      [data-placement="docked"] .zetl-graph-widget:not([data-placement="fullscreen"]) {
+      [data-placement="docked"] .ztl-graph-widget:not([data-placement="fullscreen"]) {
         display: none;
       }
       /* Expanded state — full-screen overlay. Specificity is higher than the
          rule above so the widget becomes visible the moment the `--open`
          class is set, without touching layout outside the viewport box. */
-      [data-placement="docked"] .zetl-graph-widget.zetl-graph-widget--open {
+      [data-placement="docked"] .ztl-graph-widget.ztl-graph-widget--open {
         display: block;
         position: fixed;
         inset: 0;
@@ -554,7 +554,7 @@
         resize: none;
         z-index: 100;
       }
-      .zetl-graph-widget--open .zetl-graph-widget__close {
+      .ztl-graph-widget--open .ztl-graph-widget__close {
         display: inline-flex;
       }
     }
@@ -618,14 +618,14 @@
       /* Chrome + interactive widgets. */
       .drawer-side,
       .navbar,
-      .zetl-graph-widget,
-      .zetl-graph-widget-launcher,
-      .zetl-graph-toggle,
+      .ztl-graph-widget,
+      .ztl-graph-widget-launcher,
+      .ztl-graph-toggle,
       .search-overlay,
       .search-dialog,
       .search-btn,
       .drawer-toggle,
-      [data-zetl-graph-fallback],
+      [data-ztl-graph-fallback],
       /* Edit button and View-in-graph link serve no purpose on paper
          (BUG-503, task-print-css-audit). */
       a[href^="/edit/"],
@@ -633,7 +633,7 @@
       a[href^="/_graph"],
       a[href^="&#x2f;_graph"],
       /* Home-page interactive toolbar (sort pills + folder filter). */
-      .zetl-index-toolbar,
+      .ztl-index-toolbar,
       /* Fullscreen-graph overlay UI (task-print-css-audit). */
       .vg-controls,
       .vg-legend,

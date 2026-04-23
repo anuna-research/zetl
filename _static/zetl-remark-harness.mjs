@@ -1,17 +1,17 @@
 #!/usr/bin/env node
-// zetl remark harness (SPEC-033 REQ-3305 / CON-3305 / ADR-3304).
+// ztl remark harness (SPEC-033 REQ-3305 / CON-3305 / ADR-3304).
 //
-// A long-lived Node.js subprocess that bridges zetl's Rust hook runtime
+// A long-lived Node.js subprocess that bridges ztl's Rust hook runtime
 // and any installed remark/unified plugins. The harness speaks a tiny
 // JSON-RPC-like protocol over line-delimited JSON on stdin/stdout:
 //
-//   zetl → harness:  {"id":N, "type":"load_plugin", "package":"...", "options":{...}}
-//   harness → zetl:  {"id":N, "type":"load_result", "ok":true, "plugin_id":"rp_X"}
+//   ztl → harness:  {"id":N, "type":"load_plugin", "package":"...", "options":{...}}
+//   harness → ztl:  {"id":N, "type":"load_result", "ok":true, "plugin_id":"rp_X"}
 //
-//   zetl → harness:  {"id":N, "type":"apply", "plugin_id":"rp_X", "ast":{...mdast...}}
-//   harness → zetl:  {"id":N, "type":"apply_result", "ok":true, "ast":{...mdast...}}
+//   ztl → harness:  {"id":N, "type":"apply", "plugin_id":"rp_X", "ast":{...mdast...}}
+//   harness → ztl:  {"id":N, "type":"apply_result", "ok":true, "ast":{...mdast...}}
 //
-//   zetl → harness:  {"id":N, "type":"shutdown"}
+//   ztl → harness:  {"id":N, "type":"shutdown"}
 //   harness exits 0.
 //
 // A banner message is emitted on startup (type=ready, harness_version,
@@ -19,7 +19,7 @@
 // the pipe is live before sending requests.
 //
 // Plugin resolution: `import(package)` runs from the harness's current
-// working directory, which zetl sets to the plugin-resolution root
+// working directory, which ztl sets to the plugin-resolution root
 // (`node_modules`' parent). This lets users override resolution without
 // touching the harness.
 //
@@ -28,9 +28,9 @@
 // failure; only the shutdown message terminates the process. Uncaught
 // exceptions in a plugin are surfaced as an apply_result with ok=false.
 //
-// isolation = "shared"        → one harness per zetl process; all plugins
+// isolation = "shared"        → one harness per ztl process; all plugins
 //                               share the module cache.
-// isolation = "fresh-context" → zetl spawns a new harness subprocess per
+// isolation = "fresh-context" → ztl spawns a new harness subprocess per
 //                               invocation and shuts it down afterwards.
 //                               Enforced on the Rust side; this harness
 //                               script is identical in both modes.

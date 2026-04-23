@@ -1,7 +1,7 @@
 # Markdown/Document Plugin Ecosystem Scan
 
 Empirical audit for SPEC-033 v1 ecosystem targeting. Generated 2026-04-19.
-Raw data cached under `/Users/anuna-01/.cache/zetl/ecosystem-scan/`; machine-readable form in `ecosystem-scan.json`.
+Raw data cached under `/Users/anuna-01/.cache/ztl/ecosystem-scan/`; machine-readable form in `ecosystem-scan.json`.
 
 ## Per-ecosystem summary
 
@@ -46,19 +46,19 @@ Column maxima bolded. Pandoc filters uniquely dominate citations, crossrefs, and
 
 ### 1. Pandoc filters
 - **Why**: 19/30 top-ranked filters hit PKM categories, the highest rate measured. Pandoc is the *only* ecosystem where citations (pandoc-crossref, citeproc-rs, section-bibliographies, pandoc-zotxt, pandoc-tex-numbering), crossrefs (pandoc-crossref, pandoc-tex-numbering), and transclusion (pandoc-include, pandoc-placetable, pandoc-plot) appear in the top 30 at all.
-- **User fit**: zetl's academic/technical-writing users want citation graphs, equation numbering, and multi-format export. Pandoc is the industry default for that audience.
+- **User fit**: ztl's academic/technical-writing users want citation graphs, equation numbering, and multi-format export. Pandoc is the industry default for that audience.
 - **Integration**: out-of-process JSON-over-stdio (`pandoc --filter` or `--lua-filter`). Stable AST, portable across ecosystems — Quarto already rides on it.
 - **Cost**: requires Pandoc as an optional runtime dep; not bundled. Filter-author stability is ad-hoc (Haskell/Python/Lua/Node — each with its own versioning hygiene).
 
 ### 2. mdBook preprocessors
 - **Why**: the healthiest ecosystem by maintenance — 27/30 active, only 3 abandoned. Best-in-class diagram coverage (mermaid, svgbob, graphviz, plantuml) and strong callout/TOC/math representation. Subprocess-JSON protocol is simple.
-- **User fit**: documentation-site authors; overlaps heavily with zetl's "publish a vault as a site" workflow. Native Rust binaries, zero additional runtime deps for a Rust CLI like zetl.
+- **User fit**: documentation-site authors; overlaps heavily with ztl's "publish a vault as a site" workflow. Native Rust binaries, zero additional runtime deps for a Rust CLI like ztl.
 - **Integration**: well-defined subprocess protocol (`{context, book} → {processed book}` over stdin/stdout). Rust-native, single-binary adapters.
 - **Cost**: smallest absolute ecosystem on the list, but every plugin counts — signal-to-noise is extremely high vs. npm/PyPI.
 
 ### 3. remark (unified)
 - **Why**: largest PKM-relevant-plugin count among in-process Node ecosystems (13/30), biggest raw total (539). It's the de-facto AST for the JavaScript Markdown world; rehype/retext compose off it, so adopting remark reaches those ecosystems transitively.
-- **User fit**: any zetl user who already runs a JS toolchain (Next/Astro/Docusaurus users); remark-gfm, remark-frontmatter, remark-math, remark-directive cover the common extensions.
+- **User fit**: any ztl user who already runs a JS toolchain (Next/Astro/Docusaurus users); remark-gfm, remark-frontmatter, remark-math, remark-directive cover the common extensions.
 - **Integration**: in-process via Node subprocess (`node --input-type=module`) or via a JS VM — the protocol is function-call, not subprocess. Versioning is strict semver across `unifiedjs/*` core.
 - **Cost**: requires Node as an optional runtime dep. The "abandoned" tail is misleading: many top remark plugins are feature-complete and untouched since 2023; the *core* packages (`remark-parse`, `remark-stringify`) are stable-by-design, not rotting.
 
@@ -84,11 +84,11 @@ Column maxima bolded. Pandoc filters uniquely dominate citations, crossrefs, and
 4. **PyPI search was JS-gated**. We fell back to the PyPI simple index (JSON) for totals and the per-package JSON API for a hand-curated top-30. Not a true popularity ranking.
 5. **Quarto listing page was JS-rendered**. We substituted the GitHub `quarto-extension` topic (379 repos), which under-counts uncategorised extensions.
 6. **The Pandoc-filter total (200)** is repos tagged with the `pandoc-filter` topic only. Many production filters (e.g. `pandoc-citeproc` historically, many org-internal filters) never set the topic and are undercounted.
-7. **"Top 30 by popularity"** uses different metrics across ecosystems (npm popularity score, crates.io downloads, GitHub stars). Cross-ecosystem ranking by absolute popularity is not meaningful; we use top-30 as a proxy for "the plugins a zetl user would encounter first."
+7. **"Top 30 by popularity"** uses different metrics across ecosystems (npm popularity score, crates.io downloads, GitHub stars). Cross-ecosystem ranking by absolute popularity is not meaningful; we use top-30 as a proxy for "the plugins a ztl user would encounter first."
 8. **Obsidian deliberately excluded** per brief — reference data already at `tools/obsidian-top50-scan.json`.
 
 ## Files
 
-- `/Users/anuna-01/Code/zetl/tools/ecosystem-scan.md` — this file
-- `/Users/anuna-01/Code/zetl/tools/ecosystem-scan.json` — machine-readable form
-- `/Users/anuna-01/.cache/zetl/ecosystem-scan/` — raw fetched JSON/HTML
+- `/Users/anuna-01/Code/ztl/tools/ecosystem-scan.md` — this file
+- `/Users/anuna-01/Code/ztl/tools/ecosystem-scan.json` — machine-readable form
+- `/Users/anuna-01/.cache/ztl/ecosystem-scan/` — raw fetched JSON/HTML

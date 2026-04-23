@@ -1,38 +1,38 @@
 ---
-title: "SPEC-007: zetl diff — Git-Backed Graph Diff"
+title: "SPEC-007: ztl diff — Git-Backed Graph Diff"
 version: 0.3.0
 status: draft
 audience: agent, human
 date: 2026-02-24
 ---
 
-# SPEC-007: zetl diff — Git-Backed Graph Diff
+# SPEC-007: ztl diff — Git-Backed Graph Diff
 
 ## Information Table
 
 | Field        | Value                                                              |
 | ------------ | ------------------------------------------------------------------ |
 | Document ID  | SPEC-007                                                           |
-| Title        | zetl diff — Git-Backed Graph Diff                                  |
+| Title        | ztl diff — Git-Backed Graph Diff                                  |
 | Version      | 0.3.0                                                              |
 | Status       | Draft                                                              |
 | Author       | Agent (USDD Protocol v1.0.0)                                       |
 | Date         | 2026-02-24                                                         |
 | Audience     | Agent, Human                                                       |
 | Trace        | USDD Agent Protocol v1.0.0                                         |
-| Parent       | SPEC-001: zetl — Bi-directional Link Graph CLI                     |
-| Related      | SPEC-005: zetl reason                                              |
+| Parent       | SPEC-001: ztl — Bi-directional Link Graph CLI                     |
+| Related      | SPEC-005: ztl reason                                              |
 | Dependencies | git (runtime), pulldown-cmark (Markdown parsing), SPEC-006 (index cache format) |
 
 ---
 
 ## 1. Overview
 
-Every zetl command operates on the current vault state. This is sufficient for point-in-time queries — "what links to this page right now?" — but tells you nothing about how the vault has evolved. When did this page become an orphan? Which connections were added this week? What changed in the knowledge base since the last agent cycle?
+Every ztl command operates on the current vault state. This is sufficient for point-in-time queries — "what links to this page right now?" — but tells you nothing about how the vault has evolved. When did this page become an orphan? Which connections were added this week? What changed in the knowledge base since the last agent cycle?
 
 Git already tracks the complete history of vault files. What git cannot tell you is how those file changes translated into **graph-level changes**: a line added to `Architecture.md` may have introduced a new backlink that resolved another page's orphan status, or a dead link that needs a corresponding note. Git diffs files; it cannot diff the derived link graph.
 
-`zetl diff` bridges this gap. Given any git reference as a baseline — a commit SHA, a branch name, a tag, or a date — zetl reconstructs the graph at that point from git history and computes a graph-level diff against the current state. No zetl-specific snapshot storage is required: git is the source of truth.
+`ztl diff` bridges this gap. Given any git reference as a baseline — a commit SHA, a branch name, a tag, or a date — ztl reconstructs the graph at that point from git history and computes a graph-level diff against the current state. No ztl-specific snapshot storage is required: git is the source of truth.
 
 ### 1.1 How Reconstruction Works
 
@@ -40,34 +40,34 @@ The key insight is that only files that *changed* between the baseline and the c
 
 1. `git diff --name-only <ref>` identifies which `.md` files changed
 2. For each changed file: `git show <ref>:<path>` reads the old content
-3. Old content is parsed for wikilinks using the same scanner as `zetl index`
+3. Old content is parsed for wikilinks using the same scanner as `ztl index`
 4. The old graph is assembled from: current graph for *unchanged* files + re-parsed old content for *changed* files + old files that have since been deleted
 5. Set differences between old and current graph yield the diff
 
 This is efficient: for a 2,000-note vault where 12 files changed since yesterday, only 12 files are re-parsed from git history.
 
-**Reconstruction scope.** Step 3 extracts only **wikilinks** from old file content — the same extraction `zetl index` performs for link-graph construction. The full SPEC-006 pipeline (Merkle leaf construction, SPL block extraction, section grounding) is not run on the baseline state; those structures are not needed to compute a link-graph diff. SPL-level changes between refs are out of scope for `zetl diff` (see §1.2 and §11.2).
+**Reconstruction scope.** Step 3 extracts only **wikilinks** from old file content — the same extraction `ztl index` performs for link-graph construction. The full SPEC-006 pipeline (Merkle leaf construction, SPL block extraction, section grounding) is not run on the baseline state; those structures are not needed to compute a link-graph diff. SPL-level changes between refs are out of scope for `ztl diff` (see §1.2 and §11.2).
 
-**Current state.** The "current state" is the working tree as indexed by `zetl index`. `git diff --name-only <ref>` compares `<ref>` against the working tree, so files with uncommitted edits will appear in the diff. See CON-021 for details.
+**Current state.** The "current state" is the working tree as indexed by `ztl index`. `git diff --name-only <ref>` compares `<ref>` against the working tree, so files with uncommitted edits will appear in the diff. See CON-021 for details.
 
 ### 1.2 Scope
 
 **In scope:**
 
-- `zetl diff` command with `--from <git-ref>` and `--since <date>` baseline selection
+- `ztl diff` command with `--from <git-ref>` and `--since <date>` baseline selection
 - Graph diff output: pages added/removed, links added/removed, orphans gained/resolved, dead links added/resolved
 - `--filter` to narrow output to one change category
 - `--format json` and `--format table` output
 
 **Out of scope:**
 
-- Vaults not tracked in git (zetl diff requires git; the command errors gracefully when git is absent)
-- zetl-managed snapshot storage (explicitly rejected; see ADR-011)
-- SPL-level changes: added/removed facts, rules, or SPL blocks between refs (future SPEC; see §11.2; `zetl reason diff` is the intended surface for this)
+- Vaults not tracked in git (ztl diff requires git; the command errors gracefully when git is absent)
+- ztl-managed snapshot storage (explicitly rejected; see ADR-011)
+- SPL-level changes: added/removed facts, rules, or SPL blocks between refs (future SPEC; see §11.2; `ztl reason diff` is the intended surface for this)
 - Diffing reasoning conclusions across git history (future SPEC, builds on SPEC-005 + SPEC-007)
 - Page-level lifecycle timeline across all commits (future; requires scanning many commits)
 
-**VCS dependency scope.** `zetl diff` is the only zetl command that requires git. All other commands — `zetl index`, `zetl check`, `zetl blocks`, `zetl reason` — are VCS-independent and operate identically whether or not the vault is inside a git repository (SPEC-006 §1.6, NFR-017).
+**VCS dependency scope.** `ztl diff` is the only ztl command that requires git. All other commands — `ztl index`, `ztl check`, `ztl blocks`, `ztl reason` — are VCS-independent and operate identically whether or not the vault is inside a git repository (SPEC-006 §1.6, NFR-017).
 
 ---
 
@@ -83,7 +83,7 @@ Goals:       Understand how her vault changes over time; spot pages that became 
 Constraints: Comfortable with CLI; understands git at a basic level (commits, branches);
              vault is a git repository
 Workflow:    Writes notes during research sessions; commits periodically;
-             runs zetl check after sessions to find issues
+             runs ztl check after sessions to find issues
 Pain point:  "I committed three times today. I want to see what the net graph change was,
              not read a git log."
 ```
@@ -92,16 +92,16 @@ Pain point:  "I committed three times today. I want to see what the net graph ch
 
 ```
 Name:        Dev Agent (AI agent in CI or local automation)
-Role:        Agentic memory consumer; queries zetl on a schedule or on git push
+Role:        Agentic memory consumer; queries ztl on a schedule or on git push
 Goals:       Determine exactly which pages changed in the graph since the last run;
              avoid re-processing unchanged content
 Constraints: Non-interactive; must receive structured JSON; vault is a git repository;
              agent stores the last-processed commit SHA
-Workflow:    1. Run zetl diff --from <last-sha> --format json
+Workflow:    1. Run ztl diff --from <last-sha> --format json
              2. Inspect changed pages, new orphans, new dead links
              3. Re-reason only over affected subgraph
              4. Store current HEAD SHA for next cycle
-Pain point:  "Without zetl diff, I re-process 2,000 pages every cycle."
+Pain point:  "Without ztl diff, I re-process 2,000 pages every cycle."
 ```
 
 ---
@@ -116,19 +116,19 @@ Preconditions:
   - Akiko made commits during a research session; HEAD is the latest
 
 Steps:
-  1. zetl diff --since yesterday --format table
+  1. ztl diff --since yesterday --format table
      → Shows: 3 pages added, 11 links added, 1 orphan gained, 0 dead links added
 
-  2. zetl diff --since yesterday --filter orphans --format table
+  2. ztl diff --since yesterday --filter orphans --format table
      → Lists the one page that gained orphan status: "Redis Latency Spike Investigation"
 
   3. Akiko links it from her "Performance Issues" index page and commits.
-     zetl diff --from HEAD~1 --format table
+     ztl diff --from HEAD~1 --format table
      → Shows: 0 pages added, 1 link added, 1 orphan resolved
 
 Postconditions:
   - Akiko can see the net graph effect of her session in one command
-  - No zetl-specific storage beyond the current index
+  - No ztl-specific storage beyond the current index
 
 Failure modes:
   - Vault not in git: error with code NOT_A_GIT_REPO
@@ -143,7 +143,7 @@ Preconditions:
   - New commits have been pushed to the vault since
 
 Steps:
-  1. zetl diff --from 540f0a9 --format json
+  1. ztl diff --from 540f0a9 --format json
      → Returns structured diff: 2 pages added, 9 links added, 1 new orphan, 1 new dead link
 
   2. Agent re-reasons only over the 2 new pages and their immediate neighbours
@@ -151,7 +151,7 @@ Steps:
 
 Postconditions:
   - Agent processed 2 pages instead of 2,000
-  - No zetl state written; the agent manages its own cursor (the commit SHA)
+  - No ztl state written; the agent manages its own cursor (the commit SHA)
 
 Failure modes:
   - SHA not found in git history: error with code REF_NOT_FOUND
@@ -164,7 +164,7 @@ Failure modes:
 
 ### REQ-046: Git Ref Baseline
 
-The system SHALL support `zetl diff --from <git-ref>` where `<git-ref>` is any ref resolvable by `git rev-parse` (commit SHA, branch name, tag, `HEAD~N`, etc.), and SHALL reconstruct the vault graph at that ref using `git show <ref>:<path>` for each changed file, then compute and output a structured graph diff against the current index.
+The system SHALL support `ztl diff --from <git-ref>` where `<git-ref>` is any ref resolvable by `git rev-parse` (commit SHA, branch name, tag, `HEAD~N`, etc.), and SHALL reconstruct the vault graph at that ref using `git show <ref>:<path>` for each changed file, then compute and output a structured graph diff against the current index.
 
 Trace:
 - TEST-051
@@ -172,7 +172,7 @@ Trace:
 
 ### REQ-047: Since-Date Baseline
 
-The system SHALL support `zetl diff --since <datetime>` where `<datetime>` is an ISO 8601 date or datetime string, resolving the baseline to the most recent commit whose author date is ≤ `<datetime>` via `git rev-list --before=<datetime> -1 HEAD`. When no commit exists at or before the specified datetime, the system SHALL error with code `NO_COMMIT_BEFORE`.
+The system SHALL support `ztl diff --since <datetime>` where `<datetime>` is an ISO 8601 date or datetime string, resolving the baseline to the most recent commit whose author date is ≤ `<datetime>` via `git rev-list --before=<datetime> -1 HEAD`. When no commit exists at or before the specified datetime, the system SHALL error with code `NO_COMMIT_BEFORE`.
 
 Trace:
 - TEST-052
@@ -180,7 +180,7 @@ Trace:
 
 ### REQ-048: Default Baseline
 
-When `zetl diff` is called with no baseline argument, the system SHALL use `HEAD~1` (the parent of the current commit) as the baseline, equivalent to `zetl diff --from HEAD~1`.
+When `ztl diff` is called with no baseline argument, the system SHALL use `HEAD~1` (the parent of the current commit) as the baseline, equivalent to `ztl diff --from HEAD~1`.
 
 Trace:
 - TEST-051
@@ -196,7 +196,7 @@ Trace:
 
 ### REQ-050: Diff Filter
 
-The system SHALL support `zetl diff --filter <category>` where category is one of: `pages`, `links`, `orphans`, `dead-links`. When specified, the diff output contains only the entries for the selected category; all other categories are omitted.
+The system SHALL support `ztl diff --filter <category>` where category is one of: `pages`, `links`, `orphans`, `dead-links`. When specified, the diff output contains only the entries for the selected category; all other categories are omitted.
 
 Trace:
 - TEST-057
@@ -204,7 +204,7 @@ Trace:
 
 ### REQ-051: Git Unavailable Error
 
-When `zetl diff` is invoked outside a git repository or when the `git` binary is not found, the system SHALL exit non-zero with a structured error containing code `NOT_A_GIT_REPO` and a plain-text message explaining that `zetl diff` requires a git-tracked vault.
+When `ztl diff` is invoked outside a git repository or when the `git` binary is not found, the system SHALL exit non-zero with a structured error containing code `NOT_A_GIT_REPO` and a plain-text message explaining that `ztl diff` requires a git-tracked vault.
 
 Trace:
 - TEST-058
@@ -226,7 +226,7 @@ Trace:
 
 ### NFR-018: Diff Performance
 
-`zetl diff` SHALL complete in ≤ 500ms for a vault of 2,000 pages where ≤ 50 files changed between the baseline and current state, WITH 95th percentile confidence. This includes git subprocess calls, file re-parsing, and set-difference computation.
+`ztl diff` SHALL complete in ≤ 500ms for a vault of 2,000 pages where ≤ 50 files changed between the baseline and current state, WITH 95th percentile confidence. This includes git subprocess calls, file re-parsing, and set-difference computation.
 
 Trace:
 - TEST-060
@@ -243,34 +243,34 @@ Trace:
 
 ## 6. Architecture Decisions
 
-### ADR-011: No zetl-Managed Snapshot Storage
+### ADR-011: No ztl-Managed Snapshot Storage
 
-**Decision:** `zetl diff` uses git history exclusively as the source of past vault states. Zetl does not maintain its own snapshot files, manifest, or temporal database.
+**Decision:** `ztl diff` uses git history exclusively as the source of past vault states. ztl does not maintain its own snapshot files, manifest, or temporal database.
 
-**Context:** An earlier design (SPEC-007 v0.1) proposed that `zetl index` automatically write compressed graph snapshots to `.zetl/snapshots/`. This was rejected after recognising that it largely reimplements git's object storage model for vaults that are already git-tracked.
+**Context:** An earlier design (SPEC-007 v0.1) proposed that `ztl index` automatically write compressed graph snapshots to `.ztl/snapshots/`. This was rejected after recognising that it largely reimplements git's object storage model for vaults that are already git-tracked.
 
-**Rationale:** Git already provides content-addressed, deduplicated, append-only history of all file states. Maintaining a parallel snapshot store duplicates this, adds storage overhead, and introduces a new failure mode (snapshot writes failing silently). The only genuine value zetl adds is the *graph-level diff semantics* — interpreting file changes as graph changes. That value is independent of the storage mechanism; it can be computed on demand from git history.
+**Rationale:** Git already provides content-addressed, deduplicated, append-only history of all file states. Maintaining a parallel snapshot store duplicates this, adds storage overhead, and introduces a new failure mode (snapshot writes failing silently). The only genuine value ztl adds is the *graph-level diff semantics* — interpreting file changes as graph changes. That value is independent of the storage mechanism; it can be computed on demand from git history.
 
 **Trade-offs:**
-- ✅ No additional storage in `.zetl/`
-- ✅ No snapshot capture overhead on every `zetl index`
+- ✅ No additional storage in `.ztl/`
+- ✅ No snapshot capture overhead on every `ztl index`
 - ✅ Git history is already the user's backup and audit trail
-- ⚠️ Requires git; vaults not in git cannot use `zetl diff`
+- ⚠️ Requires git; vaults not in git cannot use `ztl diff`
 - ⚠️ Diff computation requires git subprocess calls; performance depends on git
 
-**Rejected alternative:** zetl-native snapshots as fallback for non-git vaults. Deferred — the use case of non-git vaults wanting temporal diffs is not well-understood yet; it should be specified separately if demand emerges.
+**Rejected alternative:** ztl-native snapshots as fallback for non-git vaults. Deferred — the use case of non-git vaults wanting temporal diffs is not well-understood yet; it should be specified separately if demand emerges.
 
-**VCS boundary note:** This decision makes `zetl diff` the only zetl command that requires git. It does not change the VCS-independence guarantee of all other commands (SPEC-006 §1.6, NFR-017). The git dependency is intentionally contained here.
+**VCS boundary note:** This decision makes `ztl diff` the only ztl command that requires git. It does not change the VCS-independence guarantee of all other commands (SPEC-006 §1.6, NFR-017). The git dependency is intentionally contained here.
 
 ### ADR-012: Reconstruct via Changed-Files Only, Not Full Checkout
 
 **Decision:** Reconstruct the baseline graph by re-parsing only changed files (via `git diff --name-only`), reusing current graph edges for unchanged files, rather than checking out the baseline ref in full or using `git archive`.
 
 **Context:** Two alternatives:
-1. **Full checkout / worktree**: create a temporary git worktree at the baseline ref, run `zetl index` on it, diff the two indexes
+1. **Full checkout / worktree**: create a temporary git worktree at the baseline ref, run `ztl index` on it, diff the two indexes
 2. **Changed-files only** (selected): identify changed `.md` files, read their old content via `git show`, re-parse only those
 
-**Rationale:** Option 1 is simple and correct but expensive: it requires a full filesystem checkout, a full `zetl index` run (scanning all files), and cleanup. For a vault where 10 files changed yesterday, this scans 1,990 files unnecessarily. Option 2 is correct by the invariant that unchanged files contribute identical edges to both graphs — only changed files can produce a graph delta. This makes `zetl diff` fast proportional to the size of the change, not the size of the vault (NFR-018).
+**Rationale:** Option 1 is simple and correct but expensive: it requires a full filesystem checkout, a full `ztl index` run (scanning all files), and cleanup. For a vault where 10 files changed yesterday, this scans 1,990 files unnecessarily. Option 2 is correct by the invariant that unchanged files contribute identical edges to both graphs — only changed files can produce a graph delta. This makes `ztl diff` fast proportional to the size of the change, not the size of the vault (NFR-018).
 
 **Trade-offs:**
 - ✅ Performance scales with change size, not vault size
@@ -282,9 +282,9 @@ Trace:
 
 ## 7. Contract Specifications
 
-### CON-021: `zetl diff`
+### CON-021: `ztl diff`
 
-**Interface:** `zetl diff [--from <git-ref>] [--since <datetime>] [--filter pages|links|orphans|dead-links] [--format json|table]`
+**Interface:** `ztl diff [--from <git-ref>] [--since <datetime>] [--filter pages|links|orphans|dead-links] [--format json|table]`
 
 **Argument rules:**
 - No arguments: baseline is `HEAD~1` (REQ-048)
@@ -295,10 +295,10 @@ Trace:
 **Pre-conditions:**
 - Current directory is inside a git repository
 - `git` binary is available on PATH
-- `zetl index` has been run at least once with the SPEC-006 cache format (Merkle tree data present in `.zetl/index.json`); an index built before SPEC-006 is in place will produce incomplete results
+- `ztl index` has been run at least once with the SPEC-006 cache format (Merkle tree data present in `.ztl/index.json`); an index built before SPEC-006 is in place will produce incomplete results
 - Baseline ref is resolvable by `git rev-parse`
 
-**Working-tree note:** The current state is the working tree as read by `zetl index`. `git diff --name-only <ref>` compares `<ref>` against the working tree; files with uncommitted edits will appear in the diff alongside committed changes. This is intentional — `zetl index` operates on the working tree, so the current state always reflects it.
+**Working-tree note:** The current state is the working tree as read by `ztl index`. `git diff --name-only <ref>` compares `<ref>` against the working tree; files with uncommitted edits will appear in the diff alongside committed changes. This is intentional — `ztl index` operates on the working tree, so the current state always reflects it.
 
 **Post-conditions:**
 - Exit 0 on success, including when diff is empty
@@ -336,11 +336,11 @@ Trace:
 **Error model:**
 
 ```json
-{ "error": { "code": "NOT_A_GIT_REPO", "message": "zetl diff requires a git-tracked vault. This directory is not inside a git repository." } }
+{ "error": { "code": "NOT_A_GIT_REPO", "message": "ztl diff requires a git-tracked vault. This directory is not inside a git repository." } }
 { "error": { "code": "REF_NOT_FOUND", "message": "Git ref '540f0a9' could not be resolved. Run git log to list available commits." } }
 { "error": { "code": "NO_COMMIT_BEFORE", "message": "No commit found at or before 2025-01-01T00:00:00Z. Earliest commit: 2026-01-15T10:23:04Z." } }
 { "error": { "code": "INVALID_ARGUMENTS", "message": "--from and --since are mutually exclusive." } }
-{ "error": { "code": "INDEX_REQUIRED", "message": "No current index found. Run zetl index first." } }
+{ "error": { "code": "INDEX_REQUIRED", "message": "No current index found. Run ztl index first." } }
 ```
 
 **Implements:** REQ-046, REQ-047, REQ-048, REQ-049, REQ-050, REQ-051
@@ -358,7 +358,7 @@ Trace:
 **Preconditions:** Vault in git with two commits; second commit adds `NewPage.md` with a link to `ExistingPage`
 
 **Steps:**
-1. Run `zetl index`; run `zetl diff --format json`
+1. Run `ztl index`; run `ztl diff --format json`
 2. Verify `from.ref` is `HEAD~1`; `from.commit` matches `git rev-parse HEAD~1`
 3. Verify `pages_added` contains `"NewPage"`
 4. Verify `links_added` contains `{from: "NewPage", to: "ExistingPage"}`
@@ -372,9 +372,9 @@ Trace:
 **Preconditions:** Vault with commits spanning multiple days
 
 **Steps:**
-1. Run `zetl diff --since <date-between-commits> --format json`
+1. Run `ztl diff --since <date-between-commits> --format json`
 2. Verify `from.commit` is the most recent commit at or before the specified date
-3. Run `zetl diff --since 2020-01-01 --format json`
+3. Run `ztl diff --since 2020-01-01 --format json`
 4. Verify error `NO_COMMIT_BEFORE` with earliest commit timestamp
 
 ---
@@ -386,7 +386,7 @@ Trace:
 **Preconditions:** Commit B adds `NewPage.md`, deletes `OldPage.md`
 
 **Steps:**
-1. `zetl diff --from <commit-A> --format json`
+1. `ztl diff --from <commit-A> --format json`
 2. Verify `pages_added: ["NewPage"]`, `pages_removed: ["OldPage"]`
 
 ---
@@ -398,7 +398,7 @@ Trace:
 **Preconditions:** Commit adds `[[TargetPage]]` to `SourcePage.md`
 
 **Steps:**
-1. `zetl diff --from HEAD~1 --format json`
+1. `ztl diff --from HEAD~1 --format json`
 2. Verify `links_added` contains `{from: "SourcePage", to: "TargetPage"}`
 
 ---
@@ -410,7 +410,7 @@ Trace:
 **Preconditions:** Commit removes `[[TargetPage]]` from `SourcePage.md`
 
 **Steps:**
-1. `zetl diff --from HEAD~1 --format json`
+1. `ztl diff --from HEAD~1 --format json`
 2. Verify `links_removed` contains `{from: "SourcePage", to: "TargetPage"}`
 
 ---
@@ -422,8 +422,8 @@ Trace:
 **Preconditions:** Two separate commits: one removes the only backlink to `LonePage`, one restores it
 
 **Steps:**
-1. After backlink removed: `zetl diff --from HEAD~1` → `orphans_gained: ["LonePage"]`
-2. After backlink restored: `zetl diff --from HEAD~1` → `orphans_resolved: ["LonePage"]`
+1. After backlink removed: `ztl diff --from HEAD~1` → `orphans_gained: ["LonePage"]`
+2. After backlink restored: `ztl diff --from HEAD~1` → `orphans_resolved: ["LonePage"]`
 
 ---
 
@@ -434,7 +434,7 @@ Trace:
 **Preconditions:** Commit with page additions, link changes, and orphan changes
 
 **Steps:**
-1. `zetl diff --filter orphans --format json`
+1. `ztl diff --filter orphans --format json`
 2. Verify response contains `orphans_gained` and `orphans_resolved` only
 3. Verify `pages_added`, `links_added`, etc. are absent from response
 
@@ -447,7 +447,7 @@ Trace:
 **Preconditions:** Vault directory is not inside a git repository
 
 **Steps:**
-1. `zetl diff --format json`
+1. `ztl diff --format json`
 2. Verify exit code is non-zero
 3. Verify error `NOT_A_GIT_REPO`
 
@@ -461,7 +461,7 @@ Trace:
 
 **Steps:**
 1. Instrument git subprocess calls
-2. Run `zetl diff --from <baseline>`
+2. Run `ztl diff --from <baseline>`
 3. Verify `git show` is called exactly for the 5 changed files (plus the diff listing), not for all 500
 
 ---
@@ -473,7 +473,7 @@ Trace:
 **Preconditions:** Vault with 2,000 pages; 50 files changed since baseline
 
 **Steps:**
-1. Run `zetl diff --from <baseline>` 10 times; measure wall-clock time
+1. Run `ztl diff --from <baseline>` 10 times; measure wall-clock time
 
 **Expected:** ≤ 500ms at p95.
 
@@ -483,10 +483,10 @@ Trace:
 
 ### OBS-010: Diff Timing
 
-**Signal:** Verbose output when `--verbose` passed to `zetl diff`
+**Signal:** Verbose output when `--verbose` passed to `ztl diff`
 
 ```
-[zetl] diff: ref=HEAD~1 commit=540f0a9 files_changed=12 duration_ms=87
+[ztl] diff: ref=HEAD~1 commit=540f0a9 files_changed=12 duration_ms=87
 ```
 
 **Purpose:** Verify NFR-018; diagnose slow diffs on large vaults or slow git operations
@@ -511,14 +511,14 @@ Trace:
 
 ### 11.1 Non-Git Vaults
 
-If demand emerges for temporal diffs in non-git vaults, a minimal zetl-native snapshot mechanism could be specified separately. It would be a thin addition: `zetl index --snapshot` to explicitly capture a named checkpoint. This is intentionally not included here; git is the right default.
+If demand emerges for temporal diffs in non-git vaults, a minimal ztl-native snapshot mechanism could be specified separately. It would be a thin addition: `ztl index --snapshot` to explicitly capture a named checkpoint. This is intentionally not included here; git is the right default.
 
 ### 11.2 Reasoning Diff
 
-`zetl reason diff --from <ref>` would compute changes in SPL reasoning conclusions across git history. Requires combining SPEC-005 (reasoning) with SPEC-007's reconstruction approach: re-run the theory over the baseline graph and diff conclusions. Reserved for a future SPEC.
+`ztl reason diff --from <ref>` would compute changes in SPL reasoning conclusions across git history. Requires combining SPEC-005 (reasoning) with SPEC-007's reconstruction approach: re-run the theory over the baseline graph and diff conclusions. Reserved for a future SPEC.
 
-SPEC-006's Merkle infrastructure provides a natural efficiency layer for this feature. The vault root hash (stored in `.zetl/theory.json`) offers a fast early exit: if the vault root hash at `<ref>` matches the current vault root hash, the theory is provably identical and no re-run is needed. Comparing only the SPL leaf AST hashes across the two states narrows reconstruction further to files where SPL content actually changed — avoiding a full theory rebuild when only prose was edited.
+SPEC-006's Merkle infrastructure provides a natural efficiency layer for this feature. The vault root hash (stored in `.ztl/theory.json`) offers a fast early exit: if the vault root hash at `<ref>` matches the current vault root hash, the theory is provably identical and no re-run is needed. Comparing only the SPL leaf AST hashes across the two states narrows reconstruction further to files where SPL content actually changed — avoiding a full theory rebuild when only prose was edited.
 
 ### 11.3 Page Timeline
 
-`zetl history page <name>` scanning all commits touching a page is expensive and requires a different design (iterating git log, not just one diff). Deferred.
+`ztl history page <name>` scanning all commits touching a page is expensive and requires a different design (iterating git log, not just one diff). Deferred.

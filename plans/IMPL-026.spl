@@ -1,9 +1,9 @@
-;; IMPL-026: Vault Scan Exclusions — Dotdir Defaults, .zetlignore, --exclude
+;; IMPL-026: Vault Scan Exclusions — Dotdir Defaults, .ztlignore, --exclude
 ;; Implements SPEC-026 v0.1.0
 
 (meta plan
   (id "IMPL-026")
-  (title "Vault Scan Exclusions — Dotdir Defaults, .zetlignore, --exclude")
+  (title "Vault Scan Exclusions — Dotdir Defaults, .ztlignore, --exclude")
   (version "0.1.0")
   (status "draft")
   (created "2026-04-15")
@@ -48,13 +48,13 @@
   (trace "CON-200"))
 
 (meta task-pure-resolver
-  (description "Implement pure `resolve_exclusion(path, opts, nested_vault_probe) -> Decision` function in src/scanner.rs (or new submodule scanner/exclude.rs). Implements precedence from REQ-205: (1) hardcoded force-ignores, (2) dotdir default, (3) gitignore, (4) .zetlignore, (5) --exclude. No std::fs imports in this function except via injected probe closure. Returns `Decision::Include` or `Decision::Exclude(Reason)`.")
+  (description "Implement pure `resolve_exclusion(path, opts, nested_vault_probe) -> Decision` function in src/scanner.rs (or new submodule scanner/exclude.rs). Implements precedence from REQ-205: (1) hardcoded force-ignores, (2) dotdir default, (3) gitignore, (4) .ztlignore, (5) --exclude. No std::fs imports in this function except via injected probe closure. Returns `Decision::Include` or `Decision::Exclude(Reason)`.")
   (acceptance "Unit tests cover all 5 precedence levels with table-driven cases; clippy::disallowed_methods denies std::fs in the module; TEST-205 passes as unit test")
   (trace "REQ-200 REQ-202 REQ-203 REQ-204 REQ-205 CON-200"))
 
 (meta task-scanner-integration
-  (description "Rewrite scan_vault() in src/scanner.rs to consume ScanOptions and call resolve_exclusion via a filter_entry callback on WalkBuilder. Remove .hidden(false) bypass when include_hidden=false. Preserve existing force-ignores for .git/, .zetl/, node_modules/, and nested-vault detection. Emit OBS-200 trace lines when verbose.")
-  (acceptance "TEST-200, TEST-201, TEST-202, TEST-203, TEST-204 pass as integration tests in tests/scan_exclusions.rs; zetl build on a vault with .claude/ produces dist/ without .claude/")
+  (description "Rewrite scan_vault() in src/scanner.rs to consume ScanOptions and call resolve_exclusion via a filter_entry callback on WalkBuilder. Remove .hidden(false) bypass when include_hidden=false. Preserve existing force-ignores for .git/, .ztl/, node_modules/, and nested-vault detection. Emit OBS-200 trace lines when verbose.")
+  (acceptance "TEST-200, TEST-201, TEST-202, TEST-203, TEST-204 pass as integration tests in tests/scan_exclusions.rs; ztl build on a vault with .claude/ produces dist/ without .claude/")
   (trace "REQ-200 REQ-201 REQ-202 REQ-203 REQ-204 OBS-200"))
 
 (meta task-watcher-parity
@@ -83,7 +83,7 @@
   (trace "REQ-206 TEST-206"))
 
 (meta task-changelog-readme
-  (description "Add CHANGELOG.md entry under the next minor version: describe the breaking change (dotdirs now skipped), migration path (use --include-hidden or `.zetlignore` with negated pattern), and call out .zetl/ was always force-ignored. Add a 'Vault scanning and ignore files' section to README.md explaining precedence (REQ-205) with a concrete example.")
+  (description "Add CHANGELOG.md entry under the next minor version: describe the breaking change (dotdirs now skipped), migration path (use --include-hidden or `.ztlignore` with negated pattern), and call out .ztl/ was always force-ignored. Add a 'Vault scanning and ignore files' section to README.md explaining precedence (REQ-205) with a concrete example.")
   (acceptance "TEST-208 doc lint passes; CHANGELOG contains 'dotdir'; README has the new section; reviewer confirms migration instructions are unambiguous")
   (trace "REQ-208 TEST-208"))
 

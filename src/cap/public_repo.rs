@@ -12,11 +12,11 @@
 //! ADR-3409's resolution is a refuse-to-operate gate:
 //!
 //!   1. Detect whether the repository is published to a public host.
-//!   2. If public, refuse to read a `.zetl/caps/grants.toml` that sits
+//!   2. If public, refuse to read a `.ztl/caps/grants.toml` that sits
 //!      inside the repository tree.
 //!   3. Require the operator to declare an out-of-tree path via
 //!      `[access] grants_file_external = "..."` (a directory they
-//!      control, e.g. `~/.config/zetl/<repo>/grants.toml`) and read
+//!      control, e.g. `~/.config/ztl/<repo>/grants.toml`) and read
 //!      grants from there instead.
 //!   4. Emit a committed stub `grants-committed.toml` that the build
 //!      driver writes back into the repo tree. The stub carries only
@@ -73,11 +73,11 @@ pub enum Visibility {
 
 /// Caller-supplied knobs for the git-origin heuristic. Tests pass
 /// deterministic values; the CLI harness wires these from environment
-/// (e.g. `ZETL_CAP_PUBLIC_HOST_TOKENS=github.com:org=ghp_xxx`).
+/// (e.g. `ztl_CAP_PUBLIC_HOST_TOKENS=github.com:org=ghp_xxx`).
 #[derive(Debug, Default, Clone)]
 pub struct GitHeuristicOpts {
     /// `(host, token_present)` overrides. Providing `(h, true)`
-    /// means "the operator has proven to `zetl` that this host's
+    /// means "the operator has proven to `ztl` that this host's
     /// access is token-gated to a private org" and flips a match
     /// from public→private. Matching is exact-host.
     pub private_tokens: Vec<(String, bool)>,
@@ -95,7 +95,7 @@ pub struct GitHeuristicOpts {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VisibilitySource {
     /// `[vault] visibility = "public"|"private"` in
-    /// `.zetl/config.toml`.
+    /// `.ztl/config.toml`.
     ExplicitConfig,
     /// Matched an entry in `KNOWN_PUBLIC_HOSTS` (or
     /// `opts.extra_public_hosts`).
@@ -113,12 +113,12 @@ pub struct ResolvedVisibility {
     pub source: VisibilitySource,
 }
 
-/// `.zetl/config.toml` lens for this module. We deserialise only the
+/// `.ztl/config.toml` lens for this module. We deserialise only the
 /// `[vault]` and `[access]` sections; other sections (the `[parse]`
 /// block handled by `crate::parsers`) round-trip through a flat
 /// `toml::Value` elsewhere.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ZetlConfigLens {
+pub struct ztlConfigLens {
     #[serde(default)]
     pub vault: Option<VaultConfig>,
     #[serde(default)]
@@ -163,7 +163,7 @@ pub struct AccessConfig {
     #[serde(default)]
     pub grants_file_external: Option<String>,
     /// `[access.split_key]` — SPEC-034 REQ-3417 / REQ-3430. Controls
-    /// whether `zetl cap invite --split-key` is permitted and how the
+    /// whether `ztl cap invite --split-key` is permitted and how the
     /// second factor (`half2`) should be conveyed to the reader.
     /// Missing block deserialises as `None` (feature disabled).
     #[serde(default)]
@@ -171,7 +171,7 @@ pub struct AccessConfig {
 }
 
 /// `[access.split_key]` block. Opt-in per REQ-3430; operators set
-/// `enabled = true` to allow `zetl cap invite --split-key`. The
+/// `enabled = true` to allow `ztl cap invite --split-key`. The
 /// `second_factor` knob picks which transport the shim prompts for on
 /// first click (a human-typed phrase vs a camera-scanned QR code). The
 /// pure core only parses + validates; the shell decides render format
@@ -227,18 +227,18 @@ impl SplitKeyConfig {
     }
 }
 
-/// Parse `.zetl/config.toml` through the module's lens. Missing
+/// Parse `.ztl/config.toml` through the module's lens. Missing
 /// sections deserialise as `None`; unknown top-level keys are allowed
-/// (the wider zetl config has other consumers).
-pub fn parse_config_lens(toml_body: &str) -> Result<ZetlConfigLens, ConfigParseError> {
-    toml::from_str::<ZetlConfigLens>(toml_body).map_err(|e| ConfigParseError(e.to_string()))
+/// (the wider ztl config has other consumers).
+pub fn parse_config_lens(toml_body: &str) -> Result<ztlConfigLens, ConfigParseError> {
+    toml::from_str::<ztlConfigLens>(toml_body).map_err(|e| ConfigParseError(e.to_string()))
 }
 
 /// TOML parse failure specific to this module. A thin wrapper around
 /// the underlying error so callers don't have to depend on the
 /// `toml` crate's error types.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("invalid .zetl/config.toml: {0}")]
+#[error("invalid .ztl/config.toml: {0}")]
 pub struct ConfigParseError(pub String);
 
 /// Normalise a git origin URL to the bare host component. Handles
@@ -340,7 +340,7 @@ pub fn visibility_from_origin(url: &str, opts: &GitHeuristicOpts) -> ResolvedVis
 /// explicitly; otherwise fall back to the heuristic when an origin
 /// URL is supplied; otherwise default private.
 pub fn resolve_visibility(
-    config: &ZetlConfigLens,
+    config: &ztlConfigLens,
     origin_url: Option<&str>,
     opts: &GitHeuristicOpts,
 ) -> ResolvedVisibility {
@@ -373,7 +373,7 @@ pub enum GrantsSource {
 }
 
 /// Refusal surface. Every variant is an exit-1 condition for
-/// `zetl build` / `zetl cap invite`; the CLI renders each with a
+/// `ztl build` / `ztl cap invite`; the CLI renders each with a
 /// remediation hint.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PolicyError {
@@ -382,7 +382,7 @@ pub enum PolicyError {
     /// outside the repo.
     #[error(
         "public-vault safety (REQ-3423): `[access] grants_file_external` is required but not set; \
-         add it to .zetl/config.toml and point it at a path outside the repository"
+         add it to .ztl/config.toml and point it at a path outside the repository"
     )]
     MissingExternalPath,
     /// `[access] grants_file_external` is set but the path resolves
@@ -671,7 +671,7 @@ mod tests {
 
     #[test]
     fn explicit_config_beats_heuristic() {
-        let cfg = ZetlConfigLens {
+        let cfg = ztlConfigLens {
             vault: Some(VaultConfig {
                 visibility: Some(VisibilityDecl::Private),
             }),
@@ -685,7 +685,7 @@ mod tests {
 
     #[test]
     fn explicit_public_config_overrides_self_hosted_origin() {
-        let cfg = ZetlConfigLens {
+        let cfg = ztlConfigLens {
             vault: Some(VaultConfig {
                 visibility: Some(VisibilityDecl::Public),
             }),
@@ -700,7 +700,7 @@ mod tests {
     #[test]
     fn no_origin_no_config_defaults_private() {
         let r = resolve_visibility(
-            &ZetlConfigLens::default(),
+            &ztlConfigLens::default(),
             None,
             &GitHeuristicOpts::default(),
         );
@@ -715,7 +715,7 @@ mod tests {
             visibility = "public"
 
             [access]
-            grants_file_external = "/home/op/.config/zetl/my-wiki/grants.toml"
+            grants_file_external = "/home/op/.config/ztl/my-wiki/grants.toml"
 
             [parse]
             default = "markdown"
@@ -727,7 +727,7 @@ mod tests {
         );
         assert_eq!(
             lens.access.and_then(|a| a.grants_file_external),
-            Some("/home/op/.config/zetl/my-wiki/grants.toml".to_string())
+            Some("/home/op/.config/ztl/my-wiki/grants.toml".to_string())
         );
     }
 
@@ -813,7 +813,7 @@ mod tests {
             &resolved,
             &access,
             Path::new("/tmp/repo"),
-            Path::new("/tmp/repo/.zetl/caps/grants.toml"),
+            Path::new("/tmp/repo/.ztl/caps/grants.toml"),
         )
         .unwrap();
         assert!(matches!(decision, GrantsSource::InRepo { .. }));
@@ -830,7 +830,7 @@ mod tests {
             &resolved,
             &access,
             Path::new("/tmp/repo"),
-            Path::new("/tmp/repo/.zetl/caps/grants.toml"),
+            Path::new("/tmp/repo/.ztl/caps/grants.toml"),
         )
         .unwrap_err();
         assert_eq!(err, PolicyError::MissingExternalPath);
@@ -850,7 +850,7 @@ mod tests {
             &resolved,
             &access,
             Path::new("/tmp/repo"),
-            Path::new("/tmp/repo/.zetl/caps/grants.toml"),
+            Path::new("/tmp/repo/.ztl/caps/grants.toml"),
         )
         .unwrap_err();
         assert_eq!(err, PolicyError::MissingExternalPath);
@@ -870,7 +870,7 @@ mod tests {
             &resolved,
             &access,
             Path::new("/tmp/repo"),
-            Path::new("/tmp/repo/.zetl/caps/grants.toml"),
+            Path::new("/tmp/repo/.ztl/caps/grants.toml"),
         )
         .unwrap_err();
         assert!(matches!(err, PolicyError::ExternalPathInsideRepo { .. }));
@@ -883,19 +883,19 @@ mod tests {
             source: VisibilitySource::ExplicitConfig,
         };
         let access = AccessConfig {
-            grants_file_external: Some("/home/op/.config/zetl/site/grants.toml".to_string()),
+            grants_file_external: Some("/home/op/.config/ztl/site/grants.toml".to_string()),
             split_key: None,
         };
         let decision = decide_grants_source(
             &resolved,
             &access,
             Path::new("/tmp/repo"),
-            Path::new("/tmp/repo/.zetl/caps/grants.toml"),
+            Path::new("/tmp/repo/.ztl/caps/grants.toml"),
         )
         .unwrap();
         match decision {
             GrantsSource::External { path } => {
-                assert_eq!(path, Path::new("/home/op/.config/zetl/site/grants.toml"));
+                assert_eq!(path, Path::new("/home/op/.config/ztl/site/grants.toml"));
             }
             other => panic!("expected External, got {other:?}"),
         }

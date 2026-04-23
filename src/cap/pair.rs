@@ -1,11 +1,11 @@
-//! `zetl cap pair` pure-core — SPAKE2-authenticated pubkey handoff
+//! `ztl cap pair` pure-core — SPAKE2-authenticated pubkey handoff
 //! (SPEC-034 REQ-3416 `pair` verb + REQ-3408 CLI commands + §8 purity
 //! entry `cap::pair::spake2`).
 //!
 //! This module covers three concerns, all pure (no wall clock, no disk,
 //! no network, no OS-CSPRNG entrance point):
 //!
-//! 1. **Phrase generation.** A `zetl cap pair` session is authenticated
+//! 1. **Phrase generation.** A `ztl cap pair` session is authenticated
 //!    by a freshly-generated 4-word phrase drawn from the BIP39 English
 //!    wordlist. 4 × 11 bits = 44 bits of entropy is sufficient because
 //!    SPAKE2 is an online-only PAKE: an attacker gets a single guess per
@@ -24,7 +24,7 @@
 //!    produces a one-shot HMAC key for authenticating the pubkey
 //!    handoff.
 //!
-//! 3. **Phrase-reuse nonce store.** `.zetl/caps/.pair-nonces` is a TOML
+//! 3. **Phrase-reuse nonce store.** `.ztl/caps/.pair-nonces` is a TOML
 //!    file mapping a canonical hash of the phrase to the Unix second at
 //!    which that phrase was first used. `NonceStore::accept` refuses to
 //!    hand back a fresh session if the phrase (or its hash) has been
@@ -34,13 +34,13 @@
 //!
 //! The effectful shell (`src/main.rs::cmd_cap_pair`) supplies the
 //! [`rand_core::OsRng`] + [`std::time::SystemTime`] and persists the
-//! nonce store to `.zetl/caps/.pair-nonces`. Every function here is
+//! nonce store to `.ztl/caps/.pair-nonces`. Every function here is
 //! deterministic once the RNG output + the current time are fixed.
 //!
 //! # Threat model in one paragraph
 //!
 //! The handoff ciphertext envelope uses age over X25519 (out of scope of
-//! this module); what `zetl cap pair` provides is authentication for
+//! this module); what `ztl cap pair` provides is authentication for
 //! the *pubkey itself*, so a malicious relay cannot swap the grantee's
 //! pubkey for an attacker's pubkey between terminals. The 4-word phrase
 //! is the only shared secret; SPAKE2 converts it into a full-entropy
@@ -70,7 +70,7 @@ use zeroize::Zeroize;
 /// surfing in an operator-to-operator context.
 pub const PHRASE_WORD_COUNT: usize = 4;
 
-/// How long a phrase hash stays "claimed" in `.zetl/caps/.pair-nonces`
+/// How long a phrase hash stays "claimed" in `.ztl/caps/.pair-nonces`
 /// (30 days, REQ-3408). After this window the row is pruned on next
 /// call to [`NonceStore::accept`] so the file does not grow without
 /// bound across years of operator activity.
@@ -81,18 +81,18 @@ pub const PAIR_NONCE_TTL_SECS: u64 = 30 * 86_400;
 /// CLI surface small (operators never have to exchange an id string) at
 /// the cost of locking future protocol changes to a version bump of
 /// this literal.
-pub const PAIR_SPAKE2_IDENTITY: &[u8] = b"zetl/cap-pair/v1";
+pub const PAIR_SPAKE2_IDENTITY: &[u8] = b"ztl/cap-pair/v1";
 
 /// Domain-separation label for the HKDF that turns the SPAKE2 shared
 /// secret into an HMAC-SHA256 key used to authenticate the pubkey
 /// handoff. Rotating this label on a future protocol change invalidates
 /// old paired sessions cleanly.
-pub const PAIR_HMAC_HKDF_INFO: &[u8] = b"zetl/cap-pair/v1/hmac";
+pub const PAIR_HMAC_HKDF_INFO: &[u8] = b"ztl/cap-pair/v1/hmac";
 
 /// Domain-separation label for hashing a phrase into the nonce-store
 /// key. Keeping the phrase-hash independent from the HMAC key prevents
 /// cross-use where a replayed transcript collides with a stored row.
-pub const PAIR_NONCE_HASH_DOMAIN: &[u8] = b"zetl/cap-pair/v1/nonce";
+pub const PAIR_NONCE_HASH_DOMAIN: &[u8] = b"ztl/cap-pair/v1/nonce";
 
 /// 43-char base64url of an X25519 / Ed25519 pubkey (32 raw bytes). The
 /// HMAC tag in the authenticated handoff is over exactly these 32
@@ -238,7 +238,7 @@ pub fn generate_phrase<R: RngCore + CryptoRng>(rng: &mut R) -> PairPhrase {
 // Phrase-reuse nonce store
 // ───────────────────────────────────────────────────────────────
 
-/// On-disk shape of `.zetl/caps/.pair-nonces`. Each row records one
+/// On-disk shape of `.ztl/caps/.pair-nonces`. Each row records one
 /// pairing session; rows older than [`PAIR_NONCE_TTL_SECS`] are pruned
 /// the next time [`NonceStore::accept`] runs.
 ///
@@ -255,7 +255,7 @@ pub struct NonceStore {
     pub entries: Vec<NonceEntry>,
 }
 
-/// One row in `.zetl/caps/.pair-nonces`. Deliberately minimal — the
+/// One row in `.ztl/caps/.pair-nonces`. Deliberately minimal — the
 /// spec never stores the phrase itself, only the commitment hash, and
 /// the timestamp is sufficient to gate reuse.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -363,7 +363,7 @@ pub struct PairSession {
 
 /// Outbound SPAKE2 handshake message — raw bytes plus a base64 helper
 /// for the operator-facing wire format. Printed on stdout by
-/// `zetl cap pair`; operators paste it into whatever channel they
+/// `ztl cap pair`; operators paste it into whatever channel they
 /// agreed on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PairMessage(pub Vec<u8>);

@@ -12,7 +12,7 @@
 // so any tamper — including to the embedded vault-signing pubkey —
 // fails SRI before the shim runs (REQ-3427).
 //
-// The operator supplies the pubkey via `ZETL_CAP_SIGNING_PUBKEY_B64URL`
+// The operator supplies the pubkey via `ztl_CAP_SIGNING_PUBKEY_B64URL`
 // (unpadded base64url of the 32-byte Ed25519 public key). In local
 // dev without a key set, we substitute a 32-zero-byte placeholder so
 // the bundle still builds; the Rust build driver
@@ -40,30 +40,30 @@ const ENROLL_SRI_PATH = join(OUT_DIR, "enroll.sri");
 const DEV_PLACEHOLDER_PUBKEY_B64URL = "A".repeat(43);
 
 async function main() {
-  const pubkey = process.env.ZETL_CAP_SIGNING_PUBKEY_B64URL
+  const pubkey = process.env.ztl_CAP_SIGNING_PUBKEY_B64URL
     ?? DEV_PLACEHOLDER_PUBKEY_B64URL;
 
   if (pubkey.length !== 43) {
     console.error(
-      `ZETL_CAP_SIGNING_PUBKEY_B64URL is ${pubkey.length} chars; ` +
+      `ztl_CAP_SIGNING_PUBKEY_B64URL is ${pubkey.length} chars; ` +
         `expected 43 (unpadded base64url of a 32-byte Ed25519 pubkey).`,
     );
     process.exit(2);
   }
 
   // REQ-3430 opt-in — mirrors `[access.split_key] second_factor` in
-  // the operator's `.zetl/config.toml`. When unset (or empty) the
+  // the operator's `.ztl/config.toml`. When unset (or empty) the
   // shim bundle refuses `#k1=` URLs with `mode-not-supported`. When
   // set, the shim wires a `window.prompt` (for `spoken-phrase`) or
   // a camera-scanner hook (for `qr`) into the identity branch.
-  const splitKeyFactor = process.env.ZETL_CAP_SPLIT_KEY_SECOND_FACTOR ?? "";
+  const splitKeyFactor = process.env.ztl_CAP_SPLIT_KEY_SECOND_FACTOR ?? "";
   if (
     splitKeyFactor !== ""
     && splitKeyFactor !== "spoken-phrase"
     && splitKeyFactor !== "qr"
   ) {
     console.error(
-      `ZETL_CAP_SPLIT_KEY_SECOND_FACTOR ${JSON.stringify(splitKeyFactor)} is not one of ""/"spoken-phrase"/"qr"`,
+      `ztl_CAP_SPLIT_KEY_SECOND_FACTOR ${JSON.stringify(splitKeyFactor)} is not one of ""/"spoken-phrase"/"qr"`,
     );
     process.exit(2);
   }
@@ -95,7 +95,7 @@ async function main() {
   // SPEC-034 REQ-3404 / REQ-3414: bundle the hardened-mode reader
   // self-enrolment entry point into `dist/enroll.js` + emit its
   // SHA-384 SRI hash. The bundle is self-contained (no network to
-  // zetl endpoints at runtime) and is referenced from
+  // ztl endpoints at runtime) and is referenced from
   // `/enroll.html` (emitted by `src/cap/enrolment.rs`) with the
   // SRI token below.
   await build({
@@ -132,10 +132,10 @@ async function main() {
 
   const banner = manifest.placeholderPubkey ? " [DEV PLACEHOLDER PUBKEY]" : "";
   console.error(
-    `[zetl] cap shim: bundle=${BUNDLE_PATH} bytes=${bundleBytes.length} integrity=${sriHash}${banner}`,
+    `[ztl] cap shim: bundle=${BUNDLE_PATH} bytes=${bundleBytes.length} integrity=${sriHash}${banner}`,
   );
   console.error(
-    `[zetl] cap enroll: bundle=${ENROLL_BUNDLE_PATH} bytes=${enrollBytes.length} integrity=${enrollSri}`,
+    `[ztl] cap enroll: bundle=${ENROLL_BUNDLE_PATH} bytes=${enrollBytes.length} integrity=${enrollSri}`,
   );
 }
 

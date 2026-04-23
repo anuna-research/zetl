@@ -2,16 +2,16 @@
 //!
 //! Implements the [`EcosystemAdapter`] trait for the remark / unified
 //! ecosystem. Compiled behind the `ecosystem-remark` cargo feature
-//! (NFR-3304) so a minimal zetl build can drop this code entirely; the
+//! (NFR-3304) so a minimal ztl build can drop this code entirely; the
 //! registry entry stays unconditional in [`crate::ecosystems::registry`]
-//! so `zetl ecosystem check` can still list `remark` on a stripped binary.
+//! so `ztl ecosystem check` can still list `remark` on a stripped binary.
 //!
 //! ## Transport (ADR-3304)
 //!
 //! remark plugins are in-process ESM JavaScript and there is no reasonable
 //! way to execute them from Rust. ADR-3304 resolves this by spawning a
-//! long-lived Node.js subprocess running a zetl-provided harness
-//! (`_static/zetl-remark-harness.mjs`, embedded at compile time via
+//! long-lived Node.js subprocess running a ztl-provided harness
+//! (`_static/ztl-remark-harness.mjs`, embedded at compile time via
 //! [`include_str!`]) that loads plugins via dynamic `import()` and
 //! exchanges JSON-RPC-like messages on stdin/stdout (CON-3305).
 //!
@@ -28,7 +28,7 @@
 //! A manifest field `isolation = "shared" | "fresh-context"` controls
 //! whether plugin applications share the harness's module cache:
 //!
-//! - **`shared`** (default): one Node subprocess per zetl build. Plugin
+//! - **`shared`** (default): one Node subprocess per ztl build. Plugin
 //!   imports are cached; subsequent pages reuse the loaded plugin. This
 //!   is the perf path — startup amortises across the whole build.
 //! - **`fresh-context`**: a new Node subprocess is spawned per invocation
@@ -42,14 +42,14 @@
 //! ## Protocol (CON-3305)
 //!
 //! ```text
-//! zetl → harness:  {"id":1,"type":"load_plugin","package":"remark-gfm","options":{}}
-//! harness → zetl:  {"id":1,"type":"load_result","ok":true,"plugin_id":"rp_1"}
+//! ztl → harness:  {"id":1,"type":"load_plugin","package":"remark-gfm","options":{}}
+//! harness → ztl:  {"id":1,"type":"load_result","ok":true,"plugin_id":"rp_1"}
 //!
-//! zetl → harness:  {"id":2,"type":"apply","plugin_id":"rp_1","ast":{...mdast...}}
-//! harness → zetl:  {"id":2,"type":"apply_result","ok":true,"ast":{...mdast...}}
+//! ztl → harness:  {"id":2,"type":"apply","plugin_id":"rp_1","ast":{...mdast...}}
+//! harness → ztl:  {"id":2,"type":"apply_result","ok":true,"ast":{...mdast...}}
 //!
-//! zetl → harness:  {"id":3,"type":"shutdown"}
-//! harness → zetl:  {"id":3,"type":"shutdown_result","ok":true}
+//! ztl → harness:  {"id":3,"type":"shutdown"}
+//! harness → ztl:  {"id":3,"type":"shutdown_result","ok":true}
 //! harness exits 0
 //! ```
 //!
@@ -91,7 +91,7 @@ const READY_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Embedded harness source. Written to a temp file on spawn so Node can
 /// load it as an ESM module.
-pub const HARNESS_SOURCE: &str = include_str!("../../_static/zetl-remark-harness.mjs");
+pub const HARNESS_SOURCE: &str = include_str!("../../_static/ztl-remark-harness.mjs");
 
 /// Embedded harness version — matches the banner string the harness
 /// script emits. Bumped in lock-step with `HARNESS_SOURCE` changes.
@@ -105,7 +105,7 @@ const NODE_BINARY: &str = "node";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum IsolationMode {
-    /// One harness per zetl process; plugins share the module cache.
+    /// One harness per ztl process; plugins share the module cache.
     /// The perf-default.
     Shared,
     /// New harness subprocess per invocation; plugins are isolated from
@@ -452,7 +452,7 @@ impl TempHarnessFile {
     /// call apply).
     fn write(cwd: &Path) -> Result<Self, HarnessError> {
         let unique = format!(
-            ".zetl-remark-harness-{}-{}.mjs",
+            ".ztl-remark-harness-{}-{}.mjs",
             std::process::id(),
             next_id()
         );
@@ -831,11 +831,11 @@ impl EcosystemAdapter for RemarkAdapter {
     }
 
     fn translate_to_foreign(&self, doc: &Document) -> Result<Value, TranslationError> {
-        self.translator.zetl_to_foreign(doc)
+        self.translator.ztl_to_foreign(doc)
     }
 
     fn translate_from_foreign(&self, foreign: Value) -> Result<Document, TranslationError> {
-        self.translator.foreign_to_zetl(foreign)
+        self.translator.foreign_to_ztl(foreign)
     }
 
     fn invoke_plugin(
@@ -1082,7 +1082,7 @@ mod tests {
         // Point the adapter at a node binary that can't exist. Probe
         // hasn't populated node_path; we force it to a bogus path.
         let mut adapter = RemarkAdapter::default();
-        adapter.node_path = PathBuf::from("/definitely-not-a-real-node-zetl-test");
+        adapter.node_path = PathBuf::from("/definitely-not-a-real-node-ztl-test");
         let build = BuildContext::new(
             BuildMode::Build,
             PathBuf::from("/tmp/remark-test"),

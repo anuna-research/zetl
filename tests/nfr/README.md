@@ -1,7 +1,7 @@
 # NFR harness (SPEC-028)
 
 Headless-browser harness for the Phase-7 NFR tests on the graph view.
-Runs Playwright against a `zetl build` output served by a local static server.
+Runs Playwright against a `ztl build` output served by a local static server.
 
 | NFR     | Test ID  | Assertion                                                            |
 | ------- | -------- | -------------------------------------------------------------------- |
@@ -17,7 +17,7 @@ TEST-203 / TEST-204 ship as Rust integration tests under
 ## Prerequisites
 
 - Node ≥ 22 (uses `--experimental-strip-types`)
-- Rust toolchain for `cargo run --release -- build` (skipped if `ZETL_BIN` points to a prebuilt binary)
+- Rust toolchain for `cargo run --release -- build` (skipped if `ztl_BIN` points to a prebuilt binary)
 - `npm install` once, then `npm run install-browsers` to fetch the pinned Chromium
 
 ## Workflow
@@ -57,7 +57,7 @@ exploratory profiling — the NFR-101/102 suites target the 2k fixture.
 ```
 tests/nfr/
 ├── harness/
-│   ├── build.ts        # spawn `zetl build` into .dist/
+│   ├── build.ts        # spawn `ztl build` into .dist/
 │   ├── fixtures.ts     # synthetic vault generator (2k / 5k)
 │   ├── metrics.ts      # LCP, rAF-fps, percentile helpers
 │   ├── paths.ts        # .fixtures/, .dist/ layout
@@ -78,11 +78,11 @@ tests/nfr/
 `build:2k` is a no-op when a `.seeded` sentinel matches; pass `--force` to
 `scripts/seed.ts` or `npm run clean` to rebuild from scratch.
 
-## Overriding the zetl binary
+## Overriding the ztl binary
 
-By default `harness/build.ts` runs `cargo run --release --quiet --manifest-path <repo>/Cargo.toml -- build`. Set `ZETL_BIN=/path/to/zetl` to bypass `cargo` — useful in CI after a prior build step.
+By default `harness/build.ts` runs `cargo run --release --quiet --manifest-path <repo>/Cargo.toml -- build`. Set `ztl_BIN=/path/to/ztl` to bypass `cargo` — useful in CI after a prior build step.
 
 ## Overriding the server port
 
-Set `ZETL_NFR_PORT=NNNN` (and/or `ZETL_NFR_BASE_URL`) to run against a
+Set `ztl_NFR_PORT=NNNN` (and/or `ztl_NFR_BASE_URL`) to run against a
 long-lived server. Default is `127.0.0.1:4873`.

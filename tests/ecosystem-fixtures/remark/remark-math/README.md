@@ -13,7 +13,7 @@ Canary fixture seeded by **task-remark-matrix-seed** for SPEC-033
   their own, without a KaTeX/MathJax layer. Math nodes serialise as
   `<code class="language-math math-inline">` / `<pre><code
   class="language-math math-display">…</code></pre>` so that
-  downstream `rehype-katex` (or the zetl-native math renderer, if
+  downstream `rehype-katex` (or the ztl-native math renderer, if
   ever added) can pattern-match on the class list. Aspirational
   target, not a live CI assertion.
 

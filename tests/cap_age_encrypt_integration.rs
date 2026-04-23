@@ -5,7 +5,7 @@
 //! (tier accounting, header-level "no recipient-type distinguisher",
 //! bech32 canonicalisation). This integration file exercises the
 //! public API surface that the build driver (`task-cap-build-driver`)
-//! will call, through the same `zetl::cap::age_encrypt` module path
+//! will call, through the same `ztl::cap::age_encrypt` module path
 //! that ships to consumers.
 //!
 //! Coverage:
@@ -32,8 +32,8 @@ use bech32::{Bech32, Hrp};
 use rand_chacha::ChaCha20Rng;
 use rand_core::SeedableRng;
 
-use zetl::cap::age_encrypt::{encrypt_to_cohort_with_rng, AgeEncryptError};
-use zetl::cap::pad::{self, X25519Pubkey};
+use ztl::cap::age_encrypt::{encrypt_to_cohort_with_rng, AgeEncryptError};
+use ztl::cap::pad::{self, X25519Pubkey};
 
 /// Decode an `age1...` bech32 pubkey string (as produced by
 /// `x25519::Identity::to_public().to_string()`) back to the raw

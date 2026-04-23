@@ -1,12 +1,12 @@
-;; Plan: Ratatui Terminal UI for zetl
+;; Plan: Ratatui Terminal UI for ztl
 (meta plan
   (id "IMPL-TUI")
-  (title "Ratatui Terminal UI for zetl")
+  (title "Ratatui Terminal UI for ztl")
   (version "1.0.0")
   (status "active")
   (created "2026-02-19")
   (author "agent:claude")
-  (description "Add an interactive terminal UI to zetl using ratatui, providing a dashboard with vault stats, page browser, link explorer, search, and diagnostics viewer"))
+  (description "Add an interactive terminal UI to ztl using ratatui, providing a dashboard with vault stats, page browser, link explorer, search, and diagnostics viewer"))
 
 ;; Agent
 (given agent-claude-available)
@@ -23,7 +23,7 @@
 (given task-app-scaffold)
 (meta task-app-scaffold
   (description "Create src/tui/ module with App struct, event loop, and basic terminal setup/teardown using crossterm alternate screen and raw mode")
-  (acceptance "zetl tui launches, shows blank screen, quits on 'q' key"))
+  (acceptance "ztl tui launches, shows blank screen, quits on 'q' key"))
 
 ;; Phase 2: Core Views
 (given task-dashboard)
@@ -60,7 +60,7 @@
 (given task-cli-integration)
 (meta task-cli-integration
   (description "Add 'tui' subcommand to CLI via clap; wire it to launch the TUI app with vault scanning pipeline")
-  (acceptance "zetl tui launches interactive UI; zetl tui -d <dir> works; existing commands unchanged"))
+  (acceptance "ztl tui launches interactive UI; ztl tui -d <dir> works; existing commands unchanged"))
 
 ;; ── Dependencies ──────────────────────────────────────────────────────
 

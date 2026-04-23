@@ -12,13 +12,13 @@
   }
 })();
 (function(){
-  var grid = document.querySelector('.zetl-index-grid');
+  var grid = document.querySelector('.ztl-index-grid');
   if (!grid) return;
-  var cards = Array.prototype.slice.call(grid.querySelectorAll('.zetl-index-card'));
+  var cards = Array.prototype.slice.call(grid.querySelectorAll('.ztl-index-card'));
   if (!cards.length) return;
-  var sortBtns = document.querySelectorAll('.zetl-index-sort');
-  var folderSel = document.querySelector('.zetl-index-folder');
-  var counter = document.querySelector('.zetl-index-count');
+  var sortBtns = document.querySelectorAll('.ztl-index-sort');
+  var folderSel = document.querySelector('.ztl-index-folder');
+  var counter = document.querySelector('.ztl-index-count');
   var pageState = { showAll: false };
 
   /* Show-N-more button uses style.display — DaisyUI's .btn sets
@@ -26,7 +26,7 @@
   var showMoreBtn = document.createElement('button');
   showMoreBtn.type = 'button';
   showMoreBtn.style.display = 'none';
-  showMoreBtn.className = 'btn btn-sm btn-outline mt-4 mx-auto zetl-index-more';
+  showMoreBtn.className = 'btn btn-sm btn-outline mt-4 mx-auto ztl-index-more';
   showMoreBtn.setAttribute('aria-expanded', 'false');
   showMoreBtn.addEventListener('click', function(){
     pageState.showAll = true;
@@ -51,7 +51,7 @@
     c.dataset.orphan = back === 0 ? '1' : '0';
     if (folder) {
       topFolders[folder.split('/')[0]] = true;
-      var label = c.querySelector('.zetl-index-card-folder');
+      var label = c.querySelector('.ztl-index-card-folder');
       if (label) { label.textContent = folder; label.hidden = false; }
     }
   });

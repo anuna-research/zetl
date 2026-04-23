@@ -23,10 +23,10 @@ steps:
       - cargo test --verbose
       - cargo fmt --check
       - cargo clippy -- -D warnings
-      # SPEC-032 REQ-3202: docs/zetl-ast-reference.md is generated from
-      # tools/zetl-ast-schema-v1.json. A drift between the two is a CI
+      # SPEC-032 REQ-3202: docs/ztl-ast-reference.md is generated from
+      # tools/ztl-ast-schema-v1.json. A drift between the two is a CI
       # failure — --check exits nonzero on any diff.
-      - cargo run -p zetl-ast-reference-gen -- --check
+      - cargo run -p ztl-ast-reference-gen -- --check
       # SPEC-032 CON-3212 canonical-extension golden-HTML gate. Walks
       # tests/extension-fixtures/ and fails on any fixture whose
       # rendered output drifts from expected.html after whitespace +
@@ -37,12 +37,12 @@ steps:
       # combination must compile (the default release configuration
       # that replaced the retired `ecosystems-v1` umbrella per §12
       # Phase F), and a no-feature build must also compile. A
-      # regression here breaks the "minimal zetl binary" promise in
+      # regression here breaks the "minimal ztl binary" promise in
       # REQ-3302.
       - make eco-features-check
       # SPEC-033 REQ-3311 / TEST-3311: structural + tier-downgrade gate
-      # for tools/zetl-ecosystem-matrix.toml. `cargo test --verbose`
-      # above already runs it; this surfaces the --nocapture summary
+      # for tools/ztl-ecosystem-matrix.toml. `cargo test --verbose` below
+      # already runs it; this surfaces the --nocapture summary
       # line (per-ecosystem row counts) and makes the gate explicit in
       # the pipeline log next to its sibling eco-features-check.
       - make eco-matrix-check
@@ -62,14 +62,14 @@ steps:
       # release-binary size) run via `make nfr-gates-033-strict`.
       - make nfr-gates-033
       # SPEC-033 NFR-3305 / TEST-3305-fidelity translator round-trip gate.
-      # Drives proptest-generated zetl-ext documents through each translator
-      # and asserts canonical-form equivalence (zetl→foreign→zetl). `cargo
+      # Drives proptest-generated ztl-ext documents through each translator
+      # and asserts canonical-form equivalence (ztl→foreign→ztl). `cargo
       # test` above already runs the 64-case default; this surfaces the
       # wider 256-case sweep with shrunk-counterexample output on regression.
       # Raise PROPTEST_CASES in the nightly pipeline for the 10k corpus.
       - make translator-roundtrip
       # SPEC-034 REQ-3424 / ADR-3410 malicious-author PR gate. Runs
-      # `zetl cap audit-diff` against every fixture under
+      # `ztl cap audit-diff` against every fixture under
       # tools/audit-diff-corpus/. Any fixture whose expected-finding
       # tags are missed fails the build — that is the exact
       # regression signal the `audit-corpus` CI job exists to catch

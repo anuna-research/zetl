@@ -37,7 +37,7 @@ pub fn resolve(name: &str) -> Option<Runner> {
 
 /// Canary runner: pulldown-cmark with the options `render_to_html` uses,
 /// minus wikilink rewriting. Deliberately *not* re-exported from
-/// `zetl::web::markdown` because that path also runs the line-anchor
+/// `ztl::web::markdown` because that path also runs the line-anchor
 /// injector and the wikilink regex, neither of which belongs in a plain
 /// Markdown fixture.
 pub fn baseline_markdown_runner(input: &str) -> String {

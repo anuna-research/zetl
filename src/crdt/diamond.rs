@@ -26,7 +26,7 @@ use crate::crdt::marks::{parse_inline_marks, serialize_to_markdown, ExpandMark, 
 use crate::crdt::marks_doc::MarksDoc;
 
 /// Default agent name used for the local writer.
-const AGENT_NAME: &str = "zetl";
+const AGENT_NAME: &str = "ztl";
 
 /// Monotonic process-global counter appended to forked agent names.
 /// Diamond-types corrupts on reused `(agent, seq)` tuples across divergent

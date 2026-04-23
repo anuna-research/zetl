@@ -11,10 +11,10 @@ import { sha256 } from "@noble/hashes/sha2";
 
 /// REQ-3414 PRF salt prefix. Must stay byte-identical to
 /// `cap::enrolment::PRF_SALT_PREFIX` on the Rust side.
-export const PRF_SALT_PREFIX = "zetl/webauthn-prf/v1/";
+export const PRF_SALT_PREFIX = "ztl/webauthn-prf/v1/";
 
 /// Compute the REQ-3414 per-cohort PRF salt
-///     SHA-256("zetl/webauthn-prf/v1/" || origin || "/" || cohort_id)
+///     SHA-256("ztl/webauthn-prf/v1/" || origin || "/" || cohort_id)
 /// Pure function; deterministic given (origin, cohort_id).
 export function computePrfSalt(origin: string, cohortId: string): Uint8Array {
   const enc = new TextEncoder();

@@ -1,6 +1,6 @@
-; zetl release readiness theory
-; Combines facts from across the vault to determine if zetl is ready to ship.
-; Run: zetl reason status -d . | jq '.conclusions[] | select(.literal == "release-candidate")'
+; ztl release readiness theory
+; Combines facts from across the vault to determine if ztl is ready to ship.
+; Run: ztl reason status -d . | jq '.conclusions[] | select(.literal == "release-candidate")'
 
 ; --- Strict rules: these must hold, no exceptions ---
 

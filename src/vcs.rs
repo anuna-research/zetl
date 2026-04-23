@@ -1,7 +1,7 @@
 //! VCS (Version Control System) detection and metadata helpers.
 //!
 //! Provides optional Git enrichment: when the vault is inside a Git repository
-//! zetl MAY attach commit metadata to caches and outputs for informational
+//! ztl MAY attach commit metadata to caches and outputs for informational
 //! purposes. This is supplementary — it enriches output but does not alter
 //! correctness or cache decisions (NFR-017, §1.6).
 

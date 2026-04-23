@@ -9,9 +9,9 @@
 //!
 //! # Path layout
 //!
-//! The caller controls where the jj workspace root lives. For zetl production
+//! The caller controls where the jj workspace root lives. For ztl production
 //! use (see task-vcs-init), the workspace root will be configured so that jj
-//! metadata is stored inside `.zetl/`. For unit tests a temp directory is used.
+//! metadata is stored inside `.ztl/`. For unit tests a temp directory is used.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -92,7 +92,7 @@ pub struct ChangeInfo {
 
 // ─── JjBackend ───────────────────────────────────────────────────────────────
 
-/// jj-lib backed VCS layer for zetl temporal navigation.
+/// jj-lib backed VCS layer for ztl temporal navigation.
 pub struct JjBackend {
     workspace: Workspace,
     repo: Arc<ReadonlyRepo>,
@@ -162,13 +162,13 @@ impl JjBackend {
         Ok(Self { workspace, repo })
     }
 
-    /// Open or initialise a jj workspace rooted at `.zetl/jj/` inside `vault_root`.
+    /// Open or initialise a jj workspace rooted at `.ztl/jj/` inside `vault_root`.
     ///
     /// Layout (REQ-075, ADR-045):
-    /// - `.zetl/jj/.jj/` — jj metadata and object store
+    /// - `.ztl/jj/.jj/` — jj metadata and object store
     /// - `vault_root/` — jj working copy (files scanned by snapshot)
     ///
-    /// On first call `.zetl/jj/` is created and a jj workspace is initialised
+    /// On first call `.ztl/jj/` is created and a jj workspace is initialised
     /// there (internal git backend). On subsequent calls the existing workspace
     /// is loaded. Both paths are idempotent and produce no user-visible output.
     pub fn open_or_init_at_vault_root(vault_root: &Path) -> anyhow::Result<Self> {
@@ -176,37 +176,37 @@ impl JjBackend {
             bail!("vault root does not exist: {}", vault_root.display());
         }
 
-        let zetl_jj = vault_root.join(".zetl").join("jj");
+        let ztl_jj = vault_root.join(".ztl").join("jj");
         let settings = minimal_user_settings()?;
         let store_factories = StoreFactories::default();
 
         // If already initialised, just open it.
-        if zetl_jj.join(".jj").is_dir() {
-            return Self::load_at_vault_root(&zetl_jj, vault_root, &settings, &store_factories);
+        if ztl_jj.join(".jj").is_dir() {
+            return Self::load_at_vault_root(&ztl_jj, vault_root, &settings, &store_factories);
         }
 
-        // Create .zetl/jj/ directory and initialise a new jj workspace there.
-        // The `.jj/` metadata dir will live at `.zetl/jj/.jj/` (never at vault root).
-        std::fs::create_dir_all(&zetl_jj)
-            .with_context(|| format!("failed to create jj workspace dir: {}", zetl_jj.display()))?;
+        // Create .ztl/jj/ directory and initialise a new jj workspace there.
+        // The `.jj/` metadata dir will live at `.ztl/jj/.jj/` (never at vault root).
+        std::fs::create_dir_all(&ztl_jj)
+            .with_context(|| format!("failed to create jj workspace dir: {}", ztl_jj.display()))?;
 
-        Workspace::init_internal_git(&settings, &zetl_jj)
-            .with_context(|| format!("failed to init jj workspace at {}", zetl_jj.display()))?;
+        Workspace::init_internal_git(&settings, &ztl_jj)
+            .with_context(|| format!("failed to init jj workspace at {}", ztl_jj.display()))?;
 
         // Reload with vault_root as the working-copy path so snapshots capture
-        // all vault files rather than just the (empty) .zetl/jj/ directory.
-        Self::load_at_vault_root(&zetl_jj, vault_root, &settings, &store_factories)
+        // all vault files rather than just the (empty) .ztl/jj/ directory.
+        Self::load_at_vault_root(&ztl_jj, vault_root, &settings, &store_factories)
     }
 
-    /// Load a jj workspace whose metadata lives in `zetl_jj/.jj/` but whose
+    /// Load a jj workspace whose metadata lives in `ztl_jj/.jj/` but whose
     /// working copy (files to snapshot) is at `vault_root`.
     fn load_at_vault_root(
-        zetl_jj: &Path,
+        ztl_jj: &Path,
         vault_root: &Path,
         settings: &UserSettings,
         store_factories: &StoreFactories,
     ) -> anyhow::Result<Self> {
-        let jj_dir = zetl_jj.join(".jj");
+        let jj_dir = ztl_jj.join(".jj");
         let repo_path = jj_dir.join("repo");
         let wc_state_path = jj_dir.join("working_copy");
 
@@ -359,15 +359,15 @@ impl VcsBackend for JjBackend {
 
         let (author_name, author_email) = author
             .map(|(n, e)| (n.to_owned(), e.to_owned()))
-            .unwrap_or_else(|| ("zetl".to_owned(), "zetl@localhost".to_owned()));
+            .unwrap_or_else(|| ("ztl".to_owned(), "ztl@localhost".to_owned()));
         let author_sig = Signature {
             name: author_name,
             email: author_email,
             timestamp: Timestamp::now(),
         };
         let committer_sig = Signature {
-            name: "zetl".to_owned(),
-            email: "zetl@localhost".to_owned(),
+            name: "ztl".to_owned(),
+            email: "ztl@localhost".to_owned(),
             timestamp: Timestamp::now(),
         };
 
@@ -386,7 +386,7 @@ impl VcsBackend for JjBackend {
             .context("failed to update working-copy pointer")?;
 
         let new_repo = tx
-            .commit("zetl snapshot")
+            .commit("ztl snapshot")
             .context("failed to commit transaction")?;
 
         // Finish the working-copy lock.
@@ -474,7 +474,7 @@ impl VcsBackend for JjBackend {
             }
 
             // Skip the initial empty WC commit jj creates on workspace init:
-            // it has the root commit as its sole parent and is not a zetl
+            // it has the root commit as its sole parent and is not a ztl
             // snapshot.
             let parents = commit.parent_ids();
             if parents.len() == 1 && parents[0] == root_commit_id {
@@ -502,10 +502,10 @@ fn minimal_user_settings() -> anyhow::Result<UserSettings> {
     let mut config = StackedConfig::with_defaults();
     let mut layer = ConfigLayer::empty(ConfigSource::User);
     layer
-        .set_value("user.name", "zetl")
+        .set_value("user.name", "ztl")
         .map_err(|e| anyhow!("config set user.name: {e}"))?;
     layer
-        .set_value("user.email", "zetl@localhost")
+        .set_value("user.email", "ztl@localhost")
         .map_err(|e| anyhow!("config set user.email: {e}"))?;
     config.add_layer(layer);
     UserSettings::from_config(config).context("failed to build UserSettings")

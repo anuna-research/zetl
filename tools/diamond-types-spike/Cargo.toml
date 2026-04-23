@@ -5,7 +5,7 @@ edition = "2021"
 publish = false
 description = "IMPL-029 Phase 0 spike: exercise diamond-types CRDT APIs and compare against automerge."
 
-# Standalone, not a member of the zetl workspace. Running `cargo run` from
+# Standalone, not a member of the ztl workspace. Running `cargo run` from
 # this directory builds only the spike and its CRDT deps — the main crate
 # stays untouched.
 

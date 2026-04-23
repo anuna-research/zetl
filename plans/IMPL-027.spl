@@ -106,7 +106,7 @@
   (trace "TEST-300 TEST-301 TEST-303 TEST-304 TEST-306"))
 
 (meta task-integration-tests-build
-  (description "Add tests covering build-mode parity: TEST-302 (per-page _history.html emission), TEST-303 build variant (dist/_history.html), TEST-307 (theme override with partial templates). Invoke zetl build via cargo run or the build_static function directly against a tempdir vault.")
+  (description "Add tests covering build-mode parity: TEST-302 (per-page _history.html emission), TEST-303 build variant (dist/_history.html), TEST-307 (theme override with partial templates). Invoke ztl build via cargo run or the build_static function directly against a tempdir vault.")
   (acceptance "cargo test --features history passes; temp dist/ contains the expected files; theme override fallback resolves vault_history.html to bundled default")
   (trace "TEST-302 TEST-303 TEST-307"))
 
@@ -121,7 +121,7 @@
   (trace "NFR-301 TEST-NFR-301"))
 
 (meta task-performance-benchmark
-  (description "Add TEST-NFR-300 benchmark (criterion or ad-hoc timing harness). Two measurements: (1) serve per-page render p95 before vs after the metadata strip, on a 500-page fixture; (2) zetl build wall-clock p95 over 5 runs before vs after. Assert serve delta ≤ 3ms p95 and build delta ≤ 10%.")
+  (description "Add TEST-NFR-300 benchmark (criterion or ad-hoc timing harness). Two measurements: (1) serve per-page render p95 before vs after the metadata strip, on a 500-page fixture; (2) ztl build wall-clock p95 over 5 runs before vs after. Assert serve delta ≤ 3ms p95 and build delta ≤ 10%.")
   (acceptance "Benchmark output committed to research/SPEC-027-perf.md; both budgets met or the benchmark flags a regression that blocks merge")
   (trace "NFR-300 TEST-NFR-300"))
 

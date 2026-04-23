@@ -465,11 +465,11 @@ fn line_of(contents: &str, byte_offset: usize) -> usize {
 pub fn format_report(findings: &[Finding]) -> String {
     let mut out = String::new();
     if findings.is_empty() {
-        out.push_str("[zetl cap audit-diff] no findings\n");
+        out.push_str("[ztl cap audit-diff] no findings\n");
         return out;
     }
     out.push_str(&format!(
-        "[zetl cap audit-diff] {} finding(s)\n",
+        "[ztl cap audit-diff] {} finding(s)\n",
         findings.len()
     ));
     for f in findings {

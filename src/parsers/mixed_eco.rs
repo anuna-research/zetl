@@ -1,7 +1,7 @@
 //! Mixed-parser diagnostic (SPEC-033 REQ-3315 / TEST-3315).
 //!
 //! A page can declare its Markdown parser via frontmatter
-//! (`parser: pandoc`), a `.zetl/config.toml` `[[parse.rule]]` glob, or
+//! (`parser: pandoc`), a `.ztl/config.toml` `[[parse.rule]]` glob, or
 //! the vault-wide `[parse] default`. Independently, hooks can declare
 //! an ecosystem (`ecosystem = "mdbook"`). Each ecosystem implicitly
 //! expects pages to have been produced by a specific parser:
@@ -16,13 +16,13 @@
 //! parser is not what the hook's ecosystem expects, the resulting
 //! HTML is undefined: the hook sees an AST that doesn't match the
 //! semantics of its ecosystem. Rather than silently producing wrong
-//! output, zetl detects the mismatch and:
+//! output, ztl detects the mismatch and:
 //!
 //! 1. emits a five-part [`HookDiagnostic`] citing both the page's
 //!    parser and the hook's ecosystem, naming the resolution;
 //! 2. refuses to run that hook on that page (the caller drops the
 //!    violating (page, hook) pair before dispatch);
-//! 3. under `zetl build --strict-parsers`, escalates the warning
+//! 3. under `ztl build --strict-parsers`, escalates the warning
 //!    to a build failure — the CI gate for mixed-parser vaults.
 //!
 //! ## Config-time vs build-time
@@ -30,8 +30,8 @@
 //! The detector is pure: it takes a list of pages (with their
 //! resolved parser) and a list of composed hooks (with their
 //! compiled selectors), and returns the set of (page, hook)
-//! violations. Both `zetl build` (build-time) and
-//! `zetl ecosystem check` (config-time) call into the same entry
+//! violations. Both `ztl build` (build-time) and
+//! `ztl ecosystem check` (config-time) call into the same entry
 //! point so the two surfaces never drift.
 
 use std::path::{Path, PathBuf};
@@ -118,7 +118,7 @@ impl MixedParserViolation {
             "pick one: set `parser: {expected}` in the page's frontmatter, \n\
              move the page out of the hook's selector scope, \n\
              or remove / disable the '{hook}' hook for pages using \"{actual}\". \n\
-             Under `zetl build --strict-parsers` this warning is fatal.",
+             Under `ztl build --strict-parsers` this warning is fatal.",
             expected = self.expected_parser,
             hook = self.hook_id,
             actual = self.page_parser,
@@ -231,7 +231,7 @@ pub fn format_report(report: &MixedParserReport) -> String {
 }
 
 /// Helper for callers that already hold a [`ComposedHook`]: extract
-/// the hook's ecosystem id (or `None` for zetl-native hooks).
+/// the hook's ecosystem id (or `None` for ztl-native hooks).
 pub fn hook_ecosystem(hook: &ComposedHook) -> Option<&str> {
     hook.ecosystem.as_deref()
 }

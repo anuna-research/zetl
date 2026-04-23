@@ -5,7 +5,7 @@ tags: [reading, build, publishing]
 
 # Static Site Export
 
-`zetl build` turns your vault into a folder of plain HTML, CSS, and JavaScript. No runtime, no database, no server process — every page is a file you can upload to any static host. The output looks the same as [[Web Server]] minus the editor.
+`ztl build` turns your vault into a folder of plain HTML, CSS, and JavaScript. No runtime, no database, no server process — every page is a file you can upload to any static host. The output looks the same as [[Web Server]] minus the editor.
 
 ## Why build a static site
 
@@ -13,7 +13,7 @@ A static site is the right deliverable when:
 
 - You want to publish research notes, a personal wiki, or project docs to the public internet.
 - You want a vault readable from any browser with zero operational overhead.
-- You want something to hand to collaborators, reviewers, or your future self that doesn't depend on the `zetl` binary being installed.
+- You want something to hand to collaborators, reviewers, or your future self that doesn't depend on the `ztl` binary being installed.
 - You want archival: HTML works the same way in 2040 as it does in 2026.
 
 Because nothing on the published site writes back, the edit button is absent and the save/delete endpoints aren't emitted. Everything else — wikilinks, backlinks, transclusion panels with SVG bridges, the graph widget, full-text search, per-page history (if built with `--features history`) — lands in the output as static HTML and JSON.
@@ -21,11 +21,11 @@ Because nothing on the published site writes back, the edit button is absent and
 ## Running it
 
 ```bash
-zetl build                             # writes ./dist/
-zetl -d ~/notes build
-zetl build --out-dir site              # custom output directory
-zetl build --theme paper               # pick a theme
-zetl build --site-url https://vault.example    # absolute URLs for social cards
+ztl build                             # writes ./dist/
+ztl -d ~/notes build
+ztl build --out-dir site              # custom output directory
+ztl build --theme paper               # pick a theme
+ztl build --site-url https://vault.example    # absolute URLs for social cards
 ```
 
 Preview the result locally with any static file server:
@@ -59,7 +59,7 @@ Each note lives at a stable URL (`/page/<slug>/`) driven by the page title, so `
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `-o, --out-dir <DIR>` | `dist` | Output directory. Wiped and rewritten on each build. |
-| `--theme <THEME>` | `default` | Theme from `.zetl/themes/<name>/`. See [[Customising the Look]]. |
+| `--theme <THEME>` | `default` | Theme from `.ztl/themes/<name>/`. See [[Customising the Look]]. |
 | `--public <DIR>` | — | Files copied over the output root after generation (good for `CNAME`, `robots.txt`). |
 | `--site-url <URL>` | — | Canonical URL; used for absolute `og:image` URLs so social scrapers resolve them. |
 | `--safe-mode` | off | Skip every hook except ones the theme explicitly declares. |
@@ -71,7 +71,7 @@ Each note lives at a stable URL (`/page/<slug>/`) driven by the page title, so `
 `dist/` is a plain folder. Any of these work:
 
 - **GitHub Pages / Codeberg Pages** — commit `dist/` to a pages branch, or emit straight into your pages repo.
-- **Netlify / Cloudflare Pages / Vercel** — point at the repo, set the build command to `zetl build`, publish directory `dist`.
+- **Netlify / Cloudflare Pages / Vercel** — point at the repo, set the build command to `ztl build`, publish directory `dist`.
 - **S3 + CloudFront, Backblaze B2, any object store** — `aws s3 sync dist/ s3://bucket/` and serve via the usual static-site front.
 - **Your own server** — `rsync -a --delete dist/ user@host:/var/www/vault/` with nginx or Caddy in front.
 
@@ -79,7 +79,7 @@ There is no runtime for any of these to support — the graph widget, search, an
 
 ## Building vs serving
 
-Rule of thumb: use [[Web Server]] while you're writing and linking; use `zetl build` when you want to publish. Many workflows run both — `zetl serve` during authoring, `zetl build` from CI on every push to main.
+Rule of thumb: use [[Web Server]] while you're writing and linking; use `ztl build` when you want to publish. Many workflows run both — `ztl serve` during authoring, `ztl build` from CI on every push to main.
 
 ## Related
 

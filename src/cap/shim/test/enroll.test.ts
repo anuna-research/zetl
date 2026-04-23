@@ -130,7 +130,7 @@ test("encodeQr produces a square boolean matrix larger than 20×20", () => {
 });
 
 test("renderQrCanvas emits a canvas sized to cellPx × matrix-side", () => {
-  const matrix = encodeQr("zetl");
+  const matrix = encodeQr("ztl");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const document = (globalThis as any).document;
   const canvas = renderQrCanvas(matrix, 3, document);
@@ -140,7 +140,7 @@ test("renderQrCanvas emits a canvas sized to cellPx × matrix-side", () => {
 
 function mountPointDocument(url: string): { doc: Document; loc: Location } {
   const win = new Window({ url });
-  win.document.body.innerHTML = `<main id="zetl-enroll"></main>`;
+  win.document.body.innerHTML = `<main id="ztl-enroll"></main>`;
   return {
     doc: win.document as unknown as Document,
     loc: win.location as unknown as Location,
@@ -150,7 +150,7 @@ function mountPointDocument(url: string): { doc: Document; loc: Location } {
 test("mount with missing cohort renders the missing-cohort diagnostic", async () => {
   const { doc, loc } = mountPointDocument("https://example.test/enroll.html");
   await mount({ document: doc, location: loc });
-  const root = doc.getElementById("zetl-enroll");
+  const root = doc.getElementById("ztl-enroll");
   assert.ok(root, "mount point must exist");
   assert.equal(root!.getAttribute("data-state"), "missing-cohort");
   assert.match(root!.textContent ?? "", /Missing \?cohort=/);
@@ -164,7 +164,7 @@ test("mount with no-PRF authenticator renders the no-prf diagnostic", async () =
     getClientExtensionResults: () => ({}),
   } as unknown as PublicKeyCredential);
   await mount({ document: doc, location: loc, createFn });
-  const root = doc.getElementById("zetl-enroll");
+  const root = doc.getElementById("ztl-enroll");
   assert.ok(root);
   const state = root!.getAttribute("data-state");
   assert.ok(

@@ -23,18 +23,18 @@ describe as legibility.
 Two things happen:
 
 1. If `Scientific Management.md` already exists, the link resolves — clicking
-   it in `zetl view` or `zetl serve` navigates to the page.
-2. If it doesn't exist, zetl flags it as a **dead link** but otherwise leaves
+   it in `ztl view` or `ztl serve` navigates to the page.
+2. If it doesn't exist, ztl flags it as a **dead link** but otherwise leaves
    you alone. The link is a promise, not an error.
 
-Dead links are surfaced by `zetl check --dead-links`:
+Dead links are surfaced by `ztl check --dead-links`:
 
 ```bash
-$ zetl check --dead-links
+$ ztl check --dead-links
 Scientific Management — referenced from: Taylorism and its Discontents.md:7
 ```
 
-You can create the target page any time. Run `zetl index` (or let `zetl serve`
+You can create the target page any time. Run `ztl index` (or let `ztl serve`
 re-scan) and the link goes live.
 
 ## Creating the target page later
@@ -45,19 +45,19 @@ This is the rhythm most writers settle into:
 2. When the dead-link list gets long enough to bother you, pick one.
 3. Open a file of that name and start writing the page.
 
-In `zetl serve`, clicking a dead link opens a "new page" stub — the template
+In `ztl serve`, clicking a dead link opens a "new page" stub — the template
 sees `page.is_new = true` and can render a "start writing" affordance. In
-`zetl view`, a dead link shows as such but won't navigate.
+`ztl view`, a dead link shows as such but won't navigate.
 
 You're never *required* to fill in a dead link. Some dead links are
 aspirational and can stay that way for years.
 
 ## Renaming pages safely
 
-zetl resolves links by *filename*, so if you rename a page, every existing
+ztl resolves links by *filename*, so if you rename a page, every existing
 link to its old name turns into a dead link. Two approaches:
 
-**Rename and fix up.** Rename the file, then `zetl check --dead-links` to find
+**Rename and fix up.** Rename the file, then `ztl check --dead-links` to find
 every reference to the old name. Replace them with the new name in your
 editor's find-and-replace.
 

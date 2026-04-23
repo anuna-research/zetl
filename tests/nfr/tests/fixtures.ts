@@ -26,7 +26,7 @@ export const test = base.extend<{}, HarnessWorkerFixtures>({
             `run: npm run build:${vaultSize === 2000 ? "2k" : "5k"} (from tests/nfr/)`,
         );
       }
-      const port = Number(process.env.ZETL_NFR_PORT ?? DEFAULT_HARNESS_PORT);
+      const port = Number(process.env.ztl_NFR_PORT ?? DEFAULT_HARNESS_PORT);
       const server = await serveDist({ root, port });
       await use(server);
       await server.stop();

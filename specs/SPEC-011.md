@@ -1,26 +1,26 @@
 ---
-title: "SPEC-011: zetl — Capability-Based Knowledge Base Federation via OcapN"
+title: "SPEC-011: ztl — Capability-Based Knowledge Base Federation via OcapN"
 version: 0.1.0
 status: draft
 audience: agent, human
 date: 2026-02-25
 ---
 
-# SPEC-011: zetl — Capability-Based Knowledge Base Federation via OcapN
+# SPEC-011: ztl — Capability-Based Knowledge Base Federation via OcapN
 
 ## Information Table
 
 | Field          | Value                                                              |
 | -------------- | ------------------------------------------------------------------ |
 | Document ID    | SPEC-011                                                           |
-| Title          | zetl — Capability-Based Knowledge Base Federation via OcapN        |
+| Title          | ztl — Capability-Based Knowledge Base Federation via OcapN        |
 | Version        | 0.1.0                                                              |
 | Status         | Draft                                                              |
 | Author         | Agent (USDD Protocol v1.0.0)                                       |
 | Date           | 2026-02-25                                                         |
 | Audience       | Agent, Human                                                       |
 | Trace          | USDD Agent Protocol v1.0.0                                         |
-| Parent         | SPEC-001: zetl — Bi-directional Link Graph CLI                     |
+| Parent         | SPEC-001: ztl — Bi-directional Link Graph CLI                     |
 | Related        | SPEC-004: Distributed Vault Sync via Goblins Sidecar              |
 | Dependencies   | SPEC-006: Content-Addressed Merkle Tree, ed25519-dalek, blake3, spake2, bip39 |
 
@@ -28,7 +28,7 @@ date: 2026-02-25
 
 ## 1. Overview
 
-Two private vaults, each with their own zetl index, selectively share portions of their link graphs via OcapN capability-based security. Joining is a graph overlay — no vault files are modified, no central authority exists. By default only index metadata is shared; the read-content tier optionally materializes peer files as a local cache. Unjoining revokes the overlay cleanly. This specification is informed by the xm experiment (SPEC-029) and supersedes the sidecar approach in SPEC-004.
+Two private vaults, each with their own ztl index, selectively share portions of their link graphs via OcapN capability-based security. Joining is a graph overlay — no vault files are modified, no central authority exists. By default only index metadata is shared; the read-content tier optionally materializes peer files as a local cache. Unjoining revokes the overlay cleanly. This specification is informed by the xm experiment (SPEC-029) and supersedes the sidecar approach in SPEC-004.
 
 ### 1.1 Core Insight
 
@@ -42,10 +42,10 @@ The better decomposition:
 | Networking | OCapN via Goblins | OCapN CapTP in Rust (incremental) |
 | Sync scope | Full file sync (read + write) | Read-only sharing (graph overlay; opt-in content tier) |
 | Merge semantics | Three-way merge, conflict staging | No merge — cached peer indexes, not files |
-| Process model | Two processes (zetl + sidecar) | Single binary (zetl) |
+| Process model | Two processes (ztl + sidecar) | Single binary (ztl) |
 | Identity | Sturdyrefs (live references) | Self-contained signed tokens (offline-verifiable) |
 
-zetl stays a single Rust binary. Federation is additive — if no peers are configured, zetl works identically to today. When peers are added, the link graph gains remote nodes mediated by capabilities.
+ztl stays a single Rust binary. Federation is additive — if no peers are configured, ztl works identically to today. When peers are added, the link graph gains remote nodes mediated by capabilities.
 
 ### 1.2 Design Philosophy
 
@@ -62,7 +62,7 @@ zetl stays a single Rust binary. Federation is additive — if no peers are conf
 - Vault identity model (Ed25519 keypair generation and management)
 - Capability token format (self-contained, signed, offline-verifiable)
 - Capability lifecycle (creation, attenuation, delegation, revocation)
-- Peer management (`zetl peer add`, `remove`, `sync`, `list`)
+- Peer management (`ztl peer add`, `remove`, `sync`, `list`)
 - Joined link graph construction (local + peer caches)
 - Multi-match link resolution (all vaults queried, all matches surfaced)
 - Merkle-based delta sync (efficient peer cache refresh)
@@ -79,7 +79,7 @@ zetl stays a single Rust binary. Federation is additive — if no peers are conf
 - CRDT-based collaborative editing
 - Browser-based vault access
 - Real-time collaborative editing
-- xm RDF/SPARQL integration (xm and zetl remain separate tools)
+- xm RDF/SPARQL integration (xm and ztl remain separate tools)
 - Full OCapN CapTP implementation (incremental; basic federation works with signed tokens alone)
 
 ### 1.4 Relation to SPEC-004
@@ -127,17 +127,17 @@ Goals:
   - Cross-reference notes across machines
   - Keep lab-specific notes private from personal vault
   - Work offline — both machines not always on simultaneously
-  - zetl links and zetl backlinks span both vaults
+  - ztl links and ztl backlinks span both vaults
 Constraints:
   - Both machines on same LAN, or reachable via Tor
   - Comfortable with CLI tooling
   - Tolerates stale caches when offline
 Daily workflow:
-  1. On lab machine: write notes, run zetl index
+  1. On lab machine: write notes, run ztl index
   2. Grant read capability for research/ folder
-  3. On home machine: zetl peer add lab <token>
-  4. Run zetl index — link graph includes lab pages
-  5. zetl backlinks "Attention Mechanism" shows results from both vaults
+  3. On home machine: ztl peer add lab <token>
+  4. Run ztl index — link graph includes lab pages
+  5. ztl backlinks "Attention Mechanism" shows results from both vaults
   6. Offline: cached data used, staleness warning shown
 ```
 
@@ -159,9 +159,9 @@ Daily workflow:
   2. Lead attenuates per member:
      - Alice: graph+read-index, scope: shared/*
      - Bob: graph only, scope: shared/public/*
-  3. Members run zetl peer add <teammate> <token>
-  4. zetl links spans all shared folders
-  5. zetl check detects dead links to revoked peers
+  3. Members run ztl peer add <teammate> <token>
+  4. ztl links spans all shared folders
+  5. ztl check detects dead links to revoked peers
   6. When Carol leaves: lead revokes her token
   7. Carol's next sync attempt fails; other members' caches of Carol's
      pages are marked stale, then purged after configurable period
@@ -177,15 +177,15 @@ Goals:
   - Scoped to the working set, not the entire vault
 Constraints:
   - Sessions are ephemeral
-  - Agents invoke zetl CLI non-interactively (JSON output)
+  - Agents invoke ztl CLI non-interactively (JSON output)
   - Capability must be injectable as flag or env var
 Daily workflow:
   1. Agent A finishes research, creates capability:
-     zetl peer grant --scope "project/auth/*" --ops read-content
+     ztl peer grant --scope "project/auth/*" --ops read-content
   2. Orchestrator passes token to Agent B
-  3. Agent B imports: zetl peer add prev-session --cap <token>
-  4. Agent B runs zetl index — cached peer index provides immediate context
-  5. Agent B queries: zetl backlinks "OAuth2" --format json
+  3. Agent B imports: ztl peer add prev-session --cap <token>
+  4. Agent B runs ztl index — cached peer index provides immediate context
+  5. Agent B queries: ztl backlinks "OAuth2" --format json
      → Results include pages from prev-session peer
   6. Session ends; peer cache can be purged
 ```
@@ -196,37 +196,37 @@ Daily workflow:
 Happy Path: First-Time Vault Joining (Two Peers)
 
 Preconditions:
-  - Alice and Bob both have zetl installed with vault identity (zetl init)
-  - Both vaults are indexed (zetl index)
+  - Alice and Bob both have ztl installed with vault identity (ztl init)
+  - Both vaults are indexed (ztl index)
 
 Steps:
   1. Alice generates a capability:
-     zetl peer grant --scope "research/*" --ops graph
+     ztl peer grant --scope "research/*" --ops graph
      → Outputs: signed capability token (JSON)
   2. Alice sends the token to Bob out-of-band (email, file, QR code)
   3. Bob registers the peer:
-     zetl peer add alice --cap ./alice-cap.json
+     ztl peer add alice --cap ./alice-cap.json
      → Validates token signature
      → Attempts initial fetch from Alice's vault
      → Caches Alice's page manifest (research/ pages with links + Merkle roots)
-  4. Bob runs zetl index:
+  4. Bob runs ztl index:
      → Link graph includes Alice's research/ pages as remote nodes
      → Bob's [[Topic A]] (previously dead link) now resolves to alice:research/Topic A.md
   5. Bob queries:
-     zetl backlinks "Topic A"
+     ztl backlinks "Topic A"
      → Shows backlinks from both Bob's vault and Alice's research/ pages
-  6. Bob runs zetl check:
+  6. Bob runs ztl check:
      → No dead links for targets that resolve via alice peer
      → Shadow warning if "Topic A" exists in both vaults
 
 Postconditions:
   - Bob's link graph spans both vaults
   - Alice's files are untouched — only index metadata was shared
-  - Subsequent zetl index refreshes only fetch deltas (Merkle root comparison)
+  - Subsequent ztl index refreshes only fetch deltas (Merkle root comparison)
 
 Failure modes:
   - Alice unreachable → peer registered as 'pending', no cached index
-  - Token signature invalid → zetl peer add fails with structured error
+  - Token signature invalid → ztl peer add fails with structured error
   - Token expired → refresh fails, peer marked 'stale', cached data retained
 ```
 
@@ -238,12 +238,12 @@ Preconditions:
 
 Steps:
   1. Bob removes the peer:
-     zetl peer remove alice
-     → Deletes .zetl/peers/alice/ (capability + cached index + materialized files)
-  2. Bob runs zetl index:
+     ztl peer remove alice
+     → Deletes .ztl/peers/alice/ (capability + cached index + materialized files)
+  2. Bob runs ztl index:
      → Link graph rebuilt without Alice's pages
      → Bob's [[Topic A]] becomes a dead link again
-  3. Bob runs zetl check:
+  3. Bob runs ztl check:
      → Reports: "3 dead links (2 previously resolved via peer 'alice')"
      → Context helps Bob understand these are not new broken links
 
@@ -266,10 +266,10 @@ Preconditions:
 
 Steps:
   1. Alice writes a note containing [[Topic A]]
-  2. Alice runs zetl index:
+  2. Alice runs ztl index:
      → [[Topic A]] resolves to local page (primary match)
      → Bob's "Topic A" and Carol's "Topic A" also match
-  3. Alice runs zetl links "My Note":
+  3. Alice runs ztl links "My Note":
      → Output shows:
        { "target": "Topic A",
          "matches": [
@@ -277,7 +277,7 @@ Steps:
            { "vault": "peer:bob", "path": "research/Topic A.md" },
            { "vault": "peer:carol", "path": "shared/Topic A.md" }
          ] }
-  4. Alice runs zetl check:
+  4. Alice runs ztl check:
      → Diagnostic: "shadow: [[Topic A]] matches in 3 vaults (local, bob, carol)"
   5. For graph traversal (backlinks, path, etc.), local "Topic A" is used
   6. Alice can inspect each version to understand the shadow
@@ -288,7 +288,7 @@ Postconditions:
   - User has full agency to rename, scope, or accept the shadow
 
 Failure modes:
-  - All three pages could have different content — zetl surfaces this,
+  - All three pages could have different content — ztl surfaces this,
     does not attempt to merge or choose
 ```
 
@@ -303,7 +303,7 @@ Alice's Machine                              Bob's Machine
 ┌──────────────────────────┐                ┌──────────────────────────┐
 │                          │                │                          │
 │  ┌────────────────────┐  │                │  ┌────────────────────┐  │
-│  │   zetl CLI (Rust)  │  │                │  │   zetl CLI (Rust)  │  │
+│  │   ztl CLI (Rust)  │  │                │  │   ztl CLI (Rust)  │  │
 │  │                    │  │                │  │                    │  │
 │  │ index, links,      │  │                │  │ index, links,      │  │
 │  │ backlinks, search, │  │                │  │ backlinks, search, │  │
@@ -319,7 +319,7 @@ Alice's Machine                              Bob's Machine
 │    │ - peer cache  │     │                │    │ - peer cache  │     │
 │    └───────┬───────┘     │                │    └───────┬───────┘     │
 │            │             │                │            │             │
-│    .zetl/                │                │    .zetl/                │
+│    .ztl/                │                │    .ztl/                │
 │    ├── identity.json     │                │    ├── identity.json     │
 │    ├── identity.key      │                │    ├── identity.key      │
 │    ├── index.json        │                │    ├── index.json        │
@@ -336,21 +336,21 @@ Alice's Machine                              Bob's Machine
 │  vault-a/                │                │  vault-b/                │
 │  ├── research/           │                │  ├── research/           │
 │  ├── drafts/ (private)   │                │  ├── notes/              │
-│  └── .zetl/              │                │  └── .zetl/              │
+│  └── .ztl/              │                │  └── .ztl/              │
 │                          │                │                          │
 └──────────────────────────┘                └──────────────────────────┘
 ```
 
 ### 3.2 Component Responsibilities
 
-**zetl CLI (Rust)** — extended with `peer` subcommand group:
+**ztl CLI (Rust)** — extended with `peer` subcommand group:
 
 | Responsibility | Details |
 | --- | --- |
 | Local vault operations | All existing commands unchanged |
-| Vault identity | Ed25519 keypair generation and management at `zetl init` |
+| Vault identity | Ed25519 keypair generation and management at `ztl init` |
 | Capability tokens | Creation, signing, verification, attenuation |
-| Peer management | `zetl peer {add,remove,sync,list,grant,revoke}` |
+| Peer management | `ztl peer {add,remove,sync,list,grant,revoke}` |
 | Joined graph construction | `LinkGraph::build` takes local files + peer caches |
 | Multi-match resolution | Link queries return matches from all vaults with provenance |
 | Merkle delta sync | Compare vault root hashes, fetch only changed file metadata |
@@ -362,14 +362,14 @@ Alice's Machine                              Bob's Machine
 | Location | Purpose |
 | --- | --- |
 | `vault/*.md` | Markdown source files (source of truth, never modified by federation) |
-| `.zetl/index.json` | Local link graph index (existing, unchanged) |
-| `.zetl/identity.json` | Vault public key (stable identity) |
-| `.zetl/identity.key` | Vault private key (file mode 0600, never transmitted) |
-| `.zetl/revocations.json` | Nonces of revoked capabilities |
-| `.zetl/peers/<label>/cap.json` | Capability token for this peer |
-| `.zetl/peers/<label>/index.json` | Cached peer page manifest |
-| `.zetl/peers/<label>/status.json` | Peer status (active, pending, stale, revoked) |
-| `.zetl/peers/<label>/files/` | Materialized peer markdown files (`read-content` tier only) |
+| `.ztl/index.json` | Local link graph index (existing, unchanged) |
+| `.ztl/identity.json` | Vault public key (stable identity) |
+| `.ztl/identity.key` | Vault private key (file mode 0600, never transmitted) |
+| `.ztl/revocations.json` | Nonces of revoked capabilities |
+| `.ztl/peers/<label>/cap.json` | Capability token for this peer |
+| `.ztl/peers/<label>/index.json` | Cached peer page manifest |
+| `.ztl/peers/<label>/status.json` | Peer status (active, pending, stale, revoked) |
+| `.ztl/peers/<label>/files/` | Materialized peer markdown files (`read-content` tier only) |
 
 ### 3.3 Identity Model
 
@@ -406,8 +406,8 @@ Context:
      - Cannot verify content integrity
 
 Decision:
-  Ed25519 keypair (Option A). Generated once at `zetl init`, stored in
-  .zetl/identity.json (public) and .zetl/identity.key (private, 0600).
+  Ed25519 keypair (Option A). Generated once at `ztl init`, stored in
+  .ztl/identity.json (public) and .ztl/identity.key (private, 0600).
   The public key IS the vault's stable identity.
 
 Consequences:
@@ -505,25 +505,25 @@ Each tier is a strict superset. A `read-content` capability implicitly permits `
 
 ```
 1. CREATE — Alice generates a capability for a scope:
-   zetl peer grant --scope "research/*" --ops graph
+   ztl peer grant --scope "research/*" --ops graph
    → Writes signed token to stdout (JSON)
 
 2. DELEGATE — Alice sends the token to Bob (out-of-band):
    email, chat, file, QR code, environment variable
 
 3. ATTENUATE — Bob can derive a narrower capability:
-   zetl peer attenuate ./alice-cap.json --scope "research/public/*" --ops graph
+   ztl peer attenuate ./alice-cap.json --scope "research/public/*" --ops graph
    → New token: scope narrowed, ops same or narrower, expiry same or earlier
    → Signed by Bob's key, with chain link to Alice's token
 
 4. USE — Bob registers and syncs:
-   zetl peer add alice --cap ./alice-cap.json
-   zetl peer sync alice
-   zetl index (peers refreshed by default)
+   ztl peer add alice --cap ./alice-cap.json
+   ztl peer sync alice
+   ztl index (peers refreshed by default)
 
 5. REVOKE — Alice revokes Bob's access:
-   zetl peer revoke --nonce <nonce-from-token>
-   → Nonce added to .zetl/revocations.json
+   ztl peer revoke --nonce <nonce-from-token>
+   → Nonce added to .ztl/revocations.json
    → Bob's next sync attempt checks revocation list → rejected
    → Bob's cached data marked 'revoked'
 ```
@@ -534,7 +534,7 @@ The token-based flow above requires out-of-band transfer of a JSON blob — host
 
 ```
 1. INVITE — Alice starts an invite session:
-   zetl peer invite --scope "research/*" --ops graph
+   ztl peer invite --scope "research/*" --ops graph
    → Generates random BIP39 phrase: "tiger maple ocean drift"
    → Starts listening for SPAKE2 connection
    → Displays phrase to Alice
@@ -543,7 +543,7 @@ The token-based flow above requires out-of-band transfer of a JSON blob — host
    voice, text, in person, paper
 
 3. JOIN — Bob uses the phrase to connect:
-   zetl peer join --phrase "tiger maple ocean drift" --label alice
+   ztl peer join --phrase "tiger maple ocean drift" --label alice
    → Both sides execute SPAKE2 using the phrase as shared password
    → SPAKE2 derives a shared symmetric key
    → Wrong phrase → key mismatch → handshake fails immediately
@@ -554,7 +554,7 @@ The token-based flow above requires out-of-band transfer of a JSON blob — host
    → Phrase discarded. Real security is now the Ed25519 token.
 ```
 
-Both flows produce the same result: a stored capability token in `.zetl/peers/`. Token-based is better for agents and automation. Phrase-based is better for humans.
+Both flows produce the same result: a stored capability token in `.ztl/peers/`. Token-based is better for agents and automation. Phrase-based is better for humans.
 
 ```
 ADR-004: Phrase-Based Capability Exchange — SPAKE2 + BIP39
@@ -600,8 +600,8 @@ Decision:
   SPAKE2 + BIP39 phrases (Option C) as an interactive complement to
   token-based exchange. Both flows coexist:
 
-    Token-based (agents, async):  zetl peer grant → JSON → zetl peer add
-    Phrase-based (humans, sync):  zetl peer invite → 4 words → zetl peer join
+    Token-based (agents, async):  ztl peer grant → JSON → ztl peer add
+    Phrase-based (humans, sync):  ztl peer invite → 4 words → ztl peer join
 
   BIP39 word list provides 11 bits of entropy per word. Four words =
   44 bits — sufficient for a one-time exchange with a short validity
@@ -628,14 +628,14 @@ Peer data is stored locally according to the capability tier. The key insight: *
 
 | Tier | What is persisted locally | Storage location | Approx. size/page |
 | --- | --- | --- | --- |
-| `graph` | Page names, link targets, Merkle roots | `.zetl/peers/<label>/index.json` | ~1KB |
-| `read-index` | Above + section headings, SPL metadata, block IDs | `.zetl/peers/<label>/index.json` | ~5KB |
-| `read-content` | Above + full markdown files as real files on disk | `.zetl/peers/<label>/files/<path>` | File size + ~1KB |
+| `graph` | Page names, link targets, Merkle roots | `.ztl/peers/<label>/index.json` | ~1KB |
+| `read-index` | Above + section headings, SPL metadata, block IDs | `.ztl/peers/<label>/index.json` | ~5KB |
+| `read-content` | Above + full markdown files as real files on disk | `.ztl/peers/<label>/files/<path>` | File size + ~1KB |
 
 At `graph` and `read-index` tiers, everything lives in the JSON index cache — compact, fast to load, ephemeral. At `read-content`, the peer's shared files are materialized as real markdown files in a shadow directory. This enables:
 
-- **`zetl search`** works over peer content (the files are real, so existing search code works unchanged)
-- **Transclusion** via `zetl view` can render peer content inline
+- **`ztl search`** works over peer content (the files are real, so existing search code works unchanged)
+- **Transclusion** via `ztl view` can render peer content inline
 - **Offline access** to full peer content, not just metadata
 - **External tools** (grep, editors, etc.) can read the files
 - **Existing Rust file scanner** can parse them with zero changes
@@ -643,7 +643,7 @@ At `graph` and `read-index` tiers, everything lives in the JSON index cache — 
 The shadow directory (`files/`) mirrors the peer's folder structure within the capability scope:
 
 ```
-.zetl/peers/alice/
+.ztl/peers/alice/
 ├── cap.json
 ├── index.json
 ├── status.json
@@ -657,12 +657,12 @@ The shadow directory (`files/`) mirrors the peer's folder structure within the c
 
 **Lifecycle:**
 
-- **On sync (`zetl peer sync`):** files within scope are fetched and written to `files/`. Changed files are overwritten (Merkle delta determines which files changed). Deleted files on the peer are deleted locally.
-- **On unjoin (`zetl peer remove`):** the entire `.zetl/peers/<label>/` directory is deleted, including `files/`. The materialized files are gone.
+- **On sync (`ztl peer sync`):** files within scope are fetched and written to `files/`. Changed files are overwritten (Merkle delta determines which files changed). Deleted files on the peer are deleted locally.
+- **On unjoin (`ztl peer remove`):** the entire `.ztl/peers/<label>/` directory is deleted, including `files/`. The materialized files are gone.
 - **On revocation:** when a capability is revoked and the peer detects it, materialized files are deleted. If the peer is offline and cannot detect revocation, files persist with the stale cache — this is the "can't unread" reality. The revocation purge happens on next successful sync attempt.
 - **On scope narrowing:** if a capability is replaced with a narrower scope, files outside the new scope are deleted on next sync.
 
-**Not part of the vault.** Materialized peer files live under `.zetl/`, not in the vault root. They are excluded from the local index, local Merkle tree, and local link graph. They exist solely as a local cache for read access and search. The canonical source remains the peer's vault.
+**Not part of the vault.** Materialized peer files live under `.ztl/`, not in the vault root. They are excluded from the local index, local Merkle tree, and local link graph. They exist solely as a local cache for read access and search. The canonical source remains the peer's vault.
 
 ```
 ADR-005: Tiered Local Persistence — Materialize Files at read-content
@@ -676,12 +676,12 @@ Context:
   A. Metadata cache only (all tiers store JSON)
      + Minimal disk usage
      + Simple cleanup
-     - zetl search cannot index peer content (no files to scan)
+     - ztl search cannot index peer content (no files to scan)
      - Transclusion requires live fetch every time
      - Offline access limited to cached metadata
 
   B. Shadow directory with real files (read-content materializes)
-     + zetl search works over peer files unchanged
+     + ztl search works over peer files unchanged
      + Offline access to full content
      + External tools can read the files
      + Existing scanner/parser code works without modification
@@ -704,7 +704,7 @@ Context:
 
 Decision:
   Shadow directory (Option B). read-content capabilities materialize
-  peer files into .zetl/peers/<label>/files/, mirroring the peer's
+  peer files into .ztl/peers/<label>/files/, mirroring the peer's
   directory structure within the capability scope.
 
   graph and read-index tiers store only JSON metadata (compact,
@@ -715,9 +715,9 @@ Decision:
   removable.
 
 Consequences:
-  + zetl search spans peer content without code changes
+  + ztl search spans peer content without code changes
   + Transclusion and view work offline with peer content
-  + Cleanup is simple: rm -rf .zetl/peers/<label>/
+  + Cleanup is simple: rm -rf .ztl/peers/<label>/
   + Scanner/parser need no peer-awareness — files are just files
   - Disk usage proportional to peer content at read-content tier
   - Revocation cannot force data deletion if peer is offline
@@ -726,14 +726,14 @@ Consequences:
 
 ### 3.6 Joined Link Graph
 
-The joined graph is virtual and ephemeral — rebuilt on every `zetl index` from local files plus peer caches (and, at `read-content` tier, materialized files). It exists only in memory as a `petgraph::DiGraph`.
+The joined graph is virtual and ephemeral — rebuilt on every `ztl index` from local files plus peer caches (and, at `read-content` tier, materialized files). It exists only in memory as a `petgraph::DiGraph`.
 
 **Graph construction (extended `LinkGraph::build`):**
 
 ```
 Input:
   - local_files: Vec<ParsedFile>         (from scanner, existing)
-  - peer_caches: Vec<PeerCache>          (from .zetl/peers/*/index.json, new)
+  - peer_caches: Vec<PeerCache>          (from .ztl/peers/*/index.json, new)
 
 Algorithm:
   1. Build local nodes and edges (existing behavior, unchanged)
@@ -813,7 +813,7 @@ Consequences:
   + Full visibility — nothing hidden from the user
   + Deterministic graph traversal — local always wins
   + Agent-friendly — JSON output includes all matches, agent picks what it needs
-  + Diagnosable — zetl check surfaces shadows
+  + Diagnosable — ztl check surfaces shadows
   - Slightly more complex link output format
   - Users may need to learn about shadow diagnostics
 ```
@@ -879,13 +879,13 @@ This extends SPEC-006's existing drift model:
 ```
 REQ-001: Vault Identity Keypair
 
-The system SHALL generate an Ed25519 keypair at `zetl init` and store
-it in .zetl/identity.json (public key, JSON) and .zetl/identity.key
+The system SHALL generate an Ed25519 keypair at `ztl init` and store
+it in .ztl/identity.json (public key, JSON) and .ztl/identity.key
 (private key, file mode 0600).
 
 The public key SHALL serve as the vault's stable cryptographic identity,
 independent of content. The keypair SHALL NOT change when files are
-added, removed, or edited. If identity files already exist, `zetl init`
+added, removed, or edited. If identity files already exist, `ztl init`
 SHALL NOT overwrite them (idempotent).
 
 The private key file SHALL be created with mode 0600 (owner read/write
@@ -918,9 +918,9 @@ Trace:
 ```
 REQ-003: Capability Token Creation
 
-The system SHALL provide `zetl peer grant` to create signed capability
+The system SHALL provide `ztl peer grant` to create signed capability
 tokens. The command SHALL:
-  a) Read the vault's Ed25519 private key from .zetl/identity.key
+  a) Read the vault's Ed25519 private key from .ztl/identity.key
   b) Generate a random 32-byte nonce
   c) Construct a token with: granter public key, scope glob, operation
      tier, optional expiry, nonce, issued_at timestamp
@@ -958,7 +958,7 @@ Trace:
 ```
 REQ-005: Capability Attenuation
 
-The system SHALL provide `zetl peer attenuate` to derive a new
+The system SHALL provide `ztl peer attenuate` to derive a new
 capability with strictly narrower permissions from an existing token.
 
 The derived capability's scope MUST be a subset of the parent's scope
@@ -981,11 +981,11 @@ Trace:
 ```
 REQ-006: Capability Revocation
 
-The system SHALL provide `zetl peer revoke --nonce <hex>` to revoke
+The system SHALL provide `ztl peer revoke --nonce <hex>` to revoke
 a previously granted capability by its nonce.
 
 The granting vault SHALL maintain a revocation list in
-.zetl/revocations.json (append-only JSON array of nonce hex strings).
+.ztl/revocations.json (append-only JSON array of nonce hex strings).
 
 When a peer refreshes, it SHALL check the granter's revocation list
 if reachable. If the capability's nonce appears in the list, the peer
@@ -1006,14 +1006,14 @@ Trace:
 ```
 REQ-007: Peer Addition
 
-The system SHALL provide `zetl peer add --label <name> --cap <path>`
+The system SHALL provide `ztl peer add --label <name> --cap <path>`
 to register a remote vault as a peer. The command SHALL:
   a) Parse and validate the capability token (check Ed25519 signature)
-  b) Store the token in .zetl/peers/<label>/cap.json
-  c) Write initial status to .zetl/peers/<label>/status.json
+  b) Store the token in .ztl/peers/<label>/cap.json
+  c) Write initial status to .ztl/peers/<label>/status.json
   d) Attempt an initial index fetch from the remote vault
   e) If fetch succeeds, cache the peer's page manifest in
-     .zetl/peers/<label>/index.json
+     .ztl/peers/<label>/index.json
   f) If the remote is unreachable, register the peer with status
      'pending' and no cached index (warn, do not error)
 
@@ -1028,7 +1028,7 @@ Trace:
 ```
 REQ-008: Peer Refresh (Sync)
 
-The system SHALL provide `zetl peer sync [--label <name>]` to refresh
+The system SHALL provide `ztl peer sync [--label <name>]` to refresh
 peer caches. Refresh SHALL:
   a) Compare the cached vault root hash against the remote vault's
      current root hash (single hash comparison)
@@ -1038,10 +1038,10 @@ peer caches. Refresh SHALL:
   d) Fetch only changed file metadata (delta sync)
   e) Update the cached index and vault root hash
   f) At read-content tier: fetch changed file contents and write to
-     .zetl/peers/<label>/files/ (see REQ-019, REQ-020)
+     .ztl/peers/<label>/files/ (see REQ-019, REQ-020)
 
 Refresh without --label SHALL refresh all active peers.
-`zetl index` SHALL refresh peers by default (configurable via
+`ztl index` SHALL refresh peers by default (configurable via
 --no-peers flag).
 
 Trace:
@@ -1053,15 +1053,15 @@ Trace:
 ```
 REQ-009: Peer Removal (Unjoining)
 
-The system SHALL provide `zetl peer remove <label>` to unjoin a peer.
+The system SHALL provide `ztl peer remove <label>` to unjoin a peer.
 The command SHALL:
-  a) Delete .zetl/peers/<label>/ (capability + cached index + status +
+  a) Delete .ztl/peers/<label>/ (capability + cached index + status +
      materialized files if any)
-  b) The next zetl index SHALL rebuild the graph without the removed
+  b) The next ztl index SHALL rebuild the graph without the removed
      peer's pages
   c) Wikilinks previously resolved via the removed peer SHALL become
      dead links
-  d) zetl check SHALL report these with context: "dead link —
+  d) ztl check SHALL report these with context: "dead link —
      previously resolved via peer '<label>'"
 
 Removal is a local operation — it does not notify the remote vault.
@@ -1076,11 +1076,11 @@ Trace:
 ```
 REQ-010: Peer Listing
 
-The system SHALL provide `zetl peer list` to display all registered
+The system SHALL provide `ztl peer list` to display all registered
 peers with: label, vault public key (truncated), status, last sync
 timestamp, number of cached pages, capability scope, and operation tier.
 
-Output SHALL follow zetl's existing format conventions (JSON default,
+Output SHALL follow ztl's existing format conventions (JSON default,
 table with --format table).
 
 Trace:
@@ -1101,7 +1101,7 @@ remote to remote within the same peer) SHALL be included. The resolved
 set SHALL include remote pages. Dead-link detection (SPEC-001/REQ-005)
 SHALL consider remote pages as resolved targets.
 
-The joined graph is virtual — rebuilt on every zetl index from local
+The joined graph is virtual — rebuilt on every ztl index from local
 index plus peer caches. No persistent merge.
 
 Trace:
@@ -1118,7 +1118,7 @@ peers) and return the full set of matches, ordered by locality:
   2. Peer matches: included for every peer where the page exists
      within capability scope, marked with peer label
 
-When a target matches in multiple vaults, zetl links SHALL display all
+When a target matches in multiple vaults, ztl links SHALL display all
 matches with provenance annotations in the JSON output.
 
 For graph traversal (backlinks, shortest path, connected components):
@@ -1127,7 +1127,7 @@ For graph traversal (backlinks, shortest path, connected components):
   - No local match, multiple peer matches → use first peer by
     registration order (deterministic)
 
-zetl check SHALL emit a shadow diagnostic when a link target resolves
+ztl check SHALL emit a shadow diagnostic when a link target resolves
 in multiple vaults.
 
 Trace:
@@ -1191,12 +1191,12 @@ The system SHALL operate fully when peers are unreachable. Peer caches
 SHALL be used as-is with a staleness annotation (time since last
 successful refresh). All graph queries SHALL work against cached data.
 
-zetl check SHALL report stale peers (unreachable for > 24 hours,
+ztl check SHALL report stale peers (unreachable for > 24 hours,
 configurable via --stale-threshold).
 
 The system SHALL NOT block, retry indefinitely, or produce errors on
-unreachable peers during normal operations (zetl index, zetl links,
-zetl backlinks, zetl check, etc.). Unreachable peers SHALL produce
+unreachable peers during normal operations (ztl index, ztl links,
+ztl backlinks, ztl check, etc.). Unreachable peers SHALL produce
 a single warning on stderr, not an error exit code.
 
 Trace:
@@ -1208,7 +1208,7 @@ Trace:
 ```
 REQ-017: Phrase-Based Capability Invite
 
-The system SHALL provide `zetl peer invite` to start an interactive
+The system SHALL provide `ztl peer invite` to start an interactive
 capability exchange session. The command SHALL:
   a) Generate a random BIP39 mnemonic phrase (4 words, ~44 bits entropy)
   b) Create a signed capability token (per REQ-003)
@@ -1234,7 +1234,7 @@ Trace:
 ```
 REQ-018: Phrase-Based Capability Join
 
-The system SHALL provide `zetl peer join --phrase <words> --label <name>`
+The system SHALL provide `ztl peer join --phrase <words> --label <name>`
 to connect to an active invite session. The command SHALL:
   a) Parse the BIP39 phrase
   b) Connect to the inviting peer (direct address or rendezvous)
@@ -1247,8 +1247,8 @@ to connect to an active invite session. The command SHALL:
   g) Store the token and register the peer (same as REQ-007)
   h) Perform initial peer index fetch
 
-The result SHALL be identical to `zetl peer add --cap` — a stored
-capability token in .zetl/peers/<label>/. The phrase is discarded
+The result SHALL be identical to `ztl peer add --cap` — a stored
+capability token in .ztl/peers/<label>/. The phrase is discarded
 after use. Long-term security is the Ed25519-signed token.
 
 Trace:
@@ -1265,15 +1265,15 @@ REQ-019: Tiered Local Persistence
 The system SHALL persist peer data locally according to the capability
 tier:
 
-  graph         — JSON metadata only (.zetl/peers/<label>/index.json)
+  graph         — JSON metadata only (.ztl/peers/<label>/index.json)
   read-index    — JSON metadata only (richer index, same file)
   read-content  — JSON metadata + materialized markdown files in
-                  .zetl/peers/<label>/files/
+                  .ztl/peers/<label>/files/
 
-At the read-content tier, `zetl peer sync` SHALL write the peer's
-shared files to .zetl/peers/<label>/files/, mirroring the peer's
+At the read-content tier, `ztl peer sync` SHALL write the peer's
+shared files to .ztl/peers/<label>/files/, mirroring the peer's
 directory structure within the capability scope. Files SHALL be
-plain markdown — readable by zetl search, external tools, and the
+plain markdown — readable by ztl search, external tools, and the
 file scanner without modification.
 
 Materialized files SHALL NOT be included in the local vault's index,
@@ -1293,8 +1293,8 @@ Materialized peer files SHALL be managed as follows:
   a) On sync: fetch changed files (per Merkle delta), write to files/.
      Overwrite changed files, create new files, delete files removed
      by the peer or no longer within capability scope.
-  b) On unjoin (zetl peer remove): delete the entire
-     .zetl/peers/<label>/ directory, including files/.
+  b) On unjoin (ztl peer remove): delete the entire
+     .ztl/peers/<label>/ directory, including files/.
   c) On revocation detected: delete materialized files. If the peer
      is unreachable and revocation cannot be detected, files persist
      with the stale cache until next successful contact.
@@ -1326,9 +1326,9 @@ Trace:
 ```
 NFR-002: Zero-Peer Overhead
 
-All zetl commands that work today SHALL continue to work with zero
+All ztl commands that work today SHALL continue to work with zero
 degradation when no peers are configured. Peer-related code paths
-SHALL add <= 50ms to `zetl index` when .zetl/peers/ does not exist
+SHALL add <= 50ms to `ztl index` when .ztl/peers/ does not exist
 or is empty.
 
 Trace:
@@ -1338,7 +1338,7 @@ Trace:
 ```
 NFR-003: Offline Tolerance
 
-When peers are configured but unreachable, `zetl index` SHALL complete
+When peers are configured but unreachable, `ztl index` SHALL complete
 within 200ms of the no-peer baseline (connection timeout, not blocking).
 
 Trace:
@@ -1352,7 +1352,7 @@ Per-page cache overhead SHALL be:
   - <= 1KB per page at the graph tier (JSON metadata only)
   - <= 5KB per page at the read-index tier (JSON metadata only)
   - <= file size + 1KB overhead per page at the read-content tier
-    (JSON metadata + materialized file in .zetl/peers/<label>/files/)
+    (JSON metadata + materialized file in .ztl/peers/<label>/files/)
 
 At read-content tier, total peer storage is bounded by the size of
 the peer's shared files within the capability scope. Users granting
@@ -1381,10 +1381,10 @@ Trace:
 ```
 NFR-006: Backward Compatibility
 
-The federation subsystem SHALL be fully additive. Existing zetl
+The federation subsystem SHALL be fully additive. Existing ztl
 commands SHALL work identically whether or not peers are configured.
 The peer subsystem SHALL NOT modify the existing index format or any
-existing .zetl/ files except to add new files (identity, peers).
+existing .ztl/ files except to add new files (identity, peers).
 
 Trace:
   - TEST-019a
@@ -1396,14 +1396,14 @@ Trace:
 ## 5. Contract Specifications (CLI Interface)
 
 ```
-CON-001: zetl init (extended)
+CON-001: ztl init (extended)
 
-zetl init [OPTIONS]
+ztl init [OPTIONS]
 
-Extended behavior: if .zetl/identity.json does not exist, generate
+Extended behavior: if .ztl/identity.json does not exist, generate
 an Ed25519 keypair and write:
-  - .zetl/identity.json: { "public_key": "ed25519:<hex>", "created": "<ISO-8601>" }
-  - .zetl/identity.key: raw private key bytes (file mode 0600)
+  - .ztl/identity.json: { "public_key": "ed25519:<hex>", "created": "<ISO-8601>" }
+  - .ztl/identity.key: raw private key bytes (file mode 0600)
 
 If identity files already exist, no-op (idempotent).
 
@@ -1415,22 +1415,22 @@ Example output (JSON):
 {
   "vault_identity": "ed25519:a1b2c3d4e5f6...",
   "created": "2026-02-25T12:00:00Z",
-  "identity_file": ".zetl/identity.json",
-  "key_file": ".zetl/identity.key"
+  "identity_file": ".ztl/identity.json",
+  "key_file": ".ztl/identity.key"
 }
 
 Exit codes:
   0  Success (created or already exists)
-  1  Permission error (cannot write .zetl/)
+  1  Permission error (cannot write .ztl/)
 
 Implements: REQ-001
 Verified by: TEST-001
 ```
 
 ```
-CON-002: zetl peer grant
+CON-002: ztl peer grant
 
-zetl peer grant --scope <GLOB> --ops <TIER> [OPTIONS]
+ztl peer grant --scope <GLOB> --ops <TIER> [OPTIONS]
 
 Arguments:
   --scope <GLOB>     Folder or glob pattern relative to vault root
@@ -1456,7 +1456,7 @@ Example output:
 
 Exit codes:
   0  Success
-  1  No vault identity (run zetl init first)
+  1  No vault identity (run ztl init first)
   2  Invalid scope glob or ops tier
 
 Implements: REQ-003, REQ-004
@@ -1464,9 +1464,9 @@ Verified by: TEST-003, TEST-004
 ```
 
 ```
-CON-003: zetl peer attenuate
+CON-003: ztl peer attenuate
 
-zetl peer attenuate <TOKEN_PATH> [OPTIONS]
+ztl peer attenuate <TOKEN_PATH> [OPTIONS]
 
 Arguments:
   <TOKEN_PATH>       Path to parent capability token (JSON file)
@@ -1489,11 +1489,11 @@ Verified by: TEST-005
 ```
 
 ```
-CON-004: zetl peer revoke
+CON-004: ztl peer revoke
 
-zetl peer revoke --nonce <HEX>
+ztl peer revoke --nonce <HEX>
 
-Appends the nonce to .zetl/revocations.json. Peers checking the
+Appends the nonce to .ztl/revocations.json. Peers checking the
 revocation list on next refresh will see the nonce.
 
 Example output:
@@ -1511,11 +1511,11 @@ Verified by: TEST-006
 ```
 
 ```
-CON-005: zetl peer {add, remove, list}
+CON-005: ztl peer {add, remove, list}
 
-zetl peer add --label <NAME> --cap <TOKEN_PATH>
-zetl peer remove <LABEL>
-zetl peer list [--format json|table]
+ztl peer add --label <NAME> --cap <TOKEN_PATH>
+ztl peer remove <LABEL>
+ztl peer list [--format json|table]
 
 Add validates the token signature, stores it, and attempts initial fetch.
 Remove deletes the peer directory.
@@ -1546,9 +1546,9 @@ Verified by: TEST-007, TEST-009, TEST-010
 ```
 
 ```
-CON-006: zetl peer sync
+CON-006: ztl peer sync
 
-zetl peer sync [--label <NAME>] [--force]
+ztl peer sync [--label <NAME>] [--force]
 
 Refreshes peer caches via Merkle-based delta sync.
 Without --label, refreshes all active peers.
@@ -1582,9 +1582,9 @@ Verified by: TEST-008
 ```
 
 ```
-CON-007: zetl peer invite
+CON-007: ztl peer invite
 
-zetl peer invite --scope <GLOB> --ops <TIER> [OPTIONS]
+ztl peer invite --scope <GLOB> --ops <TIER> [OPTIONS]
 
 Arguments:
   --scope <GLOB>     Folder or glob pattern relative to vault root
@@ -1618,16 +1618,16 @@ On successful exchange (JSON, to stdout):
 Exit codes:
   0  Success (peer connected and received capability)
   1  Timeout (no peer connected within window)
-  2  No vault identity (run zetl init first)
+  2  No vault identity (run ztl init first)
 
 Implements: REQ-017
 Verified by: TEST-017
 ```
 
 ```
-CON-008: zetl peer join
+CON-008: ztl peer join
 
-zetl peer join --phrase <WORDS> --label <NAME> [OPTIONS]
+ztl peer join --phrase <WORDS> --label <NAME> [OPTIONS]
 
 Arguments:
   --phrase <WORDS>   BIP39 phrase from the inviting peer (4 words)
@@ -1670,13 +1670,13 @@ Verified by: TEST-018
 TEST-001: Vault Identity Generation
 
 Scenario: Generate identity at init
-Given: A vault with no .zetl/identity.json
-When: `zetl init` is run
+Given: A vault with no .ztl/identity.json
+When: `ztl init` is run
 Then:
-  - .zetl/identity.json is created with a valid Ed25519 public key
-  - .zetl/identity.key is created with file mode 0600
+  - .ztl/identity.json is created with a valid Ed25519 public key
+  - .ztl/identity.key is created with file mode 0600
   - Public key is 32 bytes (64 hex characters)
-  - Running `zetl init` again does not overwrite the keypair
+  - Running `ztl init` again does not overwrite the keypair
 
 Verifies: REQ-001
 ```
@@ -1700,7 +1700,7 @@ TEST-003: Capability Token Creation and Verification
 
 Scenario: Create and verify a capability token
 Given: A vault with identity
-When: `zetl peer grant --scope "research/*" --ops graph --expires 7d`
+When: `ztl peer grant --scope "research/*" --ops graph --expires 7d`
 Then:
   - Output is valid JSON with all required fields
   - Signature is verifiable against the granter's public key
@@ -1738,12 +1738,12 @@ TEST-005: Capability Attenuation
 
 Scenario: Valid attenuation
 Given: A token with scope="**", ops=read-content, expires=2026-06-01
-When: `zetl peer attenuate` with scope="research/*", ops=graph, expires=2026-03-01
+When: `ztl peer attenuate` with scope="research/*", ops=graph, expires=2026-03-01
 Then: A new token is created with narrower scope, ops, and expiry
 
 Scenario: Invalid attenuation (widening)
 Given: A token with scope="research/*", ops=graph
-When: `zetl peer attenuate` with scope="**" (wider scope)
+When: `ztl peer attenuate` with scope="**" (wider scope)
 Then: Command fails with exit code 1
 
 Verifies: REQ-005
@@ -1754,14 +1754,14 @@ TEST-006: Capability Revocation
 
 Scenario: Revoke a capability
 Given: Alice granted a token with nonce X to Bob
-When: Alice runs `zetl peer revoke --nonce X`
-Then: Nonce X appears in .zetl/revocations.json
-When: Bob attempts `zetl peer sync alice`
+When: Alice runs `ztl peer revoke --nonce X`
+Then: Nonce X appears in .ztl/revocations.json
+When: Bob attempts `ztl peer sync alice`
 Then: Sync fails — capability revoked (if Alice is reachable)
 
 Scenario: Offline revocation tolerance
 Given: Alice revoked Bob's capability, but Alice is unreachable
-When: Bob runs `zetl peer sync alice`
+When: Bob runs `ztl peer sync alice`
 Then: Sync fails (unreachable), cached data retained with stale warning
 
 Verifies: REQ-006
@@ -1772,20 +1772,20 @@ TEST-007: Peer Addition
 
 Scenario: Add a peer with valid token
 Given: Alice's vault has identity, Bob has a valid token from Alice
-When: Bob runs `zetl peer add --label alice --cap ./token.json`
+When: Bob runs `ztl peer add --label alice --cap ./token.json`
 Then:
-  - .zetl/peers/alice/cap.json contains the token
-  - .zetl/peers/alice/status.json shows "active" (if Alice reachable)
-  - .zetl/peers/alice/index.json contains cached page manifest
+  - .ztl/peers/alice/cap.json contains the token
+  - .ztl/peers/alice/status.json shows "active" (if Alice reachable)
+  - .ztl/peers/alice/index.json contains cached page manifest
 
 Scenario: Add peer with invalid token
 Given: A token with a tampered signature
-When: `zetl peer add --label alice --cap ./bad-token.json`
+When: `ztl peer add --label alice --cap ./bad-token.json`
 Then: Exit code 2, error: "capability token signature invalid"
 
 Scenario: Add peer when remote is unreachable
 Given: A valid token, but Alice's machine is offline
-When: `zetl peer add --label alice --cap ./token.json`
+When: `ztl peer add --label alice --cap ./token.json`
 Then: Peer registered with status "pending", no cached index, warning printed
 
 Verifies: REQ-007
@@ -1797,11 +1797,11 @@ TEST-008: Peer Refresh (Delta Sync)
 Scenario: No changes
 Given: Bob has alice as a peer, last synced vault root = abc123
 When: Alice's current vault root is abc123 (unchanged)
-Then: zetl peer sync completes instantly, no data transferred
+Then: ztl peer sync completes instantly, no data transferred
 
 Scenario: Partial changes
 Given: Alice's vault root changed, 2 of 100 pages modified
-When: Bob runs `zetl peer sync alice`
+When: Bob runs `ztl peer sync alice`
 Then: Only 2 files' metadata are fetched and cached
 
 Verifies: REQ-008, REQ-013
@@ -1812,12 +1812,12 @@ TEST-009: Peer Removal
 
 Scenario: Remove a peer
 Given: Bob has alice as an active peer
-When: Bob runs `zetl peer remove alice`
+When: Bob runs `ztl peer remove alice`
 Then:
-  - .zetl/peers/alice/ directory is deleted
-  - Next `zetl index` rebuilds graph without Alice's pages
+  - .ztl/peers/alice/ directory is deleted
+  - Next `ztl index` rebuilds graph without Alice's pages
   - [[Topic A]] (previously resolved via alice) becomes a dead link
-  - `zetl check` reports dead link with "previously resolved via peer 'alice'"
+  - `ztl check` reports dead link with "previously resolved via peer 'alice'"
 
 Verifies: REQ-009
 ```
@@ -1827,7 +1827,7 @@ TEST-010: Peer Listing
 
 Scenario: List peers
 Given: Bob has two peers (alice: active, carol: stale)
-When: `zetl peer list --format json`
+When: `ztl peer list --format json`
 Then: JSON output lists both peers with label, status, last_sync,
      cached_pages, scope, ops
 
@@ -1839,7 +1839,7 @@ TEST-011: Joined Graph Construction
 
 Scenario: Graph includes peer nodes
 Given: Bob's vault has 5 local pages, alice peer cache has 10 pages
-When: `zetl index` is run
+When: `ztl index` is run
 Then:
   - LinkGraph has 15+ nodes (local + peer, minus any shared names)
   - Peer nodes are marked with provenance (peer:alice)
@@ -1854,15 +1854,15 @@ TEST-012: Multi-Vault Link Resolution
 
 Scenario: Local and peer both have same page name
 Given: Bob has "Topic A" locally, alice peer also has "Topic A"
-When: `zetl links "My Note"` (which contains [[Topic A]])
+When: `ztl links "My Note"` (which contains [[Topic A]])
 Then:
   - Output shows two matches: { vault: "local" } and { vault: "peer:alice" }
   - Graph traversal uses local "Topic A" as primary target
-  - `zetl check` emits shadow diagnostic
+  - `ztl check` emits shadow diagnostic
 
 Scenario: Only peer has the page
 Given: Bob has no "Topic A" locally, alice peer has it
-When: `zetl links "My Note"` (which contains [[Topic A]])
+When: `ztl links "My Note"` (which contains [[Topic A]])
 Then:
   - Output shows one match: { vault: "peer:alice" }
   - [[Topic A]] is NOT a dead link
@@ -1876,7 +1876,7 @@ TEST-013: Merkle-Based Delta Sync
 Scenario: Only changed files are fetched
 Given: Bob has alice peer synced, vault root = abc123, 100 pages cached
 When: Alice edits 2 pages (vault root becomes def456)
-When: Bob runs `zetl peer sync alice`
+When: Bob runs `ztl peer sync alice`
 Then:
   - System compares vault roots (abc123 ≠ def456)
   - System walks file-level Merkle hashes within capability scope
@@ -1887,7 +1887,7 @@ Then:
 Scenario: Identical roots skip fetch entirely
 Given: Bob has alice peer synced, vault root = abc123
 When: Alice's vault root is still abc123
-When: Bob runs `zetl peer sync alice`
+When: Bob runs `ztl peer sync alice`
 Then:
   - Vault root comparison detects no change
   - No file-level hashes are walked
@@ -1903,7 +1903,7 @@ TEST-014: Content Integrity Verification
 Scenario: Valid signature accepted
 Given: Bob has alice peer with cached vault root
 When: Alice's peer engine serves a vault root signed with her Ed25519 key
-When: Bob runs `zetl peer sync alice`
+When: Bob runs `ztl peer sync alice`
 Then:
   - Signature is verified against Alice's public key (from capability token)
   - Sync proceeds normally
@@ -1912,7 +1912,7 @@ Then:
 Scenario: Invalid signature rejected
 Given: Bob has alice peer with cached vault root
 When: Alice's peer engine serves a vault root with a tampered signature
-When: Bob runs `zetl peer sync alice`
+When: Bob runs `ztl peer sync alice`
 Then:
   - Signature verification fails
   - Sync is rejected — no cached data is updated
@@ -1928,7 +1928,7 @@ TEST-015: Cross-Vault Drift Detection
 Scenario: Peer page changed since local reference
 Given: Bob's "Design.md" links to [[Topic A]] (alice peer, root=eee)
 When: Alice edits Topic A (root becomes fff)
-When: Bob runs `zetl peer sync alice` then `zetl check --drift`
+When: Bob runs `ztl peer sync alice` then `ztl check --drift`
 Then: Drift diagnostic emitted:
   "linked page 'Topic A' (peer 'alice') has changed since this
    section was written"
@@ -1941,7 +1941,7 @@ TEST-016: Offline Degradation
 
 Scenario: All peers unreachable
 Given: Bob has two peers configured, both machines are offline
-When: `zetl index` is run
+When: `ztl index` is run
 Then:
   - Command succeeds (exit 0)
   - Cached peer data is used
@@ -1957,27 +1957,27 @@ TEST-017: Phrase-Based Invite
 
 Scenario: Successful invite/join exchange
 Given: Alice has a vault with identity
-When: Alice runs `zetl peer invite --scope "research/*" --ops graph`
+When: Alice runs `ztl peer invite --scope "research/*" --ops graph`
 Then:
   - A 4-word BIP39 phrase is displayed
   - The process waits for a connection
-When: Bob runs `zetl peer join --phrase "tiger maple ocean drift" --label alice`
+When: Bob runs `ztl peer join --phrase "tiger maple ocean drift" --label alice`
 Then:
   - SPAKE2 handshake succeeds
   - Bob receives a valid capability token
-  - Bob's .zetl/peers/alice/ is populated
+  - Bob's .ztl/peers/alice/ is populated
   - Alice's invite session completes (exit 0)
 
 Scenario: Wrong phrase
 Given: Alice is running an invite session
-When: Bob runs `zetl peer join --phrase "wrong words here now" --label alice`
+When: Bob runs `ztl peer join --phrase "wrong words here now" --label alice`
 Then:
   - SPAKE2 key mismatch detected
   - Bob gets exit code 1: "phrase mismatch"
   - Alice's invite session continues waiting (wrong attempt does not consume invite)
 
 Scenario: Invite timeout
-Given: Alice runs `zetl peer invite --timeout 10`
+Given: Alice runs `ztl peer invite --timeout 10`
 When: No peer connects within 10 seconds
 Then:
   - Invite session exits with code 1: "timeout — no peer connected"
@@ -1991,12 +1991,12 @@ Verifies: REQ-017
 TEST-018: Phrase-Based Join Produces Same Result as Token-Based Add
 
 Scenario: Equivalence of join and add
-Given: Alice creates a capability via `zetl peer grant` (token to file)
+Given: Alice creates a capability via `ztl peer grant` (token to file)
        Alice also starts an invite with the same scope/ops
-When: Bob uses `zetl peer add --cap ./token.json --label alice-token`
-      Carol uses `zetl peer join --phrase "..." --label alice-phrase`
+When: Bob uses `ztl peer add --cap ./token.json --label alice-token`
+      Carol uses `ztl peer join --phrase "..." --label alice-phrase`
 Then:
-  - Both Bob and Carol have .zetl/peers/<label>/cap.json
+  - Both Bob and Carol have .ztl/peers/<label>/cap.json
   - Both tokens have the same scope, ops, and granter
   - Both peers can sync, query links, and see Alice's pages identically
   - The only difference is the "method" field in status.json (token vs phrase)
@@ -2010,21 +2010,21 @@ TEST-019a: File Materialization at read-content Tier
 Scenario: Sync materializes files
 Given: Alice grants Bob a read-content capability for scope "research/*"
        Alice's research/ folder contains 3 markdown files
-When: Bob runs `zetl peer add --label alice --cap ./token.json`
-      Bob runs `zetl peer sync alice`
+When: Bob runs `ztl peer add --label alice --cap ./token.json`
+      Bob runs `ztl peer sync alice`
 Then:
-  - .zetl/peers/alice/files/research/ exists
+  - .ztl/peers/alice/files/research/ exists
   - All 3 markdown files are present as real files
   - File contents match Alice's originals
-  - Files are not included in Bob's local zetl index or Merkle tree
-  - `zetl search "keyword"` finds matches in Alice's materialized files
+  - Files are not included in Bob's local ztl index or Merkle tree
+  - `ztl search "keyword"` finds matches in Alice's materialized files
 
 Scenario: graph tier does NOT materialize files
 Given: Alice grants Bob a graph-only capability
 When: Bob adds and syncs
 Then:
-  - .zetl/peers/alice/files/ does NOT exist
-  - .zetl/peers/alice/index.json contains metadata only
+  - .ztl/peers/alice/files/ does NOT exist
+  - .ztl/peers/alice/index.json contains metadata only
 
 Verifies: REQ-019
 ```
@@ -2034,25 +2034,25 @@ TEST-019b: File Materialization Lifecycle
 
 Scenario: Unjoin deletes materialized files
 Given: Bob has alice peer with read-content, files materialized
-When: Bob runs `zetl peer remove alice`
+When: Bob runs `ztl peer remove alice`
 Then:
-  - .zetl/peers/alice/ is completely deleted, including files/
+  - .ztl/peers/alice/ is completely deleted, including files/
   - No materialized files remain
 
 Scenario: Sync updates materialized files
 Given: Bob has alice peer synced, research/Topic A.md materialized
 When: Alice edits Topic A.md (Merkle root changes)
-When: Bob runs `zetl peer sync alice`
+When: Bob runs `ztl peer sync alice`
 Then:
-  - .zetl/peers/alice/files/research/Topic A.md is overwritten with new content
+  - .ztl/peers/alice/files/research/Topic A.md is overwritten with new content
   - Unchanged files are not re-written
 
 Scenario: Peer deletes a file
 Given: Bob has alice peer synced, research/Old Note.md materialized
 When: Alice deletes Old Note.md
-When: Bob runs `zetl peer sync alice`
+When: Bob runs `ztl peer sync alice`
 Then:
-  - .zetl/peers/alice/files/research/Old Note.md is deleted locally
+  - .ztl/peers/alice/files/research/Old Note.md is deleted locally
 
 Scenario: Scope narrowing removes out-of-scope files
 Given: Bob has alice peer with scope "research/**", files materialized
@@ -2073,7 +2073,7 @@ Verifies: REQ-020
 OBS-001: Peer Sync Log
 
 All peer sync operations SHALL be logged to
-.zetl/peers/sync-log.jsonl in append-only JSON-lines format:
+.ztl/peers/sync-log.jsonl in append-only JSON-lines format:
 
   {"timestamp": "...", "op": "sync", "peer": "alice", "status": "updated",
    "pages_changed": 3, "files_materialized": 3, "elapsed_ms": 230}
@@ -2084,7 +2084,7 @@ All peer sync operations SHALL be logged to
 ```
 OBS-002: Peer Health in Stats
 
-`zetl stats` SHALL include a peers section when peers are configured:
+`ztl stats` SHALL include a peers section when peers are configured:
 
   "peers": {
     "count": 2,
@@ -2156,7 +2156,7 @@ Hypothesis: Two vaults on one machine can be joined via filesystem
             resolution, and drift detection in <= 1 week.
 
 Approach:
-  - Implement PeerCache struct and loading from .zetl/peers/
+  - Implement PeerCache struct and loading from .ztl/peers/
   - Extend LinkGraph::build to accept peer caches
   - Implement multi-match resolution in link queries
   - Implement cross-vault drift detection
@@ -2166,11 +2166,11 @@ Approach:
 
 Timebox: 1 week
 Success metric:
-  - zetl links shows matches from both vaults
-  - zetl backlinks spans both vaults
-  - zetl check reports shadows and cross-vault drift
-  - zetl peer remove cleanly unjoins (including materialized files)
-  - read-content tier materializes files; zetl search finds peer content
+  - ztl links shows matches from both vaults
+  - ztl backlinks spans both vaults
+  - ztl check reports shadows and cross-vault drift
+  - ztl peer remove cleanly unjoins (including materialized files)
+  - read-content tier materializes files; ztl search finds peer content
 Exit criteria: If graph composition introduces unacceptable complexity
                to LinkGraph::build, evaluate a separate FederatedGraph
                wrapper instead
@@ -2222,7 +2222,7 @@ Approach:
   - Compare with QUIC (quinn crate) for multiplexed streams
 
 Timebox: 3 days
-Success metric: Two zetl instances can sync peer caches over
+Success metric: Two ztl instances can sync peer caches over
                 encrypted TCP with mutual authentication
 Exit criteria: If TLS certificate pinning to Ed25519 keys proves
                impractical, evaluate noise protocol framework instead
@@ -2235,8 +2235,8 @@ Exit criteria: If TLS certificate pinning to Ed25519 keys proves
 | Phase | Deliverable | Effort | Dependencies |
 | --- | --- | --- | --- |
 | **0. Spikes** | Token format, local federation prototype, SPAKE2+BIP39, transport eval | 2-3 weeks | ed25519-dalek, spake2, bip39 crates |
-| **1. Identity** | `zetl init` generates Ed25519 keypair | 1-2 days | Spike 8.1 results |
-| **2. Tokens** | `zetl peer grant`, `attenuate`, `revoke` | 3-5 days | Phase 1 |
+| **1. Identity** | `ztl init` generates Ed25519 keypair | 1-2 days | Spike 8.1 results |
+| **2. Tokens** | `ztl peer grant`, `attenuate`, `revoke` | 3-5 days | Phase 1 |
 | **3. Local federation** | `peer add/remove/list`, joined graph, multi-match, file materialization | 5-7 days | Phase 2, Spike 8.3 |
 | **4. Merkle sync** | Delta sync via Merkle root comparison, integrity verification | 3-5 days | Phase 3 |
 | **5. Networking** | TCP+TLS transport, peer discovery, remote sync | 5-7 days | Phase 4, Spike 8.2/8.5 |
@@ -2252,17 +2252,17 @@ Phases 1-3 can be shipped as a useful local-only federation feature before netwo
 
 ## 10. Open Questions
 
-1. **Should zetl support multi-hop capability delegation (Alice -> Bob -> Carol)?** Adds complexity but enables team topologies without requiring the original granter to issue every token. UCAN provides a proven model for delegation chains. Recommendation: support in token format from the start (chain field), but validate only single-hop initially.
+1. **Should ztl support multi-hop capability delegation (Alice -> Bob -> Carol)?** Adds complexity but enables team topologies without requiring the original granter to issue every token. UCAN provides a proven model for delegation chains. Recommendation: support in token format from the start (chain field), but validate only single-hop initially.
 
 2. **Transitive peer visibility?** If Alice peers with Bob, and Bob peers with Carol, should Alice see Carol's pages through Bob? Pure ocap says no — Alice has no capability for Carol's vault. But Bob could attenuate and re-delegate. Recommendation: no transitive visibility by default. If Bob wants to share Carol's pages with Alice, he explicitly attenuates Carol's token and grants it to Alice.
 
 3. **SPL reasoning across vaults?** If Alice's theory references Bob's facts, and Bob's facts change, Alice's conclusions may be invalidated. The Merkle grounding mechanism (SPEC-006) handles drift detection within a vault; extending it across vaults requires the reasoning engine to understand peer provenance. Recommendation: defer to a future SPEC that builds on SPEC-005 + SPEC-011.
 
-4. **How stale is too stale?** Should `zetl check` warn about peer caches older than N hours/days? Users in the solo-researcher profile may go weeks between syncs and consider it normal. Recommendation: configurable threshold (default 24h), suppressible per-peer.
+4. **How stale is too stale?** Should `ztl check` warn about peer caches older than N hours/days? Users in the solo-researcher profile may go weeks between syncs and consider it normal. Recommendation: configurable threshold (default 24h), suppressible per-peer.
 
-5. **Should peer removal purge history?** When `zetl peer remove` is run, should the sync log entries be removed? Recommendation: keep the log (append-only audit trail), delete only the cached index and capability token.
+5. **Should peer removal purge history?** When `ztl peer remove` is run, should the sync log entries be removed? Recommendation: keep the log (append-only audit trail), delete only the cached index and capability token.
 
-6. **Key rotation?** If a vault's Ed25519 key is compromised, all previously granted capabilities must be re-issued. Should zetl support key rotation with a signed "succession" record? Recommendation: out of scope for v1. Document that key compromise requires manual re-keying and re-granting.
+6. **Key rotation?** If a vault's Ed25519 key is compromised, all previously granted capabilities must be re-issued. Should ztl support key rotation with a signed "succession" record? Recommendation: out of scope for v1. Document that key compromise requires manual re-keying and re-granting.
 
 7. **What URI scheme for cross-vault wikilinks?** This spec keeps wikilinks as-is (`[[Page Name]]`) and resolves them via the joined graph. Should a future spec introduce explicit cross-vault syntax (e.g., `[[alice::Page]]` or `[[peer:alice/Page]]`)? This would break Obsidian compatibility but provide unambiguous cross-vault references. Recommendation: defer. Implicit resolution via the graph is sufficient and preserves file portability.
 
@@ -2270,9 +2270,9 @@ Phases 1-3 can be shipped as a useful local-only federation feature before netwo
 
 9. **How many words in the phrase?** 4 words (~44 bits) is sufficient for a 5-minute window against brute-force. For higher-security contexts (longer windows, untrusted networks), 6 words (~66 bits) may be preferred. Recommendation: default to 4, allow `--words 6` for paranoid users.
 
-10. **Should `zetl search` automatically include peer files?** Materialized peer files at `read-content` tier are real files on disk, so search _could_ include them. Options: (a) always include, (b) opt-in via `--peers` flag, (c) separate `zetl search --scope peer:alice`. Recommendation: include by default with provenance annotation in results, allow `--local-only` to exclude. This matches the "show all matches" philosophy (ADR-003).
+10. **Should `ztl search` automatically include peer files?** Materialized peer files at `read-content` tier are real files on disk, so search _could_ include them. Options: (a) always include, (b) opt-in via `--peers` flag, (c) separate `ztl search --scope peer:alice`. Recommendation: include by default with provenance annotation in results, allow `--local-only` to exclude. This matches the "show all matches" philosophy (ADR-003).
 
-11. **Should materialized files be `.gitignore`d?** The `.zetl/` directory is typically gitignored already, so materialized files in `.zetl/peers/<label>/files/` are excluded by default. But if a user has a non-standard `.gitignore`, peer files could accidentally be committed. Recommendation: document that `.zetl/` should be in `.gitignore` (existing guidance), no additional action needed.
+11. **Should materialized files be `.gitignore`d?** The `.ztl/` directory is typically gitignored already, so materialized files in `.ztl/peers/<label>/files/` are excluded by default. But if a user has a non-standard `.gitignore`, peer files could accidentally be committed. Recommendation: document that `.ztl/` should be in `.gitignore` (existing guidance), no additional action needed.
 
 ---
 

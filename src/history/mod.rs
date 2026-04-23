@@ -28,17 +28,17 @@ use jj_backend::VcsBackend as _;
 /// Open the jj workspace for temporal queries (REQ-084).
 ///
 /// Unlike [`jj_backend::JjBackend::open_or_init_at_vault_root`], this function
-/// **does not initialise** a new workspace. If `.zetl/jj/` is absent it returns
+/// **does not initialise** a new workspace. If `.ztl/jj/` is absent it returns
 /// an error with code `NO_HISTORY` so the caller can surface a structured
-/// diagnostic: "history will be available after the next `zetl index`".
+/// diagnostic: "history will be available after the next `ztl index`".
 ///
 /// Use [`auto_snapshot`] / `cmd_index` when you want the init-or-open behaviour.
 pub fn open_history(vault_root: &Path) -> anyhow::Result<jj_backend::JjBackend> {
-    let jj_dir = vault_root.join(".zetl").join("jj");
+    let jj_dir = vault_root.join(".ztl").join("jj");
     if !jj_dir.exists() {
         anyhow::bail!(
             "NO_HISTORY: No history available. \
-             Run `zetl index` to create the first snapshot."
+             Run `ztl index` to create the first snapshot."
         );
     }
     jj_backend::JjBackend::open_or_init_at_vault_root(vault_root)
@@ -312,7 +312,7 @@ pub fn build_history_index_json(vault_root: &Path, page_names: &[&str]) -> Optio
 
 /// Create a jj snapshot after index completion (REQ-076, ADR-048).
 ///
-/// - Opens or initialises the jj workspace at `.zetl/jj/`.
+/// - Opens or initialises the jj workspace at `.ztl/jj/`.
 /// - Embeds `vault_root_hash` in the commit description for traceability.
 /// - Skips the snapshot when the most recent commit already records the same
 ///   `vault_root_hash` (fast content-hash deduplication).
@@ -331,7 +331,7 @@ pub fn auto_snapshot(
 
 /// Like [`auto_snapshot`] but attributes the jj commit to a specific
 /// author. `author` is `(name, email)`. When `None`, falls back to the
-/// default `("zetl", "zetl@localhost")` identity.
+/// default `("ztl", "ztl@localhost")` identity.
 pub fn auto_snapshot_as(
     vault_root: &Path,
     vault_root_hash: Option<&str>,
@@ -356,8 +356,8 @@ pub fn auto_snapshot_with_trailers(
     let mut backend = jj_backend::JjBackend::open_or_init_at_vault_root(vault_root)?;
 
     let mut description = match vault_root_hash {
-        Some(hash) => format!("zetl-snapshot vault_root_hash={hash}"),
-        None => "zetl-snapshot".to_owned(),
+        Some(hash) => format!("ztl-snapshot vault_root_hash={hash}"),
+        None => "ztl-snapshot".to_owned(),
     };
     if !co_authors.is_empty() {
         description.push_str("\n");

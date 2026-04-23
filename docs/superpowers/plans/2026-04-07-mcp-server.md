@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add an MCP server to zetl exposing graph traversal, search, and reasoning as typed tools with stdio/HTTP transports and JWT delegation auth.
+**Goal:** Add an MCP server to ztl exposing graph traversal, search, and reasoning as typed tools with stdio/HTTP transports and JWT delegation auth.
 
-**Architecture:** Feature-gated `mcp` module using rmcp SDK. McpState holds Arc-wrapped graph, search indexes, and vault metadata. Tools are thin adapters over existing zetl functions. Auth is an axum middleware layer for HTTP transport.
+**Architecture:** Feature-gated `mcp` module using rmcp SDK. McpState holds Arc-wrapped graph, search indexes, and vault metadata. Tools are thin adapters over existing ztl functions. Auth is an axum middleware layer for HTTP transport.
 
 **Tech Stack:** rmcp (MCP SDK), axum 0.8 (HTTP transport), jsonwebtoken (JWT), ed25519-dalek (signing), tokio (async runtime)
 
@@ -45,7 +45,7 @@ required-features = ["mcp"]
 - [ ] **1b. Create `src/mcp/mod.rs`**
 
 ```rust
-//! MCP (Model Context Protocol) server for zetl (SPEC-021).
+//! MCP (Model Context Protocol) server for ztl (SPEC-021).
 //!
 //! Gated behind the `mcp` Cargo feature. Exposes vault graph traversal,
 //! search, and reasoning as typed MCP tools over stdio and HTTP transports.
@@ -94,7 +94,7 @@ Create `src/mcp/auth.rs`:
 Create `src/mcp/delegate.rs`:
 
 ```rust
-//! `zetl delegate` command implementation — JWT signing with ed25519.
+//! `ztl delegate` command implementation — JWT signing with ed25519.
 ```
 
 Create `src/mcp/types.rs`:
@@ -117,7 +117,7 @@ pub mod mcp;
 In `src/cli.rs`, add the variant inside the `Command` enum (after the `Diff` variant):
 
 ```rust
-    /// Start an MCP server exposing zetl tools
+    /// Start an MCP server exposing ztl tools
     #[cfg(feature = "mcp")]
     Mcp {
         /// Transport mode: stdio or http
@@ -174,7 +174,7 @@ Add the stub function:
 #[cfg(feature = "mcp")]
 fn cmd_mcp(
     cli: &Cli,
-    transport: &zetl::cli::McpTransport,
+    transport: &ztl::cli::McpTransport,
     host: &str,
     port: u16,
     insecure: bool,
@@ -246,13 +246,13 @@ pub struct McpState {
 
 /// JWT claims for delegate tokens (SPEC-021 auth).
 ///
-/// Issued by `zetl delegate`, verified by the MCP server's auth middleware.
+/// Issued by `ztl delegate`, verified by the MCP server's auth middleware.
 /// The token is signed with the user's ed25519 key derived from their BIP39 mnemonic.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DelegateClaims {
     /// Issuer: user ID of the token creator.
     pub iss: String,
-    /// Subject: "zetl-mcp" (fixed).
+    /// Subject: "ztl-mcp" (fixed).
     pub sub: String,
     /// Audience: vault root hash or vault identifier.
     pub aud: String,
@@ -322,7 +322,7 @@ mod tests {
     fn delegate_claims_serde_round_trip() {
         let claims = DelegateClaims {
             iss: "alice-a1b2c3d4".to_string(),
-            sub: "zetl-mcp".to_string(),
+            sub: "ztl-mcp".to_string(),
             aud: "vault-abc123".to_string(),
             iat: 1712500000,
             exp: 1712503600,
@@ -339,7 +339,7 @@ mod tests {
     fn delegate_claims_empty_tools_omitted() {
         let claims = DelegateClaims {
             iss: "alice-a1b2c3d4".to_string(),
-            sub: "zetl-mcp".to_string(),
+            sub: "ztl-mcp".to_string(),
             aud: "vault-abc123".to_string(),
             iat: 1712500000,
             exp: 1712503600,
@@ -710,7 +710,7 @@ mod tests {
     fn claims_to_context_preserves_fields() {
         let claims = DelegateClaims {
             iss: "alice-a1b2c3d4".into(),
-            sub: "zetl-mcp".into(),
+            sub: "ztl-mcp".into(),
             aud: "vault-abc".into(),
             iat: 100,
             exp: 200,
@@ -752,7 +752,7 @@ In `src/mcp/tools.rs`:
 //! Tool handler implementations — one function per MCP tool.
 //!
 //! Each function takes McpState + tool-specific parameters, calls existing
-//! zetl APIs, and returns a serde_json::Value for the MCP response.
+//! ztl APIs, and returns a serde_json::Value for the MCP response.
 
 use crate::mcp::auth::resolve_page;
 use crate::mcp::types::{McpState, ToolError};
@@ -1372,7 +1372,7 @@ use rmcp::service::RequestContext;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-/// The zetl MCP server, wrapping McpState and implementing the rmcp handler trait.
+/// The ztl MCP server, wrapping McpState and implementing the rmcp handler trait.
 #[derive(Clone)]
 pub struct McpServer {
     pub state: McpState,
@@ -1571,8 +1571,8 @@ impl McpServer {
 impl ServerHandler for McpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            instructions: Some("zetl MCP server — bi-directional wikilink graph tools for Markdown vaults".into()),
-            name: "zetl".into(),
+            instructions: Some("ztl MCP server — bi-directional wikilink graph tools for Markdown vaults".into()),
+            name: "ztl".into(),
             version: env!("CARGO_PKG_VERSION").into(),
         }
     }
@@ -1684,7 +1684,7 @@ pub async fn serve_http(
 
     let addr = format!("{host}:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    eprintln!("zetl mcp  ->  http://{addr}");
+    eprintln!("ztl mcp  ->  http://{addr}");
     axum::serve(listener, app).await?;
 
     Ok(())
@@ -1694,7 +1694,7 @@ pub async fn serve_http(
 async fn health_handler() -> axum::Json<serde_json::Value> {
     axum::Json(serde_json::json!({
         "status": "ok",
-        "server": "zetl-mcp",
+        "server": "ztl-mcp",
         "version": env!("CARGO_PKG_VERSION"),
     }))
 }
@@ -1708,20 +1708,20 @@ Replace the stub with a full implementation:
 #[cfg(feature = "mcp")]
 fn cmd_mcp(
     cli: &Cli,
-    transport: &zetl::cli::McpTransport,
+    transport: &ztl::cli::McpTransport,
     host: &str,
     port: u16,
     insecure: bool,
 ) -> Result<()> {
-    use zetl::cli::McpTransport;
-    use zetl::mcp::server::McpServer;
-    use zetl::mcp::transport;
-    use zetl::mcp::types::McpState;
+    use ztl::cli::McpTransport;
+    use ztl::mcp::server::McpServer;
+    use ztl::mcp::transport;
+    use ztl::mcp::types::McpState;
 
     let pipeline = run_pipeline(cli)?;
 
     // Build tantivy search index
-    let tantivy = zetl::search_index::SearchIndex::build(&pipeline.vault_root, &pipeline.files)
+    let tantivy = ztl::search_index::SearchIndex::build(&pipeline.vault_root, &pipeline.files)
         .context("building search index for MCP")?;
 
     // Collect page names (sorted)
@@ -1734,7 +1734,7 @@ fn cmd_mcp(
 
     // Build allowed issuers from user profiles
     let mut allowed_issuers = std::collections::HashMap::new();
-    if let Ok(profiles) = zetl::user::list_profiles(&pipeline.vault_root) {
+    if let Ok(profiles) = ztl::user::list_profiles(&pipeline.vault_root) {
         for profile in profiles {
             allowed_issuers.insert(profile.id.clone(), profile.recovery_pubkey.clone());
         }
@@ -1769,7 +1769,7 @@ fn cmd_mcp(
             } else if !is_loopback && allowed_issuers.is_empty() {
                 anyhow::bail!(
                     "Non-loopback bind ({host}) requires registered users for JWT auth. \
-                     Use --insecure to override (DANGEROUS) or add users with `zetl serve --collab --init-owner`."
+                     Use --insecure to override (DANGEROUS) or add users with `ztl serve --collab --init-owner`."
                 );
             }
 
@@ -1844,19 +1844,19 @@ fn mcp_stdio_initialize() {
 
     let request_str = format!("{}\n", serde_json::to_string(&init_request).unwrap());
 
-    let output = Command::cargo_bin("zetl")
+    let output = Command::cargo_bin("ztl")
         .unwrap()
         .args(["--dir", vault.path().to_str().unwrap(), "mcp"])
         .write_stdin(request_str)
         .timeout(std::time::Duration::from_secs(10))
         .output()
-        .expect("failed to run zetl mcp");
+        .expect("failed to run ztl mcp");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // The response should contain "zetl" as the server name
+    // The response should contain "ztl" as the server name
     assert!(
-        stdout.contains("zetl"),
-        "expected 'zetl' in initialize response, got: {stdout}"
+        stdout.contains("ztl"),
+        "expected 'ztl' in initialize response, got: {stdout}"
     );
 }
 
@@ -1893,13 +1893,13 @@ fn mcp_stdio_list_tools() {
         .map(|r| format!("{}\n", serde_json::to_string(r).unwrap()))
         .collect();
 
-    let output = Command::cargo_bin("zetl")
+    let output = Command::cargo_bin("ztl")
         .unwrap()
         .args(["--dir", vault.path().to_str().unwrap(), "mcp"])
         .write_stdin(input)
         .timeout(std::time::Duration::from_secs(10))
         .output()
-        .expect("failed to run zetl mcp");
+        .expect("failed to run ztl mcp");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("search"), "tools should include 'search'");
@@ -1918,7 +1918,7 @@ fn mcp_stdio_list_tools() {
 
 ```bash
 cargo test --features mcp mcp_stdio_initialize -- --nocapture
-# Expected: test passes, response contains "zetl"
+# Expected: test passes, response contains "ztl"
 
 cargo test --features mcp mcp_stdio_list_tools -- --nocapture
 # Expected: test passes, all 9 tool names present
@@ -1945,7 +1945,7 @@ fn mcp_http_healthcheck() {
     let vault = setup_vault();
 
     // Start the server in the background
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_zetl"))
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_ztl"))
         .args([
             "--dir",
             vault.path().to_str().unwrap(),
@@ -1953,12 +1953,12 @@ fn mcp_http_healthcheck() {
             "--transport",
             "http",
             "--port",
-            "0", // Let OS assign port — but zetl may not support port 0
+            "0", // Let OS assign port — but ztl may not support port 0
         ])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .expect("failed to start zetl mcp http");
+        .expect("failed to start ztl mcp http");
 
     // Give the server a moment to start
     std::thread::sleep(std::time::Duration::from_secs(2));
@@ -2085,7 +2085,7 @@ pub async fn serve_http(
 
     let addr = format!("{host}:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    eprintln!("zetl mcp  ->  http://{addr}");
+    eprintln!("ztl mcp  ->  http://{addr}");
     axum::serve(listener, app).await?;
 
     Ok(())
@@ -2113,7 +2113,7 @@ Append to the tests module in `src/mcp/auth.rs`:
         let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"EdDSA","typ":"JWT"}"#);
         let payload = URL_SAFE_NO_PAD.encode(serde_json::to_string(&super::DelegateClaims {
             iss: "unknown-user".into(),
-            sub: "zetl-mcp".into(),
+            sub: "ztl-mcp".into(),
             aud: "vault".into(),
             iat: 0,
             exp: u64::MAX,
@@ -2147,7 +2147,7 @@ Append to the tests module in `src/mcp/auth.rs`:
 
         let claims = super::DelegateClaims {
             iss: "alice-a1b2c3d4".into(),
-            sub: "zetl-mcp".into(),
+            sub: "ztl-mcp".into(),
             aud: "vault".into(),
             iat: 0,
             exp: u64::MAX,
@@ -2186,7 +2186,7 @@ Append to the tests module in `src/mcp/auth.rs`:
 
         let claims = super::DelegateClaims {
             iss: "alice-a1b2c3d4".into(),
-            sub: "zetl-mcp".into(),
+            sub: "ztl-mcp".into(),
             aud: "vault".into(),
             iat: 0,
             exp: 1, // expired in 1970
@@ -2222,7 +2222,7 @@ cargo test --features mcp --lib mcp::auth
 
 ---
 
-## Task 16: `zetl delegate` CLI command
+## Task 16: `ztl delegate` CLI command
 
 **Files to modify:**
 - `src/cli.rs` (add `Command::Delegate`)
@@ -2267,7 +2267,7 @@ In `src/cli.rs`, add inside the `Command` enum:
 - [ ] **16b. Implement JWT signing in `src/mcp/delegate.rs`**
 
 ```rust
-//! `zetl delegate` command implementation — JWT signing with ed25519.
+//! `ztl delegate` command implementation — JWT signing with ed25519.
 //!
 //! Signs a delegate JWT using the user's ed25519 key derived from their
 //! BIP39 mnemonic, granting scoped access to MCP tools.
@@ -2338,7 +2338,7 @@ pub fn sign_delegate_token(
 
     let claims = DelegateClaims {
         iss: pubkey_b64.clone(), // Issuer is the pubkey itself (server resolves to user_id)
-        sub: "zetl-mcp".to_string(),
+        sub: "ztl-mcp".to_string(),
         aud: aud.to_string(),
         iat: now,
         exp: now + ttl_secs,
@@ -2411,7 +2411,7 @@ mod tests {
         issuers.insert(pubkey_b64.clone(), pubkey_b64.clone());
 
         let claims = verify_jwt(&token, &issuers).unwrap();
-        assert_eq!(claims.sub, "zetl-mcp");
+        assert_eq!(claims.sub, "ztl-mcp");
         assert_eq!(claims.aud, "test-vault");
         assert_eq!(claims.tools, vec!["search"]);
         assert_eq!(claims.scope, vec!["docs/*"]);
@@ -2443,7 +2443,7 @@ fn cmd_delegate(
     scope: Option<&str>,
     aud: Option<&str>,
 ) -> Result<()> {
-    use zetl::mcp::delegate::{parse_ttl, sign_delegate_token};
+    use ztl::mcp::delegate::{parse_ttl, sign_delegate_token};
 
     let ttl_secs = parse_ttl(ttl).context("parsing TTL")?;
 
@@ -2459,7 +2459,7 @@ fn cmd_delegate(
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
 
     // Use vault root hash as default audience
-    let default_aud = format!("zetl:{}", vault_root.to_string_lossy());
+    let default_aud = format!("ztl:{}", vault_root.to_string_lossy());
     let aud = aud.unwrap_or(&default_aud);
 
     let token = sign_delegate_token(mnemonic, ttl_secs, tool_list, scope_list, aud)
@@ -2489,7 +2489,7 @@ cargo test --features mcp --lib mcp::delegate
 # Expected: 5 tests pass (parse_ttl * 4 + round_trip * 1)
 ```
 
-**Commit:** `feat(mcp): zetl delegate command for issuing JWT tokens`
+**Commit:** `feat(mcp): ztl delegate command for issuing JWT tokens`
 
 ---
 
@@ -2512,7 +2512,7 @@ fn mcp_http_non_loopback_without_auth_fails() {
     let vault = setup_vault();
     // No users exist -> no allowed issuers -> should fail on 0.0.0.0
 
-    let output = Command::cargo_bin("zetl")
+    let output = Command::cargo_bin("ztl")
         .unwrap()
         .args([
             "--dir",
@@ -2527,7 +2527,7 @@ fn mcp_http_non_loopback_without_auth_fails() {
         ])
         .timeout(std::time::Duration::from_secs(5))
         .output()
-        .expect("failed to run zetl mcp");
+        .expect("failed to run ztl mcp");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
@@ -2543,7 +2543,7 @@ fn mcp_http_non_loopback_with_insecure_allowed() {
     // With --insecure, non-loopback should be allowed (server starts)
     // We can't easily test the server starts, so just check it doesn't
     // exit with the auth error.
-    let output = Command::cargo_bin("zetl")
+    let output = Command::cargo_bin("ztl")
         .unwrap()
         .args([
             "--dir",
@@ -2559,7 +2559,7 @@ fn mcp_http_non_loopback_with_insecure_allowed() {
         ])
         .timeout(std::time::Duration::from_secs(3))
         .output()
-        .expect("failed to run zetl mcp");
+        .expect("failed to run ztl mcp");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     // Should NOT contain the "requires registered users" error
@@ -2618,7 +2618,7 @@ pub fn list_page_resources(state: &McpState) -> ListResourcesResult {
                 .unwrap_or_default();
 
             Resource {
-                uri: format!("zetl://pages/{}", urlencoding_simple(name)),
+                uri: format!("ztl://pages/{}", urlencoding_simple(name)),
                 name: name.clone(),
                 description: Some(format!("Markdown page: {path}")),
                 mime_type: Some("text/markdown".into()),
@@ -2638,8 +2638,8 @@ pub fn read_page_resource(
     state: &McpState,
     uri: &str,
 ) -> Result<ReadResourceResult, String> {
-    // Parse URI: zetl://pages/<page_name>
-    let prefix = "zetl://pages/";
+    // Parse URI: ztl://pages/<page_name>
+    let prefix = "ztl://pages/";
     if !uri.starts_with(prefix) {
         return Err(format!("unknown resource URI: {uri}"));
     }
@@ -2767,20 +2767,20 @@ cargo test --features mcp --lib mcp::resources
 Append to `tests/mcp_integration.rs`:
 
 ```rust
-/// Helper: send a series of JSON-RPC requests to zetl mcp stdio and return stdout.
+/// Helper: send a series of JSON-RPC requests to ztl mcp stdio and return stdout.
 fn mcp_stdio_exchange(vault: &TempDir, requests: Vec<serde_json::Value>) -> String {
     let input: String = requests
         .iter()
         .map(|r| format!("{}\n", serde_json::to_string(r).unwrap()))
         .collect();
 
-    let output = Command::cargo_bin("zetl")
+    let output = Command::cargo_bin("ztl")
         .unwrap()
         .args(["--dir", vault.path().to_str().unwrap(), "mcp"])
         .write_stdin(input)
         .timeout(std::time::Duration::from_secs(15))
         .output()
-        .expect("failed to run zetl mcp");
+        .expect("failed to run ztl mcp");
 
     String::from_utf8_lossy(&output.stdout).to_string()
 }
@@ -3010,7 +3010,7 @@ cargo test --features mcp
 | 13 | McpServer + stdio transport | mcp/server.rs, mcp/transport.rs, main.rs | 2 integration tests |
 | 14 | HTTP transport + /health | mcp/transport.rs | compile check |
 | 15 | JWT auth middleware | mcp/auth.rs, mcp/transport.rs | 4 unit tests |
-| 16 | zetl delegate command | cli.rs, mcp/delegate.rs, main.rs | 5 unit tests |
+| 16 | ztl delegate command | cli.rs, mcp/delegate.rs, main.rs | 5 unit tests |
 | 17 | Network bind safety | main.rs | 2 integration tests |
 | 18 | MCP resources (page directory) | mcp/resources.rs, mcp/server.rs | 2 unit tests |
 | 19 | Full integration tests | tests/mcp_integration.rs | 9 e2e tests |

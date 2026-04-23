@@ -1,7 +1,7 @@
 //! Vault context serialiser for hook stdin (CON-016-001).
 //!
 //! Builds the JSON object written to each hook's stdin, containing:
-//! - hook name, vault_root, theme, zetl_version
+//! - hook name, vault_root, theme, ztl_version
 //! - pages array with name, path, slug, frontmatter, outlinks, backlinks, is_orphan
 //! - stats with total_pages, total_links, dead_links, orphans
 
@@ -24,8 +24,8 @@ pub struct HookContext {
     pub vault_root: String,
     /// Active theme name (empty string if none).
     pub theme: String,
-    /// zetl version string.
-    pub zetl_version: String,
+    /// ztl version string.
+    pub ztl_version: String,
     /// All pages in the vault.
     pub pages: Vec<HookPageEntry>,
     /// Aggregate vault statistics.
@@ -75,7 +75,7 @@ pub struct HookUser {
     pub is_agent: bool,
     /// Roles assigned to this user (e.g. `["admin"]`).
     pub roles: Vec<String>,
-    /// Whether this edit originated outside zetl (REQ-020-042).
+    /// Whether this edit originated outside ztl (REQ-020-042).
     /// `true` for git commit authors and filesystem-detected edits.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub is_external: bool,
@@ -98,7 +98,7 @@ pub struct HookSaved {
 /// Agent task context for on-agent hooks (REQ-020-023).
 #[derive(Debug, Serialize)]
 pub struct HookAgent {
-    /// Agent task name (the `<name>` from `zetl agent run <name>`).
+    /// Agent task name (the `<name>` from `ztl agent run <name>`).
     pub task: String,
     /// Pages the agent should operate on (empty = vault-wide).
     pub target_pages: Vec<String>,
@@ -226,7 +226,7 @@ pub fn build_hook_context(
     hook_name: &str,
     vault_root: &Path,
     theme: &str,
-    zetl_version: &str,
+    ztl_version: &str,
     files: &[ParsedFile],
     graph: &LinkGraph,
 ) -> HookContext {
@@ -287,7 +287,7 @@ pub fn build_hook_context(
         hook: hook_name.to_string(),
         vault_root: vault_root.to_string_lossy().into_owned(),
         theme: theme.to_string(),
-        zetl_version: zetl_version.to_string(),
+        ztl_version: ztl_version.to_string(),
         pages,
         stats,
         history,
@@ -345,7 +345,7 @@ mod tests {
 
         assert_eq!(ctx.hook, "post-build");
         assert_eq!(ctx.theme, "fountain");
-        assert_eq!(ctx.zetl_version, "0.1.0");
+        assert_eq!(ctx.ztl_version, "0.1.0");
         assert!(ctx.pages.is_empty());
         assert_eq!(ctx.stats.total_pages, 0);
         assert_eq!(ctx.stats.total_links, 0);
@@ -498,7 +498,7 @@ mod tests {
         assert!(val["hook"].is_string());
         assert!(val["vault_root"].is_string());
         assert!(val["theme"].is_string());
-        assert!(val["zetl_version"].is_string());
+        assert!(val["ztl_version"].is_string());
         assert!(val["pages"].is_array());
         assert!(val["stats"].is_object());
         // history is always present: null when history feature is absent.

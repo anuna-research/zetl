@@ -1,19 +1,19 @@
 ---
-title: "SPEC-001: zetl — Bi-directional Link Graph CLI"
+title: "SPEC-001: ztl — Bi-directional Link Graph CLI"
 version: 0.1.0
 status: draft
 audience: agent, human
 date: 2026-02-18
 ---
 
-# SPEC-001: zetl — Bi-directional Link Graph CLI
+# SPEC-001: ztl — Bi-directional Link Graph CLI
 
 ## Information Table
 
 | Field          | Value                                              |
 | -------------- | -------------------------------------------------- |
 | Document ID    | SPEC-001                                           |
-| Title          | zetl — Bi-directional Link Graph CLI               |
+| Title          | ztl — Bi-directional Link Graph CLI               |
 | Version        | 0.1.0                                              |
 | Status         | Draft                                              |
 | Author         | Agent (USDD Protocol v1.0.0)                       |
@@ -25,11 +25,11 @@ date: 2026-02-18
 
 ## 1. Overview
 
-**zetl** is a lightweight, agent-friendly CLI tool for personal knowledge management. It parses `[[wikilink]]` bi-directional links from a corpus of Markdown files, builds an in-memory graph of page relationships, and exposes query and validation commands over that graph. It is designed to be invoked by AI agents as part of a specification-driven development workflow, and by humans managing a Zettelkasten-style knowledge base.
+**ztl** is a lightweight, agent-friendly CLI tool for personal knowledge management. It parses `[[wikilink]]` bi-directional links from a corpus of Markdown files, builds an in-memory graph of page relationships, and exposes query and validation commands over that graph. It is designed to be invoked by AI agents as part of a specification-driven development workflow, and by humans managing a Zettelkasten-style knowledge base.
 
 ### 1.1 Design Philosophy
 
-1. **Files are the source of truth.** zetl never modifies user Markdown files. It reads, indexes, and reports.
+1. **Files are the source of truth.** ztl never modifies user Markdown files. It reads, indexes, and reports.
 2. **Cross-application compatible.** Wikilink syntax follows the Obsidian convention, which is the most widely adopted and is readable by Logseq, Foam, Dendron, and others.
 3. **Agent-first, human-friendly.** All output is structured (JSON by default) for machine consumption, with a human-readable table mode for interactive use.
 4. **Fast and disposable.** The index is a cache, not a database. It can be rebuilt from scratch in seconds for typical vaults (< 10,000 files).
@@ -74,9 +74,9 @@ Constraints:
   - May run in CI/CD pipelines
 Daily workflow:
   1. Create/edit markdown files with [[wikilinks]]
-  2. Run `zetl check` to validate link integrity
-  3. Run `zetl backlinks <page>` to discover context
-  4. Run `zetl similar <query>` to find near-duplicates before creating new pages
+  2. Run `ztl check` to validate link integrity
+  3. Run `ztl backlinks <page>` to discover context
+  4. Run `ztl similar <query>` to find near-duplicates before creating new pages
 ```
 
 ### 2.2 Human Knowledge Worker
@@ -94,16 +94,16 @@ Constraints:
   - Works from the terminal alongside Obsidian, Logseq, or a text editor
 Daily workflow:
   1. Write notes in Obsidian/Logseq/editor
-  2. Run `zetl stats` for an overview
-  3. Run `zetl orphans` to find disconnected notes
-  4. Run `zetl dead-links` to clean up broken references
+  2. Run `ztl stats` for an overview
+  3. Run `ztl orphans` to find disconnected notes
+  4. Run `ztl dead-links` to clean up broken references
 ```
 
 ---
 
 ## 3. Wikilink Syntax Specification
 
-zetl follows the **Obsidian wikilink convention**, which is the de-facto cross-application standard. This ensures compatibility with Obsidian, Logseq (in Markdown mode), Foam, Dendron, and other tools that read `[[...]]` syntax.
+ztl follows the **Obsidian wikilink convention**, which is the de-facto cross-application standard. This ensures compatibility with Obsidian, Logseq (in Markdown mode), Foam, Dendron, and other tools that read `[[...]]` syntax.
 
 ### 3.1 Supported Link Formats
 
@@ -299,7 +299,7 @@ Trace:
 ```
 REQ-011: Persistent Cache
 
-The system SHALL cache the parsed index to a file (`.zetl/index.json`)
+The system SHALL cache the parsed index to a file (`.ztl/index.json`)
 to avoid re-scanning unchanged files on subsequent invocations,
 FOR all user roles
 WITH cache invalidation based on file modification timestamps
@@ -312,11 +312,11 @@ Trace:
 ```
 REQ-012: Ignore Patterns
 
-The system SHALL respect a `.zetlignore` file (gitignore syntax) at the
+The system SHALL respect a `.ztlignore` file (gitignore syntax) at the
 vault root, and a `--ignore` CLI flag, to exclude files and directories
 from scanning,
 FOR all user roles
-WITH `.git`, `node_modules`, and `.zetl` ignored by default.
+WITH `.git`, `node_modules`, and `.ztl` ignored by default.
 
 Trace:
 - TEST-012
@@ -382,7 +382,7 @@ ADR-001: Language Selection — Rust
 Status: Proposed
 
 Context:
-  zetl is a CLI tool that must parse thousands of Markdown files quickly,
+  ztl is a CLI tool that must parse thousands of Markdown files quickly,
   build an in-memory graph, and return query results with low latency.
   It must ship as a single binary with no runtime dependencies.
 
@@ -426,7 +426,7 @@ Consequences:
                                 │
                          ┌──────▼───────┐
                          │    Cache     │
-                         │  .zetl/      │
+                         │  .ztl/      │
                          │  index.json  │
                          └──────────────┘
 ```
@@ -437,7 +437,7 @@ Consequences:
 
 **SimHash Index** — Computes 64-bit SimHash fingerprints for page names using character trigram features. Supports nearest-neighbour search by Hamming distance with configurable threshold.
 
-**Cache** — Serializes the scanner output to `.zetl/index.json` with file-level mtimes. On subsequent runs, only re-parses files whose mtime has changed.
+**Cache** — Serializes the scanner output to `.ztl/index.json` with file-level mtimes. On subsequent runs, only re-parses files whose mtime has changed.
 
 **CLI** — Thin layer mapping subcommands to engine calls and formatting output.
 
@@ -491,7 +491,7 @@ All commands operate on the vault directory, defaulting to the current working d
 ```
 CON-001: Global CLI Interface
 
-zetl [OPTIONS] <COMMAND>
+ztl [OPTIONS] <COMMAND>
 
 Options:
   -d, --dir <PATH>       Vault root directory [default: .]
@@ -515,13 +515,13 @@ Verified by:
 ```
 CON-002: index
 
-zetl index [OPTIONS]
+ztl index [OPTIONS]
 
 Build or refresh the link index for the vault.
 
 Behaviour:
   - Scans all *.md files in the vault directory (recursive)
-  - Parses wikilinks, builds graph, writes cache to .zetl/index.json
+  - Parses wikilinks, builds graph, writes cache to .ztl/index.json
   - Reports: files scanned, links found, time elapsed
 
 Exit codes:
@@ -547,8 +547,8 @@ Verified by:
 ```
 CON-003: links / backlinks
 
-zetl links <PAGE> [OPTIONS]
-zetl backlinks <PAGE> [OPTIONS]
+ztl links <PAGE> [OPTIONS]
+ztl backlinks <PAGE> [OPTIONS]
 
 Query forward links from a page, or backlinks to a page.
 
@@ -589,7 +589,7 @@ Verified by:
 ```
 CON-004: check
 
-zetl check [OPTIONS]
+ztl check [OPTIONS]
 
 Validate the vault: report dead links, orphans, and syntax errors.
 
@@ -644,7 +644,7 @@ Verified by:
 ```
 CON-005: similar
 
-zetl similar <QUERY> [OPTIONS]
+ztl similar <QUERY> [OPTIONS]
 
 Find pages with names similar to the query using SimHash + Hamming distance.
 
@@ -686,7 +686,7 @@ Verified by:
 ```
 CON-006: stats
 
-zetl stats [OPTIONS]
+ztl stats [OPTIONS]
 
 Print summary statistics about the vault's link graph.
 
@@ -718,7 +718,7 @@ Verified by:
 ```
 CON-007: path
 
-zetl path <FROM> <TO> [OPTIONS]
+ztl path <FROM> <TO> [OPTIONS]
 
 Find the shortest link path between two pages.
 
@@ -792,7 +792,7 @@ TEST-001: Index Scan Completeness
 
 Scenario: Scan a test vault with known files and links
 Given: A directory with 5 Markdown files containing 12 wikilinks
-When: `zetl index` is run
+When: `ztl index` is run
 Then:
   - All 5 files are indexed
   - All 12 wikilinks are extracted with correct file, line, column
@@ -822,7 +822,7 @@ TEST-003: Forward Link Query
 
 Scenario: Query forward links for a page
 Given: An indexed vault where "Index.md" contains [[Page A]], [[Page B|alias]]
-When: `zetl links Index` is run
+When: `ztl links Index` is run
 Then:
   - Returns 2 links
   - Page A link has no alias
@@ -837,7 +837,7 @@ TEST-004: Backlink Query
 
 Scenario: Query backlinks for a target page
 Given: An indexed vault where 3 files link to "Concept X"
-When: `zetl backlinks "Concept X"` is run
+When: `ztl backlinks "Concept X"` is run
 Then:
   - Returns 3 backlinks with correct source files and line numbers
   - Context text (if --context used) includes surrounding characters
@@ -851,7 +851,7 @@ TEST-005: Dead Link Detection
 Scenario: Detect links to non-existent pages
 Given: File A contains [[Existing Page]] and [[Ghost Page]]
        Only "Existing Page.md" exists
-When: `zetl check --dead-links` is run
+When: `ztl check --dead-links` is run
 Then:
   - Reports 1 dead link: "Ghost Page" from File A with line number
   - Exit code 1
@@ -864,7 +864,7 @@ TEST-006: Orphan Detection
 
 Scenario: Find pages with no backlinks
 Given: 4 files exist; File D is never referenced by any other file
-When: `zetl check --orphans` is run
+When: `ztl check --orphans` is run
 Then:
   - File D appears in the orphan list
   - Files A, B, C do not appear (they have at least one backlink)
@@ -880,7 +880,7 @@ Given: A file containing:
   Line 5:  "See [[unclosed bracket"
   Line 8:  "Empty [[]] link"
   Line 12: "Valid [[Good Link]]"
-When: `zetl check --syntax` is run
+When: `ztl check --syntax` is run
 Then:
   - Reports 2 diagnostics (lines 5 and 8)
   - Line 12 produces no diagnostic
@@ -894,7 +894,7 @@ TEST-008: SimHash Fuzzy Search
 
 Scenario: Find similar page names
 Given: Pages named "Zettelkasten Method", "Zettelkasten History", "Rust Programming"
-When: `zetl similar "zettelkasen"` is run with threshold 3
+When: `ztl similar "zettelkasen"` is run with threshold 3
 Then:
   - "Zettelkasten Method" appears (distance ≤ 3)
   - "Zettelkasten History" appears (distance ≤ 3)
@@ -908,7 +908,7 @@ TEST-009: Graph Statistics
 
 Scenario: Summary stats for a vault
 Given: A vault with known file/link counts
-When: `zetl stats` is run
+When: `ztl stats` is run
 Then:
   - All reported counts match expected values
   - most_linked list is sorted descending by backlink_count
@@ -922,13 +922,13 @@ TEST-010: Shortest Path
 
 Scenario: Find shortest path between two pages
 Given: A→B→C→D (linear chain); A→D does not exist
-When: `zetl path A D` is run
+When: `ztl path A D` is run
 Then:
   - Returns path ["A", "B", "C", "D"] with hops=3
 
 Scenario: No path exists
 Given: E is in a separate component
-When: `zetl path A E` is run
+When: `ztl path A E` is run
 Then:
   - Exit code 1, message "no path found"
 
@@ -939,15 +939,15 @@ Verifies: REQ-010
 TEST-011: Cache Behaviour
 
 Scenario: Cache speeds up subsequent runs
-Given: A vault indexed once (cache written to .zetl/index.json)
-When: `zetl index` is run again with no file changes
+Given: A vault indexed once (cache written to .ztl/index.json)
+When: `ztl index` is run again with no file changes
 Then:
   - Completes in ≤ 50% of the initial scan time
   - Produces identical results
 
 Scenario: Cache invalidation on file change
 Given: A cached vault where one file is modified
-When: `zetl index` is run
+When: `ztl index` is run
 Then:
   - Only the modified file is re-parsed
   - Results reflect the updated content
@@ -959,8 +959,8 @@ Verifies: REQ-011
 TEST-012: Ignore Patterns
 
 Scenario: Excluded paths are not scanned
-Given: A vault with .zetlignore containing "drafts/"
-When: `zetl index` is run
+Given: A vault with .ztlignore containing "drafts/"
+When: `ztl index` is run
 Then:
   - Files under drafts/ are not indexed
   - .git and node_modules are excluded by default
@@ -996,8 +996,8 @@ These items are explicitly **out of scope** for SPEC-001 but are anticipated for
 | ---- | --------- |
 | Tag extraction (`#tag`, YAML frontmatter) | Natural extension; same scanner infrastructure |
 | Graph export (DOT, Mermaid, GraphML) | Visualization for humans; low effort once graph exists |
-| Watch mode (`zetl watch`) | Re-index on file change for long-running agent sessions |
-| MCP server mode | Expose zetl as a Model Context Protocol tool server |
+| Watch mode (`ztl watch`) | Re-index on file change for long-running agent sessions |
+| MCP server mode | Expose ztl as a Model Context Protocol tool server |
 | Block-level graph | Track `^block-id` references as first-class graph nodes |
 | Embedding-based similarity | Upgrade from SimHash to vector embeddings for deeper semantic search |
 | Multi-vault support | Index across multiple directories with namespace prefixes |
@@ -1025,7 +1025,7 @@ These items are explicitly **out of scope** for SPEC-001 but are anticipated for
 
 ## 12. Open Questions
 
-1. **Should `zetl` support Logseq's `[alias]([[page]])` syntax as an alternative parser mode?**
+1. **Should `ztl` support Logseq's `[alias]([[page]])` syntax as an alternative parser mode?**
    Logseq uses this in addition to standard `[[wikilinks]]`. Adding it would improve compatibility but increases parser complexity. Recommendation: defer to a future SPEC unless users report demand.
 
 2. **Should heading/block references create separate graph edges or just metadata on the page edge?**

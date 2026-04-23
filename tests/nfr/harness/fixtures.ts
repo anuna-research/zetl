@@ -80,7 +80,7 @@ export async function seedVault(
     const body = [
       `# Note ${i}`,
       "",
-      `Synthetic note ${i} for zetl NFR harness (SPEC-028).`,
+      `Synthetic note ${i} for ztl NFR harness (SPEC-028).`,
       "",
       "## Wikilinks",
       "",

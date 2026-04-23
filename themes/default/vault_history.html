@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}Recent changes — {{ vault.name }} — zetl{% endblock %}
-{% block description %}Recent changes across {{ vault.name }} — an evolving zetl vault.{% endblock %}
+{% block title %}Recent changes — {{ vault.name }} — ztl{% endblock %}
+{% block description %}Recent changes across {{ vault.name }} — an evolving ztl vault.{% endblock %}
 
 {% block styles %}
 <style>
@@ -77,7 +77,7 @@
     <h1 class="text-2xl font-semibold">Recent changes</h1>
     {# REQ-305 graceful absence #}
     {%- if not vault.history or not vault.history.snapshot_count or vault.history.snapshot_count == 0 %}
-    <p class="vh-empty">No history yet. Run <code>zetl index</code> or edit a page to take the first snapshot.</p>
+    <p class="vh-empty">No history yet. Run <code>ztl index</code> or edit a page to take the first snapshot.</p>
     {%- else %}
     <div class="vh-stats">
       <span><strong>{{ vault.history.snapshot_count }}</strong> snapshots</span>

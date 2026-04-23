@@ -5,7 +5,7 @@
   (id "TEST-demo-vault")
   (title "Demo vault user testing — happy paths")
   (status "active")
-  (description "Systematically test every zetl feature against demo-vault, fix bugs"))
+  (description "Systematically test every ztl feature against demo-vault, fix bugs"))
 
 ;; ── Agent ──────────────────────────────────────────────────────────────
 (given agent-claude-available)
@@ -13,57 +13,57 @@
 ;; ── CLI read-only commands ─────────────────────────────────────────────
 (given task-cli-list)
 (meta task-cli-list
-  (description "Test: zetl list, zetl list -f table, zetl list --json")
+  (description "Test: ztl list, ztl list -f table, ztl list --json")
   (acceptance "All output formats work, page count matches stats"))
 
 (given task-cli-links)
 (meta task-cli-links
-  (description "Test: zetl links for pages with known forward links")
+  (description "Test: ztl links for pages with known forward links")
   (acceptance "Forward links listed correctly for Cache, Wikilinks"))
 
 (given task-cli-backlinks)
 (meta task-cli-backlinks
-  (description "Test: zetl backlinks for heavily-linked pages")
+  (description "Test: ztl backlinks for heavily-linked pages")
   (acceptance "Backlinks match stats for Reasoning Engine, Link Graph"))
 
 (given task-cli-search)
 (meta task-cli-search
-  (description "Test: zetl search with various queries")
+  (description "Test: ztl search with various queries")
   (acceptance "Finds expected results, handles no-match gracefully"))
 
 (given task-cli-check)
 (meta task-cli-check
-  (description "Test: zetl check reports dead links, orphans, diagnostics")
+  (description "Test: ztl check reports dead links, orphans, diagnostics")
   (acceptance "Dead links and orphans reported correctly"))
 
 (given task-cli-stats)
 (meta task-cli-stats
-  (description "Test: zetl stats output is consistent with list/check")
+  (description "Test: ztl stats output is consistent with list/check")
   (acceptance "Page count, link count, dead links all consistent"))
 
 (given task-cli-path)
 (meta task-cli-path
-  (description "Test: zetl path between connected and disconnected pages")
+  (description "Test: ztl path between connected and disconnected pages")
   (acceptance "Finds paths between connected pages, reports no-path for disconnected"))
 
 (given task-cli-similar)
 (meta task-cli-similar
-  (description "Test: zetl similar finds near-duplicate page names")
+  (description "Test: ztl similar finds near-duplicate page names")
   (acceptance "Finds similar pages without errors"))
 
 (given task-cli-export)
 (meta task-cli-export
-  (description "Test: zetl export produces valid graph JSON")
+  (description "Test: ztl export produces valid graph JSON")
   (acceptance "JSON parses, contains nodes and edges"))
 
 (given task-cli-blocks)
 (meta task-cli-blocks
-  (description "Test: zetl blocks lists Merkle blocks for a page")
+  (description "Test: ztl blocks lists Merkle blocks for a page")
   (acceptance "Blocks listed with hashes, resolve by hash works"))
 
 (given task-cli-diff)
 (meta task-cli-diff
-  (description "Test: zetl diff against HEAD~1")
+  (description "Test: ztl diff against HEAD~1")
   (acceptance "Diff output shows changes without errors"))
 
 ;; ── Web UI ─────────────────────────────────────────────────────────────

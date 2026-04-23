@@ -1,20 +1,20 @@
 [package]
-name = "zetl"
+name = "ztl"
 version = "0.6.1"
 edition = "2021"
 description = "Bi-directional wikilink graph CLI for knowledge management, solo or team"
 license = "AGPL-3.0-or-later"
-repository = "https://codeberg.org/anuna/zetl"
-homepage = "https://codeberg.org/anuna/zetl"
+repository = "https://codeberg.org/anuna/ztl"
+homepage = "https://codeberg.org/anuna/ztl"
 readme = "README.md"
 
-# Workspace declaration exists so repo-local tools (`zetl-ast-reference-gen`
+# Workspace declaration exists so repo-local tools (`ztl-ast-reference-gen`
 # for REQ-3202 and `xtask` for CON-3212's `update-golden` command) can run
 # via `cargo run -p <tool>` / `cargo xtask` from the repo root.
 # diamond-types-spike is an IMPL-029 phase-0 spike that pins its own deps
 # and must stay standalone.
 [workspace]
-members = ["tools/zetl-ast-reference-gen", "tools/xtask"]
+members = ["tools/ztl-ast-reference-gen", "tools/xtask"]
 exclude = ["tools/diamond-types-spike"]
 
 [profile.release]
@@ -35,9 +35,9 @@ mcp = ["dep:rmcp"]
 collab = []
 # SPEC-033 per-ecosystem feature flags (REQ-3301, NFR-3304). Each flag
 # gates one ecosystem's adapter + translator code at compile time so a
-# minimal zetl build can drop whole ecosystems. `src/ecosystems/` holds
+# minimal ztl build can drop whole ecosystems. `src/ecosystems/` holds
 # the shared registry + trait scaffolding unconditionally so
-# `zetl ecosystem check` can list every ecosystem's id and installation
+# `ztl ecosystem check` can list every ecosystem's id and installation
 # hint even on a stripped binary (REQ-3313).
 #
 # The `ecosystems-v1` umbrella that previously enabled all three at
@@ -101,9 +101,9 @@ base64 = "0.22"
 ammonia = "4"
 bip39 = { version = "2", features = ["rand"] }
 # SPEC-034 REQ-3408 (CLI) / §8 `cap::pair::spake2` — PAKE-over-ed25519
-# used by `zetl cap pair` to authenticate an out-of-band pubkey handoff
+# used by `ztl cap pair` to authenticate an out-of-band pubkey handoff
 # against a freshly-generated 4-word BIP39 phrase. The 0.4 line tracks
-# rand_core 0.6 + curve25519-dalek 4.x (the versions zetl already links)
+# rand_core 0.6 + curve25519-dalek 4.x (the versions ztl already links)
 # and stays within the workspace's pinned rustc floor.
 spake2 = "0.4"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
@@ -136,7 +136,7 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 # (SPEC-034 ADR-3413). Also pulled in transitively by x25519-dalek;
 # the explicit entry keeps the semantic dependency visible.
 zeroize = "1"
-# default-features=false disables `https` + `ssh`. zetl only uses git2
+# default-features=false disables `https` + `ssh`. ztl only uses git2
 # for local repo inspection and auto-commits (no network), so neither
 # is needed. Dropping `https` also eliminates libgit2-sys's
 # unconditional `stransport.c` compile on macOS, which in turn
@@ -154,13 +154,13 @@ urlencoding = "2.1.3"
 image = { version = "0.25", default-features = false, features = ["png"] }
 imageproc = { version = "0.25", default-features = false }
 ab_glyph = "0.2"
-# Response compression for zetl serve (gzip + brotli).
+# Response compression for ztl serve (gzip + brotli).
 # Activated unconditionally on the axum stack; compression only kicks in
 # when the client sends Accept-Encoding matching a supported algorithm,
 # so adding this doesn't bloat binaries for non-serve commands — they
 # link the code but never execute it.
 tower-http = { version = "0.6", features = ["compression-gzip", "compression-br", "set-header"] }
-# Brotli encoder for `zetl build` to emit .br precompressed files alongside
+# Brotli encoder for `ztl build` to emit .br precompressed files alongside
 # html/css/js/json. Static hosts (Netlify/Cloudflare/nginx) serve the .br
 # variant when the client advertises `Accept-Encoding: br`.
 brotli = "7"
@@ -170,7 +170,7 @@ brotli = "7"
 assert_cmd = "2"
 flate2 = "1"
 # Pulled in by src/hooks/ast/ round-trip tests to validate emitted JSON
-# against tools/zetl-ast-schema-v1.json (SPEC-032 REQ-3202 / TEST-3202).
+# against tools/ztl-ast-schema-v1.json (SPEC-032 REQ-3202 / TEST-3202).
 jsonschema = { version = "0.26", default-features = false }
 libc = "0.2"
 predicates = "3"

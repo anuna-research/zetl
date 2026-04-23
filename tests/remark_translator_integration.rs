@@ -1,4 +1,4 @@
-//! SPEC-033 REQ-3308 / TEST-3308 integration coverage for the zetl-ext ↔
+//! SPEC-033 REQ-3308 / TEST-3308 integration coverage for the ztl-ext ↔
 //! mdast translator (task-remark-translator).
 //!
 //! The translator itself lives in `src/hooks/translators/mdast.rs`, which
@@ -22,12 +22,12 @@
 
 use serde_json::{json, Value};
 
-use zetl::hooks::ast::{
+use ztl::hooks::ast::{
     Block, BlockQuote, Document, DocumentKind, Embed, Frontmatter, Heading, Inline, ListItem,
     Paragraph, Position, SplBlock, Text, Wikilink, AST_VERSION,
 };
-use zetl::hooks::translators::mdast::MdastTranslator;
-use zetl::hooks::translators::{AstType, Translator};
+use ztl::hooks::translators::mdast::MdastTranslator;
+use ztl::hooks::translators::{AstType, Translator};
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -108,7 +108,7 @@ fn wikilinks_inside_a_blockquote_round_trip() {
     })]);
 
     let t = MdastTranslator;
-    let mdast = t.zetl_to_foreign(&input).unwrap();
+    let mdast = t.ztl_to_foreign(&input).unwrap();
 
     // Shape probe: blockquote → paragraph → [text, wikiLink, text, wikiLink, text].
     assert_eq!(mdast["children"][0]["type"], "blockquote");
@@ -123,7 +123,7 @@ fn wikilinks_inside_a_blockquote_round_trip() {
     assert_eq!(kids[3]["type"], "wikiLink");
     assert_eq!(kids[3]["value"], "Another");
 
-    let back = t.foreign_to_zetl(mdast).unwrap();
+    let back = t.foreign_to_ztl(mdast).unwrap();
     assert_eq!(back, input);
 }
 
@@ -139,13 +139,13 @@ fn embed_with_both_heading_and_block_id_round_trips() {
     })]);
 
     let t = MdastTranslator;
-    let mdast = t.zetl_to_foreign(&input).unwrap();
+    let mdast = t.ztl_to_foreign(&input).unwrap();
 
     // Embed encodes as a paragraph wrapping a wikiLink marker with
-    // data.embed = true plus `zetl_block_embed` on the carrier paragraph.
+    // data.embed = true plus `ztl_block_embed` on the carrier paragraph.
     let para = &mdast["children"][0];
     assert_eq!(para["type"], "paragraph");
-    assert_eq!(para["zetl_block_embed"], true);
+    assert_eq!(para["ztl_block_embed"], true);
     let inner = &para["children"][0];
     assert_eq!(inner["type"], "wikiLink");
     assert_eq!(inner["value"], "Daily");
@@ -153,7 +153,7 @@ fn embed_with_both_heading_and_block_id_round_trips() {
     assert_eq!(inner["data"]["heading"], "Morning");
     assert_eq!(inner["data"]["block_id"], "abc123");
 
-    let back = t.foreign_to_zetl(mdast).unwrap();
+    let back = t.foreign_to_ztl(mdast).unwrap();
     assert_eq!(back, input);
 }
 
@@ -171,15 +171,15 @@ fn spl_block_with_trailing_whitespace_round_trips() {
     })]);
 
     let t = MdastTranslator;
-    let mdast = t.zetl_to_foreign(&input).unwrap();
+    let mdast = t.ztl_to_foreign(&input).unwrap();
     let node = &mdast["children"][0];
     assert_eq!(node["type"], "code");
     assert_eq!(node["lang"], "spl");
     assert_eq!(node["meta"], "extra");
     assert_eq!(node["value"], spl_text);
-    assert_eq!(node["zetl_spl"], true);
+    assert_eq!(node["ztl_spl"], true);
 
-    let back = t.foreign_to_zetl(mdast).unwrap();
+    let back = t.foreign_to_ztl(mdast).unwrap();
     assert_eq!(back, input);
     // And specifically that the trailing whitespace survived.
     if let Block::SplBlock(s) = &back.children[0] {
@@ -217,7 +217,7 @@ fn frontmatter_with_nested_structures_round_trips() {
     let input = doc_with_frontmatter(fm, vec![paragraph(vec![text("body")])]);
 
     let t = MdastTranslator;
-    let mdast = t.zetl_to_foreign(&input).unwrap();
+    let mdast = t.ztl_to_foreign(&input).unwrap();
 
     // Frontmatter lands on the mdast root as an object so downstream
     // consumers don't need to re-parse YAML.
@@ -227,7 +227,7 @@ fn frontmatter_with_nested_structures_round_trips() {
     assert_eq!(fm_out["author"]["aliases"][1], "A.");
     assert_eq!(fm_out["metrics"]["subsections"][1]["heading"], "Body");
 
-    let back = t.foreign_to_zetl(mdast).unwrap();
+    let back = t.foreign_to_ztl(mdast).unwrap();
     assert_eq!(back, input);
 }
 
@@ -269,7 +269,7 @@ fn position_information_is_preserved_across_translation() {
     };
 
     let t = MdastTranslator;
-    let mdast = t.zetl_to_foreign(&input).unwrap();
+    let mdast = t.ztl_to_foreign(&input).unwrap();
 
     // mdast native `position` carries {start.line, start.column,
     // end.line, end.column}. Spot-check a couple of nodes.
@@ -284,7 +284,7 @@ fn position_information_is_preserved_across_translation() {
     assert_eq!(wl["position"]["start"]["column"], 7);
     assert_eq!(wl["position"]["end"]["column"], 20);
 
-    let back = t.foreign_to_zetl(mdast).unwrap();
+    let back = t.foreign_to_ztl(mdast).unwrap();
     assert_eq!(back, input);
 
     // And a direct positional probe on the rehydrated doc — the header
@@ -307,11 +307,11 @@ fn position_information_is_preserved_across_translation() {
 
 // ── mdast extension attrs preserved across round-trip ────────────────────
 
-/// The four marker attrs that zetl stores under the `wikiLink` marker's
+/// The four marker attrs that ztl stores under the `wikiLink` marker's
 /// `data` object (`alias`, `heading`, `block_id`, `embed`) are what the
 /// remark-wiki-link plugin convention names as the wiki-link extension's
 /// own data schema. This test pins the acceptance criterion "mdast
-/// extension attrs preserved across round-trip" — a zetl-ext document
+/// extension attrs preserved across round-trip" — a ztl-ext document
 /// carrying every combination round-trips through the mdast adapter
 /// without any attr going missing.
 #[test]
@@ -348,7 +348,7 @@ fn mdast_wikilink_extension_attrs_all_survive_round_trip() {
     ])]);
 
     let t = MdastTranslator;
-    let mdast = t.zetl_to_foreign(&input).unwrap();
+    let mdast = t.ztl_to_foreign(&input).unwrap();
 
     // Verify every wikilink kept its data-map shape on the wire.
     let kids = &mdast["children"][0]["children"];
@@ -360,13 +360,13 @@ fn mdast_wikilink_extension_attrs_all_survive_round_trip() {
     assert_eq!(kids[4]["data"]["heading"], "y");
     assert_eq!(kids[4]["data"]["block_id"], "z");
 
-    let back = t.foreign_to_zetl(mdast).unwrap();
+    let back = t.foreign_to_ztl(mdast).unwrap();
     assert_eq!(back, input);
 }
 
 /// Embed carries a `data.embed: true` marker plus optional `heading` /
 /// `block_id` extension attrs. The paragraph carrier tags itself with
-/// `zetl_block_embed: true`. This test pins that the block-level embed
+/// `ztl_block_embed: true`. This test pins that the block-level embed
 /// marker round-trips regardless of which combination of optional attrs
 /// is present.
 #[test]
@@ -399,35 +399,35 @@ fn mdast_embed_extension_attrs_all_survive_round_trip() {
     ]);
 
     let t = MdastTranslator;
-    let mdast = t.zetl_to_foreign(&input).unwrap();
+    let mdast = t.ztl_to_foreign(&input).unwrap();
 
     for i in 0..4 {
         let para = &mdast["children"][i];
         assert_eq!(para["type"], "paragraph");
-        assert_eq!(para["zetl_block_embed"], true);
+        assert_eq!(para["ztl_block_embed"], true);
         let inner = &para["children"][0];
         assert_eq!(inner["type"], "wikiLink");
         assert_eq!(inner["data"]["embed"], true);
     }
 
-    let back = t.foreign_to_zetl(mdast).unwrap();
+    let back = t.foreign_to_ztl(mdast).unwrap();
     assert_eq!(back, input);
 }
 
 // ── Slimmed-model marker-table sanity ────────────────────────────────────
 
 /// REQ-3308 slimmed model: the `mdast-ext` translator emits a `root`
-/// node (not a zetl `Document` tag) and explicitly carries the
-/// `zetl_ast_version` attr so lossy foreign hooks can still be
-/// round-tripped through `foreign_to_zetl` without losing the schema
+/// node (not a ztl `Document` tag) and explicitly carries the
+/// `ztl_ast_version` attr so lossy foreign hooks can still be
+/// round-tripped through `foreign_to_ztl` without losing the schema
 /// pin.
 #[test]
-fn mdast_root_carries_zetl_ast_version_marker() {
+fn mdast_root_carries_ztl_ast_version_marker() {
     let input = doc(vec![paragraph(vec![text("x")])]);
     let t = MdastTranslator;
-    let mdast = t.zetl_to_foreign(&input).unwrap();
+    let mdast = t.ztl_to_foreign(&input).unwrap();
     assert_eq!(mdast["type"], "root");
-    assert_eq!(mdast["zetl_ast_version"], AST_VERSION);
+    assert_eq!(mdast["ztl_ast_version"], AST_VERSION);
 }
 
 /// Per REQ-3308, the translator declares `AstType::MdastExt` — a
@@ -442,12 +442,12 @@ fn translator_reports_mdast_ext_ast_type() {
 
 /// A nested ordered list inside a bullet list — a common CommonMark
 /// fixture that tests the translator's `listItem`-as-block-container
-/// handling (zetl-ext permits any Block child; mdast's `listItem` does
+/// handling (ztl-ext permits any Block child; mdast's `listItem` does
 /// too, so this is 1-to-1 renaming, but a regression would show as a
 /// round-trip mismatch on nested children).
 #[test]
 fn nested_mixed_lists_round_trip() {
-    use zetl::hooks::ast::List;
+    use ztl::hooks::ast::List;
     let input = doc(vec![Block::List(List {
         position: Position::origin(),
         ordered: false,
@@ -475,7 +475,7 @@ fn nested_mixed_lists_round_trip() {
     })]);
 
     let t = MdastTranslator;
-    let mdast = t.zetl_to_foreign(&input).unwrap();
+    let mdast = t.ztl_to_foreign(&input).unwrap();
     let outer = &mdast["children"][0];
     assert_eq!(outer["type"], "list");
     assert_eq!(outer["ordered"], false);
@@ -484,6 +484,6 @@ fn nested_mixed_lists_round_trip() {
     assert_eq!(inner["ordered"], true);
     assert_eq!(inner["start"], 1);
 
-    let back = t.foreign_to_zetl(mdast).unwrap();
+    let back = t.foreign_to_ztl(mdast).unwrap();
     assert_eq!(back, input);
 }

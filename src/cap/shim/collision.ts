@@ -174,7 +174,7 @@ export async function resolveCollision(
 /// Host selector the default renderer mounts under. Matches the
 /// same capability-mode host the decrypted content later renders
 /// into, so screen readers see a single landmark region per page.
-const HOST_SELECTOR = "main[data-zetl-capability]";
+const HOST_SELECTOR = "main[data-ztl-capability]";
 
 /// Rendered copy — exported so the test suite can assert byte-stable
 /// matches and the operator-facing docs can mirror the wording.
@@ -227,21 +227,21 @@ export function renderCollisionPrompt(
     while (host.firstChild) host.removeChild(host.firstChild);
 
     const panel = doc.createElement("section");
-    panel.setAttribute("data-zetl-collision", "");
+    panel.setAttribute("data-ztl-collision", "");
     panel.setAttribute("role", "alertdialog");
-    panel.setAttribute("aria-labelledby", "zetl-collision-title");
-    panel.setAttribute("aria-describedby", "zetl-collision-body");
+    panel.setAttribute("aria-labelledby", "ztl-collision-title");
+    panel.setAttribute("aria-describedby", "ztl-collision-body");
     host.appendChild(panel);
 
     const title = doc.createElement("h1");
-    title.id = "zetl-collision-title";
-    title.setAttribute("data-zetl-collision-title", "");
+    title.id = "ztl-collision-title";
+    title.setAttribute("data-ztl-collision-title", "");
     title.textContent = `\u26a0\ufe0f  ${COLLISION_TITLE}`;
     panel.appendChild(title);
 
     const body = doc.createElement("div");
-    body.id = "zetl-collision-body";
-    body.setAttribute("data-zetl-collision-body", "");
+    body.id = "ztl-collision-body";
+    body.setAttribute("data-ztl-collision-body", "");
     const p1 = doc.createElement("p");
     p1.textContent = COLLISION_BODY_INTRO;
     body.appendChild(p1);
@@ -252,13 +252,13 @@ export function renderCollisionPrompt(
       COLLISION_BODY_COHORT_SUFFIX;
     body.appendChild(p2);
     const p3 = doc.createElement("p");
-    p3.setAttribute("data-zetl-collision-default", "");
+    p3.setAttribute("data-ztl-collision-default", "");
     p3.textContent = COLLISION_DEFAULT_NOTE;
     body.appendChild(p3);
     panel.appendChild(body);
 
     const err = doc.createElement("p");
-    err.setAttribute("data-zetl-collision-error", "");
+    err.setAttribute("data-ztl-collision-error", "");
     err.setAttribute("role", "alert");
     err.setAttribute("aria-live", "polite");
     err.hidden = true;
@@ -275,37 +275,37 @@ export function renderCollisionPrompt(
 
     const keepBtn = doc.createElement("button");
     keepBtn.type = "button";
-    keepBtn.setAttribute("data-zetl-collision-choice", "keep");
+    keepBtn.setAttribute("data-ztl-collision-choice", "keep");
     keepBtn.textContent = COLLISION_BUTTON_KEEP;
     panel.appendChild(keepBtn);
 
     const addBtn = doc.createElement("button");
     addBtn.type = "button";
-    addBtn.setAttribute("data-zetl-collision-choice", "add");
+    addBtn.setAttribute("data-ztl-collision-choice", "add");
     addBtn.textContent = COLLISION_BUTTON_ADD;
     panel.appendChild(addBtn);
 
     const replaceWrap = doc.createElement("div");
-    replaceWrap.setAttribute("data-zetl-collision-replace", "");
+    replaceWrap.setAttribute("data-ztl-collision-replace", "");
     const label = doc.createElement("label");
-    label.setAttribute("for", "zetl-collision-rationale");
+    label.setAttribute("for", "ztl-collision-rationale");
     label.textContent = COLLISION_RATIONALE_LABEL;
     replaceWrap.appendChild(label);
     const rationale = doc.createElement("input");
-    rationale.id = "zetl-collision-rationale";
+    rationale.id = "ztl-collision-rationale";
     rationale.setAttribute("type", "text");
-    rationale.setAttribute("data-zetl-collision-rationale", "");
+    rationale.setAttribute("data-ztl-collision-rationale", "");
     rationale.maxLength = MAX_RATIONALE_LEN;
     replaceWrap.appendChild(rationale);
     const replaceBtn = doc.createElement("button");
     replaceBtn.type = "button";
-    replaceBtn.setAttribute("data-zetl-collision-choice", "replace");
+    replaceBtn.setAttribute("data-ztl-collision-choice", "replace");
     replaceBtn.textContent = COLLISION_BUTTON_REPLACE;
     replaceWrap.appendChild(replaceBtn);
     panel.appendChild(replaceWrap);
 
     const footer = doc.createElement("p");
-    footer.setAttribute("data-zetl-collision-footer", "");
+    footer.setAttribute("data-ztl-collision-footer", "");
     footer.textContent = COLLISION_FOOTER;
     panel.appendChild(footer);
 

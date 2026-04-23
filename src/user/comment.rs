@@ -1,6 +1,6 @@
 //! Page comment storage (REQ-020-051) with HMAC integrity (REQ-020-066).
 //!
-//! Comments are stored as sidecar JSON files at `.zetl/comments/<slug>.json`.
+//! Comments are stored as sidecar JSON files at `.ztl/comments/<slug>.json`.
 //! They are NOT part of the page content — they don't affect markdown, merkle,
 //! git history, or the link graph.
 //!
@@ -17,7 +17,7 @@ use std::path::Path;
 
 type HmacSha256 = Hmac<Sha256>;
 
-const COMMENTS_DIR: &str = ".zetl/comments";
+const COMMENTS_DIR: &str = ".ztl/comments";
 
 /// 30 days in seconds (default auto-prune threshold).
 const DEFAULT_PRUNE_AGE_SECS: u64 = 30 * 24 * 3600;
@@ -79,7 +79,7 @@ pub fn verify_comments(server_key: &[u8], comments: &[Comment]) -> Vec<VerifiedC
         .collect()
 }
 
-/// Load comments for a page slug from `.zetl/comments/<slug>.json`.
+/// Load comments for a page slug from `.ztl/comments/<slug>.json`.
 ///
 /// Returns an empty vector if the file does not exist.
 pub fn load_comments(vault_root: &Path, slug: &str) -> Result<Vec<Comment>> {
@@ -154,7 +154,7 @@ pub fn prune_comments(vault_root: &Path, slug: &str, max_age_secs: u64) -> Resul
     Ok(removed)
 }
 
-/// Prune all comment files in `.zetl/comments/` that have entries older than 30 days.
+/// Prune all comment files in `.ztl/comments/` that have entries older than 30 days.
 /// Returns total number of comments removed.
 pub fn prune_all_comments(vault_root: &Path) -> Result<usize> {
     prune_all_comments_with_age(vault_root, DEFAULT_PRUNE_AGE_SECS)

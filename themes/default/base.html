@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}{{ vault.name }} — zetl{% endblock %}</title>
-  <meta name="description" content="{% block description %}{{ vault.name }} — a knowledge vault built with zetl.{% endblock %}">
+  <title>{% block title %}{{ vault.name }} — ztl{% endblock %}</title>
+  <meta name="description" content="{% block description %}{{ vault.name }} — a knowledge vault built with ztl.{% endblock %}">
   {# Open Graph / social cards — child templates may override og_image/og_title/og_description blocks. #}
   <meta property="og:type" content="website">
   <meta property="og:title" content="{% block og_title %}{{ self.title() }}{% endblock %}">
   <meta property="og:description" content="{% block og_description %}{{ self.description() }}{% endblock %}">
   {# og:image MUST be an absolute URL for social scrapers — root-relative
      (/slug/og.png) works when served from a domain root; pair with
-     `zetl build --site-url https://example.com` to emit fully-qualified
+     `ztl build --site-url https://example.com` to emit fully-qualified
      URLs for sub-path deployments or strict scrapers. #}
   <meta property="og:image" content="{% block og_image %}{{ vault.site_url or '' }}{% if page is defined and page and page.slug %}/{{ page.slug }}/og.png{% else %}/og.png{% endif %}{% endblock %}">
   <meta property="og:image:width" content="1200">
@@ -25,7 +25,7 @@
      search JS on first Cmd+K, prefetched here so it's warm by then. #}
   <link rel="prefetch" href="{{ root_path }}pages.json">
   {% if mode == "build" %}<link rel="prefetch" href="{{ root_path }}search-index.json">{% endif %}
-  {% if bm25_index %}<script type="application/json" id="zetl-bm25-index">{{ bm25_index | safe }}</script>{% endif %}
+  {% if bm25_index %}<script type="application/json" id="ztl-bm25-index">{{ bm25_index | safe }}</script>{% endif %}
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23570df8'/%3E%3Cpath d='M4 4h8v1.5L6 11.5h6V13H4v-1.5L10 5.5H4z' fill='white'/%3E%3C/svg%3E">
   {# Preload critical CSS so the browser's preload scanner starts fetching
      before it hits the blocking <link> below (PERF-AUDIT-2026-04-19). #}
@@ -40,7 +40,7 @@
   <script>
   (function(){
     try {
-      if (localStorage.getItem('zetl.graphWidget') === 'expanded') {
+      if (localStorage.getItem('ztl.graphWidget') === 'expanded') {
         document.documentElement.setAttribute('data-graph', 'expanded');
       }
     } catch (_) { /* storage unavailable — keep default (collapsed) */ }
@@ -62,28 +62,28 @@
      placement switch via [graph] placement in theme.toml, no template edit
      required. #}
   {% if active_slug != "_graph" %}
-  <div class="zetl-graph-widget"
-       id="zetl-graph-widget"
+  <div class="ztl-graph-widget"
+       id="ztl-graph-widget"
        aria-label="Vault graph mini-map"
        role="region">
     <button type="button"
-            class="zetl-graph-widget__close"
-            id="zetl-graph-widget-close"
+            class="ztl-graph-widget__close"
+            id="ztl-graph-widget-close"
             aria-label="Close graph overlay">×</button>
-    <a class="zetl-graph-widget__expand"
+    <a class="ztl-graph-widget__expand"
        href="{{ root_path }}_graph{% if mode == 'build' %}.html{% endif %}"
-       data-zetl-spa="off"
+       data-ztl-spa="off"
        title="Open full graph">Expand ↗</a>
     {% include "_graph.html" ignore missing %}
   </div>
   {# Launcher pill — desktop affordance to re-open the widget after dismissal.
-     CSS (see .zetl-graph-widget-launcher) flips visibility against
+     CSS (see .ztl-graph-widget-launcher) flips visibility against
      html[data-graph="expanded"], set by the head-script from localStorage. #}
   <button type="button"
-          class="zetl-graph-widget-launcher"
-          id="zetl-graph-widget-launcher"
+          class="ztl-graph-widget-launcher"
+          id="ztl-graph-widget-launcher"
           aria-label="Show graph"
-          aria-controls="zetl-graph-widget"
+          aria-controls="ztl-graph-widget"
           aria-expanded="false">
     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
          fill="none" viewBox="0 0 24 24" stroke="currentColor"
@@ -112,18 +112,18 @@
                   d="M4 6h16M4 12h16M4 18h16"/>
           </svg>
         </label>
-        <span class="text-lg font-bold ml-2">zetl</span>
+        <span class="text-lg font-bold ml-2">ztl</span>
         {# SPEC-028 REQ-117: graph toggle — visible only below
-           --zetl-graph-widget-breakpoint. Opens the persistent
-           .zetl-graph-widget as a full-screen overlay by toggling a class,
+           --ztl-graph-widget-breakpoint. Opens the persistent
+           .ztl-graph-widget as a full-screen overlay by toggling a class,
            which preserves the Sigma WebGL context identity across the
            transition. #}
         <button type="button"
-                class="zetl-graph-toggle"
-                id="zetl-graph-toggle"
+                class="ztl-graph-toggle"
+                id="ztl-graph-toggle"
                 aria-label="Show graph"
                 aria-expanded="false"
-                aria-controls="zetl-graph-widget">
+                aria-controls="ztl-graph-widget">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
                fill="none" viewBox="0 0 24 24" stroke="currentColor"
                stroke-width="2" aria-hidden="true">
@@ -141,7 +141,7 @@
          mounted in base.html. Themes that strip this attribute opt out of
          no-flash navigation — they still render correctly, just with a full
          reload per link. #}
-      <main data-zetl-volatile>
+      <main data-ztl-volatile>
         {% block content %}{% endblock %}
       </main>
     </div>
@@ -150,30 +150,30 @@
     <div class="drawer-side">
       <label for="sidebar-toggle" aria-label="close sidebar" class="drawer-overlay"></label>
       <aside class="bg-base-200 w-64 min-h-screen p-4">
-        <a href="{{ root_path }}{{ index_file }}" class="zetl-wordmark text-xl font-bold mb-4 block hover:underline" aria-label="Vault index">zetl</a>
+        <a href="{{ root_path }}{{ index_file }}" class="ztl-wordmark text-xl font-bold mb-4 block hover:underline" aria-label="Vault index">ztl</a>
         <div class="divider my-1"></div>
         <button class="search-btn" onclick="openSearch()">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           Search…
           <kbd>⌘K</kbd>
         </button>
-        <nav class="zetl-actions" aria-label="Vault actions">
-          <p class="zetl-actions-heading">Vault</p>
-          <a href="{{ root_path }}help/{{ index_file }}" class="zetl-action">
-            <span class="zetl-action-icon" aria-hidden="true">?</span>
+        <nav class="ztl-actions" aria-label="Vault actions">
+          <p class="ztl-actions-heading">Vault</p>
+          <a href="{{ root_path }}help/{{ index_file }}" class="ztl-action">
+            <span class="ztl-action-icon" aria-hidden="true">?</span>
             <span>Help &amp; install</span>
           </a>
           {# SPEC-027 REQ-304 / REQ-305: vault-history link, omitted when history absent.
-             data-zetl-spa="off" forces a full page load — /_history isn't in the SPA. #}
+             data-ztl-spa="off" forces a full page load — /_history isn't in the SPA. #}
           {%- if vault.history and vault.history.snapshot_count and vault.history.snapshot_count > 0 %}
-          <a href="{{ root_path }}_history{% if mode == 'build' %}.html{% endif %}" data-zetl-spa="off" class="zetl-action">
-            <span class="zetl-action-icon" aria-hidden="true">↻</span>
+          <a href="{{ root_path }}_history{% if mode == 'build' %}.html{% endif %}" data-ztl-spa="off" class="ztl-action">
+            <span class="ztl-action-icon" aria-hidden="true">↻</span>
             <span>Recent changes</span>
           </a>
           {%- endif %}
           {# SPEC-028 REQ-107: vault-wide graph link. #}
-          <a href="{{ root_path }}_graph{% if mode == 'build' %}.html{% endif %}" data-zetl-spa="off" class="zetl-action">
-            <span class="zetl-action-icon" aria-hidden="true">◈</span>
+          <a href="{{ root_path }}_graph{% if mode == 'build' %}.html{% endif %}" data-ztl-spa="off" class="ztl-action">
+            <span class="ztl-action-icon" aria-hidden="true">◈</span>
             <span>Graph</span>
           </a>
         </nav>
@@ -234,7 +234,7 @@
     /* Page list: inline in serve mode (instant); lazy-fetched from pages.json
        in build mode (keeps HTML lean, single one-time cost on first Cmd+K). */
     var pageList=(function(){
-      var el=document.getElementById('zetl-search-index');
+      var el=document.getElementById('ztl-search-index');
       if(!el)return null;
       try{return JSON.parse(el.textContent||'[]');}
       catch(e){return [];}
@@ -402,7 +402,7 @@
        Inline script is only present on file:// / legacy pages; production
        build mode lazy-fetches search-index.json on first search. */
     var searchIndex=(function(){
-      var el=document.getElementById('zetl-bm25-index');
+      var el=document.getElementById('ztl-bm25-index');
       if(!el)return null;
       try{return JSON.parse(el.textContent);}
       catch(e){return null;}
@@ -648,24 +648,24 @@
 
   {# SPEC-028 REQ-117: mobile graph-toggle behaviour. Toggles a single modifier
      class on the persistent widget — no DOM replacement — so the Sigma
-     instance mounted inside #zetl-graph (when task-graph-partial lands) keeps
+     instance mounted inside #ztl-graph (when task-graph-partial lands) keeps
      its WebGL context across open/close transitions. Runs once; the SPA
      navigation shell preserves the shell region so this init never needs to
      re-run on navigation.
 
      Desktop collapse/expand is wired here too: the close (×) persists a
      dismissal, and the launcher pill re-opens. State is written to
-     localStorage under `zetl.graphWidget` so returning readers aren't
+     localStorage under `ztl.graphWidget` so returning readers aren't
      re-prompted. #}
   <script>
   /* Lazy vendor loader for the graph widget. The ~150 kB graphology + FA2 +
      sigma bundle is only injected when the reader actually reveals the
      graph: launcher click (desktop), navbar toggle (mobile), or landing on
      the full-page /_graph route. Resolves a singleton promise so repeat
-     callers hit the existing load. __zetlBootGraph is defined by the graph
+     callers hit the existing load. __ztlBootGraph is defined by the graph
      partial when it is present; the loader tolerates its absence
      (theme-override case, REQ-109). */
-  window.__zetlEnsureGraph = (function(){
+  window.__ztlEnsureGraph = (function(){
     var promise = null;
     var ROOT = "{{ root_path | safe }}";
     var files = [
@@ -689,31 +689,31 @@
       promise = files.reduce(function(p, f){
         return p.then(function(){ return load(ROOT + f); });
       }, Promise.resolve()).then(function(){
-        if (typeof window.__zetlBootGraph === 'function') window.__zetlBootGraph();
+        if (typeof window.__ztlBootGraph === 'function') window.__ztlBootGraph();
       });
       return promise;
     };
   })();
 
   (function(){
-    var widget=document.getElementById('zetl-graph-widget');
-    var toggle=document.getElementById('zetl-graph-toggle');
-    var closeBtn=document.getElementById('zetl-graph-widget-close');
-    var launcher=document.getElementById('zetl-graph-widget-launcher');
+    var widget=document.getElementById('ztl-graph-widget');
+    var toggle=document.getElementById('ztl-graph-toggle');
+    var closeBtn=document.getElementById('ztl-graph-widget-close');
+    var launcher=document.getElementById('ztl-graph-widget-launcher');
     /* Full-page /_graph route mounts the widget directly (no toggle / close /
        launcher), so this controller has no work — but we still need to
        trigger the lazy loader there. */
-    var fullStage = document.querySelector('.zetl-graph-widget[data-placement="fullscreen"]');
-    if (fullStage && window.__zetlEnsureGraph) window.__zetlEnsureGraph();
+    var fullStage = document.querySelector('.ztl-graph-widget[data-placement="fullscreen"]');
+    if (fullStage && window.__ztlEnsureGraph) window.__ztlEnsureGraph();
     if(!widget)return;
-    var OPEN='zetl-graph-widget--open';
-    var STORAGE_KEY='zetl.graphWidget';
+    var OPEN='ztl-graph-widget--open';
+    var STORAGE_KEY='ztl.graphWidget';
 
     /* If the reader previously expanded the widget, honour that immediately —
        their persisted preference is load-the-graph. */
     if (document.documentElement.getAttribute('data-graph') === 'expanded'
-        && window.__zetlEnsureGraph) {
-      window.__zetlEnsureGraph();
+        && window.__ztlEnsureGraph) {
+      window.__ztlEnsureGraph();
     }
 
     /* ── Desktop collapse/expand (persisted). */
@@ -737,7 +737,7 @@
     if(launcher){
       launcher.addEventListener('click',function(){
         setExpanded(true);
-        if (window.__zetlEnsureGraph) window.__zetlEnsureGraph();
+        if (window.__ztlEnsureGraph) window.__ztlEnsureGraph();
         /* Hand focus to the widget's close so keyboard users can dismiss
            again without tabbing through the whole page. */
         if(closeBtn)closeBtn.focus();
@@ -763,7 +763,7 @@
     if(toggle)toggle.addEventListener('click',function(){
       var next=!isOpen();
       setOpen(next);
-      if (next && window.__zetlEnsureGraph) window.__zetlEnsureGraph();
+      if (next && window.__ztlEnsureGraph) window.__ztlEnsureGraph();
     });
 
     /* ── Close button is dual-role: dismisses the mobile overlay when
@@ -785,7 +785,7 @@
     /* If the viewport grows past the breakpoint while the overlay is open
        (desktop resize, orientation change), auto-dismiss — the docked widget
        will render inline and the overlay is no longer meaningful. 900 px is
-       the default --zetl-graph-widget-breakpoint; themes that move the
+       the default --ztl-graph-widget-breakpoint; themes that move the
        breakpoint should pair with a matching media query override. */
     window.addEventListener('resize',function(){
       if(isOpen()&&window.innerWidth>=900)setOpen(false);
@@ -805,8 +805,8 @@
   </script>
   {# SPEC-028 REQ-113 / REQ-115: persistent-shell SPA navigation module.
      Loaded only when the theme opts in via `theme.toml: [spa] enabled=true`.
-     The module swaps `[data-zetl-volatile]` on same-origin link clicks and
-     dispatches `zetl:before-navigate` / `zetl:after-navigate` events. #}
+     The module swaps `[data-ztl-volatile]` on same-origin link clicks and
+     dispatches `ztl:before-navigate` / `ztl:after-navigate` events. #}
   {% if spa_enabled %}<script src="{{ root_path }}_static/spa.js" defer></script>{% endif %}
   {% block scripts %}{% endblock %}
 

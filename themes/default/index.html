@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{% block index_title %}Vault — zetl{% endblock %}{% endblock %}
+{% block title %}{% block index_title %}Vault — ztl{% endblock %}{% endblock %}
 
 {% block content %}
 <main class="flex-1 p-4 sm:p-6 max-w-4xl mx-auto w-full">
@@ -15,11 +15,11 @@
   <div class="stats stats-horizontal shadow mb-8 w-full sm:w-auto">
     <div class="stat"><div class="stat-title">Pages</div><div class="stat-value opacity-60">{{ vault.stats.total_pages }}</div></div>
     <div class="stat"><div class="stat-title">Links</div><div class="stat-value opacity-60">{{ vault.stats.total_links }}</div></div>
-    <a class="stat hover:bg-base-200/50 {% if dead == 0 %}pointer-events-none{% endif %}" href="?filter=dead" data-zetl-spa="off">
+    <a class="stat hover:bg-base-200/50 {% if dead == 0 %}pointer-events-none{% endif %}" href="?filter=dead" data-ztl-spa="off">
       <div class="stat-title"><span aria-hidden="true">⚠︎</span> Dead links</div>
       <div class="stat-value text-error">{{ dead }}</div>
     </a>
-    <a class="stat hover:bg-base-200/50 {% if orph == 0 %}pointer-events-none{% endif %}" href="?filter=orphans" data-zetl-spa="off">
+    <a class="stat hover:bg-base-200/50 {% if orph == 0 %}pointer-events-none{% endif %}" href="?filter=orphans" data-ztl-spa="off">
       <div class="stat-title"><span aria-hidden="true">⌀</span> Orphans</div>
       <div class="stat-value text-warning">{{ orph }}</div>
     </a>
@@ -31,23 +31,23 @@
   {% block index_pages %}
   <div class="flex flex-wrap items-baseline justify-between gap-3 mb-4">
     <h2 class="text-xl font-semibold">{% block index_pages_heading %}All Pages{% endblock %}</h2>
-    <div class="zetl-index-toolbar flex flex-wrap items-center gap-1 text-xs" role="toolbar" aria-label="Sort/filter">
-      <button type="button" class="btn btn-xs btn-ghost zetl-index-sort" data-sort="alpha" aria-pressed="true">A–Z</button>
-      <button type="button" class="btn btn-xs btn-ghost zetl-index-sort" data-sort="linked">Most linked</button>
-      <button type="button" class="btn btn-xs btn-ghost zetl-index-sort" data-sort="orphans">Orphans</button>
+    <div class="ztl-index-toolbar flex flex-wrap items-center gap-1 text-xs" role="toolbar" aria-label="Sort/filter">
+      <button type="button" class="btn btn-xs btn-ghost ztl-index-sort" data-sort="alpha" aria-pressed="true">A–Z</button>
+      <button type="button" class="btn btn-xs btn-ghost ztl-index-sort" data-sort="linked">Most linked</button>
+      <button type="button" class="btn btn-xs btn-ghost ztl-index-sort" data-sort="orphans">Orphans</button>
       <span class="mx-1 opacity-40" aria-hidden="true">·</span>
-      <select class="select select-xs select-ghost zetl-index-folder" aria-label="Folder"><option value="">All folders</option></select>
-      <span class="zetl-index-count opacity-60 ml-2" aria-live="polite"></span>
+      <select class="select select-xs select-ghost ztl-index-folder" aria-label="Folder"><option value="">All folders</option></select>
+      <span class="ztl-index-count opacity-60 ml-2" aria-live="polite"></span>
     </div>
   </div>
-  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 zetl-index-grid">
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 ztl-index-grid">
     {% for page in vault.pages %}
     <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}"
-       class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow zetl-index-card"
+       class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow ztl-index-card"
        data-s="{{ page.slug }}"
        data-m="{{ page.outlink_count }},{{ page.backlink_count }}">
       <div class="card-body p-4">
-        <p class="zetl-index-card-folder text-[11px] uppercase tracking-wide opacity-50 mb-0.5" hidden></p>
+        <p class="ztl-index-card-folder text-[11px] uppercase tracking-wide opacity-50 mb-0.5" hidden></p>
         <h3 class="card-title text-sm">{{ page.title }}</h3>
         <p class="text-xs opacity-80">{{ page.outlink_count }} out · {{ page.backlink_count }} in</p>
       </div>

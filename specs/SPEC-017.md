@@ -1,27 +1,27 @@
 ---
-title: "SPEC-017: zetl history — Invisible Temporal Graph Navigation via jj-lib"
+title: "SPEC-017: ztl history — Invisible Temporal Graph Navigation via jj-lib"
 version: 0.2.0
 status: draft
 audience: agent, human
 date: 2026-03-04
 ---
 
-# SPEC-017: zetl history — Invisible Temporal Graph Navigation via jj-lib
+# SPEC-017: ztl history — Invisible Temporal Graph Navigation via jj-lib
 
 ## Information Table
 
 | Field        | Value                                                              |
 | ------------ | ------------------------------------------------------------------ |
 | Document ID  | SPEC-017                                                           |
-| Title        | zetl history — Invisible Temporal Graph Navigation via jj-lib      |
+| Title        | ztl history — Invisible Temporal Graph Navigation via jj-lib      |
 | Version      | 0.2.0                                                              |
 | Status       | Draft                                                              |
 | Author       | Agent (USDD Protocol v1.3.0)                                       |
 | Date         | 2026-03-04                                                         |
 | Audience     | Agent, Human                                                       |
 | Trace        | USDD Agent Protocol v1.3.0                                         |
-| Parent       | SPEC-001: zetl — Bi-directional Link Graph CLI                     |
-| Related      | SPEC-006: Content-Addressed Merkle Tree; SPEC-007: zetl diff; SPEC-008: zetl watch |
+| Parent       | SPEC-001: ztl — Bi-directional Link Graph CLI                     |
+| Related      | SPEC-006: Content-Addressed Merkle Tree; SPEC-007: ztl diff; SPEC-008: ztl watch |
 | Supersedes   | SPEC-007 (VCS backend only; diff semantics preserved)              |
 | Dependencies | jj-lib (Jujutsu VCS library), blake3, SPEC-006 (index cache format) |
 
@@ -29,23 +29,23 @@ date: 2026-03-04
 
 ## 1. Overview
 
-Zetl commands operate on the present. `zetl links Foo` tells you what Foo links to *right now*. `zetl check` finds dead links *right now*. The vault is always a single, frozen moment. To understand how the graph evolved — when a page became an orphan, how a cluster of notes grew over a week, what reasoning conclusions changed after a restructuring — the user must reconstruct the past manually.
+ztl commands operate on the present. `ztl links Foo` tells you what Foo links to *right now*. `ztl check` finds dead links *right now*. The vault is always a single, frozen moment. To understand how the graph evolved — when a page became an orphan, how a cluster of notes grew over a week, what reasoning conclusions changed after a restructuring — the user must reconstruct the past manually.
 
-SPEC-007 partially addressed this with `zetl diff`, computing graph-level deltas against git history. But it has three structural limitations:
+SPEC-007 partially addressed this with `ztl diff`, computing graph-level deltas against git history. But it has three structural limitations:
 
 1. **Granularity is limited to explicit git commits.** Edits between commits are invisible. Most knowledge workers commit infrequently if at all — their vault history has gaps measured in hours or days.
-2. **Git is an external dependency.** SPEC-007 requires the `git` binary on PATH and shells out for every operation (NFR-019). This is fragile, slow, and architecturally inconsistent with zetl's otherwise self-contained design.
-3. **Only diffs are supported.** You can see what changed between two points, but you cannot *query the graph at a past point*. There is no `zetl links Foo --at yesterday`.
+2. **Git is an external dependency.** SPEC-007 requires the `git` binary on PATH and shells out for every operation (NFR-019). This is fragile, slow, and architecturally inconsistent with ztl's otherwise self-contained design.
+3. **Only diffs are supported.** You can see what changed between two points, but you cannot *query the graph at a past point*. There is no `ztl links Foo --at yesterday`.
 
-This specification solves all three by embedding [Jujutsu](https://github.com/jj-vcs/jj) (`jj-lib`) as zetl's temporal engine. Jujutsu is a Rust-native VCS that snapshots the working copy automatically — every save, every edit, every moment the vault changes produces a navigable point in history, without the user running any command.
+This specification solves all three by embedding [Jujutsu](https://github.com/jj-vcs/jj) (`jj-lib`) as ztl's temporal engine. Jujutsu is a Rust-native VCS that snapshots the working copy automatically — every save, every edit, every moment the vault changes produces a navigable point in history, without the user running any command.
 
 ### 1.1 Design Principle: Invisibility
 
 The user learns nothing new. There are no `jj` commands to run, no repository to initialise, no snapshots to create, no revset syntax to learn. Temporal capabilities appear as natural extensions of commands they already use:
 
-- `zetl diff` works exactly as SPEC-007 describes, but with finer-grained history and without requiring git
-- `zetl links Foo --at yesterday` queries the graph as it existed yesterday
-- `zetl history` shows how the graph evolved
+- `ztl diff` works exactly as SPEC-007 describes, but with finer-grained history and without requiring git
+- `ztl links Foo --at yesterday` queries the graph as it existed yesterday
+- `ztl history` shows how the graph evolved
 - The TUI dashboard gains a timeline panel
 
 Under the hood, jj-lib manages everything: initialisation, snapshotting, storage, history traversal. The user sees results. The plumbing is invisible.
@@ -69,11 +69,11 @@ Critically, jj uses git as its storage backend. A vault that is already a git re
 **In scope:**
 
 - Embedding jj-lib as an optional Cargo feature (`history`)
-- Automatic, silent VCS initialisation within `.zetl/jj/`
-- Automatic snapshotting on every `zetl index`
+- Automatic, silent VCS initialisation within `.ztl/jj/`
+- Automatic snapshotting on every `ztl index`
 - `--at <time-expr>` flag on existing read-only commands (`links`, `backlinks`, `check`, `graph`, `search`, `blocks`, `reason`)
-- `zetl history` command with graph-level timeline
-- `zetl history page <name>` for per-page evolution
+- `ztl history` command with graph-level timeline
+- `ztl history page <name>` for per-page evolution
 - Superseding SPEC-007's git-subprocess VCS backend with jj-lib
 - Cached historical indexes keyed by `vault_root_hash` (SPEC-006)
 - Watch-mode integration (SPEC-008) for continuous snapshotting
@@ -85,7 +85,7 @@ Critically, jj uses git as its storage backend. A vault that is already a git re
 **Out of scope:**
 
 - Exposing jj commands, revset syntax, or jj concepts to the user
-- Write operations through jj (zetl never modifies vault files)
+- Write operations through jj (ztl never modifies vault files)
 - Multi-vault sync or federation (SPEC-011)
 - Merge conflict resolution UI (conflicts in jj are informational, not interactive)
 - Distributed/remote jj operations (push, pull, fetch)
@@ -108,8 +108,8 @@ Role:        Graduate student; maintains a 400-note research vault in Obsidian
 Goals:       Understand how their vault has grown; find when they stopped linking
              to a topic; review what changed during a writing session
 Constraints: Does not use git; does not know what version control is;
-             uses zetl for link-checking and search only
-Workflow:    Opens Obsidian; writes notes throughout the day; runs zetl check
+             uses ztl for link-checking and search only
+Workflow:    Opens Obsidian; writes notes throughout the day; runs ztl check
              occasionally to find broken links; never commits anything
 Pain point:  "I reorganised my notes last week and now half my links are broken.
              I wish I could see what the vault looked like before I moved things."
@@ -122,9 +122,9 @@ Name:        Akiko
 Role:        Product manager; maintains a 2,000-note Zettelkasten for research synthesis
 Goals:       Review how her vault evolved during a work session; spot structural
              regressions; compare graph topology across time
-Constraints: Comfortable with CLI; uses git; expects existing zetl diff to keep working
-Workflow:    Writes notes during research; commits periodically; runs zetl diff
-             to review session changes; runs zetl check for quality
+Constraints: Comfortable with CLI; uses git; expects existing ztl diff to keep working
+Workflow:    Writes notes during research; commits periodically; runs ztl diff
+             to review session changes; runs ztl check for quality
 Pain point:  "I want to see the vault as it was at any point — not just diffs,
              but actually query the past graph."
 ```
@@ -133,15 +133,15 @@ Pain point:  "I want to see the vault as it was at any point — not just diffs,
 
 ```
 Name:        Mika
-Role:        Front-end developer; builds custom zetl themes for clients
+Role:        Front-end developer; builds custom ztl themes for clients
 Goals:       Use temporal data in themes to show vault evolution; build
              dashboards with sparklines, activity feeds, and page age badges;
              create timeline-driven visualisations for the web UI
 Constraints: Works with Jinja2 templates and JavaScript; does not touch Rust;
              themes must work in both serve and build modes; themes must
              degrade gracefully when history is unavailable
-Workflow:    Edits templates in .zetl/themes/<name>/; tests with zetl serve;
-             builds static sites with zetl build; ships themes as directories
+Workflow:    Edits templates in .ztl/themes/<name>/; tests with ztl serve;
+             builds static sites with ztl build; ships themes as directories
 Pain point:  "I can show what the vault looks like now, but I can't show how
              it got here. I want sparklines, activity feeds, page age — all the
              temporal metadata that makes a dashboard feel alive."
@@ -151,13 +151,13 @@ Pain point:  "I can show what the vault looks like now, but I can't show how
 
 ```
 Name:        Dev Agent (AI agent in CI or local automation)
-Role:        Automated reasoning cycle; queries zetl on schedule or on file change
+Role:        Automated reasoning cycle; queries ztl on schedule or on file change
 Goals:       Determine exactly which pages and links changed since last run;
              reconstruct graph at any prior point for comparison
 Constraints: Non-interactive; structured JSON output; must not require manual
              intervention or external tool installation
-Workflow:    1. zetl diff --since <last-run> --format json
-             2. For interesting changes: zetl links <page> --at <timestamp> --format json
+Workflow:    1. ztl diff --since <last-run> --format json
+             2. For interesting changes: ztl links <page> --at <timestamp> --format json
              3. Re-reason over affected subgraph
 Pain point:  "I need point-in-time graph queries, not just diffs."
 ```
@@ -171,38 +171,38 @@ Pain point:  "I need point-in-time graph queries, not just diffs."
 ```
 Preconditions:
   - Kai has a 400-note vault with no git repository
-  - Kai has used zetl before (index.json exists)
+  - Kai has used ztl before (index.json exists)
   - Kai has never heard of jj or version control
 
 Steps:
-  1. Kai runs zetl index (as usual)
+  1. Kai runs ztl index (as usual)
      → Index rebuilds as normal
-     → Internally: zetl detects no .zetl/jj/ directory, silently initialises
+     → Internally: ztl detects no .ztl/jj/ directory, silently initialises
        a jj repository with the vault as working copy, creates first snapshot
      → No output about jj, no new files visible to Kai
 
-  2. Kai edits notes throughout the day, running zetl index periodically
-     → Each zetl index silently creates a new jj snapshot
+  2. Kai edits notes throughout the day, running ztl index periodically
+     → Each ztl index silently creates a new jj snapshot
      → Kai sees normal index output only
 
   3. Next day, Kai realises they broke links during yesterday's reorganisation
-     zetl check --at yesterday
+     ztl check --at yesterday
      → Shows: 0 dead links yesterday (before the reorganisation)
      → Kai now knows the reorganisation caused the breakage
 
-  4. Kai runs zetl diff --since yesterday
+  4. Kai runs ztl diff --since yesterday
      → Shows: 12 links removed, 3 orphans gained, 2 dead links added
      → Kai fixes the issues
 
 Postconditions:
   - Kai used temporal features without learning version control
-  - No git repository exists; jj history lives inside .zetl/jj/
-  - Kai's workflow is unchanged: edit notes, run zetl commands
+  - No git repository exists; jj history lives inside .ztl/jj/
+  - Kai's workflow is unchanged: edit notes, run ztl commands
 
 Failure modes:
-  - history feature not compiled in: --at flag and zetl history are absent;
-    zetl diff falls back to git subprocess mode (SPEC-007) or errors gracefully
-  - .zetl/jj/ corrupted or deleted: zetl silently re-initialises on next index;
+  - history feature not compiled in: --at flag and ztl history are absent;
+    ztl diff falls back to git subprocess mode (SPEC-007) or errors gracefully
+  - .ztl/jj/ corrupted or deleted: ztl silently re-initialises on next index;
     history before the corruption is lost; current operations unaffected
 ```
 
@@ -211,17 +211,17 @@ Failure modes:
 ```
 Preconditions:
   - Vault is a git repository with commits
-  - zetl has been run multiple times (jj history exists in .zetl/jj/)
+  - ztl has been run multiple times (jj history exists in .ztl/jj/)
   - Akiko refactored "Architecture" cluster last week
 
 Steps:
-  1. zetl links "Architecture Overview" --at "last monday"
+  1. ztl links "Architecture Overview" --at "last monday"
      → Shows: 14 forward links (the state before refactoring)
 
-  2. zetl links "Architecture Overview"
+  2. ztl links "Architecture Overview"
      → Shows: 8 forward links (current state)
 
-  3. zetl history page "Architecture Overview"
+  3. ztl history page "Architecture Overview"
      → Shows timeline:
        2026-02-24 14:32  links: 14  backlinks: 7
        2026-02-25 09:15  links: 12  backlinks: 7  (-2 links)
@@ -229,7 +229,7 @@ Steps:
        2026-02-28 16:00  links: 8   backlinks: 5  (no change)
        2026-03-03 11:22  links: 8   backlinks: 6  (+1 backlink)
 
-  4. zetl diff --from "last monday" --format table
+  4. ztl diff --from "last monday" --format table
      → Shows the full graph diff since Monday, including all link changes
 
 Postconditions:
@@ -250,12 +250,12 @@ Preconditions:
   - New edits have been made since
 
 Steps:
-  1. zetl diff --since "2026-03-03T08:00:00Z" --format json
+  1. ztl diff --since "2026-03-03T08:00:00Z" --format json
      → Returns structured diff with pages/links/orphans/dead-links changes
      → Internally uses jj-lib (no git subprocess)
 
   2. Agent identifies 3 pages with link changes
-     For each: zetl links <page> --at "2026-03-03T08:00:00Z" --format json
+     For each: ztl links <page> --at "2026-03-03T08:00:00Z" --format json
      → Returns the old link set for comparison
 
   3. Agent reasons over the delta and stores current timestamp
@@ -275,10 +275,10 @@ Failure modes:
 ```
 Preconditions:
   - Vault with jj history spanning multiple days
-  - User launches zetl TUI dashboard
+  - User launches ztl TUI dashboard
 
 Steps:
-  1. User opens TUI dashboard (zetl view or zetl serve TUI mode)
+  1. User opens TUI dashboard (ztl view or ztl serve TUI mode)
      → Dashboard shows current graph stats as usual
      → A timeline indicator appears in the status bar showing history range:
        "[2026-02-20 ← → 2026-03-04]  Now"
@@ -311,7 +311,7 @@ Failure modes:
 
 ```
 Preconditions:
-  - Vault with history spanning 2 weeks (multiple zetl index runs)
+  - Vault with history spanning 2 weeks (multiple ztl index runs)
   - Mika is building a custom theme with a dashboard
 
 Steps:
@@ -325,7 +325,7 @@ Steps:
      </div>
      {% endif %}
 
-     → In serve mode: zetl populates vault.history.trend with the last 30 data points
+     → In serve mode: ztl populates vault.history.trend with the last 30 data points
      → In build mode: same data is pre-computed and baked into the HTML
      → When history feature is absent: the {% if %} block is skipped cleanly
 
@@ -366,10 +366,10 @@ Steps:
      </script>
      {% endif %}
 
-     → zetl build writes history-index.json alongside search-index.json
+     → ztl build writes history-index.json alongside search-index.json
      → Theme JS loads and navigates pre-computed snapshots client-side
 
-  5. Mika runs zetl build --theme custom -o dist/
+  5. Mika runs ztl build --theme custom -o dist/
      → Static site includes all temporal data pre-rendered in HTML
      → history-index.json written to dist/ for JS-driven features
      → Site works from file:// with no server
@@ -394,7 +394,7 @@ Preconditions:
   - Akiko wants to publish her vault as a static site
 
 Steps:
-  1. zetl build -o site/
+  1. ztl build -o site/
      → Static site generated as usual
      → Index page includes vault stats trend (sparkline data in template context)
      → Each page includes creation date and link evolution metadata
@@ -424,16 +424,16 @@ Failure modes:
 
 ### REQ-075: Invisible VCS Initialisation
 
-The system SHALL automatically initialise a jj repository on the first invocation of `zetl index` when the `history` feature is enabled and no `.zetl/jj/` directory exists. Initialisation SHALL:
+The system SHALL automatically initialise a jj repository on the first invocation of `ztl index` when the `history` feature is enabled and no `.ztl/jj/` directory exists. Initialisation SHALL:
 
-- Create the jj repository store inside `.zetl/jj/` (not at the vault root)
+- Create the jj repository store inside `.ztl/jj/` (not at the vault root)
 - Configure the vault root as the jj working copy
 - If a `.git/` directory exists at or above the vault root, configure jj to use the git backend in colocated mode, preserving all existing git history
 - If no `.git/` directory exists, configure jj with a standalone git backend (jj uses git object storage internally even without a user-facing git repo)
 - Produce no user-visible output about the initialisation
-- Add no files to the vault directory (all jj state lives inside `.zetl/jj/`)
+- Add no files to the vault directory (all jj state lives inside `.ztl/jj/`)
 
-The initialisation SHALL be idempotent: if `.zetl/jj/` already exists, it is reused without modification.
+The initialisation SHALL be idempotent: if `.ztl/jj/` already exists, it is reused without modification.
 
 Trace:
 - TEST-080
@@ -441,9 +441,9 @@ Trace:
 
 ### REQ-076: Automatic Snapshotting on Index
 
-Every successful completion of `zetl index` SHALL create a jj snapshot (working-copy commit) capturing the current state of all vault files. The snapshot SHALL:
+Every successful completion of `ztl index` SHALL create a jj snapshot (working-copy commit) capturing the current state of all vault files. The snapshot SHALL:
 
-- Be created silently with no user-visible output (unless `--verbose` is set, in which case a single line `[zetl] snapshot: <change-id-prefix>` is emitted)
+- Be created silently with no user-visible output (unless `--verbose` is set, in which case a single line `[ztl] snapshot: <change-id-prefix>` is emitted)
 - Include the `vault_root_hash` (SPEC-006) in the jj commit description for traceability
 - Include the current timestamp
 - Be deduplicated: if the vault content is identical to the previous snapshot (same `vault_root_hash`), no new snapshot is created
@@ -473,8 +473,8 @@ When `--at <time-expr>` is provided, the system SHALL:
 1. Resolve the time expression to a jj change (snapshot)
 2. Read the vault file tree at that change via jj-lib's `MergedTree` API
 3. Compute the `vault_root_hash` of that tree
-4. If a cached index exists at `.zetl/history/<vault_root_hash>.json`, load it
-5. If no cached index exists, scan the historical file tree through zetl's normal parse pipeline (scanner, wikilink extraction, Merkle tree construction) and cache the result
+4. If a cached index exists at `.ztl/history/<vault_root_hash>.json`, load it
+5. If no cached index exists, scan the historical file tree through ztl's normal parse pipeline (scanner, wikilink extraction, Merkle tree construction) and cache the result
 6. Execute the requested subcommand against the historical index
 
 The subcommand output SHALL be identical in format to the present-time output. The only indication that a historical state is being queried SHALL be a `snapshot` field in JSON output containing the snapshot timestamp and change ID prefix.
@@ -486,11 +486,11 @@ Trace:
 
 ### REQ-079: Historical Index Cache
 
-The system SHALL cache historical index snapshots in `.zetl/history/<vault_root_hash>.json`, keyed by the BLAKE3 vault root hash (SPEC-006 §4.6). Cache semantics:
+The system SHALL cache historical index snapshots in `.ztl/history/<vault_root_hash>.json`, keyed by the BLAKE3 vault root hash (SPEC-006 §4.6). Cache semantics:
 
 - Same `vault_root_hash` implies identical graph topology — a cached index is always valid for any snapshot that produced that hash
 - Cache entries are never *invalidated* (a cached entry is correct for all time), but they may be *evicted* to reclaim space. Eviction does not affect correctness — the entry can be recomputed on next access.
-- Cache entries SHALL use the same serialisation format as `.zetl/index.json` (SPEC-006)
+- Cache entries SHALL use the same serialisation format as `.ztl/index.json` (SPEC-006)
 - The system SHALL implement a bounded-LRU eviction policy with a configurable maximum cache size (default: 100 entries). When exceeded, the entry with the oldest last-access time is evicted. Evicted entries are silently re-scanned and re-cached on next query.
 
 Trace:
@@ -498,9 +498,9 @@ Trace:
 - NFR-027
 - ADR-047
 
-### REQ-080: `zetl history` — Graph Timeline
+### REQ-080: `ztl history` — Graph Timeline
 
-The system SHALL support `zetl history [--since <time-expr>] [--limit N] [--format json|table]` displaying a reverse-chronological timeline of graph-level changes (newest first). Each entry SHALL contain:
+The system SHALL support `ztl history [--since <time-expr>] [--limit N] [--format json|table]` displaying a reverse-chronological timeline of graph-level changes (newest first). Each entry SHALL contain:
 
 - Snapshot timestamp
 - jj change ID prefix (8 characters, for internal traceability)
@@ -515,9 +515,9 @@ Trace:
 - TEST-087, TEST-088
 - CON-025
 
-### REQ-081: `zetl history page <name>` — Page Evolution
+### REQ-081: `ztl history page <name>` — Page Evolution
 
-The system SHALL support `zetl history page <name> [--since <time-expr>] [--limit N] [--format json|table]` displaying the evolution of a single page's graph neighborhood over time. Each entry SHALL contain:
+The system SHALL support `ztl history page <name> [--since <time-expr>] [--limit N] [--format json|table]` displaying the evolution of a single page's graph neighborhood over time. Each entry SHALL contain:
 
 - Snapshot timestamp
 - Forward link count and backlink count at that point
@@ -532,7 +532,7 @@ Trace:
 
 ### REQ-082: Watch-Mode Snapshot Integration
 
-When `zetl watch` (SPEC-008) detects a file change and performs an incremental re-index, it SHALL create a jj snapshot after each re-index cycle, subject to the same deduplication rule as REQ-076 (no snapshot if `vault_root_hash` is unchanged). This enables continuous, fine-grained history capture during active editing sessions.
+When `ztl watch` (SPEC-008) detects a file change and performs an incremental re-index, it SHALL create a jj snapshot after each re-index cycle, subject to the same deduplication rule as REQ-076 (no snapshot if `vault_root_hash` is unchanged). This enables continuous, fine-grained history capture during active editing sessions.
 
 The snapshot creation SHALL NOT block the event stream: it runs asynchronously after the re-index completes.
 
@@ -540,13 +540,13 @@ Trace:
 - TEST-090
 - ADR-048
 
-### REQ-083: Backward-Compatible `zetl diff`
+### REQ-083: Backward-Compatible `ztl diff`
 
-`zetl diff` SHALL continue to accept all arguments defined in SPEC-007 (CON-021): `--from <ref>`, `--since <datetime>`, `--filter`, `--format`. The output schema SHALL be identical to SPEC-007's CON-021.
+`ztl diff` SHALL continue to accept all arguments defined in SPEC-007 (CON-021): `--from <ref>`, `--since <datetime>`, `--filter`, `--format`. The output schema SHALL be identical to SPEC-007's CON-021.
 
 The implementation SHALL use jj-lib instead of git subprocesses. When `--from` is given a git ref (branch name, tag, SHA), jj-lib SHALL resolve it via the git backend. When `--since` is given a datetime, jj-lib SHALL find the nearest snapshot at or before that time.
 
-**Default baseline (no arguments).** SPEC-007's CON-021 defines the no-arg default as `HEAD~1`, which requires git. When the `history` feature is enabled, the default baseline SHALL be the **previous snapshot** — the most recent jj snapshot whose `vault_root_hash` differs from the current one. This generalises `HEAD~1` to non-git vaults: in a git-tracked vault the previous snapshot typically corresponds to `HEAD~1` or a state between commits; in a non-git vault it is the last distinct graph state captured by `zetl index`. If no previous snapshot exists (only one snapshot in history), the system SHALL error with code `NO_PREVIOUS_SNAPSHOT` and a message: `"Only one snapshot exists. Run zetl index after making changes to create a diff baseline."`.
+**Default baseline (no arguments).** SPEC-007's CON-021 defines the no-arg default as `HEAD~1`, which requires git. When the `history` feature is enabled, the default baseline SHALL be the **previous snapshot** — the most recent jj snapshot whose `vault_root_hash` differs from the current one. This generalises `HEAD~1` to non-git vaults: in a git-tracked vault the previous snapshot typically corresponds to `HEAD~1` or a state between commits; in a non-git vault it is the last distinct graph state captured by `ztl index`. If no previous snapshot exists (only one snapshot in history), the system SHALL error with code `NO_PREVIOUS_SNAPSHOT` and a message: `"Only one snapshot exists. Run ztl index after making changes to create a diff baseline."`.
 
 The `from` field in diff output SHALL preserve CON-021's existing fields (`ref`, `commit`, `timestamp`) and MAY add optional extension fields. Existing consumers that parse only CON-021 fields SHALL NOT break.
 
@@ -567,7 +567,7 @@ Field semantics:
 - `timestamp`: ISO 8601 timestamp of the baseline (always present; preserves CON-021 contract)
 - `vault_root_hash`: BLAKE3 vault root hash at the baseline (new optional field; absent in SPEC-007 fallback mode)
 
-When the `history` feature is not compiled in, `zetl diff` SHALL fall back to the SPEC-007 git-subprocess implementation with its `HEAD~1` default.
+When the `history` feature is not compiled in, `ztl diff` SHALL fall back to the SPEC-007 git-subprocess implementation with its `HEAD~1` default.
 
 Trace:
 - TEST-091, TEST-092, TEST-112, TEST-113
@@ -575,9 +575,9 @@ Trace:
 
 ### REQ-084: Graceful Degradation
 
-When the `history` feature is compiled in but the jj repository is unavailable (`.zetl/jj/` missing or corrupt), all non-temporal commands SHALL operate normally. Temporal operations (`--at`, `zetl history`) SHALL error with code `NO_HISTORY` and a message explaining that history will become available after the next `zetl index`.
+When the `history` feature is compiled in but the jj repository is unavailable (`.ztl/jj/` missing or corrupt), all non-temporal commands SHALL operate normally. Temporal operations (`--at`, `ztl history`) SHALL error with code `NO_HISTORY` and a message explaining that history will become available after the next `ztl index`.
 
-When the `history` feature is not compiled in, the `--at` flag and `zetl history` subcommand SHALL be absent from the CLI (not present in `--help`). `zetl diff` SHALL fall back to SPEC-007 behavior.
+When the `history` feature is not compiled in, the `--at` flag and `ztl history` subcommand SHALL be absent from the CLI (not present in `--help`). `ztl diff` SHALL fall back to SPEC-007 behavior.
 
 Trace:
 - TEST-093
@@ -655,10 +655,10 @@ Trace:
 
 ### REQ-087: Serve-Mode History API Endpoints
 
-When `zetl serve` is running with the `history` feature enabled, the server SHALL expose the following JSON API endpoints:
+When `ztl serve` is running with the `history` feature enabled, the server SHALL expose the following JSON API endpoints:
 
-1. `GET /api/history` — Returns the vault timeline (same schema as CON-025 JSON output for `zetl history`)
-2. `GET /api/history/page/{name}` — Returns the page timeline (same schema as CON-025 JSON output for `zetl history page <name>`)
+1. `GET /api/history` — Returns the vault timeline (same schema as CON-025 JSON output for `ztl history`)
+2. `GET /api/history/page/{name}` — Returns the page timeline (same schema as CON-025 JSON output for `ztl history page <name>`)
 3. `GET /api/history/at?t=<iso8601>` — Returns the full vault context (`VaultContext` + `StatsContext`) at the specified historical point, for theme JS to re-render the dashboard
 4. `GET /api/history/diff?from=<time>&to=<time>` — Returns a `GraphDelta` between two time points
 
@@ -672,7 +672,7 @@ Trace:
 
 ### REQ-088: Build-Mode History Export
 
-When `zetl build` is run with the `history` feature enabled and history is available, the build pipeline SHALL write a `history-index.json` file to the output directory. This file SHALL contain:
+When `ztl build` is run with the `history` feature enabled and history is available, the build pipeline SHALL write a `history-index.json` file to the output directory. This file SHALL contain:
 
 ```json
 {
@@ -775,7 +775,7 @@ Trace:
 
 ### NFR-026: Snapshot Creation Latency
 
-Creating a jj snapshot after `zetl index` SHALL add ≤ 50ms of wall-clock time to the index operation FOR a vault of 2,000 files WITH 95th percentile confidence. This is amortised over the existing index time; the snapshot is the incremental cost.
+Creating a jj snapshot after `ztl index` SHALL add ≤ 50ms of wall-clock time to the index operation FOR a vault of 2,000 files WITH 95th percentile confidence. This is amortised over the existing index time; the snapshot is the incremental cost.
 
 Trace:
 - TEST-095
@@ -783,14 +783,14 @@ Trace:
 
 ### NFR-027: Historical Index Cache Size
 
-Each cached historical index entry SHALL consume ≤ 1.5× the size of the current `.zetl/index.json` for an equivalent vault. For a 2,000-page vault, this is approximately 1–2 MB per entry. The default cache limit of 100 entries therefore consumes ≤ 200 MB of disk.
+Each cached historical index entry SHALL consume ≤ 1.5× the size of the current `.ztl/index.json` for an equivalent vault. For a 2,000-page vault, this is approximately 1–2 MB per entry. The default cache limit of 100 entries therefore consumes ≤ 200 MB of disk.
 
 Trace:
 - TEST-086
 
 ### NFR-028: Point-in-Time Query Latency — Cache Hit
 
-When a cached historical index exists for the requested snapshot, `zetl links <page> --at <time>` SHALL complete in ≤ 100ms FOR a 2,000-page vault WITH 95th percentile confidence. This is comparable to the present-time query latency.
+When a cached historical index exists for the requested snapshot, `ztl links <page> --at <time>` SHALL complete in ≤ 100ms FOR a 2,000-page vault WITH 95th percentile confidence. This is comparable to the present-time query latency.
 
 Trace:
 - TEST-096
@@ -798,7 +798,7 @@ Trace:
 
 ### NFR-029: Point-in-Time Query Latency — Cache Miss
 
-When no cached index exists and the historical file tree must be scanned, `zetl links <page> --at <time>` SHALL complete in ≤ 3 seconds FOR a 2,000-page vault WITH 95th percentile confidence. This includes jj tree materialisation, scanning, and cache write.
+When no cached index exists and the historical file tree must be scanned, `ztl links <page> --at <time>` SHALL complete in ≤ 3 seconds FOR a 2,000-page vault WITH 95th percentile confidence. This includes jj tree materialisation, scanning, and cache write.
 
 Trace:
 - TEST-097
@@ -806,21 +806,21 @@ Trace:
 
 ### NFR-030: jj-lib Binary Size Impact
 
-The `history` feature SHALL add ≤ 15 MB to the compiled binary size. This is acceptable given zetl is distributed as a single static binary. The feature is opt-in; builds without `history` are unaffected.
+The `history` feature SHALL add ≤ 15 MB to the compiled binary size. This is acceptable given ztl is distributed as a single static binary. The feature is opt-in; builds without `history` are unaffected.
 
 Trace:
 - TEST-098
 
 ### NFR-032: Build-Mode History Export Size
 
-The `history-index.json` file written by `zetl build` SHALL be ≤ 500 KB FOR a vault of 2,000 pages WITH 30 trend points and 10 link trend points per page. This is bounded by the trend and timeline limits specified in REQ-088.
+The `history-index.json` file written by `ztl build` SHALL be ≤ 500 KB FOR a vault of 2,000 pages WITH 30 trend points and 10 link trend points per page. This is bounded by the trend and timeline limits specified in REQ-088.
 
 Trace:
 - TEST-106
 
 ### NFR-033: Template Context Build Latency
 
-Computing `vault.history` and `page.history` for all pages during `zetl build` SHALL add ≤ 2 seconds to the build pipeline FOR a vault of 2,000 pages with 100 cached historical index snapshots WITH 95th percentile confidence.
+Computing `vault.history` and `page.history` for all pages during `ztl build` SHALL add ≤ 2 seconds to the build pipeline FOR a vault of 2,000 pages with 100 cached historical index snapshots WITH 95th percentile confidence.
 
 Trace:
 - TEST-109
@@ -828,9 +828,9 @@ Trace:
 
 ### NFR-031: VCS-Independence Preservation
 
-All zetl commands except `zetl diff` SHALL continue to function identically without the `--at` flag whether or not the `history` feature is compiled in, and whether or not `.zetl/jj/` exists. This extends NFR-017 (SPEC-006 §1.6): the `history` feature adds capabilities but never removes them.
+All ztl commands except `ztl diff` SHALL continue to function identically without the `--at` flag whether or not the `history` feature is compiled in, and whether or not `.ztl/jj/` exists. This extends NFR-017 (SPEC-006 §1.6): the `history` feature adds capabilities but never removes them.
 
-`zetl diff` is explicitly exempt: when the `history` feature is enabled, its resolution backend changes from git subprocesses to jj-lib (REQ-083, ADR-046), which alters baseline resolution granularity (snapshots between git commits become visible) and enables operation without a git repository. This is an intentional capability upgrade, not a regression. When the `history` feature is disabled, `zetl diff` falls back to SPEC-007 behavior unchanged.
+`ztl diff` is explicitly exempt: when the `history` feature is enabled, its resolution backend changes from git subprocesses to jj-lib (REQ-083, ADR-046), which alters baseline resolution granularity (snapshots between git commits become visible) and enables operation without a git repository. This is an intentional capability upgrade, not a regression. When the `history` feature is disabled, `ztl diff` falls back to SPEC-007 behavior unchanged.
 
 Trace:
 - TEST-093
@@ -845,9 +845,9 @@ Trace:
 
 **Context:** SPEC-007 uses git subprocesses for graph diff reconstruction. This works but has structural limitations: it requires the `git` binary, parses stdout text, cannot access uncommitted history, and cannot support point-in-time queries without full checkout. jj-lib provides a type-safe Rust API for all VCS operations, uses git as its storage backend (maintaining compatibility), and automatically snapshots the working copy.
 
-**Rationale:** Using jj-lib as a library rather than a CLI tool gives zetl:
+**Rationale:** Using jj-lib as a library rather than a CLI tool gives ztl:
 
-1. **No external dependency** — the `jj` binary need not be installed; everything compiles into zetl's single binary
+1. **No external dependency** — the `jj` binary need not be installed; everything compiles into ztl's single binary
 2. **Type-safe API** — no stdout parsing, no string-to-SHA conversion, no subprocess error handling
 3. **Working-copy snapshotting** — jj's core innovation; every file state is captured without user action
 4. **Git compatibility** — jj reads/writes git objects natively; existing git history is fully accessible
@@ -862,43 +862,43 @@ Trace:
 - (-) Adds ~10-15 MB to binary size
 - (-) New dependency to maintain; jj-lib updates may require adaptation
 
-**Mitigation for API instability:** The `VcsBackend` trait (REQ-080) isolates zetl's core from jj-lib's API surface. Pin to a specific jj-lib version; update deliberately.
+**Mitigation for API instability:** The `VcsBackend` trait (REQ-080) isolates ztl's core from jj-lib's API surface. Pin to a specific jj-lib version; update deliberately.
 
 **Rejected alternatives:**
 
 1. *jj CLI via subprocess* — Same fragility as git subprocesses; does not solve SPEC-007's structural issues
-2. *gitoxide (gix) library* — Rust-native git, but lacks automatic snapshotting; zetl would need to implement its own commit-on-index logic
+2. *gitoxide (gix) library* — Rust-native git, but lacks automatic snapshotting; ztl would need to implement its own commit-on-index logic
 3. *Custom snapshot format* — Rejected in SPEC-007 (ADR-011) as reimplementing VCS; using an actual VCS library is the principled approach
 
-### ADR-045: VCS Metadata in `.zetl/jj/`
+### ADR-045: VCS Metadata in `.ztl/jj/`
 
-**Decision:** Store jj repository state inside `.zetl/jj/` rather than at the vault root (`.jj/`).
+**Decision:** Store jj repository state inside `.ztl/jj/` rather than at the vault root (`.jj/`).
 
-**Context:** jj normally creates a `.jj/` directory at the workspace root. For zetl, this would place a `.jj/` directory in the user's vault — visible in file explorers, potentially confusing, and requiring `.gitignore` entries in git-tracked vaults.
+**Context:** jj normally creates a `.jj/` directory at the workspace root. For ztl, this would place a `.jj/` directory in the user's vault — visible in file explorers, potentially confusing, and requiring `.gitignore` entries in git-tracked vaults.
 
-**Rationale:** `.zetl/` is already zetl's private state directory. Users know to ignore it. Placing jj state inside it maintains the invisibility principle: no new dotfiles appear in the vault. jj-lib's `Workspace` API supports configuring the repo path independently of the working copy root, enabling this separation.
+**Rationale:** `.ztl/` is already ztl's private state directory. Users know to ignore it. Placing jj state inside it maintains the invisibility principle: no new dotfiles appear in the vault. jj-lib's `Workspace` API supports configuring the repo path independently of the working copy root, enabling this separation.
 
 **Trade-offs:**
 
 - (+) No new files/directories visible to the user
-- (+) Consistent with existing `.zetl/` convention
+- (+) Consistent with existing `.ztl/` convention
 - (+) No `.gitignore` changes needed
 - (-) Non-standard jj layout; cannot use `jj` CLI directly against the repo (this is intentional — the user should not need to)
 
-**Fallback:** If jj-lib's API does not support custom repo paths in a future version, a symlink `.zetl/jj/ → .jj/` with `.jj/` added to `.gitignore` is acceptable.
+**Fallback:** If jj-lib's API does not support custom repo paths in a future version, a symlink `.ztl/jj/ → .jj/` with `.jj/` added to `.gitignore` is acceptable.
 
 ### ADR-046: Supersede SPEC-007 VCS Backend
 
 **Decision:** Replace SPEC-007's git-subprocess implementation with jj-lib for all VCS operations while preserving the diff output contract (CON-021).
 
-**Context:** SPEC-007 defined `zetl diff` using git subprocesses (`git show`, `git diff`, `git rev-parse`). NFR-019 mandated subprocess isolation. This was appropriate when git was the only VCS option. jj-lib provides a strictly superior implementation path: same git history access, plus automatic snapshots, plus a library API.
+**Context:** SPEC-007 defined `ztl diff` using git subprocesses (`git show`, `git diff`, `git rev-parse`). NFR-019 mandated subprocess isolation. This was appropriate when git was the only VCS option. jj-lib provides a strictly superior implementation path: same git history access, plus automatic snapshots, plus a library API.
 
 **Rationale:** Maintaining two VCS backends (git subprocess for SPEC-007, jj-lib for new features) creates unnecessary complexity. jj-lib can do everything git subprocesses can — it reads the same git objects — plus more. Consolidating on one backend simplifies the codebase and testing surface.
 
 **Migration path:**
 
 1. When `history` feature is enabled: all VCS operations use jj-lib
-2. When `history` feature is disabled: `zetl diff` falls back to SPEC-007's git subprocess implementation (the existing code is retained, not deleted)
+2. When `history` feature is disabled: `ztl diff` falls back to SPEC-007's git subprocess implementation (the existing code is retained, not deleted)
 3. NFR-019 (git subprocess isolation) applies only to the fallback path
 
 **Trade-offs:**
@@ -906,15 +906,15 @@ Trace:
 - (+) Single VCS backend for all temporal features
 - (+) Eliminates subprocess overhead for diff operations
 - (+) Unlocks point-in-time queries and automatic snapshotting
-- (-) `zetl diff` behavior changes subtly: it now sees snapshots between git commits, so `--since yesterday` may resolve to a snapshot rather than a git commit
+- (-) `ztl diff` behavior changes subtly: it now sees snapshots between git commits, so `--since yesterday` may resolve to a snapshot rather than a git commit
 
 ### ADR-047: Content-Addressed Historical Index Cache
 
 **Decision:** Cache historical index snapshots keyed by `vault_root_hash` (BLAKE3), not by jj change ID or timestamp.
 
-**Context:** When the user queries `zetl links Foo --at yesterday`, zetl must reconstruct the graph at that point. This requires scanning all vault files at the historical revision — an expensive operation. Caching avoids repeated scans.
+**Context:** When the user queries `ztl links Foo --at yesterday`, ztl must reconstruct the graph at that point. This requires scanning all vault files at the historical revision — an expensive operation. Caching avoids repeated scans.
 
-**Rationale:** The `vault_root_hash` is already computed during `zetl index` (SPEC-006 §4.6). It is a deterministic function of vault content. Two snapshots with identical `vault_root_hash` have identical graph topology — the same pages, same links, same orphans. Keying the cache by content hash rather than by time or change ID provides natural deduplication: many snapshots may map to the same graph state (e.g., when non-Markdown files changed, or when changes were reverted).
+**Rationale:** The `vault_root_hash` is already computed during `ztl index` (SPEC-006 §4.6). It is a deterministic function of vault content. Two snapshots with identical `vault_root_hash` have identical graph topology — the same pages, same links, same orphans. Keying the cache by content hash rather than by time or change ID provides natural deduplication: many snapshots may map to the same graph state (e.g., when non-Markdown files changed, or when changes were reverted).
 
 **Properties:**
 
@@ -931,16 +931,16 @@ Trace:
 
 ### ADR-048: Automatic Snapshotting on Every Index
 
-**Decision:** Create a jj snapshot on every successful `zetl index`, silently and unconditionally (modulo deduplication).
+**Decision:** Create a jj snapshot on every successful `ztl index`, silently and unconditionally (modulo deduplication).
 
-**Context:** The value of temporal navigation depends on history granularity. Git provides history only at explicit commits — often hours or days apart. jj's working-copy snapshot model captures every state, but requires a trigger. `zetl index` is the natural trigger: it is the operation that reads the vault, computes hashes, and updates the cache. It runs before every query.
+**Context:** The value of temporal navigation depends on history granularity. Git provides history only at explicit commits — often hours or days apart. jj's working-copy snapshot model captures every state, but requires a trigger. `ztl index` is the natural trigger: it is the operation that reads the vault, computes hashes, and updates the cache. It runs before every query.
 
-**Rationale:** Making snapshotting automatic and tied to `zetl index` means:
+**Rationale:** Making snapshotting automatic and tied to `ztl index` means:
 
 1. **Every query is preceded by a snapshot** — the history is always current
 2. **No user action required** — history capture is a side effect of normal usage
 3. **Deduplication prevents bloat** — identical vault states produce no new snapshot (REQ-076)
-4. **Watch mode captures continuously** — `zetl watch` calls `zetl index` on every file change (REQ-082)
+4. **Watch mode captures continuously** — `ztl watch` calls `ztl index` on every file change (REQ-082)
 
 **Trade-offs:**
 
@@ -948,7 +948,7 @@ Trace:
 - (+) Zero workflow change for the user
 - (+) Deduplication keeps storage bounded
 - (-) Storage grows with usage (mitigated by jj's content-addressed deduplication and git pack files)
-- (-) Snapshot creation adds latency to `zetl index` (bounded by NFR-026: ≤ 50ms)
+- (-) Snapshot creation adds latency to `ztl index` (bounded by NFR-026: ≤ 50ms)
 
 ### ADR-049: Temporal Data as Template Context, Not Custom Tags
 
@@ -957,12 +957,12 @@ Trace:
 **Context:** There are several ways to make temporal data available to themes:
 
 1. **Template context objects** (selected): Add `vault.history` and `page.history` to the existing `VaultContext` and `PageContext` structs. Themes access data via `{{ vault.history.trend }}` etc.
-2. **Custom Jinja2 filters/functions**: Register `{% history_trend %}` or `{{ page | age_days }}` as custom template functions. More expressive but couples themes to zetl-specific template extensions.
+2. **Custom Jinja2 filters/functions**: Register `{% history_trend %}` or `{{ page | age_days }}` as custom template functions. More expressive but couples themes to ztl-specific template extensions.
 3. **Separate data files only**: Write `history-index.json` and let themes load it via JavaScript. No template-side access.
 
 **Rationale:** Option 1 aligns with how all existing data flows to themes. `vault.stats`, `page.backlinks`, `page.outlinks` are all template context objects. Adding `vault.history` follows the same pattern — no new concepts for theme developers to learn. The context is identical in serve and build modes, ensuring themes work in both.
 
-Option 2 introduces zetl-specific template syntax that breaks portability and adds learning overhead. Option 3 forces all temporal rendering to JavaScript, making server-rendered (build mode) sparklines impossible.
+Option 2 introduces ztl-specific template syntax that breaks portability and adds learning overhead. Option 3 forces all temporal rendering to JavaScript, making server-rendered (build mode) sparklines impossible.
 
 For interactive features (timeline slider, animated graph), option 1 is supplemented by serve-mode API endpoints (REQ-087) and build-mode JSON export (REQ-088) — the same dual-mode pattern already used for search.
 
@@ -1019,11 +1019,11 @@ Theme developers already understand this pattern. The template context (`vault.h
 ### Effectful Shell (orchestrates I/O, calls pure core)
 
 - **`JjBackend`**: Wraps jj-lib; opens repo, creates snapshots, resolves time expressions to changes, reads file trees
-- **`HistoricalIndexCache`**: Reads/writes `.zetl/history/*.json` files; manages eviction
+- **`HistoricalIndexCache`**: Reads/writes `.ztl/history/*.json` files; manages eviction
 - **`HistoricalScanner`**: Given a jj `MergedTree`, streams file contents into the existing scan pipeline and produces an `IndexSnapshot`
-- **VCS initialisation**: Detects `.git/`, creates `.zetl/jj/`, configures jj workspace
+- **VCS initialisation**: Detects `.git/`, creates `.ztl/jj/`, configures jj workspace
 - **History API handlers**: Axum route handlers for `/api/history/*` endpoints; read from cache, delegate to pure core for computation
-- **History export writer**: Writes `history-index.json` during `zetl build`; calls pure core serialisation
+- **History export writer**: Writes `history-index.json` during `ztl build`; calls pure core serialisation
 
 ### Boundary Contracts (data types crossing the boundary)
 
@@ -1052,14 +1052,14 @@ Dependencies point inward: shell → core. Core MUST NOT import from shell. The 
 
 ### CON-024: `--at <time-expr>` Flag
 
-**Interface:** `zetl <subcommand> [args] --at <time-expr> [--format json|table]`
+**Interface:** `ztl <subcommand> [args] --at <time-expr> [--format json|table]`
 
 **Applicable subcommands:** `links`, `backlinks`, `check`, `graph`, `search`, `blocks`, `reason`
 
 **Pre-conditions:**
 
 - `history` feature is compiled in
-- `.zetl/jj/` exists (at least one `zetl index` has been run)
+- `.ztl/jj/` exists (at least one `ztl index` has been run)
 - At least one snapshot exists at or before the resolved time
 
 **Post-conditions:**
@@ -1092,27 +1092,27 @@ Forward links from "Architecture Overview":
 **Error model:**
 
 ```json
-{ "error": { "code": "NO_HISTORY", "message": "No history available. Run zetl index to create the first snapshot." } }
+{ "error": { "code": "NO_HISTORY", "message": "No history available. Run ztl index to create the first snapshot." } }
 { "error": { "code": "SNAPSHOT_NOT_FOUND", "message": "No snapshot found at or before 2025-01-01. Earliest snapshot: 2026-02-20T09:00:00Z." } }
-{ "error": { "code": "HISTORY_NOT_AVAILABLE", "message": "The --at flag requires the history feature. Rebuild zetl with --features history." } }
+{ "error": { "code": "HISTORY_NOT_AVAILABLE", "message": "The --at flag requires the history feature. Rebuild ztl with --features history." } }
 ```
 
 **Implements:** REQ-077, REQ-078
 
 **Verified by:** TEST-082, TEST-083, TEST-084, TEST-085
 
-### CON-025: `zetl history`
+### CON-025: `ztl history`
 
-**Interface:** `zetl history [--since <time-expr>] [--limit N] [--format json|table]`
+**Interface:** `ztl history [--since <time-expr>] [--limit N] [--format json|table]`
 
-**Subcommand:** `zetl history page <name> [--since <time-expr>] [--limit N] [--format json|table]`
+**Subcommand:** `ztl history page <name> [--since <time-expr>] [--limit N] [--format json|table]`
 
 **Pre-conditions:**
 
 - `history` feature is compiled in
-- `.zetl/jj/` exists with at least one snapshot
+- `.ztl/jj/` exists with at least one snapshot
 
-**Post-conditions — `zetl history`:**
+**Post-conditions — `ztl history`:**
 
 - Exit 0 on success (including empty timeline)
 - JSON output:
@@ -1156,7 +1156,7 @@ Timestamp             Pages  Links  Orphans  Dead   Delta
 ...
 ```
 
-**Post-conditions — `zetl history page <name>`:**
+**Post-conditions — `ztl history page <name>`:**
 
 - JSON output:
 
@@ -1196,7 +1196,7 @@ Timestamp             Links  Backlinks  Orphan  Delta
 **Error model:**
 
 ```json
-{ "error": { "code": "NO_HISTORY", "message": "No history available. Run zetl index to create the first snapshot." } }
+{ "error": { "code": "NO_HISTORY", "message": "No history available. Run ztl index to create the first snapshot." } }
 { "error": { "code": "PAGE_NOT_FOUND", "message": "Page 'Nonexistent' not found in any snapshot." } }
 ```
 
@@ -1213,7 +1213,7 @@ Timestamp             Links  Backlinks  Orphan  Delta
 **Pre-conditions:**
 
 - `history` feature is compiled in
-- At least one `zetl index` has been run (snapshots exist)
+- At least one `ztl index` has been run (snapshots exist)
 
 **Vault-level context (`vault.history`):**
 
@@ -1315,7 +1315,7 @@ Timestamp             Links  Backlinks  Orphan  Delta
 
 **Pre-conditions:**
 
-- `zetl serve` is running with `history` feature enabled
+- `ztl serve` is running with `history` feature enabled
 - Snapshots exist
 
 **Endpoints:**
@@ -1326,7 +1326,7 @@ Returns the vault timeline. Accepts optional query parameters:
 - `since` — ISO 8601 datetime filter
 - `limit` — maximum entries (default 20)
 
-Response: Same JSON schema as CON-025 `zetl history` output.
+Response: Same JSON schema as CON-025 `ztl history` output.
 
 **`GET /api/history/page/{name}`**
 
@@ -1334,7 +1334,7 @@ Returns the page timeline. Accepts optional query parameters:
 - `since` — ISO 8601 datetime filter
 - `limit` — maximum entries (default 20)
 
-Response: Same JSON schema as CON-025 `zetl history page` output.
+Response: Same JSON schema as CON-025 `ztl history page` output.
 
 **`GET /api/history/at?t=<iso8601>`**
 
@@ -1394,7 +1394,7 @@ Returns a `GraphDelta` between two time points:
 - HTTP 404 with `PAGE_NOT_FOUND` when the requested page does not exist (`/api/history/page/{name}` only)
 - HTTP 400 for malformed parameters (invalid ISO 8601, missing required params). For `/api/history/diff`, both `from` and `to` are required; omitting either is a 400 error.
 
-Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-083) when invoked without arguments. The `/api/history/diff` endpoint always requires explicit `from` and `to` parameters and does not support a default baseline.
+Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `ztl diff` command (REQ-083) when invoked without arguments. The `/api/history/diff` endpoint always requires explicit `from` and `to` parameters and does not support a default baseline.
 
 **Implements:** REQ-087
 
@@ -1408,31 +1408,31 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Requirement:** REQ-075
 
-**Preconditions:** Empty vault directory with one `.md` file; no `.git/` or `.zetl/` present
+**Preconditions:** Empty vault directory with one `.md` file; no `.git/` or `.ztl/` present
 
 **Steps:**
 
-1. Run `zetl index`
-2. Verify `.zetl/jj/` directory exists
+1. Run `ztl index`
+2. Verify `.ztl/jj/` directory exists
 3. Verify no `.jj/` directory exists at vault root
 4. Verify stdout contains no mention of "jj", "jujutsu", "snapshot", or "repository"
-5. Verify `zetl index` output is identical to a build without the `history` feature
+5. Verify `ztl index` output is identical to a build without the `history` feature
 
 ### TEST-081: Automatic Snapshotting and Deduplication
 
 **Requirement:** REQ-076
 
-**Preconditions:** Vault with 3 `.md` files; `zetl index` run once (initial snapshot exists)
+**Preconditions:** Vault with 3 `.md` files; `ztl index` run once (initial snapshot exists)
 
 **Steps:**
 
 1. Modify one `.md` file (add a wikilink)
-2. Run `zetl index`
+2. Run `ztl index`
 3. Verify a new snapshot was created (jj-lib shows 2 changes)
-4. Run `zetl index` again without modifying any files
+4. Run `ztl index` again without modifying any files
 5. Verify no new snapshot was created (still 2 changes; deduplication)
 6. Modify the file back to its original content
-7. Run `zetl index`
+7. Run `ztl index`
 8. Verify a new snapshot was created but its `vault_root_hash` matches the first snapshot's hash (content-addressed deduplication at the cache level)
 
 ### TEST-082: Time Expression — ISO 8601
@@ -1443,9 +1443,9 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. `zetl links PageA --at "2026-03-01" --format json`
+1. `ztl links PageA --at "2026-03-01" --format json`
 2. Verify `snapshot.timestamp` is at or before `2026-03-01T23:59:59Z`
-3. `zetl links PageA --at "2026-03-01T14:30:00Z" --format json`
+3. `ztl links PageA --at "2026-03-01T14:30:00Z" --format json`
 4. Verify `snapshot.timestamp` is at or before `2026-03-01T14:30:00Z`
 
 ### TEST-083: Time Expression — Natural Language
@@ -1456,22 +1456,22 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. `zetl links PageA --at yesterday --format json`
+1. `ztl links PageA --at yesterday --format json`
 2. Verify `snapshot.timestamp` is within yesterday's date range
-3. `zetl links PageA --at "2 hours ago" --format json`
+3. `ztl links PageA --at "2 hours ago" --format json`
 4. Verify `snapshot.timestamp` is within 2 hours before command invocation
 
 ### TEST-084: Point-in-Time Query — Cache Miss
 
 **Requirement:** REQ-078
 
-**Preconditions:** Vault with history; `.zetl/history/` is empty
+**Preconditions:** Vault with history; `.ztl/history/` is empty
 
 **Steps:**
 
-1. `zetl links PageA --at yesterday --format json`
+1. `ztl links PageA --at yesterday --format json`
 2. Verify correct link results for the historical state
-3. Verify `.zetl/history/<hash>.json` file was created
+3. Verify `.ztl/history/<hash>.json` file was created
 4. Verify the cached file's content matches a fresh scan of the historical tree
 
 ### TEST-085: Point-in-Time Query — Cache Hit
@@ -1482,7 +1482,7 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. `zetl links PageA --at yesterday --format json` (same time as TEST-084)
+1. `ztl links PageA --at yesterday --format json` (same time as TEST-084)
 2. Verify identical results to TEST-084
 3. Measure wall-clock time; verify ≤ 100ms (NFR-028)
 4. Verify no jj tree materialisation occurred (cache was used)
@@ -1496,11 +1496,11 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 **Steps:**
 
 1. Create 4 distinct vault states (different `vault_root_hash`), query each with `--at`
-2. Verify `.zetl/history/` contains exactly 3 entries
+2. Verify `.ztl/history/` contains exactly 3 entries
 3. Verify the evicted entry is the one with the oldest last-access time
 4. Verify querying the evicted state still works (triggers re-scan and re-cache)
 
-### TEST-087: `zetl history` — Timeline Output
+### TEST-087: `ztl history` — Timeline Output
 
 **Requirement:** REQ-080
 
@@ -1508,13 +1508,13 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. `zetl history --format json`
+1. `ztl history --format json`
 2. Verify `timeline` array contains entries in reverse chronological order
 3. Verify each entry has `timestamp`, `summary`, and `delta` fields
 4. Verify `delta` accurately reflects changes between adjacent snapshots
 5. Verify collapsed entries (identical `vault_root_hash`) show time ranges
 
-### TEST-088: `zetl history` — Since and Limit
+### TEST-088: `ztl history` — Since and Limit
 
 **Requirement:** REQ-080
 
@@ -1522,11 +1522,11 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. `zetl history --limit 5 --format json` → verify exactly 5 entries
-2. `zetl history --since yesterday --format json` → verify all entries are from today
-3. `zetl history --since yesterday --limit 3 --format json` → verify ≤ 3 entries, all from today
+1. `ztl history --limit 5 --format json` → verify exactly 5 entries
+2. `ztl history --since yesterday --format json` → verify all entries are from today
+3. `ztl history --since yesterday --limit 3 --format json` → verify ≤ 3 entries, all from today
 
-### TEST-089: `zetl history page` — Page Evolution
+### TEST-089: `ztl history page` — Page Evolution
 
 **Requirement:** REQ-081
 
@@ -1534,29 +1534,29 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. `zetl history page Foo --format json`
+1. `ztl history page Foo --format json`
 2. Verify each entry shows correct link/backlink counts for that snapshot
 3. Verify only snapshots where Foo's neighborhood changed are included
 4. Verify `delta` fields accurately reflect link changes
-5. `zetl history page "Nonexistent" --format json` → verify error `PAGE_NOT_FOUND`
+5. `ztl history page "Nonexistent" --format json` → verify error `PAGE_NOT_FOUND`
 
 ### TEST-090: Watch-Mode Snapshot Integration
 
 **Requirement:** REQ-082
 
-**Preconditions:** `zetl watch` running in background; vault has initial snapshot
+**Preconditions:** `ztl watch` running in background; vault has initial snapshot
 
 **Steps:**
 
 1. Modify a `.md` file while watch is running
 2. Wait for watch event to fire and re-index
 3. Verify a new jj snapshot was created
-4. Verify `zetl history --format json` shows the new snapshot
+4. Verify `ztl history --format json` shows the new snapshot
 5. Modify the file back to its original content
 6. Wait for watch event
 7. Verify no duplicate snapshot (deduplication)
 
-### TEST-091: `zetl diff` — Backward Compatibility
+### TEST-091: `ztl diff` — Backward Compatibility
 
 **Requirement:** REQ-083
 
@@ -1564,13 +1564,13 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. `zetl diff --from HEAD~1 --format json`
+1. `ztl diff --from HEAD~1 --format json`
 2. Verify output matches CON-021 schema exactly
 3. Verify `from.ref`, `from.commit`, `to.commit` fields present
 4. Compare output with a SPEC-007 (git-subprocess) implementation on the same vault
 5. Verify semantic equivalence (same pages/links/orphans/dead-links in diff)
 
-### TEST-092: `zetl diff` — Snapshot Resolution
+### TEST-092: `ztl diff` — Snapshot Resolution
 
 **Requirement:** REQ-083
 
@@ -1578,24 +1578,24 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. Make an edit, run `zetl index` (creates jj snapshot but no git commit)
-2. `zetl diff --since "1 hour ago" --format json`
+1. Make an edit, run `ztl index` (creates jj snapshot but no git commit)
+2. `ztl diff --since "1 hour ago" --format json`
 3. Verify the diff captures the uncommitted change (resolved via jj snapshot, not git commit)
-4. `zetl diff --from HEAD --format json`
+4. `ztl diff --from HEAD --format json`
 5. Verify the diff shows the uncommitted change relative to the last git commit
 
 ### TEST-093: Graceful Degradation
 
 **Requirement:** REQ-084
 
-**Preconditions:** Vault with index but no `.zetl/jj/` (e.g., jj repo deleted)
+**Preconditions:** Vault with index but no `.ztl/jj/` (e.g., jj repo deleted)
 
 **Steps:**
 
-1. `zetl links PageA` → verify normal output (no error)
-2. `zetl links PageA --at yesterday` → verify error `NO_HISTORY`
-3. `zetl index` → verify `.zetl/jj/` is re-created silently
-4. `zetl links PageA --at yesterday` → verify error `SNAPSHOT_NOT_FOUND` (history starts now)
+1. `ztl links PageA` → verify normal output (no error)
+2. `ztl links PageA --at yesterday` → verify error `NO_HISTORY`
+3. `ztl index` → verify `.ztl/jj/` is re-created silently
+4. `ztl links PageA --at yesterday` → verify error `SNAPSHOT_NOT_FOUND` (history starts now)
 
 ### TEST-094: TUI Timeline Navigation
 
@@ -1621,8 +1621,8 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. Run `zetl index` 20 times; measure total wall-clock time
-2. Run `zetl index` 20 times with snapshotting disabled (feature-flag off); measure
+1. Run `ztl index` 20 times; measure total wall-clock time
+2. Run `ztl index` 20 times with snapshotting disabled (feature-flag off); measure
 3. Compute per-invocation overhead: (enabled_total - disabled_total) / 20
 4. Verify overhead ≤ 50ms at p95
 
@@ -1634,7 +1634,7 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. Run `zetl links PageA --at <cached-time>` 20 times; measure
+1. Run `ztl links PageA --at <cached-time>` 20 times; measure
 2. Verify p95 latency ≤ 100ms
 
 ### TEST-097: Point-in-Time Query — Cache Miss Latency
@@ -1645,7 +1645,7 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. Run `zetl links PageA --at <uncached-time>` (first invocation triggers scan)
+1. Run `ztl links PageA --at <uncached-time>` (first invocation triggers scan)
 2. Measure wall-clock time
 3. Verify ≤ 3 seconds
 
@@ -1655,15 +1655,15 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. Build zetl without `history` feature; record binary size
-2. Build zetl with `history` feature; record binary size
+1. Build ztl without `history` feature; record binary size
+2. Build ztl with `history` feature; record binary size
 3. Verify delta ≤ 15 MB
 
 ### TEST-099: Vault History Template Context — Serve Mode
 
 **Requirement:** REQ-085
 
-**Preconditions:** Vault with 10+ snapshots spanning 3 days; `zetl serve` running with default theme
+**Preconditions:** Vault with 10+ snapshots spanning 3 days; `ztl serve` running with default theme
 
 **Steps:**
 
@@ -1678,11 +1678,11 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Requirement:** REQ-085
 
-**Preconditions:** Vault with no `.zetl/jj/` directory (history unavailable)
+**Preconditions:** Vault with no `.ztl/jj/` directory (history unavailable)
 
 **Steps:**
 
-1. Run `zetl serve` or `zetl build`
+1. Run `ztl serve` or `ztl build`
 2. Verify no errors during rendering
 3. Verify `vault.history` is `null` in the template context
 4. Verify templates that guard with `{% if vault.history %}` skip the history blocks cleanly
@@ -1710,7 +1710,7 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. Create a new page, run `zetl serve` (but do NOT run `zetl index` first)
+1. Create a new page, run `ztl serve` (but do NOT run `ztl index` first)
 2. Request the new page
 3. Verify `page.history` is `null`
 4. Verify the page renders normally without history metadata
@@ -1719,7 +1719,7 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Requirement:** REQ-087
 
-**Preconditions:** Vault with 15+ snapshots; `zetl serve` running
+**Preconditions:** Vault with 15+ snapshots; `ztl serve` running
 
 **Steps:**
 
@@ -1746,7 +1746,7 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Requirement:** REQ-087
 
-**Preconditions:** Vault with page "Foo" that had links added and removed across snapshots; `zetl serve` running
+**Preconditions:** Vault with page "Foo" that had links added and removed across snapshots; `ztl serve` running
 
 **Steps:**
 
@@ -1760,7 +1760,7 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Requirement:** REQ-087
 
-**Preconditions:** Vault with snapshots spanning multiple days; `zetl serve` running
+**Preconditions:** Vault with snapshots spanning multiple days; `ztl serve` running
 
 **Steps:**
 
@@ -1778,7 +1778,7 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. Run `zetl build -o dist/`
+1. Run `ztl build -o dist/`
 2. Verify `dist/history-index.json` exists
 3. Parse the JSON; verify `vault.trend` contains ≤ 30 entries
 4. Verify `pages` object contains entries for each page with `created_at`, `age_days`, `link_trend`
@@ -1792,7 +1792,7 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. Run `zetl build -o dist/`
+1. Run `ztl build -o dist/`
 2. Measure `dist/history-index.json` file size
 3. Verify ≤ 500 KB
 
@@ -1804,7 +1804,7 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. Request `GET /foo/` or render via `zetl build`
+1. Request `GET /foo/` or render via `ztl build`
 2. Verify `page.backlinks` contains entry for "Bar" with `since` field
 3. Verify `since` matches the timestamp of the earliest snapshot where Bar→Foo link existed
 4. Verify `since` is `null` when history is unavailable
@@ -1817,7 +1817,7 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. Modify a file, run `zetl index`
+1. Modify a file, run `ztl index`
 2. Capture the JSON context passed to the post-index hook
 3. Verify `history` object is present with `snapshot_count`, `oldest`, `newest`, `vault_root_hash`
 4. Verify `history.delta` contains the graph diff from the previous snapshot
@@ -1831,12 +1831,12 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. Run `zetl build` 10 times; measure total wall-clock time
-2. Run `zetl build` 10 times without history feature; measure
+1. Run `ztl build` 10 times; measure total wall-clock time
+2. Run `ztl build` 10 times without history feature; measure
 3. Compute per-build overhead: (enabled_total - disabled_total) / 10
 4. Verify overhead ≤ 2 seconds at p95
 
-### TEST-112: `zetl diff` — Non-Git Default Baseline
+### TEST-112: `ztl diff` — Non-Git Default Baseline
 
 **Requirement:** REQ-083
 
@@ -1844,24 +1844,24 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 
 **Steps:**
 
-1. `zetl diff --format json` (no `--from`, no `--since`)
+1. `ztl diff --format json` (no `--from`, no `--since`)
 2. Verify `from.ref` is `"@-"`
 3. Verify `from.snapshot` is a valid ISO 8601 timestamp
 4. Verify `from.vault_root_hash` differs from the current vault root hash
 5. Verify the diff reflects changes between the previous distinct snapshot and the current state
 6. Verify the output schema otherwise matches CON-021 (same fields, same structure)
 
-### TEST-113: `zetl diff` — No Previous Snapshot Error
+### TEST-113: `ztl diff` — No Previous Snapshot Error
 
 **Requirement:** REQ-083
 
-**Preconditions:** Vault with only one snapshot (first `zetl index` just ran); `history` feature enabled
+**Preconditions:** Vault with only one snapshot (first `ztl index` just ran); `history` feature enabled
 
 **Steps:**
 
-1. `zetl diff --format json` (no arguments)
+1. `ztl diff --format json` (no arguments)
 2. Verify error code `NO_PREVIOUS_SNAPSHOT`
-3. Verify error message mentions running `zetl index` after making changes
+3. Verify error message mentions running `ztl index` after making changes
 
 ---
 
@@ -1872,18 +1872,18 @@ Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-08
 **Signal:** Verbose output when `--verbose` is passed to any temporal operation
 
 ```
-[zetl] snapshot: created change kxryzmql (vault_root_hash=a3f8c9d1) duration_ms=12
-[zetl] at: resolved "yesterday" → 2026-03-03T16:45:00Z (change=kxryzmql)
-[zetl] at: cache hit vault_root_hash=a3f8c9d1 duration_ms=3
-[zetl] at: cache miss vault_root_hash=b7e2f4a0 scan_files=412 duration_ms=1847
-[zetl] history: loaded 20 snapshots duration_ms=45
+[ztl] snapshot: created change kxryzmql (vault_root_hash=a3f8c9d1) duration_ms=12
+[ztl] at: resolved "yesterday" → 2026-03-03T16:45:00Z (change=kxryzmql)
+[ztl] at: cache hit vault_root_hash=a3f8c9d1 duration_ms=3
+[ztl] at: cache miss vault_root_hash=b7e2f4a0 scan_files=412 duration_ms=1847
+[ztl] history: loaded 20 snapshots duration_ms=45
 ```
 
 **Purpose:** Verify NFR-026, NFR-028, NFR-029; diagnose slow temporal queries; observe cache hit rates.
 
 ### OBS-012: History Storage Metrics
 
-**Signal:** Included in `zetl graph stats` output when history is available
+**Signal:** Included in `ztl graph stats` output when history is available
 
 ```
 History:
@@ -1899,12 +1899,12 @@ History:
 
 ### OBS-013: Template History Context Timing
 
-**Signal:** Verbose output during `zetl serve` and `zetl build`
+**Signal:** Verbose output during `ztl serve` and `ztl build`
 
 ```
-[zetl] history-context: vault trend=30 points recent=10 changes duration_ms=85
-[zetl] history-context: page "Foo" trend=8 points created=2026-02-21 duration_ms=12
-[zetl] history-export: wrote history-index.json (142 KB, 412 pages) duration_ms=340
+[ztl] history-context: vault trend=30 points recent=10 changes duration_ms=85
+[ztl] history-context: page "Foo" trend=8 points created=2026-02-21 duration_ms=12
+[ztl] history-export: wrote history-index.json (142 KB, 412 pages) duration_ms=340
 ```
 
 **Purpose:** Verify NFR-033; diagnose slow builds caused by history context computation; identify pages with expensive history.
@@ -1941,16 +1941,16 @@ History:
 
 ### 12.1 Reasoning Timeline
 
-`zetl history reason [--since <time>]` would show how SPL conclusions evolved over time. Combined with SPEC-006's drift detection, this would reveal when reasoning conclusions changed due to prose edits vs SPL edits. Requires building a historical theory at each snapshot — expensive but feasible with the cache infrastructure defined here.
+`ztl history reason [--since <time>]` would show how SPL conclusions evolved over time. Combined with SPEC-006's drift detection, this would reveal when reasoning conclusions changed due to prose edits vs SPL edits. Requires building a historical theory at each snapshot — expensive but feasible with the cache infrastructure defined here.
 
 ### 12.2 Graph Animation Export
 
-`zetl history export --format gif|mp4` could render an animation of the graph evolving over time. Each frame is a snapshot's graph state rendered via the existing graph visualisation. Useful for presentations and documentation.
+`ztl history export --format gif|mp4` could render an animation of the graph evolving over time. Each frame is a snapshot's graph state rendered via the existing graph visualisation. Useful for presentations and documentation.
 
 ### 12.3 Diff Between Arbitrary Points
 
-`zetl diff --from "last monday" --to "last friday"` would compute the graph delta between two historical points (not just historical-to-present). This requires reconstructing two historical indexes and diffing them — straightforward with the cache infrastructure but adds a `--to` flag to CON-021.
+`ztl diff --from "last monday" --to "last friday"` would compute the graph delta between two historical points (not just historical-to-present). This requires reconstructing two historical indexes and diffing them — straightforward with the cache infrastructure but adds a `--to` flag to CON-021.
 
 ### 12.4 Branch-Aware History
 
-If the vault uses git branches (e.g., a "drafts" branch), jj-lib's revset engine could support queries like `zetl links Foo --at drafts` to see the graph state on a different branch. This is a natural extension of REQ-077's time expression syntax.
+If the vault uses git branches (e.g., a "drafts" branch), jj-lib's revset engine could support queries like `ztl links Foo --at drafts` to see the graph state on a different branch. This is a natural extension of REQ-077's time expression syntax.

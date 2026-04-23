@@ -154,7 +154,7 @@ impl TemplateError {
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Template Error — zetl</title>
+<title>Template Error — ztl</title>
 <style>
   body {{ font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace; background: #1a1b26; color: #a9b1d6; margin: 0; padding: 2rem; }}
   .error-box {{ max-width: 720px; margin: 3rem auto; background: #24283b; border-left: 4px solid #f7768e; border-radius: 6px; padding: 1.5rem 2rem; }}
@@ -199,7 +199,7 @@ impl std::error::Error for TemplateError {}
 /// Template engine wrapping a minijinja::Environment with three-tier template resolution.
 ///
 /// Templates resolve in order:
-/// 1. `.zetl/themes/<theme>/<name>` on disk (skipped when theme is "default")
+/// 1. `.ztl/themes/<theme>/<name>` on disk (skipped when theme is "default")
 /// 2. Bundled theme matching the active theme name (compile-time embed)
 /// 3. Bundled `default` theme as final fallback (compile-time embed)
 ///
@@ -250,7 +250,7 @@ const KNOWN_TEMPLATES: &[&str] = &[
 pub(crate) fn resolve_graph_placement_for(vault_root: &Path, theme: &str) -> &'static str {
     use super::theme::{load_bundled_manifest, load_theme_manifest, resolve_graph_placement};
     if theme != "default" {
-        let theme_dir = vault_root.join(".zetl/themes").join(theme);
+        let theme_dir = vault_root.join(".ztl/themes").join(theme);
         if let Ok(Some(m)) = load_theme_manifest(&theme_dir) {
             return resolve_graph_placement(Some(&m));
         }
@@ -294,7 +294,7 @@ fn __build_env_finish(env: &mut Environment<'static>, vault_root: &Path, theme: 
     env.set_loader(move |name: &str| {
         // Tier 1: check active theme directory on disk (skip for "default")
         if t != "default" {
-            let theme_path = vr.join(".zetl/themes").join(&t).join(name);
+            let theme_path = vr.join(".ztl/themes").join(&t).join(name);
             if let Ok(content) = std::fs::read_to_string(&theme_path) {
                 return Ok(Some(content));
             }
@@ -380,7 +380,7 @@ fn theme_spa_enabled(vault_root: &Path, theme: &str) -> bool {
     let raw = if theme != "default" {
         std::fs::read_to_string(
             vault_root
-                .join(".zetl/themes")
+                .join(".ztl/themes")
                 .join(theme)
                 .join("theme.toml"),
         )
@@ -402,7 +402,7 @@ fn theme_spa_enabled(vault_root: &Path, theme: &str) -> bool {
 impl TemplateEngine {
     /// Create a new TemplateEngine with two-tier template resolution.
     ///
-    /// - `vault_root`: path to the vault directory (for locating `.zetl/themes/`)
+    /// - `vault_root`: path to the vault directory (for locating `.ztl/themes/`)
     /// - `theme`: active theme name ("default" skips disk lookup entirely)
     /// - `reload`: when true (serve mode), rebuild the environment on every render;
     ///   when false (build mode), cache templates for the engine's lifetime
@@ -411,9 +411,9 @@ impl TemplateEngine {
         if verbose {
             for name in KNOWN_TEMPLATES {
                 if theme != "default" {
-                    let theme_path = vault_root.join(".zetl/themes").join(theme).join(name);
+                    let theme_path = vault_root.join(".ztl/themes").join(theme).join(name);
                     if theme_path.exists() {
-                        eprintln!("  theme: {name} <- .zetl/themes/{theme}/{name} (disk)");
+                        eprintln!("  theme: {name} <- .ztl/themes/{theme}/{name} (disk)");
                         continue;
                     }
                 }
@@ -937,7 +937,7 @@ impl TemplateEngine {
     /// non-null it is rendered as a server-side "Snapshot timeline"
     /// section that complements (or replaces) the JS-rendered git
     /// commit log driven by `history_json` — important because pages
-    /// imported into the vault from outside zetl have no git commits
+    /// imported into the vault from outside ztl have no git commits
     /// but may have many jj snapshots.
     #[allow(clippy::too_many_arguments)]
     pub fn render_page_history(
@@ -1117,14 +1117,14 @@ fn graph_index_url(root_path: &str) -> String {
 }
 
 /// SPEC-028 REQ-105: read the top-level `graph_inline` flag from the active
-/// theme's `theme.toml`. Prefers an on-disk override (`.zetl/themes/<theme>/
+/// theme's `theme.toml`. Prefers an on-disk override (`.ztl/themes/<theme>/
 /// theme.toml`) when present, else falls back to the compile-time-bundled
 /// manifest. Any parse or IO error is treated as "flag absent" (false) — the
 /// flag is a best-effort opt-in, not a hard dependency.
 fn load_graph_inline(vault_root: &Path, theme: &str) -> bool {
     if theme != "default" {
         let disk = vault_root
-            .join(".zetl/themes")
+            .join(".ztl/themes")
             .join(theme)
             .join("theme.toml");
         if let Ok(content) = std::fs::read_to_string(&disk) {
@@ -1575,7 +1575,7 @@ mod tests {
 
     #[test]
     fn test_default_theme_skips_disk() {
-        // "default" theme should work without any .zetl/themes directory
+        // "default" theme should work without any .ztl/themes directory
         let engine = TemplateEngine::new(Path::new("/nonexistent"), "default", false, false);
         let vault = sample_vault();
         let html = engine.render_index(&vault, "serve", "", "", "").unwrap();
@@ -1586,7 +1586,7 @@ mod tests {
     fn test_theme_disk_override() {
         // Create a temp dir with a custom theme that overrides page.html
         let tmp = tempfile::tempdir().unwrap();
-        let theme_dir = tmp.path().join(".zetl/themes/custom");
+        let theme_dir = tmp.path().join(".ztl/themes/custom");
         std::fs::create_dir_all(&theme_dir).unwrap();
         std::fs::write(
             theme_dir.join("page.html"),
@@ -1609,7 +1609,7 @@ mod tests {
     #[test]
     fn test_reload_mode_picks_up_changes() {
         let tmp = tempfile::tempdir().unwrap();
-        let theme_dir = tmp.path().join(".zetl/themes/live");
+        let theme_dir = tmp.path().join(".ztl/themes/live");
         std::fs::create_dir_all(&theme_dir).unwrap();
 
         // Start with custom index template
@@ -1640,7 +1640,7 @@ mod tests {
     #[test]
     fn test_cached_mode_does_not_reload() {
         let tmp = tempfile::tempdir().unwrap();
-        let theme_dir = tmp.path().join(".zetl/themes/cached");
+        let theme_dir = tmp.path().join(".ztl/themes/cached");
         std::fs::create_dir_all(&theme_dir).unwrap();
 
         std::fs::write(
@@ -1682,11 +1682,11 @@ mod tests {
             "rendered HTML missing docked data-placement attribute:\n{html}"
         );
         assert!(
-            html.contains(r#"class="zetl-graph-widget""#),
+            html.contains(r#"class="ztl-graph-widget""#),
             "rendered HTML missing graph widget container"
         );
         assert!(
-            html.contains(r#"id="zetl-graph""#),
+            html.contains(r#"id="ztl-graph""#),
             "rendered HTML missing graph canvas mount point"
         );
     }
@@ -1723,7 +1723,7 @@ mod tests {
         // An on-disk theme with `[graph] placement = "tabs"` in theme.toml
         // flips the data-placement attribute without editing the partial.
         let tmp = tempfile::tempdir().unwrap();
-        let theme_dir = tmp.path().join(".zetl/themes/tabby");
+        let theme_dir = tmp.path().join(".ztl/themes/tabby");
         std::fs::create_dir_all(&theme_dir).unwrap();
         std::fs::write(
             theme_dir.join("theme.toml"),
@@ -1742,7 +1742,7 @@ mod tests {
     #[test]
     fn test_graph_placement_theme_opt_in_stacked() {
         let tmp = tempfile::tempdir().unwrap();
-        let theme_dir = tmp.path().join(".zetl/themes/stacky");
+        let theme_dir = tmp.path().join(".ztl/themes/stacky");
         std::fs::create_dir_all(&theme_dir).unwrap();
         std::fs::write(
             theme_dir.join("theme.toml"),
@@ -1763,7 +1763,7 @@ mod tests {
         // Defensive: a typo or future-only value must not break the layout —
         // it coerces to `docked` so the widget still renders somewhere valid.
         let tmp = tempfile::tempdir().unwrap();
-        let theme_dir = tmp.path().join(".zetl/themes/typo");
+        let theme_dir = tmp.path().join(".ztl/themes/typo");
         std::fs::create_dir_all(&theme_dir).unwrap();
         std::fs::write(
             theme_dir.join("theme.toml"),
@@ -1782,7 +1782,7 @@ mod tests {
     #[test]
     fn test_syntax_error_returns_template_error() {
         let tmp = tempfile::tempdir().unwrap();
-        let theme_dir = tmp.path().join(".zetl/themes/broken");
+        let theme_dir = tmp.path().join(".ztl/themes/broken");
         std::fs::create_dir_all(&theme_dir).unwrap();
         std::fs::write(
             theme_dir.join("index.html"),
@@ -1860,7 +1860,7 @@ mod tests {
     #[test]
     fn test_empty_output_caught() {
         let tmp = tempfile::tempdir().unwrap();
-        let theme_dir = tmp.path().join(".zetl/themes/empty");
+        let theme_dir = tmp.path().join(".ztl/themes/empty");
         std::fs::create_dir_all(&theme_dir).unwrap();
         std::fs::write(theme_dir.join("index.html"), "   ").unwrap();
 
@@ -2081,7 +2081,7 @@ mod tests {
     /// the two graph variables verbatim, so tests can inspect them without
     /// depending on the full bundled theme.
     fn write_probe_theme(root: &std::path::Path, name: &str, graph_inline: bool) {
-        let dir = root.join(".zetl/themes").join(name);
+        let dir = root.join(".ztl/themes").join(name);
         std::fs::create_dir_all(&dir).unwrap();
         let inline_line = if graph_inline {
             "graph_inline = true\n"
@@ -2096,7 +2096,7 @@ mod tests {
         // Minimal probe template that prints `URL|LEN` — inherits nothing,
         // so it renders under every render_* method whose template name we
         // override below. `| safe` bypasses HTML-escape of the URL slashes.
-        let probe = r#"ZETL_GRAPH|{{ graph_index_url|safe }}|{{ graph_index|length }}|END"#;
+        let probe = r#"ztl_GRAPH|{{ graph_index_url|safe }}|{{ graph_index|length }}|END"#;
         for name in &["index.html", "page.html", "folder.html"] {
             std::fs::write(dir.join(name), probe).unwrap();
         }
@@ -2111,7 +2111,7 @@ mod tests {
         let vault = sample_vault();
         let html = engine.render_index(&vault, "serve", "", "", "").unwrap();
         assert!(
-            html.contains("ZETL_GRAPH|/graph-index.json|0|END"),
+            html.contains("ztl_GRAPH|/graph-index.json|0|END"),
             "expected absolute URL and empty graph_index, got: {html}"
         );
     }
@@ -2126,7 +2126,7 @@ mod tests {
         let vault = sample_vault();
         let html = engine.render_index(&vault, "build", "", "", "").unwrap();
         assert!(
-            html.contains("ZETL_GRAPH|./graph-index.json|0|END"),
+            html.contains("ztl_GRAPH|./graph-index.json|0|END"),
             "expected relative root URL, got: {html}"
         );
     }
@@ -2145,7 +2145,7 @@ mod tests {
             .render_page(&vault, &page, "build", "", "", "")
             .unwrap();
         assert!(
-            html.contains("ZETL_GRAPH|../../../graph-index.json|0|END"),
+            html.contains("ztl_GRAPH|../../../graph-index.json|0|END"),
             "expected ../../../graph-index.json for depth-3 slug, got: {html}"
         );
     }
@@ -2203,7 +2203,7 @@ mod tests {
             .render_page(&vault, &page, "serve", "", "", "abc")
             .unwrap();
         assert!(
-            page_html.contains("ZETL_GRAPH|/graph-index.json|3|END"),
+            page_html.contains("ztl_GRAPH|/graph-index.json|3|END"),
             "render_page missing graph vars, got: {page_html}"
         );
 
@@ -2219,7 +2219,7 @@ mod tests {
             .render_folder(&vault, &folder, "serve", "", "", "xy")
             .unwrap();
         assert!(
-            folder_html.contains("ZETL_GRAPH|/graph-index.json|2|END"),
+            folder_html.contains("ztl_GRAPH|/graph-index.json|2|END"),
             "render_folder missing graph vars, got: {folder_html}"
         );
     }
@@ -2319,7 +2319,7 @@ mod tests {
         );
         // Canvas container still present so JS-enabled future-population
         // does not require a re-render of the partial.
-        assert!(html.contains("id=\"zetl-graph\""));
+        assert!(html.contains("id=\"ztl-graph\""));
     }
 
     #[test]
@@ -2398,7 +2398,7 @@ mod tests {
         // proves the pattern works — both when the partial resolves (via
         // the bundled default) and when a theme shadows it with nothing.
         let tmp = tempfile::tempdir().unwrap();
-        let theme_dir = tmp.path().join(".zetl/themes/no-graph");
+        let theme_dir = tmp.path().join(".ztl/themes/no-graph");
         std::fs::create_dir_all(&theme_dir).unwrap();
         // Host template that wraps the widget exactly how the /_graph route
         // / sidebar entry will wrap it once those tasks land.

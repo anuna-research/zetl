@@ -7,8 +7,8 @@ audience: agent, human
 parent: SPEC-001
 related:
   - SPEC-003  # Agent Ergonomics & Robustness
-  - SPEC-009  # zetl view (TUI)
-  - SPEC-013  # zetl search
+  - SPEC-009  # ztl view (TUI)
+  - SPEC-013  # ztl search
 ---
 
 | Field        | Value                                        |
@@ -30,18 +30,18 @@ related:
 
 ### 1.1 Problem
 
-zetl CLI output is rich with file references. Search results include `path/to/note.md:42`, dead-link diagnostics print `source.md:17: broken link [[Missing]]`, and link listings show source locations for every backlink and forward link. In every case, the user sees a file path and line number but cannot act on it — they must manually copy the path, switch to their editor, open the file, and navigate to the line. This context switch is a friction tax paid dozens of times per session.
+ztl CLI output is rich with file references. Search results include `path/to/note.md:42`, dead-link diagnostics print `source.md:17: broken link [[Missing]]`, and link listings show source locations for every backlink and forward link. In every case, the user sees a file path and line number but cannot act on it — they must manually copy the path, switch to their editor, open the file, and navigate to the line. This context switch is a friction tax paid dozens of times per session.
 
 Modern terminals (iTerm2, WezTerm, Ghostty, Windows Terminal, kitty, foot, GNOME Terminal ≥3.50, macOS Terminal.app ≥15.0) support OSC 8 hyperlinks — the terminal equivalent of HTML `<a href>`. An OSC 8 hyperlink wraps visible text in invisible escape sequences that make the text clickable. The terminal renders the text normally but opens a URI when the user clicks (or Cmd-clicks) it. If the URI uses an editor protocol (`vscode://file/...`), the click opens the file at the exact line in the user's editor.
 
 ### 1.2 Core Insight
 
-Every file:line reference zetl already prints is a latent hyperlink. The data is present; only the escape sequence wrapper is missing. Adding OSC 8 requires no changes to output content, no new commands, and no new flags. The feature is purely additive: terminals that support OSC 8 gain clickable links; terminals that do not see identical output (the escape sequences are invisible no-ops in legacy terminals, and zetl suppresses them entirely when stdout is not a TTY).
+Every file:line reference ztl already prints is a latent hyperlink. The data is present; only the escape sequence wrapper is missing. Adding OSC 8 requires no changes to output content, no new commands, and no new flags. The feature is purely additive: terminals that support OSC 8 gain clickable links; terminals that do not see identical output (the escape sequences are invisible no-ops in legacy terminals, and ztl suppresses them entirely when stdout is not a TTY).
 
 ### 1.3 Design Philosophy
 
 - **Zero configuration for the common case.** If `$EDITOR` is `code`, links use `vscode://file/` automatically. The user clicks and it works.
-- **Full control for the uncommon case.** `ZETL_EDITOR_URI` overrides everything with an arbitrary URI template. Any editor with a URI protocol handler is supported.
+- **Full control for the uncommon case.** `ztl_EDITOR_URI` overrides everything with an arbitrary URI template. Any editor with a URI protocol handler is supported.
 - **No output pollution.** OSC 8 sequences are suppressed when stdout is piped, redirected, or when `NO_COLOR` is set. JSON output is never affected. The feature is invisible unless the user is at an interactive terminal.
 - **No new dependencies.** OSC 8 is a simple byte sequence (`\x1b]8;;{uri}\x1b\\{text}\x1b]8;;\x1b\\`). It requires no terminal library support beyond raw write.
 
@@ -50,20 +50,20 @@ Every file:line reference zetl already prints is a latent hyperlink. The data is
 **In scope:**
 
 - OSC 8 escape sequence wrapping of file:line references in CLI text output
-- `ZETL_EDITOR_URI` environment variable for custom editor URI templates
+- `ztl_EDITOR_URI` environment variable for custom editor URI templates
 - Built-in presets for VS Code, Cursor, Zed, Sublime Text, and Neovim
 - Auto-detection of `$EDITOR` / `$VISUAL` to select a sensible default preset
 - TTY detection: only emit OSC 8 when stdout is a terminal
-- Respect `NO_COLOR` convention (already supported by zetl)
+- Respect `NO_COLOR` convention (already supported by ztl)
 - Coverage across all commands that print file references: `search`, `links`, `backlinks`, `check`, `diff`, `graph`, `blocks`
 - `--no-hyperlinks` flag to explicitly disable
 
 **Out of scope:**
 
-- Hyperlinks in TUI mode (`zetl view`) — the TUI uses ratatui and crossterm for rendering; OSC 8 in TUI cells is a separate concern (future work)
+- Hyperlinks in TUI mode (`ztl view`) — the TUI uses ratatui and crossterm for rendering; OSC 8 in TUI cells is a separate concern (future work)
 - Hyperlinks in JSON output — JSON consumers parse structured data, not terminal escapes
-- Hyperlinks in `zetl serve` web output — the browser has its own link model
-- Custom URI schemes beyond the built-in presets (users handle this via `ZETL_EDITOR_URI`)
+- Hyperlinks in `ztl serve` web output — the browser has its own link model
+- Custom URI schemes beyond the built-in presets (users handle this via `ztl_EDITOR_URI`)
 - OSC 8 in log/debug output on stderr
 
 ---
@@ -72,15 +72,15 @@ Every file:line reference zetl already prints is a latent hyperlink. The data is
 
 ### UP-022-001: Terminal Power User
 
-**Goals:** Click file references in zetl output to jump directly to the relevant line in their editor. Reduce the copy-paste-navigate cycle to a single click.
+**Goals:** Click file references in ztl output to jump directly to the relevant line in their editor. Reduce the copy-paste-navigate cycle to a single click.
 
 **Constraints:** Uses a modern terminal (iTerm2, WezTerm, Ghostty, kitty, or similar). Has VS Code, Cursor, or Zed as their primary editor. Expects things to work without configuration.
 
 **Happy path:**
 1. User has `$EDITOR=code` in their shell profile
-2. Runs `zetl check` — sees dead-link diagnostics with file:line references
+2. Runs `ztl check` — sees dead-link diagnostics with file:line references
 3. Cmd-clicks a file reference → VS Code opens at that exact line
-4. No configuration was needed; zetl detected `code` and used `vscode://file/` automatically
+4. No configuration was needed; ztl detected `code` and used `vscode://file/` automatically
 
 ### UP-022-002: Neovim User with Custom Terminal
 
@@ -89,29 +89,29 @@ Every file:line reference zetl already prints is a latent hyperlink. The data is
 **Constraints:** Uses Neovim in a terminal multiplexer (tmux/zellij). May need a custom URI template because Neovim's remote protocol varies by setup.
 
 **Happy path:**
-1. Sets `ZETL_EDITOR_URI="nvim://open?file={path}&line={line}"` in `.zshrc`
+1. Sets `ztl_EDITOR_URI="nvim://open?file={path}&line={line}"` in `.zshrc`
 2. Registers a system URI handler for `nvim://` that invokes `nvr --remote +{line} {path}`
-3. Runs `zetl search "TODO"` — clicks a result → Neovim jumps to the line
+3. Runs `ztl search "TODO"` — clicks a result → Neovim jumps to the line
 
 ### UP-022-003: CI / Scripting Agent
 
-**Goals:** Consume zetl output programmatically. Hyperlink escapes must never appear in piped or redirected output.
+**Goals:** Consume ztl output programmatically. Hyperlink escapes must never appear in piped or redirected output.
 
 **Constraints:** Non-interactive. Parses text output with grep/awk or uses `--format json`.
 
 **Happy path:**
-1. Runs `zetl check --format json | jq '.dead_links[]'` — JSON output, no escapes
-2. Runs `zetl check 2>&1 | grep "broken"` — stdout is a pipe, no OSC 8 emitted
-3. Runs `zetl check > report.txt` — stdout is a file, no OSC 8 emitted
+1. Runs `ztl check --format json | jq '.dead_links[]'` — JSON output, no escapes
+2. Runs `ztl check 2>&1 | grep "broken"` — stdout is a pipe, no OSC 8 emitted
+3. Runs `ztl check > report.txt` — stdout is a file, no OSC 8 emitted
 
 ### UP-022-004: User on Legacy Terminal
 
-**Goals:** Use zetl normally. Not affected by the hyperlink feature.
+**Goals:** Use ztl normally. Not affected by the hyperlink feature.
 
 **Constraints:** Terminal does not support OSC 8 (e.g., older xterm, raw Linux console).
 
 **Happy path:**
-1. Runs `zetl check` — output looks identical to pre-SPEC-022 behavior
+1. Runs `ztl check` — output looks identical to pre-SPEC-022 behavior
 2. OSC 8 sequences are present in the byte stream but the terminal ignores them (they are defined as no-ops for unsupporting terminals per the OSC 8 specification)
 3. If the user finds the invisible bytes problematic (e.g., a terminal that renders them as garbage), they set `--no-hyperlinks` or `NO_COLOR=1`
 
@@ -154,7 +154,7 @@ Example template: `vscode://file/{path}:{line}:{col}`
 
 The template SHALL be sourced from (in priority order):
 
-1. `ZETL_EDITOR_URI` environment variable (highest priority)
+1. `ztl_EDITOR_URI` environment variable (highest priority)
 2. Auto-detected from `$VISUAL` or `$EDITOR` (see REQ-122)
 3. Built-in default: `vscode://file/{path}:{line}:{col}`
 
@@ -175,7 +175,7 @@ The system SHALL inspect `$VISUAL` (first) and `$EDITOR` (second) to select a bu
 
 If neither `$VISUAL` nor `$EDITOR` matches a known preset, the system SHALL fall back to `vscode://file/{path}:{line}:{col}`.
 
-Rationale: VS Code is the most widely-used editor with URI protocol support. A wrong default is corrected by setting `ZETL_EDITOR_URI`.
+Rationale: VS Code is the most widely-used editor with URI protocol support. A wrong default is corrected by setting `ztl_EDITOR_URI`.
 
 Trace: TEST-145, TEST-146
 
@@ -191,15 +191,15 @@ OSC 8 hyperlinks SHALL be applied to file:line references in the text output of 
 
 | Command           | Wrapped references                                      |
 |-------------------|---------------------------------------------------------|
-| `zetl search`     | File path and line number in each search result         |
-| `zetl links`      | Source file:line for each forward link                  |
-| `zetl backlinks`  | Source file:line for each backlink                      |
-| `zetl check`      | File:line in dead-link, orphan, and ambiguous-link diagnostics |
-| `zetl diff`       | File paths in added/removed/changed entries             |
-| `zetl graph`      | File paths in graph node listings                       |
-| `zetl blocks`     | File:line for each block reference                      |
+| `ztl search`     | File path and line number in each search result         |
+| `ztl links`      | Source file:line for each forward link                  |
+| `ztl backlinks`  | Source file:line for each backlink                      |
+| `ztl check`      | File:line in dead-link, orphan, and ambiguous-link diagnostics |
+| `ztl diff`       | File paths in added/removed/changed entries             |
+| `ztl graph`      | File paths in graph node listings                       |
+| `ztl blocks`     | File:line for each block reference                      |
 
-Commands that do not print file references (`zetl index`, `zetl serve`, `zetl build`, `zetl view`, `zetl reason`) are unaffected.
+Commands that do not print file references (`ztl index`, `ztl serve`, `ztl build`, `ztl view`, `ztl reason`) are unaffected.
 
 Trace: TEST-143, TEST-149
 
@@ -208,7 +208,7 @@ Trace: TEST-143, TEST-149
 The system SHALL accept a `--no-hyperlinks` global flag that disables OSC 8 emission regardless of TTY detection and environment variables.
 
 ```
-zetl --no-hyperlinks check
+ztl --no-hyperlinks check
 ```
 
 This flag SHALL be exposed as a clap argument on the top-level CLI struct.
@@ -217,7 +217,7 @@ Trace: TEST-148
 
 #### REQ-126: NO_COLOR Interaction
 
-When the `NO_COLOR` environment variable is set (to any value, including empty string), the system SHALL suppress all OSC 8 hyperlink sequences. This is consistent with zetl's existing `NO_COLOR` behavior which disables ANSI color codes.
+When the `NO_COLOR` environment variable is set (to any value, including empty string), the system SHALL suppress all OSC 8 hyperlink sequences. This is consistent with ztl's existing `NO_COLOR` behavior which disables ANSI color codes.
 
 Rationale: `NO_COLOR` signals "do not emit terminal escapes." OSC 8 is a terminal escape. Suppressing it is both semantically correct and practically useful for users whose terminals mishandle OSC 8.
 
@@ -321,7 +321,7 @@ pub struct HyperlinkConfig {
 /// 2. If stdout is not a TTY → disabled
 /// 3. If NO_COLOR is set → disabled
 /// 4. If format is JSON → disabled
-/// 5. Template from ZETL_EDITOR_URI, or auto-detected, or default
+/// 5. Template from ztl_EDITOR_URI, or auto-detected, or default
 pub fn resolve_config(no_hyperlinks: bool, is_json: bool) -> HyperlinkConfig;
 ```
 
@@ -378,7 +378,7 @@ Unknown placeholders SHALL be left unexpanded (treated as literal text). This al
 
 The per-reference overhead of OSC 8 wrapping (template expansion + escape sequence construction) SHALL be < 1 microsecond. The feature SHALL not measurably impact the wall-clock time of any command.
 
-Rationale: OSC 8 wrapping is string concatenation and a single branch. It must not regress performance for commands that may print thousands of references (e.g., `zetl search` on a large vault).
+Rationale: OSC 8 wrapping is string concatenation and a single branch. It must not regress performance for commands that may print thousands of references (e.g., `ztl search` on a large vault).
 
 Trace: REQ-120
 
@@ -410,7 +410,7 @@ Trace: REQ-120
 
 ### ADR-059: OSC 8 Over Alternative Approaches
 
-**Context:** zetl needs clickable file references in terminal output. Several approaches exist for connecting terminal output to editors.
+**Context:** ztl needs clickable file references in terminal output. Several approaches exist for connecting terminal output to editors.
 
 **Decision:** Use OSC 8 hyperlinks with editor-specific URI schemes.
 
@@ -423,14 +423,14 @@ Trace: REQ-120
 
 **Trade-offs:**
 - Terminals inside tmux < 3.4 may not pass through OSC 8 (mitigated: tmux 3.4+ supports passthrough; older tmux strips sequences cleanly)
-- Some editors (vanilla vim/neovim in terminal) lack native URI handlers — users must configure a system-level handler or set `ZETL_EDITOR_URI` to `file://`
-- Column information is rarely available from zetl's output (most references are file:line only) — `{col}` defaults to 1
+- Some editors (vanilla vim/neovim in terminal) lack native URI handlers — users must configure a system-level handler or set `ztl_EDITOR_URI` to `file://`
+- Column information is rarely available from ztl's output (most references are file:line only) — `{col}` defaults to 1
 
 **Alternatives rejected:**
 - **ANSI hyperlinks via terminal-link crate:** This is OSC 8 — the crate just wraps the same byte sequence. No value in adding a dependency for string concatenation.
 - **Editor-specific IPC (LSP, nvim --remote, emacsclient):** Requires detecting running editor instances, managing sockets, handling timeouts. Far more complex and fragile than URI schemes.
 - **File path copying to clipboard on click:** Non-standard behavior; requires terminal-specific APIs; not what users expect from clickable text.
-- **No hyperlinks (status quo):** Every other modern CLI tool that prints file references (cargo, ripgrep via hyperlink flag, gh, delta) is adopting OSC 8. zetl should not lag.
+- **No hyperlinks (status quo):** Every other modern CLI tool that prints file references (cargo, ripgrep via hyperlink flag, gh, delta) is adopting OSC 8. ztl should not lag.
 
 ---
 
@@ -438,11 +438,11 @@ Trace: REQ-120
 
 ### TEST-143: OSC 8 Wrapping in Search Results
 
-**Scenario:** `zetl search` output contains OSC 8 hyperlinks around file:line references.
-**Precondition:** Vault with at least one note containing the search term. `ZETL_EDITOR_URI` is unset. `$EDITOR=code`.
+**Scenario:** `ztl search` output contains OSC 8 hyperlinks around file:line references.
+**Precondition:** Vault with at least one note containing the search term. `ztl_EDITOR_URI` is unset. `$EDITOR=code`.
 **Steps:**
 1. Simulate TTY stdout (set `is_terminal` to true in test harness)
-2. Run `zetl search "test_term"` and capture raw bytes
+2. Run `ztl search "test_term"` and capture raw bytes
 3. Verify output contains `\x1b]8;;vscode://file/` followed by the absolute path, line, and col
 4. Verify the visible text between the open and close sequences is the file:line reference
 5. Verify the close sequence `\x1b]8;;\x1b\\` follows the visible text
@@ -452,18 +452,18 @@ Trace: REQ-120
 **Scenario:** OSC 8 sequences are absent when stdout is not a TTY.
 **Precondition:** Same vault as TEST-143.
 **Steps:**
-1. Run `zetl search "test_term"` with stdout piped (not a TTY)
+1. Run `ztl search "test_term"` with stdout piped (not a TTY)
 2. Capture raw output bytes
 3. Verify output contains zero `\x1b]8` sequences
 4. Verify file:line references are still present as plain text
 
-### TEST-145: ZETL_EDITOR_URI Override
+### TEST-145: ztl_EDITOR_URI Override
 
 **Scenario:** Custom editor URI template overrides auto-detection.
-**Precondition:** `ZETL_EDITOR_URI="custom://open?file={path}&line={line}"`, `$EDITOR=code`.
+**Precondition:** `ztl_EDITOR_URI="custom://open?file={path}&line={line}"`, `$EDITOR=code`.
 **Steps:**
 1. Simulate TTY stdout
-2. Run `zetl check` on a vault with dead links
+2. Run `ztl check` on a vault with dead links
 3. Verify OSC 8 URIs use `custom://open?file=...&line=...` (not vscode://)
 4. Verify `{path}` is expanded to the absolute file path
 5. Verify `{line}` is expanded to the correct line number
@@ -505,12 +505,12 @@ Trace: REQ-120
 **Scenario:** All specified commands emit OSC 8 hyperlinks for file references.
 **Precondition:** Vault with notes that exercise each command's file-reference output. TTY simulated. Default editor preset.
 **Steps:**
-1. `zetl search "term"` → verify OSC 8 in output
-2. `zetl links "SomePage"` → verify OSC 8 in source file:line references
-3. `zetl backlinks "SomePage"` → verify OSC 8 in source file:line references
-4. `zetl check` (with dead links present) → verify OSC 8 in diagnostic file:line references
-5. `zetl diff` (with changes) → verify OSC 8 in file path references
-6. `zetl blocks "SomePage"` → verify OSC 8 in block file:line references
+1. `ztl search "term"` → verify OSC 8 in output
+2. `ztl links "SomePage"` → verify OSC 8 in source file:line references
+3. `ztl backlinks "SomePage"` → verify OSC 8 in source file:line references
+4. `ztl check` (with dead links present) → verify OSC 8 in diagnostic file:line references
+5. `ztl diff` (with changes) → verify OSC 8 in file path references
+6. `ztl blocks "SomePage"` → verify OSC 8 in block file:line references
 7. For each command, also verify `--format json` output contains zero OSC 8 sequences
 
 ---
@@ -531,7 +531,7 @@ Trace: REQ-120
 
 ## 10. Future Work
 
-- **TUI integration (zetl view):** Ratatui cells can embed OSC 8 via raw spans. This requires changes to the view module's rendering pipeline and is deferred to a future spec.
-- **Terminal capability detection:** Probing whether the terminal actually supports OSC 8 (via `TERM_PROGRAM` or DA1 queries) could allow zetl to suppress sequences on known-incompatible terminals. Deferred because the graceful-degradation guarantee of OSC 8 makes this low-priority.
+- **TUI integration (ztl view):** Ratatui cells can embed OSC 8 via raw spans. This requires changes to the view module's rendering pipeline and is deferred to a future spec.
+- **Terminal capability detection:** Probing whether the terminal actually supports OSC 8 (via `TERM_PROGRAM` or DA1 queries) could allow ztl to suppress sequences on known-incompatible terminals. Deferred because the graceful-degradation guarantee of OSC 8 makes this low-priority.
 - **`id=` parameter for multi-line links:** OSC 8 supports an `id=` parameter that groups multiple hyperlink spans as a single logical link (useful for wrapped lines). If users report issues with long paths wrapping across terminal lines, this can be added without breaking changes.
-- **Config file support:** `ZETL_EDITOR_URI` could also be set in `.zetl/config.toml` for per-vault configuration. Deferred until zetl has a general config file mechanism.
+- **Config file support:** `ztl_EDITOR_URI` could also be set in `.ztl/config.toml` for per-vault configuration. Deferred until ztl has a general config file mechanism.

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Edit: {{ page_title }} — zetl{% endblock %}
+{% block title %}Edit: {{ page_title }} — ztl{% endblock %}
 
 {% block head %}
 {% endblock %}
@@ -632,7 +632,7 @@ function connect() {
         break;
 
       case "error":
-        console.error("[zetl ws]", msg.message);
+        console.error("[ztl ws]", msg.message);
         break;
     }
   };
@@ -651,7 +651,7 @@ function scheduleReconnect() {
       DATA.ticket = data.ticket;
       connect();
     } catch (e) {
-      console.error("[zetl ws] reconnect failed:", e);
+      console.error("[ztl ws] reconnect failed:", e);
       setStatus("disconnected", "disconnected");
       scheduleReconnect(); // retry
     }

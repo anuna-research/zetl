@@ -4,7 +4,7 @@ title: Link Graph
 
 # Link Graph
 
-zetl builds a directed graph where nodes are pages and edges are [[Wikilinks]]. The graph powsers all link-based queries: forward links, backlinks, multi-hop traversal, shortest path, and orphan detection.
+ztl builds a directed graph where nodes are pages and edges are [[Wikilinks]]. The graph powsers all link-based queries: forward links, backlinks, multi-hop traversal, shortest path, and orphan detection.
 
 ## Data model
 

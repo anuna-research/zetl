@@ -1,4 +1,4 @@
-//! `zetl cap invite` pure-core helpers (SPEC-034 REQ-3410 / CON-3401 /
+//! `ztl cap invite` pure-core helpers (SPEC-034 REQ-3410 / CON-3401 /
 //! CON-3402 / REQ-3430).
 //!
 //! This module is pure: no I/O, no wall clock, no OS-CSPRNG entrance
@@ -20,7 +20,7 @@
 //!   `O`/`U`) so operators reading grant ids aloud never collide on
 //!   ambiguous glyphs.
 //! - Parse the `--expires` duration (`72h`, `7d`, …) the same way
-//!   `zetl invite` parses `--expires`, with the additional NFR-3412
+//!   `ztl invite` parses `--expires`, with the additional NFR-3412
 //!   bounds (60s minimum, 90 days maximum).
 //! - Format `created` / `expires` timestamps and render the
 //!   REQ-3410 URL-shortener warning banner verbatim.
@@ -28,7 +28,7 @@
 //! Non-responsibilities (lives in the shell):
 //!
 //! - Reading `recipients.toml` / `grants.toml` off disk.
-//! - Resolving `ZETL_CAP_SECRET` + the cohort's `salt_stable`.
+//! - Resolving `ztl_CAP_SECRET` + the cohort's `salt_stable`.
 //! - Deriving the path-cap (pure, but lives in `cap::derivation` and
 //!   is called from the shell so this module can stay free of
 //!   crypto-crate churn).
@@ -45,7 +45,7 @@ use crate::cap::pad::X25519Pubkey;
 use crate::cap::recipients::parsing::AGE_RECIPIENT_V1_PREFIX;
 
 /// REQ-3410 warning banner printed on stdout for every successful
-/// `zetl cap invite` invocation. The exact text is pinned by a
+/// `ztl cap invite` invocation. The exact text is pinned by a
 /// byte-stable integration test so rewrites that add ornament or
 /// strip the threat-model link regress loudly.
 pub const URL_SHORTENER_WARNING: &str = "\
@@ -64,7 +64,7 @@ pub const MIN_EXPIRES_SECS: u64 = 60;
 pub const MAX_EXPIRES_SECS: u64 = 90 * 86_400;
 
 /// Default `--expires` duration when the operator omits the flag
-/// (72 hours — matches the `zetl invite` collaborative default so the
+/// (72 hours — matches the `ztl invite` collaborative default so the
 /// two surfaces feel identical to operators who know one already).
 pub const DEFAULT_EXPIRES_SECS: u64 = 72 * 3600;
 
@@ -201,7 +201,7 @@ pub fn generate_grant_id<R: RngCore + CryptoRng>(rng: &mut R) -> String {
 
 /// Parse `--expires` duration strings. Accepts a trailing suffix:
 /// `s` (seconds), `m` (minutes), `h` (hours), `d` (days). No suffix
-/// is interpreted as hours to match the `zetl invite` convention and
+/// is interpreted as hours to match the `ztl invite` convention and
 /// avoid "72" meaning "72 seconds" by mistake. NFR-3412 bounds are
 /// enforced: results below 60s or above 90d are rejected.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -234,7 +234,7 @@ pub fn parse_expires(s: &str) -> Result<u64, ExpiresParseError> {
     } else if let Some(n) = trimmed.strip_suffix('d') {
         (n, 86_400u64)
     } else {
-        // No suffix → hours (matches `zetl invite`).
+        // No suffix → hours (matches `ztl invite`).
         (trimmed, 3600u64)
     };
     let n: u64 = num_part

@@ -3,21 +3,21 @@
 //!
 //! Covers:
 //!
-//! - `zetl cap revoke <grant-id>` — flips `revoked=true`; unknown id
+//! - `ztl cap revoke <grant-id>` — flips `revoked=true`; unknown id
 //!   exits non-zero; idempotent.
-//! - `zetl cap rotate --cohort <id>` — records `salt_rotated` +
+//! - `ztl cap rotate --cohort <id>` — records `salt_rotated` +
 //!   `last_rotated` without touching `salt_stable` (REQ-3402 URL
 //!   stability contract).
-//! - `zetl cap finalise <grant-id>` — sets `bound=true`; idempotent.
+//! - `ztl cap finalise <grant-id>` — sets `bound=true`; idempotent.
 //!   `--rotate-grant` rolls the pubkey + reprints the invite URL.
-//! - `zetl cap sweep` — marks every past-expires grant revoked;
+//! - `ztl cap sweep` — marks every past-expires grant revoked;
 //!   idempotent.
-//! - `zetl cap check` — exits 1 when any grant is expired and not
+//! - `ztl cap check` — exits 1 when any grant is expired and not
 //!   revoked; exits 0 when the vault is clean; `--public-safety`
 //!   is currently a passthrough.
-//! - `zetl cap rotate-signing-key` — rewrites
+//! - `ztl cap rotate-signing-key` — rewrites
 //!   `recipients.toml[vault].signing_pubkey` and prints a new
-//!   `ZETL_CAP_SIGNING_KEY` on stdout.
+//!   `ztl_CAP_SIGNING_KEY` on stdout.
 
 use assert_cmd::cargo::cargo_bin_cmd;
 use tempfile::tempdir;
@@ -106,7 +106,7 @@ fn revoke_flips_revoked_flag_and_preserves_file_shape() {
     let dir = seed_vault("delegated-url");
     write_grants(&dir, &one_active_grant_body());
 
-    let out = cargo_bin_cmd!("zetl")
+    let out = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -134,7 +134,7 @@ fn revoke_unknown_grant_errors() {
     let dir = seed_vault("delegated-url");
     write_grants(&dir, &one_active_grant_body());
 
-    let out = cargo_bin_cmd!("zetl")
+    let out = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -158,7 +158,7 @@ fn revoke_is_idempotent() {
     write_grants(&dir, &one_active_grant_body());
 
     for _ in 0..2 {
-        let out = cargo_bin_cmd!("zetl")
+        let out = cargo_bin_cmd!("ztl")
             .args([
                 "-d",
                 dir.path().to_str().unwrap(),
@@ -189,7 +189,7 @@ fn rotate_records_salt_rotated_and_last_rotated() {
     assert!(!before.contains("last_rotated"));
     assert!(before.contains("salt_stable"));
 
-    let out = cargo_bin_cmd!("zetl")
+    let out = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -220,7 +220,7 @@ fn rotate_records_salt_rotated_and_last_rotated() {
 fn rotate_unknown_cohort_errors() {
     let dir = seed_vault("delegated-url");
 
-    let out = cargo_bin_cmd!("zetl")
+    let out = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -246,7 +246,7 @@ fn finalise_sets_bound_true() {
     let dir = seed_vault("delegated-url");
     write_grants(&dir, &one_active_grant_body());
 
-    let out = cargo_bin_cmd!("zetl")
+    let out = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -277,18 +277,18 @@ fn finalise_rotate_grant_reissues_pubkey_and_prints_new_url() {
     let dir = seed_vault("delegated-url");
     write_grants(&dir, &one_active_grant_body());
 
-    // Deterministic `ZETL_CAP_SECRET`: the same helper the invite
+    // Deterministic `ztl_CAP_SECRET`: the same helper the invite
     // integration tests use, so we don't have to round-trip a real
     // genkey invocation.
     use base64::engine::general_purpose::STANDARD;
     use base64::Engine as _;
     let secret_bytes =
-        zetl::cap::genkey::build_secret(zetl::cap::genkey::SECRET_VERSION_V1, &[0u8; 32]);
+        ztl::cap::genkey::build_secret(ztl::cap::genkey::SECRET_VERSION_V1, &[0u8; 32]);
     let secret_b64 = STANDARD.encode(secret_bytes);
 
-    let out = cargo_bin_cmd!("zetl")
-        .env("ZETL_CAP_SECRET", &secret_b64)
-        .env("ZETL_CAP_SITE_URL", "https://wiki.example")
+    let out = cargo_bin_cmd!("ztl")
+        .env("ztl_CAP_SECRET", &secret_b64)
+        .env("ztl_CAP_SITE_URL", "https://wiki.example")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -342,7 +342,7 @@ fn finalise_unknown_grant_errors() {
     let dir = seed_vault("delegated-url");
     write_grants(&dir, &one_active_grant_body());
 
-    let out = cargo_bin_cmd!("zetl")
+    let out = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -362,7 +362,7 @@ fn sweep_marks_past_expires_grants_revoked() {
     let dir = seed_vault("delegated-url");
     write_grants(&dir, &one_expired_grant_body());
 
-    let out = cargo_bin_cmd!("zetl")
+    let out = cargo_bin_cmd!("ztl")
         .args(["-d", dir.path().to_str().unwrap(), "cap", "sweep"])
         .output()
         .expect("sweep runs");
@@ -383,7 +383,7 @@ fn sweep_is_noop_on_all_active() {
     let dir = seed_vault("delegated-url");
     write_grants(&dir, &one_active_grant_body());
 
-    let out = cargo_bin_cmd!("zetl")
+    let out = cargo_bin_cmd!("ztl")
         .args(["-d", dir.path().to_str().unwrap(), "cap", "sweep"])
         .output()
         .unwrap();
@@ -399,7 +399,7 @@ fn check_exits_zero_when_vault_is_clean() {
     let dir = seed_vault("delegated-url");
     write_grants(&dir, &one_active_grant_body());
 
-    let out = cargo_bin_cmd!("zetl")
+    let out = cargo_bin_cmd!("ztl")
         .args(["-d", dir.path().to_str().unwrap(), "cap", "check"])
         .output()
         .unwrap();
@@ -415,7 +415,7 @@ fn check_exits_one_when_stale_grant_still_active() {
     let dir = seed_vault("delegated-url");
     write_grants(&dir, &one_expired_grant_body());
 
-    let out = cargo_bin_cmd!("zetl")
+    let out = cargo_bin_cmd!("ztl")
         .args(["-d", dir.path().to_str().unwrap(), "cap", "check"])
         .output()
         .unwrap();
@@ -432,7 +432,7 @@ fn check_public_safety_flag_passes_today() {
     let dir = seed_vault("delegated-url");
     write_grants(&dir, &one_active_grant_body());
 
-    let out = cargo_bin_cmd!("zetl")
+    let out = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -454,7 +454,7 @@ fn rotate_signing_key_overwrites_pubkey_and_prints_new_private_key() {
     let before = read_recipients(&dir);
     assert!(before.contains(GOOD_SIGNING_PUBKEY));
 
-    let out = cargo_bin_cmd!("zetl")
+    let out = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             dir.path().to_str().unwrap(),
@@ -471,7 +471,7 @@ fn rotate_signing_key_overwrites_pubkey_and_prints_new_private_key() {
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("export ZETL_CAP_SIGNING_KEY="),
+        stdout.contains("export ztl_CAP_SIGNING_KEY="),
         "stdout should carry the new signing-key export line:\n{stdout}"
     );
     // REQ-3419 banner discipline: the new pubkey also lands on stdout
@@ -498,7 +498,7 @@ fn rotate_signing_key_is_nondeterministic_across_runs() {
     let dir = seed_vault("delegated-url");
 
     let run = || {
-        let out = cargo_bin_cmd!("zetl")
+        let out = cargo_bin_cmd!("ztl")
             .args([
                 "-d",
                 dir.path().to_str().unwrap(),

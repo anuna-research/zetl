@@ -8,7 +8,7 @@ Defeasible reasoning is a form of logic where conclusions can be drawn tentative
 
 ## Why it fits knowledge management
 
-Decision documents, architecture records, and project plans all contain reasoning that is provisional. A conclusion like "use Redis" might be well-supported now but defeated by a future license audit. [[Spindle Lisp]] lets you express this directly in your notes, and zetl's [[Reasoning Engine]] computes what follows.
+Decision documents, architecture records, and project plans all contain reasoning that is provisional. A conclusion like "use Redis" might be well-supported now but defeated by a future license audit. [[Spindle Lisp]] lets you express this directly in your notes, and ztl's [[Reasoning Engine]] computes what follows.
 
 ## Rule types
 
@@ -27,7 +27,7 @@ When two rules conflict a superiority relation resolves the tie:
 (prefer stronger-rule weaker-rule)
 ```
 
-Without a declared preference, the conflict remains unresolved — `zetl reason conflicts` will flag it.
+Without a declared preference, the conflict remains unresolved — `ztl reason conflicts` will flag it.
 
 ## Conclusion types
 
@@ -38,6 +38,6 @@ Without a declared preference, the conflict remains unresolved — `zetl reason 
 | `+d` | Defeasibly provable — inferred, no active defeaters |
 | `-d` | Defeasibly not provable — blocked or no derivation path |
 
-## In zetl
+## In ztl
 
 The [[Reasoning Engine]] implements defeasible reasoning via `spindle-core`. See [[Reason  logicCommands]] for the CLI interface and [[Provenance]] for how conclusions trace back to source files.

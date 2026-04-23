@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e
 
-# zetl installer
-# Usage: curl -fsSL https://files.anuna.io/zetl/latest/install.sh | bash
+# ztl installer
+# Usage: curl -fsSL https://files.anuna.io/ztl/latest/install.sh | bash
 
-TOOL_NAME="zetl"
+TOOL_NAME="ztl"
 VERSION="${VERSION:-latest}"
-BASE_URL="https://files.anuna.io/zetl"
+BASE_URL="https://files.anuna.io/ztl"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 MAN_DIR="${MAN_DIR:-$HOME/.local/share/man/man1}"
 COMP_BASE="${COMP_BASE:-$HOME/.local/share}"
@@ -28,7 +28,7 @@ detect_platform() {
   case "$detected_os" in
     linux*)  OS="linux" ;;
     darwin*) OS="macos" ;;
-    *)       error "Unsupported OS: $detected_os. For Windows, download from: $BASE_URL/latest/zetl-windows-x86_64.zip" ;;
+    *)       error "Unsupported OS: $detected_os. For Windows, download from: $BASE_URL/latest/ztl-windows-x86_64.zip" ;;
   esac
 
   case "$detected_arch" in
@@ -54,7 +54,7 @@ get_version() {
 install_binary() {
   info "Installing $TOOL_NAME v$VERSION for $PLATFORM..."
 
-  ARCHIVE_NAME="zetl-${PLATFORM}.tar.gz"
+  ARCHIVE_NAME="ztl-${PLATFORM}.tar.gz"
   DOWNLOAD_URL="$BASE_URL/v$VERSION/$ARCHIVE_NAME"
 
   TMP_DIR=$(mktemp -d)
@@ -62,29 +62,29 @@ install_binary() {
 
   info "Downloading from $DOWNLOAD_URL..."
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/zetl.tar.gz" || error "Download failed"
+    curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/ztl.tar.gz" || error "Download failed"
   elif command -v wget >/dev/null 2>&1; then
-    wget -q "$DOWNLOAD_URL" -O "$TMP_DIR/zetl.tar.gz" || error "Download failed"
+    wget -q "$DOWNLOAD_URL" -O "$TMP_DIR/ztl.tar.gz" || error "Download failed"
   else
     error "curl or wget is required"
   fi
 
-  tar -xzf "$TMP_DIR/zetl.tar.gz" -C "$TMP_DIR"
+  tar -xzf "$TMP_DIR/ztl.tar.gz" -C "$TMP_DIR"
 
   mkdir -p "$INSTALL_DIR"
-  mv "$TMP_DIR/zetl" "$INSTALL_DIR/zetl"
-  chmod +x "$INSTALL_DIR/zetl"
+  mv "$TMP_DIR/ztl" "$INSTALL_DIR/ztl"
+  chmod +x "$INSTALL_DIR/ztl"
 
-  info "Installed binary → $INSTALL_DIR/zetl"
+  info "Installed binary → $INSTALL_DIR/ztl"
 }
 
 install_man_and_completions() {
-  ZETL_BIN="$INSTALL_DIR/zetl"
+  ztl_BIN="$INSTALL_DIR/ztl"
 
   # Man page
   if mkdir -p "$MAN_DIR" 2>/dev/null; then
-    if "$ZETL_BIN" man > "$MAN_DIR/zetl.1" 2>/dev/null; then
-      info "Man page   → $MAN_DIR/zetl.1  (run 'man zetl')"
+    if "$ztl_BIN" man > "$MAN_DIR/ztl.1" 2>/dev/null; then
+      info "Man page   → $MAN_DIR/ztl.1  (run 'man ztl')"
     else
       warn "Could not generate man page"
     fi
@@ -92,12 +92,12 @@ install_man_and_completions() {
 
   # Completions
   mkdir -p "$COMP_BASE/bash-completion/completions" "$COMP_BASE/zsh/site-functions" "$COMP_BASE/fish/vendor_completions.d" 2>/dev/null || true
-  "$ZETL_BIN" completions bash > "$COMP_BASE/bash-completion/completions/zetl" 2>/dev/null && \
-    info "Bash completion → $COMP_BASE/bash-completion/completions/zetl"
-  "$ZETL_BIN" completions zsh  > "$COMP_BASE/zsh/site-functions/_zetl" 2>/dev/null && \
-    info "Zsh completion  → $COMP_BASE/zsh/site-functions/_zetl"
-  "$ZETL_BIN" completions fish > "$COMP_BASE/fish/vendor_completions.d/zetl.fish" 2>/dev/null && \
-    info "Fish completion → $COMP_BASE/fish/vendor_completions.d/zetl.fish"
+  "$ztl_BIN" completions bash > "$COMP_BASE/bash-completion/completions/ztl" 2>/dev/null && \
+    info "Bash completion → $COMP_BASE/bash-completion/completions/ztl"
+  "$ztl_BIN" completions zsh  > "$COMP_BASE/zsh/site-functions/_ztl" 2>/dev/null && \
+    info "Zsh completion  → $COMP_BASE/zsh/site-functions/_ztl"
+  "$ztl_BIN" completions fish > "$COMP_BASE/fish/vendor_completions.d/ztl.fish" 2>/dev/null && \
+    info "Fish completion → $COMP_BASE/fish/vendor_completions.d/ztl.fish"
 }
 
 check_path() {
@@ -111,7 +111,7 @@ check_path() {
 
 main() {
   echo "================================"
-  echo "  zetl Installer"
+  echo "  ztl Installer"
   echo "================================"
   echo ""
 
@@ -125,11 +125,11 @@ main() {
   info "Installation complete!"
   echo ""
   echo "Quick start:"
-  echo "  zetl --help"
-  echo "  zetl -d ./my-vault index"
-  echo "  zetl -d ./my-vault serve    # http://localhost:3000"
+  echo "  ztl --help"
+  echo "  ztl -d ./my-vault index"
+  echo "  ztl -d ./my-vault serve    # http://localhost:3000"
   echo ""
-  echo "Documentation: https://codeberg.org/anuna/zetl"
+  echo "Documentation: https://codeberg.org/anuna/ztl"
 }
 
 main "$@"

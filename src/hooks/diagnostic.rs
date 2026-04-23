@@ -1,6 +1,6 @@
 //! Shared diagnostic type for the hook subsystem (SPEC-032 CON-3225).
 //!
-//! Every failure path that zetl logs from the hook subsystem — manifest
+//! Every failure path that ztl logs from the hook subsystem — manifest
 //! parse errors, selector evaluation failures, contract violations,
 //! schema mismatches, protocol errors, ecosystem runtime absence —
 //! renders through [`HookDiagnostic`] so all messages share one
@@ -16,7 +16,7 @@
 //! # Rendering
 //!
 //! ```text
-//! [zetl] <summary-line>:
+//! [ztl] <summary-line>:
 //!   <context line>
 //!   <observed data line>
 //!
@@ -42,7 +42,7 @@ pub enum DiagnosticClass {
     HookFailure,
     /// `contract.*` invariant violated (preservation, idempotence, purity).
     ContractViolation,
-    /// Output JSON did not match the zetl-ast schema the hook claimed.
+    /// Output JSON did not match the ztl-ast schema the hook claimed.
     SchemaMismatch,
     /// Selector evaluation (path glob, frontmatter, content probe) failed.
     SelectorEval,
@@ -87,7 +87,7 @@ pub enum Verbosity {
 pub struct HookDiagnostic {
     /// Failure class. Machine-grep-able dimension for log filters.
     pub class: DiagnosticClass,
-    /// First line after the `[zetl] ` prefix. May contain embedded
+    /// First line after the `[ztl] ` prefix. May contain embedded
     /// newlines — continuation lines are rendered with a 7-space
     /// indent so they align under the first character of text.
     ///
@@ -160,11 +160,11 @@ impl HookDiagnostic {
     }
 
     fn render_into(&self, verbosity: Verbosity, buf: &mut String) {
-        // Summary line(s): "[zetl] " on the first, 7-space indent on
+        // Summary line(s): "[ztl] " on the first, 7-space indent on
         // continuations, trailing ":" always.
         let mut summary_lines = self.summary.lines();
         if let Some(first) = summary_lines.next() {
-            buf.push_str("[zetl] ");
+            buf.push_str("[ztl] ");
             buf.push_str(first);
         }
         for line in summary_lines {
@@ -263,9 +263,9 @@ impl HookDiagnostic {
              drops inline nodes whose type it doesn't match.",
         )
         .with_hint(
-            "run `zetl ast diff <before.json> <after.json>` on the fixture\n\
+            "run `ztl ast diff <before.json> <after.json>` on the fixture\n\
              input to locate the removed nodes; see:\n  \
-             https://zetl.codeberg.page/docs/hook-authoring/preservation",
+             https://ztl.codeberg.page/docs/hook-authoring/preservation",
         )
     }
 
@@ -286,7 +286,7 @@ impl HookDiagnostic {
         )
         .with_hint(
             "detect already-rendered output (e.g. presence of\n\
-             `class=\"zetl-tasks-rendered\"`) and short-circuit, OR declare\n\
+             `class=\"ztl-tasks-rendered\"`) and short-circuit, OR declare\n\
              contract.idempotent = false if nested output is intended.",
         )
     }
@@ -295,7 +295,7 @@ impl HookDiagnostic {
     pub fn example_manifest_parse() -> Self {
         HookDiagnostic::new(
             DiagnosticClass::ManifestParse,
-            "hook manifest error at .zetl/hooks/transform.d/foo.toml",
+            "hook manifest error at .ztl/hooks/transform.d/foo.toml",
         )
         .with_context("unknown field 'ecosystm' (did you mean 'ecosystem'?)")
         .with_observed("line 3, column 1")
@@ -303,7 +303,7 @@ impl HookDiagnostic {
             "valid top-level fields: stage, mode, timeout_ms, memory_mib,\n\
              ast_type, ast_version, ecosystem, select, before, after, optional,\n\
              extension_id, contract. See:\n  \
-             https://zetl.codeberg.page/docs/hook-authoring/manifest-fields",
+             https://ztl.codeberg.page/docs/hook-authoring/manifest-fields",
         )
     }
 }
@@ -330,7 +330,7 @@ mod tests {
             .with_observed("also ignored")
             .with_cause("and this")
             .with_hint("and this too");
-        assert_eq!(d.render(Verbosity::Quiet), "[zetl] hook 'foo' crashed:\n");
+        assert_eq!(d.render(Verbosity::Quiet), "[ztl] hook 'foo' crashed:\n");
     }
 
     #[test]
@@ -339,14 +339,14 @@ mod tests {
             .with_context("field = value")
             .with_observed("observed: 1 != 2")
             .with_cause("the transform mishandles X.")
-            .with_hint("run `zetl hook test foo`.");
+            .with_hint("run `ztl hook test foo`.");
         let expected = "\
-[zetl] hook 'foo' crashed:
+[ztl] hook 'foo' crashed:
   field = value
   observed: 1 != 2
 
   Likely cause: the transform mishandles X.
-  Hint: run `zetl hook test foo`.
+  Hint: run `ztl hook test foo`.
 ";
         assert_eq!(d.render(Verbosity::Default), expected);
     }
@@ -360,7 +360,7 @@ mod tests {
         let rendered = d.render(Verbosity::Quiet);
         assert_eq!(
             rendered,
-            "[zetl] hook 'tasks' violated contract on\n       fixtures/a/b.md:\n"
+            "[ztl] hook 'tasks' violated contract on\n       fixtures/a/b.md:\n"
         );
     }
 
@@ -371,7 +371,7 @@ mod tests {
             .with_observed("line 3, column 1")
             .with_hint("valid fields: stage, mode, ...");
         let expected = "\
-[zetl] hook manifest error:
+[ztl] hook manifest error:
   unknown field 'x'
   line 3, column 1
 
@@ -386,7 +386,7 @@ mod tests {
         let d = HookDiagnostic::new(DiagnosticClass::HookFailure, "hook 'foo' exited 1");
         assert_eq!(
             d.render(Verbosity::Default),
-            "[zetl] hook 'foo' exited 1:\n"
+            "[ztl] hook 'foo' exited 1:\n"
         );
     }
 
@@ -394,7 +394,7 @@ mod tests {
     fn verbose_appends_stderr_when_present() {
         let d = HookDiagnostic::new(DiagnosticClass::HookFailure, "hook 'foo' crashed")
             .with_cause("the process aborted.")
-            .with_hint("run `zetl hook test foo --verbose`.")
+            .with_hint("run `ztl hook test foo --verbose`.")
             .with_stderr("Traceback (most recent call last):\n  File \"foo.py\"\nNameError: x\n");
         let rendered = d.render(Verbosity::Verbose);
         assert!(rendered.contains("  stderr:\n"));
@@ -434,7 +434,7 @@ mod tests {
     // must be paired with a CON-3225 update in SPEC-032.
 
     const PRESERVATION_SNAPSHOT: &str = "\
-[zetl] hook 'callouts' contract violation on projects/q2-review.md:
+[ztl] hook 'callouts' contract violation on projects/q2-review.md:
   contract.preserves = [\"Wikilink\", \"Embed\"]
   observed in input:  12 Wikilink, 3 Embed
   observed in output:  8 Wikilink, 3 Embed
@@ -442,13 +442,13 @@ mod tests {
 
   Likely cause: the transform strips unrecognised Span classes or
   drops inline nodes whose type it doesn't match.
-  Hint: run `zetl ast diff <before.json> <after.json>` on the fixture
+  Hint: run `ztl ast diff <before.json> <after.json>` on the fixture
   input to locate the removed nodes; see:
-    https://zetl.codeberg.page/docs/hook-authoring/preservation
+    https://ztl.codeberg.page/docs/hook-authoring/preservation
 ";
 
     const IDEMPOTENCE_SNAPSHOT: &str = "\
-[zetl] hook 'tasks' contract violation in CI double-run on
+[ztl] hook 'tasks' contract violation in CI double-run on
        tests/hook-fixtures/tasks/input.md:
   contract.idempotent = true (declared)
   observed: canonicalise(f(f(x))) != canonicalise(f(x))
@@ -458,19 +458,19 @@ mod tests {
   Likely cause: the transform runs over its own output, wrapping
   already-rendered blocks a second time.
   Hint: detect already-rendered output (e.g. presence of
-  `class=\"zetl-tasks-rendered\"`) and short-circuit, OR declare
+  `class=\"ztl-tasks-rendered\"`) and short-circuit, OR declare
   contract.idempotent = false if nested output is intended.
 ";
 
     const MANIFEST_PARSE_SNAPSHOT: &str = "\
-[zetl] hook manifest error at .zetl/hooks/transform.d/foo.toml:
+[ztl] hook manifest error at .ztl/hooks/transform.d/foo.toml:
   unknown field 'ecosystm' (did you mean 'ecosystem'?)
   line 3, column 1
 
   Hint: valid top-level fields: stage, mode, timeout_ms, memory_mib,
   ast_type, ast_version, ecosystem, select, before, after, optional,
   extension_id, contract. See:
-    https://zetl.codeberg.page/docs/hook-authoring/manifest-fields
+    https://ztl.codeberg.page/docs/hook-authoring/manifest-fields
 ";
 
     #[test]

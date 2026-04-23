@@ -7,7 +7,7 @@
 use std::fs;
 use std::path::Path;
 
-use zetl::semantic::core::{
+use ztl::semantic::core::{
     chunk_page, cosine_similarity, detect_stale_chunks, reciprocal_rank_fusion, vector_search,
 };
 
@@ -252,7 +252,7 @@ fn test_rrf_double_appearance_boosts_rank() {
 
 // ── Storage layout tests ────────────────────────────────────────────────────
 
-use zetl::semantic::{
+use ztl::semantic::{
     ChunkMeta, CHUNKS_FILE, EMBEDDING_DIM, INDEX_FILE, MODEL_FILE, MODEL_NAME, VECTORS_DIR,
 };
 
@@ -339,7 +339,7 @@ fn test_storage_model_json_keys() {
 /// TEST-117: `VectorIndex::open` returns `None` for each partial-directory state.
 #[test]
 fn test_storage_open_none_cases() {
-    use zetl::semantic::VectorIndex;
+    use ztl::semantic::VectorIndex;
 
     // Case 1: directory absent.
     let tmp = tempfile::TempDir::new().unwrap();
@@ -443,7 +443,7 @@ fn test_incremental_rebuild_new_chunk_is_stale() {
     assert!(stale.contains(&1), "new chunk must be detected as stale");
 }
 
-/// TEST-122 (CLI path): `zetl search --hybrid <QUERY>` exits non-zero with a descriptive
+/// TEST-122 (CLI path): `ztl search --hybrid <QUERY>` exits non-zero with a descriptive
 /// error when the vector index has not been built yet. REQ-095, REQ-098.
 ///
 /// The binary must be compiled with `--features semantic` for this test to exercise the real
@@ -456,9 +456,9 @@ fn test_search_hybrid_missing_index_exits_nonzero() {
     let tmp = TempDir::new().unwrap();
     // Write a markdown file so the vault is non-empty.
     fs::write(tmp.path().join("note.md"), "# Note\nSome content here.").unwrap();
-    // Do NOT build the vector index — .zetl/search/vectors/ is absent.
+    // Do NOT build the vector index — .ztl/search/vectors/ is absent.
 
-    let bin = assert_cmd::cargo::cargo_bin("zetl");
+    let bin = assert_cmd::cargo::cargo_bin("ztl");
     let output = Command::new(bin)
         .args([
             "-d",
@@ -468,23 +468,23 @@ fn test_search_hybrid_missing_index_exits_nonzero() {
             "test query",
         ])
         .output()
-        .expect("failed to run zetl");
+        .expect("failed to run ztl");
 
     assert!(
         !output.status.success(),
-        "`zetl search --hybrid` without a built index should exit non-zero"
+        "`ztl search --hybrid` without a built index should exit non-zero"
     );
     // The error must mention the index is missing and how to fix it.
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     let combined = format!("{stderr}{stdout}");
     assert!(
-        combined.contains("index") || combined.contains("zetl index"),
+        combined.contains("index") || combined.contains("ztl index"),
         "error output should mention the index; got: {combined}"
     );
 }
 
-/// TEST-123 (CLI path): `zetl search --semantic <QUERY>` exits non-zero with a descriptive
+/// TEST-123 (CLI path): `ztl search --semantic <QUERY>` exits non-zero with a descriptive
 /// error when the vector index has not been built yet (VectorIndex::open returns None).
 /// REQ-094, REQ-098.
 ///
@@ -498,9 +498,9 @@ fn test_search_semantic_missing_index_exits_nonzero() {
     let tmp = TempDir::new().unwrap();
     // Write a markdown file so the vault is non-empty.
     fs::write(tmp.path().join("note.md"), "# Note\nSome content here.").unwrap();
-    // Do NOT build the vector index — .zetl/search/vectors/ is absent.
+    // Do NOT build the vector index — .ztl/search/vectors/ is absent.
 
-    let bin = assert_cmd::cargo::cargo_bin("zetl");
+    let bin = assert_cmd::cargo::cargo_bin("ztl");
     let output = Command::new(bin)
         .args([
             "-d",
@@ -510,18 +510,18 @@ fn test_search_semantic_missing_index_exits_nonzero() {
             "test query",
         ])
         .output()
-        .expect("failed to run zetl");
+        .expect("failed to run ztl");
 
     assert!(
         !output.status.success(),
-        "`zetl search --semantic` without a built index should exit non-zero"
+        "`ztl search --semantic` without a built index should exit non-zero"
     );
     // The error must mention the index is missing and how to fix it.
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     let combined = format!("{stderr}{stdout}");
     assert!(
-        combined.contains("index") || combined.contains("zetl index"),
+        combined.contains("index") || combined.contains("ztl index"),
         "error output should mention the index; got: {combined}"
     );
 }
@@ -529,42 +529,42 @@ fn test_search_semantic_missing_index_exits_nonzero() {
 // ── CLI integration tests (with ONNX model) ──────────────────────────────────
 //
 // The tests below exercise the full CLI pipeline including vector embeddings.
-// They are skipped when ZETL_MODEL_PATH is not set, since the ONNX model and
+// They are skipped when ztl_MODEL_PATH is not set, since the ONNX model and
 // tokenizer are not bundled in the repository.
 //
 // To run these tests:
-//   export ZETL_MODEL_PATH=/path/to/all-MiniLM-L6-v2.onnx
+//   export ztl_MODEL_PATH=/path/to/all-MiniLM-L6-v2.onnx
 //   # (all-MiniLM-L6-v2-tokenizer.json must be in the same directory)
 //   cargo test --features semantic
 
-/// Returns true if ZETL_MODEL_PATH is set and points to an existing file.
+/// Returns true if ztl_MODEL_PATH is set and points to an existing file.
 /// Tests that require the ONNX model early-return when this is false.
 fn onnx_model_available() -> bool {
-    std::env::var("ZETL_MODEL_PATH")
+    std::env::var("ztl_MODEL_PATH")
         .map(|p| std::path::Path::new(&p).exists())
         .unwrap_or(false)
 }
 
-/// Run `zetl -d <vault> index` and return (success, stderr).
-fn run_zetl_index(vault: &std::path::Path) -> (bool, String) {
-    let bin = assert_cmd::cargo::cargo_bin("zetl");
+/// Run `ztl -d <vault> index` and return (success, stderr).
+fn run_ztl_index(vault: &std::path::Path) -> (bool, String) {
+    let bin = assert_cmd::cargo::cargo_bin("ztl");
     let output = std::process::Command::new(bin)
         .args(["-d", vault.to_str().unwrap(), "index"])
         .output()
-        .expect("failed to run zetl index");
+        .expect("failed to run ztl index");
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
     (output.status.success(), stderr)
 }
 
-/// Run `zetl -d <vault> search [args...]` and return (success, stdout, stderr).
-fn run_zetl_search(vault: &std::path::Path, args: &[&str]) -> (bool, String, String) {
-    let bin = assert_cmd::cargo::cargo_bin("zetl");
+/// Run `ztl -d <vault> search [args...]` and return (success, stdout, stderr).
+fn run_ztl_search(vault: &std::path::Path, args: &[&str]) -> (bool, String, String) {
+    let bin = assert_cmd::cargo::cargo_bin("ztl");
     let mut cmd = std::process::Command::new(bin);
     cmd.arg("-d").arg(vault.to_str().unwrap()).arg("search");
     for a in args {
         cmd.arg(a);
     }
-    let output = cmd.output().expect("failed to run zetl search");
+    let output = cmd.output().expect("failed to run ztl search");
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
     (output.status.success(), stdout, stderr)
@@ -582,7 +582,7 @@ fn test_semantic_flags_accepted_with_feature_compiled_in() {
     fs::write(tmp.path().join("note.md"), "# Note\nSome content.").unwrap();
 
     for flag in &["--semantic", "--hybrid"] {
-        let (success, stdout, stderr) = run_zetl_search(tmp.path(), &[flag, "hello"]);
+        let (success, stdout, stderr) = run_ztl_search(tmp.path(), &[flag, "hello"]);
         let combined = format!("{stderr}{stdout}");
         // Must NOT say "requires the semantic feature"
         assert!(
@@ -597,17 +597,17 @@ fn test_semantic_flags_accepted_with_feature_compiled_in() {
     }
 }
 
-/// TEST-118 (CLI): `zetl index` creates `.zetl/search/vectors/` with all three required
+/// TEST-118 (CLI): `ztl index` creates `.ztl/search/vectors/` with all three required
 /// files (`index.bin`, `chunks.json`, `model.json`). `VectorIndex::open` reads the index
 /// back and reports the same chunk count that was embedded. REQ-092, REQ-093.
 ///
-/// Skipped when ZETL_MODEL_PATH is not set.
+/// Skipped when ztl_MODEL_PATH is not set.
 #[test]
 fn test_vector_index_build_open_roundtrip_cli() {
-    use zetl::semantic::{VectorIndex, CHUNKS_FILE, INDEX_FILE, MODEL_FILE, VECTORS_DIR};
+    use ztl::semantic::{VectorIndex, CHUNKS_FILE, INDEX_FILE, MODEL_FILE, VECTORS_DIR};
 
     if !onnx_model_available() {
-        eprintln!("Skipping test_vector_index_build_open_roundtrip_cli: ZETL_MODEL_PATH not set");
+        eprintln!("Skipping test_vector_index_build_open_roundtrip_cli: ztl_MODEL_PATH not set");
         return;
     }
 
@@ -623,28 +623,28 @@ fn test_vector_index_build_open_roundtrip_cli() {
     )
     .unwrap();
 
-    let (ok, stderr) = run_zetl_index(tmp.path());
-    assert!(ok, "zetl index failed:\n{stderr}");
+    let (ok, stderr) = run_ztl_index(tmp.path());
+    assert!(ok, "ztl index failed:\n{stderr}");
 
     // Verify all three vector index files exist.
     let vectors_dir = tmp.path().join(VECTORS_DIR);
     assert!(
         vectors_dir.join(INDEX_FILE).exists(),
-        "index.bin must exist after zetl index"
+        "index.bin must exist after ztl index"
     );
     assert!(
         vectors_dir.join(CHUNKS_FILE).exists(),
-        "chunks.json must exist after zetl index"
+        "chunks.json must exist after ztl index"
     );
     assert!(
         vectors_dir.join(MODEL_FILE).exists(),
-        "model.json must exist after zetl index"
+        "model.json must exist after ztl index"
     );
 
-    // VectorIndex::open reads back the index built by zetl index.
+    // VectorIndex::open reads back the index built by ztl index.
     let idx = VectorIndex::open(tmp.path())
         .expect("VectorIndex::open should not error")
-        .expect("VectorIndex::open should find the index written by zetl index");
+        .expect("VectorIndex::open should find the index written by ztl index");
 
     // With 2 short pages, each page should produce at least one chunk.
     assert!(
@@ -655,7 +655,7 @@ fn test_vector_index_build_open_roundtrip_cli() {
 
     // chunks.json should agree with the in-memory chunk count.
     let chunks_json = fs::read_to_string(vectors_dir.join(CHUNKS_FILE)).expect("read chunks.json");
-    let meta: Vec<zetl::semantic::ChunkMeta> =
+    let meta: Vec<ztl::semantic::ChunkMeta> =
         serde_json::from_str(&chunks_json).expect("parse chunks.json");
     assert_eq!(
         meta.len(),
@@ -664,16 +664,16 @@ fn test_vector_index_build_open_roundtrip_cli() {
     );
 }
 
-/// TEST-114 (CLI): `zetl search --semantic <QUERY>` returns pages ranked by cosine
+/// TEST-114 (CLI): `ztl search --semantic <QUERY>` returns pages ranked by cosine
 /// similarity. A note that is conceptually close to the query scores higher than an
 /// unrelated note. REQ-094, REQ-099.
 ///
-/// Skipped when ZETL_MODEL_PATH is not set.
+/// Skipped when ztl_MODEL_PATH is not set.
 #[test]
 fn test_semantic_ranking_by_cosine_similarity_cli() {
     if !onnx_model_available() {
         eprintln!(
-            "Skipping test_semantic_ranking_by_cosine_similarity_cli: ZETL_MODEL_PATH not set"
+            "Skipping test_semantic_ranking_by_cosine_similarity_cli: ztl_MODEL_PATH not set"
         );
         return;
     }
@@ -697,14 +697,14 @@ fn test_semantic_ranking_by_cosine_similarity_cli() {
     )
     .unwrap();
 
-    let (ok, stderr) = run_zetl_index(tmp.path());
-    assert!(ok, "zetl index failed:\n{stderr}");
+    let (ok, stderr) = run_ztl_index(tmp.path());
+    assert!(ok, "ztl index failed:\n{stderr}");
 
-    let (ok, stdout, stderr) = run_zetl_search(
+    let (ok, stdout, stderr) = run_ztl_search(
         tmp.path(),
         &["--semantic", "feedback equilibrium control loop"],
     );
-    assert!(ok, "zetl search --semantic failed:\n{stderr}");
+    assert!(ok, "ztl search --semantic failed:\n{stderr}");
 
     let json: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("failed to parse search output: {e}\nraw: {stdout}"));
@@ -743,16 +743,16 @@ fn test_semantic_ranking_by_cosine_similarity_cli() {
     }
 }
 
-/// TEST-116 (CLI): `zetl search --hybrid <QUERY>` returns results that combine BM25 and
+/// TEST-116 (CLI): `ztl search --hybrid <QUERY>` returns results that combine BM25 and
 /// vector signals via RRF. A page matching both keyword and semantic signals ranks above
 /// pages matching only one signal. REQ-095.
 ///
-/// Skipped when ZETL_MODEL_PATH is not set.
+/// Skipped when ztl_MODEL_PATH is not set.
 #[test]
 fn test_hybrid_combines_bm25_and_semantic_signals_cli() {
     if !onnx_model_available() {
         eprintln!(
-            "Skipping test_hybrid_combines_bm25_and_semantic_signals_cli: ZETL_MODEL_PATH not set"
+            "Skipping test_hybrid_combines_bm25_and_semantic_signals_cli: ztl_MODEL_PATH not set"
         );
         return;
     }
@@ -784,11 +784,11 @@ fn test_hybrid_combines_bm25_and_semantic_signals_cli() {
     )
     .unwrap();
 
-    let (ok, stderr) = run_zetl_index(tmp.path());
-    assert!(ok, "zetl index failed:\n{stderr}");
+    let (ok, stderr) = run_ztl_index(tmp.path());
+    assert!(ok, "ztl index failed:\n{stderr}");
 
-    let (ok, stdout, stderr) = run_zetl_search(tmp.path(), &["--hybrid", "quantum computing"]);
-    assert!(ok, "zetl search --hybrid failed:\n{stderr}");
+    let (ok, stdout, stderr) = run_ztl_search(tmp.path(), &["--hybrid", "quantum computing"]);
+    assert!(ok, "ztl search --hybrid failed:\n{stderr}");
 
     let json: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("failed to parse hybrid output: {e}\nraw: {stdout}"));
@@ -822,16 +822,16 @@ fn test_hybrid_combines_bm25_and_semantic_signals_cli() {
     }
 }
 
-/// TEST-117 (CLI): `zetl search --hybrid --near <PAGE>` restricts fused results to the
+/// TEST-117 (CLI): `ztl search --hybrid --near <PAGE>` restricts fused results to the
 /// graph neighbourhood of the anchor page. Pages outside the neighbourhood are excluded
 /// from the results even if they score highly on either BM25 or vector signals. REQ-101.
 ///
-/// Skipped when ZETL_MODEL_PATH is not set.
+/// Skipped when ztl_MODEL_PATH is not set.
 #[test]
 fn test_hybrid_near_restricts_to_neighbourhood_cli() {
     if !onnx_model_available() {
         eprintln!(
-            "Skipping test_hybrid_near_restricts_to_neighbourhood_cli: ZETL_MODEL_PATH not set"
+            "Skipping test_hybrid_near_restricts_to_neighbourhood_cli: ztl_MODEL_PATH not set"
         );
         return;
     }
@@ -859,15 +859,15 @@ fn test_hybrid_near_restricts_to_neighbourhood_cli() {
     )
     .unwrap();
 
-    let (ok, stderr) = run_zetl_index(tmp.path());
-    assert!(ok, "zetl index failed:\n{stderr}");
+    let (ok, stderr) = run_ztl_index(tmp.path());
+    assert!(ok, "ztl index failed:\n{stderr}");
 
     // Query with --near hub: only hub + linked are in the neighbourhood (depth 1).
-    let (ok, stdout, stderr) = run_zetl_search(
+    let (ok, stdout, stderr) = run_ztl_search(
         tmp.path(),
         &["--hybrid", "--near", "hub", "caching strategies"],
     );
-    assert!(ok, "zetl search --hybrid --near failed:\n{stderr}");
+    assert!(ok, "ztl search --hybrid --near failed:\n{stderr}");
 
     let json: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("failed to parse output: {e}\nraw: {stdout}"));
@@ -895,16 +895,16 @@ fn test_hybrid_near_restricts_to_neighbourhood_cli() {
     );
 }
 
-/// TEST-123 (CLI): Incremental rebuild — `zetl index` reuses cached embeddings for
+/// TEST-123 (CLI): Incremental rebuild — `ztl index` reuses cached embeddings for
 /// unchanged pages and only re-embeds modified pages, as evidenced by the OBS-017 log
 /// line (`reused=N` > 0 on the second run). REQ-097.
 ///
-/// Skipped when ZETL_MODEL_PATH is not set.
+/// Skipped when ztl_MODEL_PATH is not set.
 #[test]
 fn test_incremental_rebuild_reuses_embeddings_cli() {
     if !onnx_model_available() {
         eprintln!(
-            "Skipping test_incremental_rebuild_reuses_embeddings_cli: ZETL_MODEL_PATH not set"
+            "Skipping test_incremental_rebuild_reuses_embeddings_cli: ztl_MODEL_PATH not set"
         );
         return;
     }
@@ -922,8 +922,8 @@ fn test_incremental_rebuild_reuses_embeddings_cli() {
     .unwrap();
 
     // First index build — all chunks embedded from scratch.
-    let (ok, stderr1) = run_zetl_index(tmp.path());
-    assert!(ok, "first zetl index failed:\n{stderr1}");
+    let (ok, stderr1) = run_ztl_index(tmp.path());
+    assert!(ok, "first ztl index failed:\n{stderr1}");
     // OBS-017: first run must show embedded > 0, reused == 0.
     assert!(
         stderr1.contains("embedded="),
@@ -938,14 +938,14 @@ fn test_incremental_rebuild_reuses_embeddings_cli() {
     .unwrap();
 
     // Second index build — stable.md's chunks should be reused.
-    let (ok, stderr2) = run_zetl_index(tmp.path());
-    assert!(ok, "second zetl index failed:\n{stderr2}");
+    let (ok, stderr2) = run_ztl_index(tmp.path());
+    assert!(ok, "second ztl index failed:\n{stderr2}");
 
     // OBS-017: second run must show reused > 0 (stable.md reused).
     // Extract the reused count from the log line.
     let reused_count: usize = stderr2
         .lines()
-        .find(|l| l.contains("[zetl] embed:"))
+        .find(|l| l.contains("[ztl] embed:"))
         .and_then(|l| {
             l.split_whitespace()
                 .find(|p| p.starts_with("reused="))

@@ -1,4 +1,4 @@
-//! Integration tests for `zetl cap audit-diff` (SPEC-034 REQ-3424,
+//! Integration tests for `ztl cap audit-diff` (SPEC-034 REQ-3424,
 //! ADR-3410). Drives the full CLI against `tools/audit-diff-corpus/`
 //! to verify:
 //!
@@ -9,13 +9,13 @@
 //! - `--corpus <dir>` single-fixture mode exits 1 if expected markers
 //!   are missed.
 //!
-//! The corpus runner is re-invoked here via `cargo run --bin zetl`
+//! The corpus runner is re-invoked here via `cargo run --bin ztl`
 //! rather than the pure library so CLI wiring drift is caught.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use zetl::cap::audit_diff::{scan_diff, Page};
+use ztl::cap::audit_diff::{scan_diff, Page};
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -144,12 +144,12 @@ fn known_domain_ok_produces_no_findings() {
     );
 }
 
-/// End-to-end CLI: `zetl cap audit-diff --corpus-root` exits 0 on a
+/// End-to-end CLI: `ztl cap audit-diff --corpus-root` exits 0 on a
 /// clean corpus run. Re-invokes the binary to catch clap-plumbing drift.
 #[test]
 fn cli_corpus_root_mode_exits_zero_on_clean_run() {
-    let zetl_bin = zetl_bin();
-    let out = Command::new(&zetl_bin)
+    let ztl_bin = ztl_bin();
+    let out = Command::new(&ztl_bin)
         .args([
             "cap",
             "audit-diff",
@@ -157,7 +157,7 @@ fn cli_corpus_root_mode_exits_zero_on_clean_run() {
             corpus_root().to_str().unwrap(),
         ])
         .output()
-        .expect("spawning zetl");
+        .expect("spawning ztl");
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -186,11 +186,11 @@ fn cli_corpus_single_fixture_fails_on_missed_marker() {
     .unwrap();
     std::fs::write(fx.join("expected.txt"), "unseen-domain\n").unwrap();
 
-    let zetl_bin = zetl_bin();
-    let out = Command::new(&zetl_bin)
+    let ztl_bin = ztl_bin();
+    let out = Command::new(&ztl_bin)
         .args(["cap", "audit-diff", "--corpus", fx.to_str().unwrap()])
         .output()
-        .expect("spawning zetl");
+        .expect("spawning ztl");
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -226,8 +226,8 @@ fn cli_git_mode_detects_unseen_domain_between_refs() {
     git(repo, &["add", "b.md"]);
     git(repo, &["commit", "-q", "-m", "add evil link"]);
 
-    let zetl_bin = zetl_bin();
-    let out = Command::new(&zetl_bin)
+    let ztl_bin = ztl_bin();
+    let out = Command::new(&ztl_bin)
         .args([
             "-d",
             repo.to_str().unwrap(),
@@ -237,7 +237,7 @@ fn cli_git_mode_detects_unseen_domain_between_refs() {
             "HEAD",
         ])
         .output()
-        .expect("spawning zetl");
+        .expect("spawning ztl");
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -252,14 +252,14 @@ fn cli_git_mode_detects_unseen_domain_between_refs() {
     );
 }
 
-fn zetl_bin() -> PathBuf {
-    // `CARGO_BIN_EXE_zetl` is set by cargo for integration tests when
-    // the package has a `[[bin]]` named `zetl`. Falls back to the
+fn ztl_bin() -> PathBuf {
+    // `CARGO_BIN_EXE_ztl` is set by cargo for integration tests when
+    // the package has a `[[bin]]` named `ztl`. Falls back to the
     // debug build path for IDE runners that skip the env-var.
-    if let Some(p) = option_env!("CARGO_BIN_EXE_zetl") {
+    if let Some(p) = option_env!("CARGO_BIN_EXE_ztl") {
         return PathBuf::from(p);
     }
-    repo_root().join("target").join("debug").join("zetl")
+    repo_root().join("target").join("debug").join("ztl")
 }
 
 fn git(repo: &Path, args: &[&str]) {

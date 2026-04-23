@@ -1,10 +1,10 @@
-//! zetl-ext ↔ pandoc-types translator (SPEC-033 REQ-3307).
+//! ztl-ext ↔ pandoc-types translator (SPEC-033 REQ-3307).
 //!
 //! pandoc-types is the AST shape used by `pandoc` filters (the
 //! `pandoc-types` Haskell library / `pandocfilters` Python bindings).
-//! Pandoc's AST is richer than zetl-ext in some places and stricter in
+//! Pandoc's AST is richer than ztl-ext in some places and stricter in
 //! others — in particular it distinguishes `Str` / `Space` /
-//! `SoftBreak` inline tokens where zetl-ext uses a single `Text`
+//! `SoftBreak` inline tokens where ztl-ext uses a single `Text`
 //! carrying arbitrary whitespace. This translator bridges the
 //! difference with the marker conventions in REQ-3307.
 //!
@@ -12,7 +12,7 @@
 //!
 //! ```text
 //!   Root:   { "pandoc-api-version": [1,22,2,1],
-//!             "meta": { …zetl frontmatter… },
+//!             "meta": { …ztl frontmatter… },
 //!             "blocks": [ …blocks… ] }
 //!
 //!   Node:   { "t": "Para", "c": [ …inlines… ] }
@@ -24,9 +24,9 @@
 //!
 //! ## Marker conventions (REQ-3307 table)
 //!
-//! | zetl-ext       | pandoc-types                                                      |
+//! | ztl-ext       | pandoc-types                                                      |
 //! | -------------- | ----------------------------------------------------------------- |
-//! | `Text`         | `Str` (spaces preserved inside `c`; zetl tag `zetl-text` attr)    |
+//! | `Text`         | `Str` (spaces preserved inside `c`; ztl tag `ztl-text` attr)    |
 //! | `SoftBreak`    | `SoftBreak`                                                       |
 //! | `LineBreak`    | `LineBreak`                                                       |
 //! | `Emphasis`     | `Emph`                                                            |
@@ -35,24 +35,24 @@
 //! | `Link`         | `Link` (pandoc 3-tuple content)                                   |
 //! | `Image`        | `Image` (pandoc 3-tuple content)                                  |
 //! | `HtmlInline`   | `RawInline "html"`                                                |
-//! | **`Wikilink`** | `Span { classes=["zetl-wikilink"], attrs=[target, alias, heading, block_id], inlines = [Str display] }` |
+//! | **`Wikilink`** | `Span { classes=["ztl-wikilink"], attrs=[target, alias, heading, block_id], inlines = [Str display] }` |
 //! | `Heading`      | `Header`                                                          |
 //! | `Paragraph`    | `Para`                                                            |
 //! | `BlockQuote`   | `BlockQuote`                                                      |
 //! | `CodeBlock`    | `CodeBlock`                                                       |
 //! | `ThematicBreak`| `HorizontalRule`                                                  |
 //! | `HtmlBlock`    | `RawBlock "html"`                                                 |
-//! | `SplBlock`     | `CodeBlock { classes=["spl"], attrs=[("zetl-spl","true")] }`      |
+//! | `SplBlock`     | `CodeBlock { classes=["spl"], attrs=[("ztl-spl","true")] }`      |
 //! | `List`         | `BulletList` / `OrderedList` (pandoc has two node types, we pick one by `ordered`) |
-//! | **`Embed`**    | `Div { classes=["zetl-embed"], attrs=[target, heading, block_id] }` |
+//! | **`Embed`**    | `Div { classes=["ztl-embed"], attrs=[target, heading, block_id] }` |
 //!
 //! Position info is preserved outside of the canonical pandoc envelope
-//! under `zetl-position` in the node's attr list so the round-trip
+//! under `ztl-position` in the node's attr list so the round-trip
 //! invariant holds byte-for-byte.
 //!
 //! ## Round-trip invariant (CON-3221)
 //!
-//! For any zetl-ext document `A`, `foreign_to_zetl(zetl_to_foreign(A))
+//! For any ztl-ext document `A`, `foreign_to_ztl(ztl_to_foreign(A))
 //! == A`. Verified via proptest on a CommonMark-derived generator in
 //! this module's test suite.
 
@@ -71,11 +71,11 @@ use super::{AstType, TranslationError, Translator};
 /// the latest 2.x release at the time of writing.
 const PANDOC_API_VERSION: [u32; 4] = [1, 23, 1, 0];
 
-const CLASS_ZETL_WIKILINK: &str = "zetl-wikilink";
-const CLASS_ZETL_EMBED: &str = "zetl-embed";
-const CLASS_ZETL_SPL: &str = "spl";
-const ATTR_ZETL_POSITION: &str = "zetl-position";
-const ATTR_ZETL_AST_VERSION: &str = "zetl-ast-version";
+const CLASS_ztl_WIKILINK: &str = "ztl-wikilink";
+const CLASS_ztl_EMBED: &str = "ztl-embed";
+const CLASS_ztl_SPL: &str = "spl";
+const ATTR_ztl_POSITION: &str = "ztl-position";
+const ATTR_ztl_AST_VERSION: &str = "ztl-ast-version";
 
 pub struct PandocTranslator;
 
@@ -84,30 +84,30 @@ impl Translator for PandocTranslator {
         AstType::PandocExt
     }
 
-    fn zetl_to_foreign(&self, doc: &Document) -> Result<Value, TranslationError> {
+    fn ztl_to_foreign(&self, doc: &Document) -> Result<Value, TranslationError> {
         Ok(doc_to_pandoc(doc))
     }
 
-    fn foreign_to_zetl(&self, foreign: Value) -> Result<Document, TranslationError> {
+    fn foreign_to_ztl(&self, foreign: Value) -> Result<Document, TranslationError> {
         pandoc_to_doc(foreign)
     }
 }
 
-// ── zetl-ext → pandoc-types ────────────────────────────────────────────
+// ── ztl-ext → pandoc-types ────────────────────────────────────────────
 
 fn doc_to_pandoc(doc: &Document) -> Value {
     let mut meta = serde_json::Map::new();
-    // zetl-ast-version carried as a MetaInlines so it survives any
+    // ztl-ast-version carried as a MetaInlines so it survives any
     // pandoc filter that passes unknown meta through unchanged.
     meta.insert(
-        ATTR_ZETL_AST_VERSION.to_string(),
+        ATTR_ztl_AST_VERSION.to_string(),
         json!({
             "t": "MetaInlines",
             "c": [{"t": "Str", "c": doc.ast_version}],
         }),
     );
     meta.insert(
-        "zetl-root-position".into(),
+        "ztl-root-position".into(),
         json!({
             "t": "MetaInlines",
             "c": [{"t": "Str", "c": position_to_attr_value(doc.position)}],
@@ -115,7 +115,7 @@ fn doc_to_pandoc(doc: &Document) -> Value {
     );
     if let Some(fm) = &doc.frontmatter {
         meta.insert(
-            "zetl-frontmatter".into(),
+            "ztl-frontmatter".into(),
             json!({
                 "t": "MetaInlines",
                 "c": [{"t": "Str", "c": serde_json::to_string(fm).unwrap_or_default()}],
@@ -135,19 +135,19 @@ fn block_to_pandoc(b: &Block) -> Value {
             "t": "Header",
             "c": [
                 h.level as u64,
-                attr_tuple("", &[], &[(ATTR_ZETL_POSITION, &position_to_attr_value(h.position))]),
+                attr_tuple("", &[], &[(ATTR_ztl_POSITION, &position_to_attr_value(h.position))]),
                 h.children.iter().flat_map(inline_to_pandoc).collect::<Vec<_>>(),
             ],
         }),
         Block::Paragraph(p) => json!({
             "t": "Para",
             "c": p.children.iter().flat_map(inline_to_pandoc).collect::<Vec<_>>(),
-            "zetl-position": position_to_attr_value(p.position),
+            "ztl-position": position_to_attr_value(p.position),
         }),
         Block::BlockQuote(bq) => json!({
             "t": "BlockQuote",
             "c": bq.children.iter().map(block_to_pandoc).collect::<Vec<_>>(),
-            "zetl-position": position_to_attr_value(bq.position),
+            "ztl-position": position_to_attr_value(bq.position),
         }),
         Block::List(l) => {
             let items: Vec<Value> = l
@@ -166,23 +166,23 @@ fn block_to_pandoc(b: &Block) -> Value {
                         ],
                         items,
                     ],
-                    "zetl-position": position_to_attr_value(l.position),
+                    "ztl-position": position_to_attr_value(l.position),
                 })
             } else {
                 json!({
                     "t": "BulletList",
                     "c": items,
-                    "zetl-position": position_to_attr_value(l.position),
+                    "ztl-position": position_to_attr_value(l.position),
                 })
             }
         }
         Block::CodeBlock(c) => {
-            let mut extra = vec![(ATTR_ZETL_POSITION, position_to_attr_value(c.position))];
+            let mut extra = vec![(ATTR_ztl_POSITION, position_to_attr_value(c.position))];
             if !c.fenced {
-                extra.push(("zetl-fenced", "false".to_string()));
+                extra.push(("ztl-fenced", "false".to_string()));
             }
             if let Some(info) = &c.info {
-                extra.push(("zetl-info", info.clone()));
+                extra.push(("ztl-info", info.clone()));
             }
             let classes: Vec<&str> = c.lang.as_deref().into_iter().collect();
             let extra_refs: Vec<(&str, &str)> =
@@ -197,27 +197,27 @@ fn block_to_pandoc(b: &Block) -> Value {
         }
         Block::ThematicBreak(t) => json!({
             "t": "HorizontalRule",
-            "zetl-position": position_to_attr_value(t.position),
+            "ztl-position": position_to_attr_value(t.position),
         }),
         Block::HtmlBlock(h) => json!({
             "t": "RawBlock",
             "c": ["html", h.text],
-            "zetl-position": position_to_attr_value(h.position),
+            "ztl-position": position_to_attr_value(h.position),
         }),
         Block::SplBlock(s) => {
             let mut extra = vec![
-                ("zetl-spl", "true".to_string()),
-                (ATTR_ZETL_POSITION, position_to_attr_value(s.position)),
+                ("ztl-spl", "true".to_string()),
+                (ATTR_ztl_POSITION, position_to_attr_value(s.position)),
             ];
             if let Some(info) = &s.info {
-                extra.push(("zetl-info", info.clone()));
+                extra.push(("ztl-info", info.clone()));
             }
             let extra_refs: Vec<(&str, &str)> =
                 extra.iter().map(|(k, v)| (*k, v.as_str())).collect();
             json!({
                 "t": "CodeBlock",
                 "c": [
-                    attr_tuple("", &[CLASS_ZETL_SPL], &extra_refs),
+                    attr_tuple("", &[CLASS_ztl_SPL], &extra_refs),
                     s.text,
                 ],
             })
@@ -230,19 +230,19 @@ fn block_to_pandoc(b: &Block) -> Value {
             let has_block_id = e.block_id.is_some();
             let position_s = position_to_attr_value(e.position);
             let mut extra: Vec<(&str, &str)> = vec![
-                ("zetl-target", target.as_str()),
-                (ATTR_ZETL_POSITION, position_s.as_str()),
+                ("ztl-target", target.as_str()),
+                (ATTR_ztl_POSITION, position_s.as_str()),
             ];
             if has_heading {
-                extra.push(("zetl-heading", heading.as_str()));
+                extra.push(("ztl-heading", heading.as_str()));
             }
             if has_block_id {
-                extra.push(("zetl-block-id", block_id.as_str()));
+                extra.push(("ztl-block-id", block_id.as_str()));
             }
             json!({
                 "t": "Div",
                 "c": [
-                    attr_tuple("", &[CLASS_ZETL_EMBED], &extra),
+                    attr_tuple("", &[CLASS_ztl_EMBED], &extra),
                     Value::Array(Vec::new()),
                 ],
             })
@@ -256,28 +256,28 @@ fn inline_to_pandoc(i: &Inline) -> Vec<Value> {
             // Emit as a single Str token carrying the full text (spaces
             // preserved literally). On the reverse, we parse this back
             // as a single Text; real pandoc filters will split the
-            // token into Str/Space/… but the zetl→pandoc→zetl identity
+            // token into Str/Space/… but the ztl→pandoc→ztl identity
             // path through our own translator is byte-exact.
             vec![json!({
                 "t": "Str",
                 "c": t.text,
-                "zetl-position": position_to_attr_value(t.position),
+                "ztl-position": position_to_attr_value(t.position),
             })]
         }
         Inline::Emphasis(e) => vec![json!({
             "t": "Emph",
             "c": e.children.iter().flat_map(inline_to_pandoc).collect::<Vec<_>>(),
-            "zetl-position": position_to_attr_value(e.position),
+            "ztl-position": position_to_attr_value(e.position),
         })],
         Inline::Strong(s) => vec![json!({
             "t": "Strong",
             "c": s.children.iter().flat_map(inline_to_pandoc).collect::<Vec<_>>(),
-            "zetl-position": position_to_attr_value(s.position),
+            "ztl-position": position_to_attr_value(s.position),
         })],
         Inline::Code(c) => vec![json!({
             "t": "Code",
             "c": [
-                attr_tuple("", &[], &[(ATTR_ZETL_POSITION, &position_to_attr_value(c.position))]),
+                attr_tuple("", &[], &[(ATTR_ztl_POSITION, &position_to_attr_value(c.position))]),
                 c.text,
             ],
         })],
@@ -285,9 +285,9 @@ fn inline_to_pandoc(i: &Inline) -> Vec<Value> {
             let title = l.title.clone().unwrap_or_default();
             let has_title = l.title.is_some();
             let position = position_to_attr_value(l.position);
-            let mut extra: Vec<(&str, &str)> = vec![(ATTR_ZETL_POSITION, position.as_str())];
+            let mut extra: Vec<(&str, &str)> = vec![(ATTR_ztl_POSITION, position.as_str())];
             if !has_title {
-                extra.push(("zetl-title", "null"));
+                extra.push(("ztl-title", "null"));
             }
             vec![json!({
                 "t": "Link",
@@ -304,11 +304,11 @@ fn inline_to_pandoc(i: &Inline) -> Vec<Value> {
             let position = position_to_attr_value(i.position);
             let alt = i.alt.clone();
             let mut extra: Vec<(&str, &str)> = vec![
-                ("zetl-alt", alt.as_str()),
-                (ATTR_ZETL_POSITION, position.as_str()),
+                ("ztl-alt", alt.as_str()),
+                (ATTR_ztl_POSITION, position.as_str()),
             ];
             if !has_title {
-                extra.push(("zetl-title", "null"));
+                extra.push(("ztl-title", "null"));
             }
             vec![json!({
                 "t": "Image",
@@ -321,16 +321,16 @@ fn inline_to_pandoc(i: &Inline) -> Vec<Value> {
         }
         Inline::LineBreak(b) => vec![json!({
             "t": "LineBreak",
-            "zetl-position": position_to_attr_value(b.position),
+            "ztl-position": position_to_attr_value(b.position),
         })],
         Inline::SoftBreak(b) => vec![json!({
             "t": "SoftBreak",
-            "zetl-position": position_to_attr_value(b.position),
+            "ztl-position": position_to_attr_value(b.position),
         })],
         Inline::HtmlInline(h) => vec![json!({
             "t": "RawInline",
             "c": ["html", h.text],
-            "zetl-position": position_to_attr_value(h.position),
+            "ztl-position": position_to_attr_value(h.position),
         })],
         Inline::Wikilink(w) => vec![wikilink_to_pandoc(w)],
     }
@@ -344,18 +344,18 @@ fn wikilink_to_pandoc(w: &Wikilink) -> Value {
     let position = position_to_attr_value(w.position);
 
     let mut extra: Vec<(&str, &str)> = vec![
-        ("zetl-target", target.as_str()),
-        (ATTR_ZETL_POSITION, position.as_str()),
+        ("ztl-target", target.as_str()),
+        (ATTR_ztl_POSITION, position.as_str()),
     ];
     // Distinguish Some("") from None via presence of the attr key.
     if w.alias.is_some() {
-        extra.push(("zetl-alias", alias.as_str()));
+        extra.push(("ztl-alias", alias.as_str()));
     }
     if w.heading.is_some() {
-        extra.push(("zetl-heading", heading.as_str()));
+        extra.push(("ztl-heading", heading.as_str()));
     }
     if w.block_id.is_some() {
-        extra.push(("zetl-block-id", block_id.as_str()));
+        extra.push(("ztl-block-id", block_id.as_str()));
     }
 
     // Span contents: the display text (alias or target). Keep it as a
@@ -365,7 +365,7 @@ fn wikilink_to_pandoc(w: &Wikilink) -> Value {
 
     json!({
         "t": "Span",
-        "c": [attr_tuple("", &[CLASS_ZETL_WIKILINK], &extra), inlines],
+        "c": [attr_tuple("", &[CLASS_ztl_WIKILINK], &extra), inlines],
     })
 }
 
@@ -408,7 +408,7 @@ fn position_from_attr_value(s: &str) -> Position {
     )
 }
 
-// ── pandoc-types → zetl-ext ────────────────────────────────────────────
+// ── pandoc-types → ztl-ext ────────────────────────────────────────────
 
 fn pandoc_to_doc(v: Value) -> Result<Document, TranslationError> {
     let obj = require_object(v, "pandoc root")?;
@@ -419,18 +419,18 @@ fn pandoc_to_doc(v: Value) -> Result<Document, TranslationError> {
         .unwrap_or_default();
 
     let ast_version = meta
-        .get(ATTR_ZETL_AST_VERSION)
+        .get(ATTR_ztl_AST_VERSION)
         .and_then(meta_inlines_first_str)
         .unwrap_or_else(|| AST_VERSION.to_string());
 
     let position = meta
-        .get("zetl-root-position")
+        .get("ztl-root-position")
         .and_then(meta_inlines_first_str)
         .map(|s| position_from_attr_value(&s))
         .unwrap_or(Position::origin());
 
     let frontmatter = meta
-        .get("zetl-frontmatter")
+        .get("ztl-frontmatter")
         .and_then(meta_inlines_first_str)
         .and_then(|s| serde_json::from_str::<Frontmatter>(&s).ok());
 
@@ -478,7 +478,7 @@ fn pandoc_to_block(v: Value) -> Result<Option<Block>, TranslationError> {
         .to_string();
     let c = obj.get("c").cloned();
     let outer_position = obj
-        .get("zetl-position")
+        .get("ztl-position")
         .and_then(|v| v.as_str())
         .map(position_from_attr_value);
 
@@ -584,13 +584,13 @@ fn pandoc_to_block(v: Value) -> Result<Option<Block>, TranslationError> {
             let text = iter.next().unwrap().as_str().unwrap_or("").to_string();
             let (_id, classes, attr_map) = decompose_attr(&attr);
             let position = attr_map
-                .get(ATTR_ZETL_POSITION)
+                .get(ATTR_ztl_POSITION)
                 .map(|s| position_from_attr_value(s))
                 .unwrap_or(Position::origin());
-            let is_spl = classes.iter().any(|c| c == CLASS_ZETL_SPL)
-                || attr_map.get("zetl-spl").map(|s| s.as_str()) == Some("true");
+            let is_spl = classes.iter().any(|c| c == CLASS_ztl_SPL)
+                || attr_map.get("ztl-spl").map(|s| s.as_str()) == Some("true");
             if is_spl {
-                let info = attr_map.get("zetl-info").cloned();
+                let info = attr_map.get("ztl-info").cloned();
                 return Ok(Some(Block::SplBlock(SplBlock {
                     position,
                     info,
@@ -598,8 +598,8 @@ fn pandoc_to_block(v: Value) -> Result<Option<Block>, TranslationError> {
                 })));
             }
             let lang = classes.into_iter().next();
-            let info = attr_map.get("zetl-info").cloned();
-            let fenced = attr_map.get("zetl-fenced").map(|s| s.as_str()) != Some("false");
+            let info = attr_map.get("ztl-info").cloned();
+            let fenced = attr_map.get("ztl-fenced").map(|s| s.as_str()) != Some("false");
             Ok(Some(Block::CodeBlock(CodeBlock {
                 position,
                 fenced,
@@ -626,7 +626,7 @@ fn pandoc_to_block(v: Value) -> Result<Option<Block>, TranslationError> {
             })))
         }
         "Div" => {
-            // zetl-embed envelope.
+            // ztl-embed envelope.
             let arr = require_array(c.unwrap_or(Value::Null), "Div.c")?;
             if arr.len() != 2 {
                 return Err(TranslationError::from_foreign(
@@ -636,17 +636,17 @@ fn pandoc_to_block(v: Value) -> Result<Option<Block>, TranslationError> {
             }
             let attr = &arr[0];
             let (_id, classes, attr_map) = decompose_attr(attr);
-            if !classes.iter().any(|c| c == CLASS_ZETL_EMBED) {
+            if !classes.iter().any(|c| c == CLASS_ztl_EMBED) {
                 return Err(TranslationError::from_foreign(
                     AstType::PandocExt,
-                    "Div without zetl-embed class has no zetl-ext mapping",
+                    "Div without ztl-embed class has no ztl-ext mapping",
                 ));
             }
-            let target = attr_map.get("zetl-target").cloned().unwrap_or_default();
-            let heading = attr_map.get("zetl-heading").cloned();
-            let block_id = attr_map.get("zetl-block-id").cloned();
+            let target = attr_map.get("ztl-target").cloned().unwrap_or_default();
+            let heading = attr_map.get("ztl-heading").cloned();
+            let block_id = attr_map.get("ztl-block-id").cloned();
             let position = attr_map
-                .get(ATTR_ZETL_POSITION)
+                .get(ATTR_ztl_POSITION)
                 .map(|s| position_from_attr_value(s))
                 .unwrap_or(Position::origin());
             Ok(Some(Block::Embed(Embed {
@@ -694,7 +694,7 @@ fn pandoc_to_inline(v: Value) -> Result<Option<Inline>, TranslationError> {
         .to_string();
     let c = obj.get("c").cloned();
     let outer_position = obj
-        .get("zetl-position")
+        .get("ztl-position")
         .and_then(|v| v.as_str())
         .map(position_from_attr_value);
 
@@ -743,7 +743,7 @@ fn pandoc_to_inline(v: Value) -> Result<Option<Inline>, TranslationError> {
             let attr = &arr[0];
             let (_id, _classes, attr_map) = decompose_attr(attr);
             let position = attr_map
-                .get(ATTR_ZETL_POSITION)
+                .get(ATTR_ztl_POSITION)
                 .map(|s| position_from_attr_value(s))
                 .unwrap_or(Position::origin());
             let text = arr[1].as_str().unwrap_or("").to_string();
@@ -760,7 +760,7 @@ fn pandoc_to_inline(v: Value) -> Result<Option<Inline>, TranslationError> {
             let attr = &arr[0];
             let (_id, _classes, attr_map) = decompose_attr(attr);
             let position = attr_map
-                .get(ATTR_ZETL_POSITION)
+                .get(ATTR_ztl_POSITION)
                 .map(|s| position_from_attr_value(s))
                 .unwrap_or(Position::origin());
             let inlines = require_array(arr[1].clone(), "Link inlines")?;
@@ -773,7 +773,7 @@ fn pandoc_to_inline(v: Value) -> Result<Option<Inline>, TranslationError> {
             }
             let url = target[0].as_str().unwrap_or("").to_string();
             let title_str = target[1].as_str().unwrap_or("").to_string();
-            let title = if attr_map.get("zetl-title").map(|s| s.as_str()) == Some("null") {
+            let title = if attr_map.get("ztl-title").map(|s| s.as_str()) == Some("null") {
                 None
             } else {
                 Some(title_str)
@@ -797,7 +797,7 @@ fn pandoc_to_inline(v: Value) -> Result<Option<Inline>, TranslationError> {
             let attr = &arr[0];
             let (_id, _classes, attr_map) = decompose_attr(attr);
             let position = attr_map
-                .get(ATTR_ZETL_POSITION)
+                .get(ATTR_ztl_POSITION)
                 .map(|s| position_from_attr_value(s))
                 .unwrap_or(Position::origin());
             let inlines = require_array(arr[1].clone(), "Image inlines")?;
@@ -810,12 +810,12 @@ fn pandoc_to_inline(v: Value) -> Result<Option<Inline>, TranslationError> {
             }
             let url = target[0].as_str().unwrap_or("").to_string();
             let title_str = target[1].as_str().unwrap_or("").to_string();
-            let title = if attr_map.get("zetl-title").map(|s| s.as_str()) == Some("null") {
+            let title = if attr_map.get("ztl-title").map(|s| s.as_str()) == Some("null") {
                 None
             } else {
                 Some(title_str)
             };
-            let alt = attr_map.get("zetl-alt").cloned().unwrap_or_default();
+            let alt = attr_map.get("ztl-alt").cloned().unwrap_or_default();
             let children = parse_inlines(inlines)?;
             Ok(Some(Inline::Image(Image {
                 position,
@@ -840,7 +840,7 @@ fn pandoc_to_inline(v: Value) -> Result<Option<Inline>, TranslationError> {
             })))
         }
         "Span" => {
-            // zetl-wikilink envelope.
+            // ztl-wikilink envelope.
             let arr = require_array(c.unwrap_or(Value::Null), "Span.c")?;
             if arr.len() != 2 {
                 return Err(TranslationError::from_foreign(
@@ -850,18 +850,18 @@ fn pandoc_to_inline(v: Value) -> Result<Option<Inline>, TranslationError> {
             }
             let attr = &arr[0];
             let (_id, classes, attr_map) = decompose_attr(attr);
-            if !classes.iter().any(|c| c == CLASS_ZETL_WIKILINK) {
+            if !classes.iter().any(|c| c == CLASS_ztl_WIKILINK) {
                 return Err(TranslationError::from_foreign(
                     AstType::PandocExt,
-                    "Span without zetl-wikilink class has no zetl-ext mapping",
+                    "Span without ztl-wikilink class has no ztl-ext mapping",
                 ));
             }
-            let target = attr_map.get("zetl-target").cloned().unwrap_or_default();
-            let alias = attr_map.get("zetl-alias").cloned();
-            let heading = attr_map.get("zetl-heading").cloned();
-            let block_id = attr_map.get("zetl-block-id").cloned();
+            let target = attr_map.get("ztl-target").cloned().unwrap_or_default();
+            let alias = attr_map.get("ztl-alias").cloned();
+            let heading = attr_map.get("ztl-heading").cloned();
+            let block_id = attr_map.get("ztl-block-id").cloned();
             let position = attr_map
-                .get(ATTR_ZETL_POSITION)
+                .get(ATTR_ztl_POSITION)
                 .map(|s| position_from_attr_value(s))
                 .unwrap_or(Position::origin());
             Ok(Some(Inline::Wikilink(Wikilink {
@@ -921,7 +921,7 @@ fn decompose_attr(
 fn attr_position(v: &Value) -> Option<Position> {
     let (_, _, attrs) = decompose_attr(v);
     attrs
-        .get(ATTR_ZETL_POSITION)
+        .get(ATTR_ztl_POSITION)
         .map(|s| position_from_attr_value(s))
 }
 
@@ -1001,7 +1001,7 @@ mod tests {
     fn document_envelope_shape_matches_pandoc() {
         let t = PandocTranslator;
         let doc = wrap(vec![para(vec![text("hi")])]);
-        let v = t.zetl_to_foreign(&doc).unwrap();
+        let v = t.ztl_to_foreign(&doc).unwrap();
         assert_eq!(v["pandoc-api-version"][0], 1);
         assert!(v["meta"].is_object());
         assert!(v["blocks"].is_array());
@@ -1019,8 +1019,8 @@ mod tests {
             }),
             para(vec![text("hello world")]),
         ]);
-        let v = t.zetl_to_foreign(&doc).unwrap();
-        let back = t.foreign_to_zetl(v).unwrap();
+        let v = t.ztl_to_foreign(&doc).unwrap();
+        let back = t.foreign_to_ztl(v).unwrap();
         assert_eq!(back, doc);
     }
 
@@ -1034,12 +1034,12 @@ mod tests {
             heading: Some("H".into()),
             block_id: Some("B".into()),
         })])]);
-        let v = t.zetl_to_foreign(&doc).unwrap();
+        let v = t.ztl_to_foreign(&doc).unwrap();
         let span = &v["blocks"][0]["c"][0];
         assert_eq!(span["t"], "Span");
         let attr = &span["c"][0];
-        assert_eq!(attr[1][0], CLASS_ZETL_WIKILINK);
-        let back = t.foreign_to_zetl(v).unwrap();
+        assert_eq!(attr[1][0], CLASS_ztl_WIKILINK);
+        let back = t.foreign_to_ztl(v).unwrap();
         assert_eq!(back, doc);
     }
 
@@ -1053,8 +1053,8 @@ mod tests {
             heading: None,
             block_id: None,
         })])]);
-        let v = t.zetl_to_foreign(&doc).unwrap();
-        let back = t.foreign_to_zetl(v).unwrap();
+        let v = t.ztl_to_foreign(&doc).unwrap();
+        let back = t.foreign_to_ztl(v).unwrap();
         assert_eq!(back, doc);
     }
 
@@ -1067,11 +1067,11 @@ mod tests {
             heading: Some("Today".into()),
             block_id: None,
         })]);
-        let v = t.zetl_to_foreign(&doc).unwrap();
+        let v = t.ztl_to_foreign(&doc).unwrap();
         let div = &v["blocks"][0];
         assert_eq!(div["t"], "Div");
-        assert_eq!(div["c"][0][1][0], CLASS_ZETL_EMBED);
-        let back = t.foreign_to_zetl(v).unwrap();
+        assert_eq!(div["c"][0][1][0], CLASS_ztl_EMBED);
+        let back = t.foreign_to_ztl(v).unwrap();
         assert_eq!(back, doc);
     }
 
@@ -1083,11 +1083,11 @@ mod tests {
             info: None,
             text: "fact :foo".into(),
         })]);
-        let v = t.zetl_to_foreign(&doc).unwrap();
+        let v = t.ztl_to_foreign(&doc).unwrap();
         let cb = &v["blocks"][0];
         assert_eq!(cb["t"], "CodeBlock");
-        assert_eq!(cb["c"][0][1][0], CLASS_ZETL_SPL);
-        let back = t.foreign_to_zetl(v).unwrap();
+        assert_eq!(cb["c"][0][1][0], CLASS_ztl_SPL);
+        let back = t.foreign_to_ztl(v).unwrap();
         assert_eq!(back, doc);
     }
 
@@ -1110,8 +1110,8 @@ mod tests {
                 children: vec![ListItem::new(pos(), vec![para(vec![text("b")])])],
             }),
         ]);
-        let v = t.zetl_to_foreign(&doc).unwrap();
-        let back = t.foreign_to_zetl(v).unwrap();
+        let v = t.ztl_to_foreign(&doc).unwrap();
+        let back = t.foreign_to_ztl(v).unwrap();
         assert_eq!(back, doc);
     }
 
@@ -1125,8 +1125,8 @@ mod tests {
             info: Some("edition=2021".into()),
             text: "fn main() {}\n".into(),
         })]);
-        let v = t.zetl_to_foreign(&doc).unwrap();
-        let back = t.foreign_to_zetl(v).unwrap();
+        let v = t.ztl_to_foreign(&doc).unwrap();
+        let back = t.foreign_to_ztl(v).unwrap();
         assert_eq!(back, doc);
     }
 
@@ -1147,8 +1147,8 @@ mod tests {
                 children: vec![text("b")],
             }),
         ])]);
-        let v = t.zetl_to_foreign(&doc).unwrap();
-        let back = t.foreign_to_zetl(v).unwrap();
+        let v = t.ztl_to_foreign(&doc).unwrap();
+        let back = t.foreign_to_ztl(v).unwrap();
         assert_eq!(back, doc);
     }
 
@@ -1160,7 +1160,7 @@ mod tests {
             "meta": {},
             "blocks": [{"t": "Definition", "c": []}],
         });
-        let err = t.foreign_to_zetl(v).unwrap_err();
+        let err = t.foreign_to_ztl(v).unwrap_err();
         assert!(err.message.contains("Definition"));
     }
 
@@ -1177,8 +1177,8 @@ mod tests {
             frontmatter: Some(fm),
             children: vec![para(vec![text("body")])],
         };
-        let v = t.zetl_to_foreign(&doc).unwrap();
-        let back = t.foreign_to_zetl(v).unwrap();
+        let v = t.ztl_to_foreign(&doc).unwrap();
+        let back = t.foreign_to_ztl(v).unwrap();
         assert_eq!(back, doc);
     }
 }

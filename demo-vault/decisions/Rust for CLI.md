@@ -4,7 +4,7 @@ title: Rust for CLI
 
 # Rust for CLI
 
-zetl is written in Rust. This was a deliberate choice driven by the requirements of a CLI tool that handles large vaults and complex reasoning.
+ztl is written in Rust. This was a deliberate choice driven by the requirements of a CLI tool that handles large vaults and complex reasoning.
 
 ```spl
 (given type-safe)

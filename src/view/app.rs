@@ -109,7 +109,7 @@ impl PickerState {
 
 // ── ViewApp ───────────────────────────────────────────────────────────────
 
-/// Application state for `zetl view` — the Xanadu-style two-pane view (SPEC-009).
+/// Application state for `ztl view` — the Xanadu-style two-pane view (SPEC-009).
 pub struct ViewApp {
     /// Title of the page currently displayed in the main pane.
     pub current_page: String,
@@ -196,10 +196,10 @@ pub struct ViewApp {
     pub status_message: Option<String>,
 
     // ── Debug render (OBS-012) ────────────────────────────────────────────
-    /// Application start time for ZETL_DEBUG_RENDER timing.
+    /// Application start time for ztl_DEBUG_RENDER timing.
     pub start_time: Instant,
 
-    /// Whether ZETL_DEBUG_RENDER=1 is set.
+    /// Whether ztl_DEBUG_RENDER=1 is set.
     pub debug_render: bool,
 
     /// Count of distinct pages visited (for quit timing line).
@@ -245,7 +245,7 @@ impl ViewApp {
         let (annotated_lines, link_map) =
             build_annotated_lines(&content_lines, &page_set, color_mode);
 
-        let debug_render = std::env::var_os("ZETL_DEBUG_RENDER").is_some_and(|v| v != "0");
+        let debug_render = std::env::var_os("ztl_DEBUG_RENDER").is_some_and(|v| v != "0");
 
         // Open the picker when no page was specified.
         let show_picker = current_page.is_empty() || current_page == "(no page selected)";
@@ -297,7 +297,7 @@ impl ViewApp {
         if self.debug_render {
             let index_ms = self.start_time.elapsed().as_millis();
             eprintln!(
-                "[zetl view] startup  index_load_ms={} page={}",
+                "[ztl view] startup  index_load_ms={} page={}",
                 index_ms, self.current_page
             );
         }
@@ -307,7 +307,7 @@ impl ViewApp {
         if self.debug_render {
             let uptime_s = self.start_time.elapsed().as_secs();
             eprintln!(
-                "[zetl view] quit  uptime_s={} pages_visited={} nav_history_depth={}",
+                "[ztl view] quit  uptime_s={} pages_visited={} nav_history_depth={}",
                 uptime_s,
                 self.pages_visited,
                 self.nav_history.len(),
@@ -369,7 +369,7 @@ impl ViewApp {
 
         if self.debug_render {
             let total_ms = render_start.elapsed().as_millis();
-            eprintln!("[zetl view] render  total_ms={total_ms}");
+            eprintln!("[ztl view] render  total_ms={total_ms}");
         }
     }
 
@@ -869,7 +869,7 @@ impl ViewApp {
         };
 
         let status = format!(
-            " zetl view │ {} │{} {} links │ {}",
+            " ztl view │ {} │{} {} links │ {}",
             self.current_page,
             focused_segment,
             self.link_map.len(),
@@ -897,7 +897,7 @@ impl ViewApp {
     /// Render the keybindings help overlay (`?` key, CON-023).
     fn draw_help_overlay(&self, frame: &mut Frame, area: Rect) {
         let popup = centered_rect(72, 80, area);
-        let block = Block::bordered().title(" Key Bindings — zetl view (CON-023) ");
+        let block = Block::bordered().title(" Key Bindings — ztl view (CON-023) ");
         let inner = block.inner(popup);
         frame.render_widget(Clear, popup);
         frame.render_widget(block, popup);
@@ -924,7 +924,7 @@ impl ViewApp {
             "   Ctrl-R        Toggle context pane overlay (single-pane mode)\n",
             "   /             Open page search\n",
             "   ?             Show/hide this help overlay\n",
-            "   q / Ctrl-C    Quit zetl view",
+            "   q / Ctrl-C    Quit ztl view",
         );
 
         let para = Paragraph::new(help_text);
@@ -935,7 +935,7 @@ impl ViewApp {
     fn draw_picker_overlay(&self, frame: &mut Frame, area: Rect) {
         let popup = centered_rect(70, 80, area);
         let block = Block::bordered()
-            .title(" zetl view — page search (↑↓/j/k select  Enter open  Esc cancel) ");
+            .title(" ztl view — page search (↑↓/j/k select  Enter open  Esc cancel) ");
         let inner = block.inner(popup);
         frame.render_widget(Clear, popup);
         frame.render_widget(block, popup);
@@ -1129,7 +1129,7 @@ impl ViewApp {
                     if let Some(entry) = visible.get(focused_index) {
                         if entry.is_dead {
                             self.status_message =
-                                Some("dead link — run zetl index or create the page".to_string());
+                                Some("dead link — run ztl index or create the page".to_string());
                         } else {
                             let target = entry.page_title.clone();
                             self.navigate_to(target);
@@ -1247,7 +1247,7 @@ impl ViewApp {
             self.focus_state = FocusState::ScrollMode;
             if self.debug_render {
                 eprintln!(
-                    "[zetl view] navigate  from={} to={} history_depth={}",
+                    "[ztl view] navigate  from={} to={} history_depth={}",
                     &page,
                     self.current_page,
                     self.nav_history.len(),
@@ -1273,7 +1273,7 @@ impl ViewApp {
             self.focus_state = FocusState::ScrollMode;
             if self.debug_render {
                 eprintln!(
-                    "[zetl view] navigate  from={} to={} history_depth={}",
+                    "[ztl view] navigate  from={} to={} history_depth={}",
                     prev,
                     self.current_page,
                     self.nav_history.len(),
@@ -1308,7 +1308,7 @@ impl ViewApp {
 
         if self.debug_render {
             eprintln!(
-                "[zetl view] navigate  from={} to={} history_depth={}",
+                "[ztl view] navigate  from={} to={} history_depth={}",
                 from,
                 self.current_page,
                 self.nav_history.len(),

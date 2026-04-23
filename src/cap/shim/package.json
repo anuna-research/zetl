@@ -1,7 +1,7 @@
 {
-  "name": "@zetl/cap-shim",
+  "name": "@ztl/cap-shim",
   "version": "0.4.0",
-  "description": "zetl capability-mode browser shim (SPEC-034 CON-3408). Private — bundled into /assets/shim.js at build time.",
+  "description": "ztl capability-mode browser shim (SPEC-034 CON-3408). Private — bundled into /assets/shim.js at build time.",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "type": "module",

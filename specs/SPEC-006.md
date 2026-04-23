@@ -20,22 +20,22 @@ date: 2026-02-24
 | Date           | 2026-02-24                                                         |
 | Audience       | Agent, Human                                                       |
 | Trace          | USDD Agent Protocol v1.0.0                                         |
-| Parent         | SPEC-001: zetl — Bi-directional Link Graph CLI                     |
-| Related        | SPEC-005: zetl reason — Defeasible Logic over Markdown Vaults      |
+| Parent         | SPEC-001: ztl — Bi-directional Link Graph CLI                     |
+| Related        | SPEC-005: ztl reason — Defeasible Logic over Markdown Vaults      |
 | Dependencies   | pulldown-cmark (Markdown AST), spindle-parser (SPL AST), blake3    |
 
 ---
 
 ## 1. Overview
 
-SPEC-001 established zetl's cache invalidation on file-level modification timestamps (mtime). SPEC-005 extended this to the theory cache: if any SPL-containing file's mtime changes, the entire theory is rebuilt. This works for performance — but it says nothing about **what changed**. Mtime tells you *when* a file was touched, not *whether the content that matters actually differs*.
+SPEC-001 established ztl's cache invalidation on file-level modification timestamps (mtime). SPEC-005 extended this to the theory cache: if any SPL-containing file's mtime changes, the entire theory is rebuilt. This works for performance — but it says nothing about **what changed**. Mtime tells you *when* a file was touched, not *whether the content that matters actually differs*.
 
-This specification introduces a **content-addressed Merkle tree** built transparently during `zetl index`, where every block-level node in the Markdown AST is content-hashed into a hierarchical structure. The Merkle tree is invisible infrastructure — users never interact with it directly. Instead, it enables four user-visible capabilities:
+This specification introduces a **content-addressed Merkle tree** built transparently during `ztl index`, where every block-level node in the Markdown AST is content-hashed into a hierarchical structure. The Merkle tree is invisible infrastructure — users never interact with it directly. Instead, it enables four user-visible capabilities:
 
 1. **Smarter caching** — theory rebuilds only when SPL content actually changes, not when surrounding prose is edited
-2. **Drift detection** — `zetl check` warns when prose surrounding an SPL block has changed but the SPL hasn't been updated
+2. **Drift detection** — `ztl check` warns when prose surrounding an SPL block has changed but the SPL hasn't been updated
 3. **Content grounding** — SPL facts and rules are automatically linked to the Markdown prose they formalise, creating a verifiable connection between informal claims and formal logic
-4. **Content-addressed references** — `zetl blocks` exposes the Merkle leaf hashes of every content block in a file, giving agents read-only, position-independent references to specific paragraphs, headings, and tables without modifying source files
+4. **Content-addressed references** — `ztl blocks` exposes the Merkle leaf hashes of every content block in a file, giving agents read-only, position-independent references to specific paragraphs, headings, and tables without modifying source files
 
 ### 1.1 The Drift Problem
 
@@ -67,9 +67,9 @@ Mtime-based caching handles none of these. It is a performance optimisation, not
 
 The solution has two parts:
 
-**Part 1: Merkle tree as infrastructure.** A Merkle tree is built during `zetl index` by hashing block-level AST nodes from pulldown-cmark. It propagates upward: leaf hashes → file hashes → vault root hash. This replaces mtime as the authoritative cache invalidation signal and enables precise change detection at the block level.
+**Part 1: Merkle tree as infrastructure.** A Merkle tree is built during `ztl index` by hashing block-level AST nodes from pulldown-cmark. It propagates upward: leaf hashes → file hashes → vault root hash. This replaces mtime as the authoritative cache invalidation signal and enables precise change detection at the block level.
 
-**Part 2: Section grounding.** Each SPL block is automatically "grounded in" its containing Markdown section — the heading above it through to the next heading at the same or higher level. The section's content hash (computed from its non-SPL Merkle leaves) is stored as the SPL block's **grounding hash**. When the section prose changes but the SPL doesn't, `zetl check` reports a drift warning. For precision, authors can explicitly ground individual SPL facts in specific content blocks using Obsidian's `^block-id` syntax.
+**Part 2: Section grounding.** Each SPL block is automatically "grounded in" its containing Markdown section — the heading above it through to the next heading at the same or higher level. The section's content hash (computed from its non-SPL Merkle leaves) is stored as the SPL block's **grounding hash**. When the section prose changes but the SPL doesn't, `ztl check` reports a drift warning. For precision, authors can explicitly ground individual SPL facts in specific content blocks using Obsidian's `^block-id` syntax.
 
 ```
               ┌─────────────────────┐
@@ -96,11 +96,11 @@ The solution has two parts:
 
 | Capability | How Users See It |
 | --- | --- |
-| **Smarter theory caching** | `zetl reason status` is faster — skips rebuilds when only prose changed |
-| **Drift warnings** | `zetl check --drift` warns: "SPL in Redis.md §Benchmarks may be stale — section was edited" |
-| **Stale provenance detection** | `zetl reason provenance` warns when source content has changed since the theory was built |
-| **False invalidation elimination** | `zetl index` doesn't re-process files that were touched but not changed |
-| **Content-addressed references** | `zetl blocks` returns Merkle hashes for every content block; `zetl blocks --resolve` maps a hash back to its file and line; agents use hashes as read-only `source` metadata without modifying files |
+| **Smarter theory caching** | `ztl reason status` is faster — skips rebuilds when only prose changed |
+| **Drift warnings** | `ztl check --drift` warns: "SPL in Redis.md §Benchmarks may be stale — section was edited" |
+| **Stale provenance detection** | `ztl reason provenance` warns when source content has changed since the theory was built |
+| **False invalidation elimination** | `ztl index` doesn't re-process files that were touched but not changed |
+| **Content-addressed references** | `ztl blocks` returns Merkle hashes for every content block; `ztl blocks --resolve` maps a hash back to its file and line; agents use hashes as read-only `source` metadata without modifying files |
 | **Explicit content references** | SPL can pin facts to specific paragraphs via `(meta label (source "^block-id"))` or `(meta label (source "e5f6a7b8"))` (Merkle hash) |
 | **Cross-agent verification** | Agents can verify that prose grounding a theory hasn't changed since it was built |
 
@@ -116,19 +116,19 @@ The solution has two parts:
 
 **In scope:**
 
-- Merkle tree construction from pulldown-cmark AST events, built during `zetl index`
+- Merkle tree construction from pulldown-cmark AST events, built during `ztl index`
 - SPL block leaves with dual hashing (raw content + parsed SPL AST)
 - File-level and vault-level Merkle roots
 - Two-tier cache invalidation (mtime + content hash)
 - Section grounding: implicit linking of SPL blocks to their containing Markdown section
 - Explicit grounding via `(meta ... (source ...))` — three forms: Merkle hash (agent-friendly, read-only), `^block-id` (human-friendly), `[[Page^block-id]]` (cross-file)
-- Content block discovery: `zetl blocks <page>` exposes Merkle leaf hashes for agent consumption; `zetl blocks --resolve <hash>` maps hashes back to source locations
-- Drift detection integrated into `zetl check`
+- Content block discovery: `ztl blocks <page>` exposes Merkle leaf hashes for agent consumption; `ztl blocks --resolve <hash>` maps hashes back to source locations
+- Drift detection integrated into `ztl check`
 - Durable provenance: content hashes in theory provenance metadata
 
 **Out of scope:**
 
-- Low-level Merkle tree inspection commands (no `zetl merkle` subcommand)
+- Low-level Merkle tree inspection commands (no `ztl merkle` subcommand)
 - Cryptographic signing of Merkle proofs (future SPEC)
 - Distributed Merkle tree synchronisation across vaults (future SPEC)
 - Incremental Merkle tree updates (future optimisation; v1 rebuilds file trees from scratch)
@@ -139,11 +139,11 @@ The solution has two parts:
 
 All Merkle tree, grounding, drift detection, and caching behaviour specified in this document SHALL operate without any version control system present. Git (or any other VCS) is an optional enrichment layer, never a dependency.
 
-**Core mode (no VCS).** When the vault is not inside a Git repository, all commands — `zetl index`, `zetl check`, `zetl blocks`, `zetl reason` — SHALL function identically to when Git is present. Cache validity, Merkle tree construction, drift detection, and grounding resolution MUST NOT depend on Git availability, commit history, or working-tree status.
+**Core mode (no VCS).** When the vault is not inside a Git repository, all commands — `ztl index`, `ztl check`, `ztl blocks`, `ztl reason` — SHALL function identically to when Git is present. Cache validity, Merkle tree construction, drift detection, and grounding resolution MUST NOT depend on Git availability, commit history, or working-tree status.
 
-**VCS-aware mode (Git present).** When the vault is inside a Git repository, zetl MAY attach commit metadata to provenance and reporting output for informational purposes. This metadata is supplementary — it enriches output but does not alter correctness or cache decisions.
+**VCS-aware mode (Git present).** When the vault is inside a Git repository, ztl MAY attach commit metadata to provenance and reporting output for informational purposes. This metadata is supplementary — it enriches output but does not alter correctness or cache decisions.
 
-**Contract rule.** No CLI contract (CON-004, CON-006, CON-012, CON-019, CON-020) SHALL require Git to produce its specified output. All required fields MUST be populated from zetl's own Merkle tree and cache. Git-derived fields are always additive.
+**Contract rule.** No CLI contract (CON-004, CON-006, CON-012, CON-019, CON-020) SHALL require Git to produce its specified output. All required fields MUST be populated from ztl's own Merkle tree and cache. Git-derived fields are always additive.
 
 **Schema rule.** Any Git-derived field in cache or output schemas SHALL be nullable or optional. Implementations MUST NOT fail or degrade when these fields are absent. Specifically:
 
@@ -180,7 +180,7 @@ TEST-050: VCS Independence
 
 Scenario: All commands work without Git
 Given: A vault in a plain directory (no .git)
-When: `zetl index`, `zetl check`, `zetl blocks`, `zetl reason status`
+When: `ztl index`, `ztl check`, `ztl blocks`, `ztl reason status`
       are run
 Then:
   - All commands succeed
@@ -189,7 +189,7 @@ Then:
 
 Scenario: Git metadata is optional enrichment
 Given: A vault inside a Git repository with HEAD at commit abc123
-When: `zetl reason provenance "literal"` is run
+When: `ztl reason provenance "literal"` is run
 Then:
   - Output includes git_commit: "abc123" and git_dirty: false/true
   - Removing .git and re-running produces identical provenance
@@ -197,7 +197,7 @@ Then:
 
 Scenario: Cache validity is VCS-independent
 Given: A vault indexed inside a Git repo
-When: The .git directory is removed and `zetl index` is run
+When: The .git directory is removed and `ztl index` is run
 Then:
   - Cache is still valid (mtime + content hash unchanged)
   - No re-indexing occurs
@@ -225,15 +225,15 @@ Constraints:
   - May operate on the same vault as other agents concurrently
 Daily workflow:
   1. Read an existing note and want to formalise a claim
-  2. Run `zetl blocks "Redis vs Memcached"` to see content blocks with hashes
+  2. Run `ztl blocks "Redis vs Memcached"` to see content blocks with hashes
   3. Write SPL grounding a fact in a specific paragraph:
      (given redis-fast-enough)
      (meta redis-fast-enough (source "e5f6a7b8"))
-  4. Run `zetl index` (Merkle tree built transparently)
-  5. Run `zetl reason status` (theory uses content hashes for caching)
+  4. Run `ztl index` (Merkle tree built transparently)
+  5. Run `ztl reason status` (theory uses content hashes for caching)
   6. Later, another agent edits the source paragraph
-  7. Run `zetl check --drift` — see that the grounding is stale
-  8. Run `zetl blocks --resolve e5f6a7b8` — find that the hash no longer
+  7. Run `ztl check --drift` — see that the grounding is stale
+  8. Run `ztl blocks --resolve e5f6a7b8` — find that the hash no longer
      resolves (content changed), identify what file/line it used to reference
 ```
 
@@ -251,9 +251,9 @@ Constraints:
   - Wants actionable warnings, not hash values
 Daily workflow:
   1. Write notes in Obsidian with ```spl blocks
-  2. Run `zetl check` — sees drift warnings alongside dead links and orphans
+  2. Run `ztl check` — sees drift warnings alongside dead links and orphans
   3. Review flagged SPL blocks and update or confirm them
-  4. Run `zetl reason status` — sees which conclusions are current
+  4. Run `ztl reason status` — sees which conclusions are current
 ```
 
 ### 2.3 Agent Team — Multi-Agent Knowledge Coordination
@@ -266,23 +266,23 @@ Goals:
   - Detect when concurrent edits create drift in shared documents
 Constraints:
   - Agents write concurrently (append-only)
-  - Hence lifecycle hooks can run `zetl check --drift --fail-on warning`
+  - Hence lifecycle hooks can run `ztl check --drift --fail-on warning`
   - Content hashes serve as coordination checkpoints
 Daily workflow:
   1. Hence assigns research task to agent-A
-  2. Agent-A reads existing notes, runs `zetl blocks "Redis Benchmarks"`
+  2. Agent-A reads existing notes, runs `ztl blocks "Redis Benchmarks"`
      to get content hashes for the evidence paragraphs
   3. Agent-A writes SPL grounding facts in those hashes:
      (given redis-fast-enough)
      (meta redis-fast-enough (source "e5f6a7b8"))
      No file modification needed — the hash references content as-is.
   4. Agent-B later edits the benchmark paragraph
-  5. Hence post-edit hook: `zetl check --drift --fail-on warning`
+  5. Hence post-edit hook: `ztl check --drift --fail-on warning`
      → Fails: "fact redis-fast-enough grounded in e5f6a7b8 — no matching
         content block found (original paragraph was modified)"
-  6. Reconciliation agent runs `zetl blocks --resolve e5f6a7b8` to see
+  6. Reconciliation agent runs `ztl blocks --resolve e5f6a7b8` to see
      what the hash referenced, discovers it no longer resolves
-  7. Agent runs `zetl blocks "Redis Benchmarks"` to get updated hashes,
+  7. Agent runs `ztl blocks "Redis Benchmarks"` to get updated hashes,
      rewrites the source metadata with the new hash
 ```
 
@@ -297,14 +297,14 @@ Preconditions:
   - Theory was built with section grounding hashes recorded
   - Author modifies the benchmark numbers in the prose paragraph
 Steps:
-  1. `zetl check -d ./vault`
+  1. `ztl check -d ./vault`
      → Reports alongside dead links and orphans:
        "drift: Redis.md:8 — SPL block in section '## Benchmarks' may be
         stale. Adjacent paragraph (line 5) was modified since the theory
         was built. Review whether SPL claims still hold."
   2. Author reads the file, confirms the SPL needs updating
   3. Author updates the SPL block
-  4. `zetl reason status` — theory rebuilt with fresh grounding hashes
+  4. `ztl reason status` — theory rebuilt with fresh grounding hashes
 Postconditions:
   - All SPL blocks are grounded in current prose
   - No drift warnings on next check
@@ -341,7 +341,7 @@ Preconditions:
   - The vault has been indexed (Merkle tree exists in cache)
 Steps:
   1. Agent reads "Redis.md" and decides to formalise the benchmark claim
-  2. `zetl blocks "Redis vs Memcached"`
+  2. `ztl blocks "Redis vs Memcached"`
      → Returns content blocks with hashes and text previews:
        [
          {"type": "Heading", "lines": [5,5], "hash": "a1b2...", "text": "## Benchmark Results"},
@@ -353,8 +353,8 @@ Steps:
   4. Agent writes an SPL block in another file (or the same file):
      (given redis-fast-enough)
      (meta redis-fast-enough (source "e5f6a7b8"))
-  5. `zetl index` — reindexes, resolves the hash reference
-  6. `zetl check` — no errors, grounding is valid
+  5. `ztl index` — reindexes, resolves the hash reference
+  6. `ztl check` — no errors, grounding is valid
 Postconditions:
   - The fact is grounded in a specific paragraph via content hash
   - No files were modified to add block-id tags
@@ -362,7 +362,7 @@ Postconditions:
     drift is detected automatically
 Failure modes:
   - Hash references a block that was deleted between discovery and
-    indexing → zetl check reports broken grounding error
+    indexing → ztl check reports broken grounding error
 ```
 
 ```
@@ -376,7 +376,7 @@ Preconditions:
     (meta performance-acceptable (source "[[Architecture^perf-numbers]]"))
   - The performance paragraph in Architecture.md is edited
 Steps:
-  1. `zetl check --drift`
+  1. `ztl check --drift`
      → Reports: "drift: Decisions.md:12 — fact 'performance-acceptable'
         grounded in [[Architecture]]^perf-numbers — target content changed"
   2. Agent reviews whether the fact still holds given the new numbers
@@ -450,9 +450,9 @@ Spindle-core stores metadata as `HashMap<String, MetaValue>` where `MetaValue` i
 ```
 ````
 
-The hash `e5f6a7b8` is a truncated Merkle leaf hash obtained from `zetl blocks`. The system resolves it by searching all Merkle leaves in the vault for a matching prefix. No file modification is needed — the agent references content as-is. If the content changes, the hash no longer matches and drift is detected.
+The hash `e5f6a7b8` is a truncated Merkle leaf hash obtained from `ztl blocks`. The system resolves it by searching all Merkle leaves in the vault for a matching prefix. No file modification is needed — the agent references content as-is. If the content changes, the hash no longer matches and drift is detected.
 
-This is the primary mechanism for agents. An agent reads a file, runs `zetl blocks` to discover content hashes, and writes SPL referencing the hashes it cares about.
+This is the primary mechanism for agents. An agent reads a file, runs `ztl blocks` to discover content hashes, and writes SPL referencing the hashes it cares about.
 
 **Same-file block-id grounding (human-friendly):**
 
@@ -532,9 +532,9 @@ No parser changes are required — `(meta label (key "value"))` and `(meta label
 
 **Resolution rules:**
 
-1. **`"e5f6a7b8"` (Merkle hash)** — resolve by prefix match against all Merkle leaf hashes in the vault. The hash is the hex-encoded prefix (minimum 8 characters) of a BLAKE3 leaf hash returned by `zetl blocks`. Resolution is position-independent: the same content at a different line number or even a different file still matches. Two multi-match cases are distinguished:
+1. **`"e5f6a7b8"` (Merkle hash)** — resolve by prefix match against all Merkle leaf hashes in the vault. The hash is the hex-encoded prefix (minimum 8 characters) of a BLAKE3 leaf hash returned by `ztl blocks`. Resolution is position-independent: the same content at a different line number or even a different file still matches. Two multi-match cases are distinguished:
    - **Ambiguous prefix** — the prefix matches leaves with *different* full hashes. This is a prefix collision; the user should supply a longer prefix.
-   - **Duplicate content** — the prefix (or full hash) matches leaves with *identical* full hashes at different locations. This occurs naturally when two blocks have identical normalised content. For **grounding**, this is valid: the hash is a content-identity reference, so any matching location satisfies the grounding. For **`zetl blocks --resolve`**, all matching locations are returned (see CON-020).
+   - **Duplicate content** — the prefix (or full hash) matches leaves with *identical* full hashes at different locations. This occurs naturally when two blocks have identical normalised content. For **grounding**, this is valid: the hash is a content-identity reference, so any matching location satisfies the grounding. For **`ztl blocks --resolve`**, all matching locations are returned (see CON-020).
 2. **`"^block-id"` (local block-id)** — resolve within the same file. Matched to the Merkle leaf containing the `^block-id` suffix.
 3. **`"[[Page^block-id]]"` (cross-file block-id)** — resolve across files. Page name resolved via standard wikilink matching (SPEC-001 §3.2).
 
@@ -542,16 +542,16 @@ No parser changes are required — `(meta label (key "value"))` and `(meta label
 
 - Hash reference matches zero leaves → error: "content hash e5f6a7b8 not found — source content may have been modified or removed"
 - Hash prefix matches leaves with different full hashes → error: "ambiguous hash prefix e5f6 — use a longer prefix (found in File A line 5, File B line 12)"
-- Hash matches multiple leaves with identical full hashes (duplicate content) → valid for grounding; informational for `zetl blocks --resolve` (all locations returned, exit code 0)
+- Hash matches multiple leaves with identical full hashes (duplicate content) → valid for grounding; informational for `ztl blocks --resolve` (all locations returned, exit code 0)
 - `^block-id` doesn't exist → error (analogous to dead wikilinks)
 - `[[Page^block-id]]` page doesn't exist → error
 
 **Why Merkle hashes as the primary agent mechanism:**
 
-- **Read-only** — agents don't need to modify source files to add `^block-id` tags, which is consistent with zetl's read-only design philosophy (SPEC-001 §1.1)
+- **Read-only** — agents don't need to modify source files to add `^block-id` tags, which is consistent with ztl's read-only design philosophy (SPEC-001 §1.1)
 - **Position-independent** — if a paragraph moves within or between files, the hash still resolves as long as the content is unchanged
 - **Self-validating** — if the content changes, the hash stops matching, and drift is detected automatically
-- **Discoverable** — `zetl blocks <page>` provides all hashes for a file, making it trivial for an agent to pick the right reference
+- **Discoverable** — `ztl blocks <page>` provides all hashes for a file, making it trivial for an agent to pick the right reference
 
 **Multiple sources:**
 
@@ -576,7 +576,7 @@ This means adding `source` metadata to one fact doesn't disable section groundin
 
 ### 3.5 Grounding Hash Storage
 
-Grounding hashes are stored in the theory cache (`.zetl/theory.json`), not in a separate file:
+Grounding hashes are stored in the theory cache (`.ztl/theory.json`), not in a separate file:
 
 ```json
 {
@@ -786,7 +786,7 @@ Standalone `.spl` files produce a single SPL leaf with dual hashing. Since there
 REQ-037: Merkle Tree Construction from Markdown AST
 
 The system SHALL construct a Merkle tree for each file during
-`zetl index` by:
+`ztl index` by:
   a) Parsing the file with pulldown-cmark to produce an AST event stream
   b) Grouping events into block-level leaf nodes (headings, paragraphs,
      code blocks, lists, blockquotes, tables, frontmatter, thematic breaks,
@@ -928,7 +928,7 @@ The system SHALL:
 
 Hash-based references (source "e5f6a7b8") are position-independent:
 the same content at a different line or file still resolves. This is
-the primary mechanism for agents, who discover hashes via `zetl blocks`.
+the primary mechanism for agents, who discover hashes via `ztl blocks`.
 
 When explicit source metadata is present, it takes precedence over
 implicit section grounding for that specific fact or rule (see §3.4).
@@ -947,7 +947,7 @@ Trace:
 ```
 REQ-043: Drift Detection in Check
 
-The system SHALL detect and report SPL drift as part of `zetl check`:
+The system SHALL detect and report SPL drift as part of `ztl check`:
   a) For each SPL block with section grounding: compare the current
      section grounding hash against the cached version from the last
      theory build. If different (prose changed) and the SPL AST hash
@@ -963,7 +963,7 @@ Drift diagnostics SHALL include:
   - Severity: "warning" for adjacent changes, "info" for distant changes
   - Human-readable message describing what changed
 
-Drift diagnostics SHALL appear in the existing `zetl check` output
+Drift diagnostics SHALL appear in the existing `ztl check` output
 alongside dead links, orphans, and syntax errors.
 
 A `--drift` flag SHALL filter check output to drift diagnostics only.
@@ -984,7 +984,7 @@ The system SHALL extend theory provenance metadata to include:
   a) Each provenanced rule and fact: the SPL leaf's content_hash,
      ast_hash, and section grounding hash
   b) Each provenanced conclusion: the vault root hash at reasoning time
-  c) `zetl reason provenance` SHALL display a "stale" warning when
+  c) `ztl reason provenance` SHALL display a "stale" warning when
      the stored grounding hash no longer matches the current hash
 
 FOR all user roles
@@ -998,11 +998,11 @@ Trace:
 ```
 REQ-045: Content Block Discovery and Hash Resolution
 
-The system SHALL provide a `zetl blocks` command with two modes:
+The system SHALL provide a `ztl blocks` command with two modes:
 
 **Forward mode (file → blocks):**
 
-  `zetl blocks <page>` returns the Merkle leaf nodes for a given file,
+  `ztl blocks <page>` returns the Merkle leaf nodes for a given file,
   including:
     a) Leaf type (heading, paragraph, code block, SPL block, table, etc.)
     b) Line range (start and end line numbers)
@@ -1014,7 +1014,7 @@ The system SHALL provide a `zetl blocks` command with two modes:
 
 **Reverse mode (hash → file:line):**
 
-  `zetl blocks --resolve <hash>` resolves a Merkle leaf hash prefix to
+  `ztl blocks --resolve <hash>` resolves a Merkle leaf hash prefix to
   its source location, returning:
     a) File path (relative to vault root)
     b) Page name
@@ -1033,7 +1033,7 @@ The system SHALL provide a `zetl blocks` command with two modes:
     - Multiple matches with identical full hashes (duplicate content)
       → success: return all locations (content-identity is by design)
 
-Both modes SHALL require that `zetl index` has been run (Merkle tree
+Both modes SHALL require that `ztl index` has been run (Merkle tree
 exists in cache). If the cache is stale or missing, the command SHALL
 index first (consistent with other query commands).
 
@@ -1079,7 +1079,7 @@ Trace:
 ```
 NFR-016: Merkle Cache Size
 
-Merkle data stored in .zetl/ SHALL add ≤ 5 MB for 10,000 files.
+Merkle data stored in .ztl/ SHALL add ≤ 5 MB for 10,000 files.
 
 Rationale: Only file roots and SPL leaf hashes are persisted. Full
 leaf trees are recomputed on demand.
@@ -1187,7 +1187,7 @@ Consequences:
   + Cross-file grounding for multi-document theories
   + No upstream spindle-rust changes required
   - Section boundary detection adds logic to the scanner
-  - Source validation adds checks to zetl check
+  - Source validation adds checks to ztl check
 ```
 
 ### 6.2 Component Architecture
@@ -1218,13 +1218,13 @@ Consequences:
       │    │   Merkle tree is internal to the scanner and cache.
       │    │   No separate "Merkle Engine" module — hashing is a
       │    │   step within the scanner, and grounding comparison
-      │    │   is a step within cache validation and zetl check.
+      │    │   is a step within cache validation and ztl check.
       │    │
       └────┴──────────┐
                       │
                ┌──────▼───────┐
                │    Cache     │
-               │  .zetl/      │
+               │  .ztl/      │
                │  index.json  │  + file Merkle roots
                │  theory.json │  + SPL hashes + grounding hashes
                └──────────────┘
@@ -1234,7 +1234,7 @@ The Merkle tree is **not** a separate component. It is:
 - **Computed** as part of the scanner's existing parse pass
 - **Stored** as additional fields in the existing cache files
 - **Compared** during cache validation (already in the pipeline)
-- **Reported** via existing `zetl check` diagnostics
+- **Reported** via existing `ztl check` diagnostics
 
 ### 6.3 Data Model
 
@@ -1368,7 +1368,7 @@ All three extractors share the same pulldown-cmark event stream — there is no 
 
 ### 6.5 Drift Detection Algorithm
 
-Drift detection runs as part of `zetl check`, after the scanner has produced current Merkle trees:
+Drift detection runs as part of `ztl check`, after the scanner has produced current Merkle trees:
 
 ```
 Input:
@@ -1394,7 +1394,7 @@ For each SPL block in current trees:
         → Not a drift diagnostic. This is a static validation error
           reported via spl_diagnostics (CON-004 extended).
 
-Output: Vec<DriftDiagnostic> (merged into zetl check results)
+Output: Vec<DriftDiagnostic> (merged into ztl check results)
 ```
 
 ---
@@ -1404,9 +1404,9 @@ Output: Vec<DriftDiagnostic> (merged into zetl check results)
 The Merkle tree does not introduce new subcommands. It extends existing contracts.
 
 ```
-CON-019: zetl check (extended with --drift)
+CON-019: ztl check (extended with --drift)
 
-zetl check [OPTIONS]
+ztl check [OPTIONS]
 
 Additional options:
   --drift          Show only drift diagnostics (SPL blocks with
@@ -1458,9 +1458,9 @@ Verified by:
 ```
 
 ```
-CON-020: zetl blocks
+CON-020: ztl blocks
 
-zetl blocks [PAGE] [OPTIONS]
+ztl blocks [PAGE] [OPTIONS]
 
 List the content blocks of a file with their Merkle leaf hashes,
 or resolve a hash to its source location.
@@ -1481,7 +1481,7 @@ Exit codes:
   1  Page not found / hash not found / ambiguous hash prefix (different
      full hashes sharing a prefix)
 
---- Forward mode: zetl blocks <PAGE> ---
+--- Forward mode: ztl blocks <PAGE> ---
 
 Example output (JSON):
 {
@@ -1544,7 +1544,7 @@ Example output (table):
   3  Table        11-14  c9d0e1f2  | Metric | Value | ...
   4  SplBlock     16-21  3a4b5c6d  (given redis-benchmarked) ...
 
---- Reverse mode: zetl blocks --resolve <HASH> ---
+--- Reverse mode: ztl blocks --resolve <HASH> ---
 
 Example output (JSON):
 {
@@ -1597,7 +1597,7 @@ Usage:
     (meta redis-fast-enough (source "e5f6a7b8"))
 
   Resolve a hash back to its source location:
-    zetl blocks --resolve e5f6a7b8
+    ztl blocks --resolve e5f6a7b8
 
 Implements:
 - REQ-045
@@ -1607,7 +1607,7 @@ Verified by:
 ```
 
 ```
-CON-004 (extended): zetl check source metadata validation
+CON-004 (extended): ztl check source metadata validation
 
 Broken source references (^block-id that doesn't exist, [[Page]] that
 doesn't exist, Merkle hash that doesn't match any leaf) are reported as
@@ -1647,9 +1647,9 @@ Verified by:
 ```
 
 ```
-CON-006 (extended): zetl stats — vault root hash
+CON-006 (extended): ztl stats — vault root hash
 
-`zetl stats` output is extended with vault content integrity data:
+`ztl stats` output is extended with vault content integrity data:
 
 {
   "pages": 47,
@@ -1669,9 +1669,9 @@ Verified by:
 ```
 
 ```
-CON-012 (extended): zetl reason provenance — staleness warnings
+CON-012 (extended): ztl reason provenance — staleness warnings
 
-`zetl reason provenance` output is extended with grounding freshness:
+`ztl reason provenance` output is extended with grounding freshness:
 
 {
   "literal": "decided-use-redis",
@@ -1722,7 +1722,7 @@ TEST-038: Merkle Tree Construction During Index
 
 Scenario: Index builds Merkle tree transparently
 Given: A vault with 5 Markdown files
-When: `zetl index` is run
+When: `ztl index` is run
 Then:
   - Each file has a Merkle root hash in the cache
   - A vault root hash is stored
@@ -1730,7 +1730,7 @@ Then:
 
 Scenario: Vault root is deterministic
 Given: A vault with files scanned in different orders
-When: `zetl index` is run twice
+When: `ztl index` is run twice
 Then: The vault root hash is identical both times
 
 Scenario: Normalisation makes formatting changes invisible
@@ -1774,19 +1774,19 @@ TEST-040: Two-Tier Cache Invalidation
 
 Scenario: Mtime unchanged → skip hashing
 Given: A cached vault with no file modifications
-When: `zetl index` is run
+When: `ztl index` is run
 Then: No BLAKE3 hashing occurs; cache is reused
 
 Scenario: Mtime changed, content unchanged → skip reprocessing
 Given: A file is `touch`ed but content is identical
-When: `zetl index` is run
+When: `ztl index` is run
 Then:
   - File is re-read and hashed
   - Hash matches cached → no downstream reprocessing
 
 Scenario: Mtime changed, content changed → reprocess
 Given: A file's content is modified
-When: `zetl index` is run
+When: `ztl index` is run
 Then: Full reprocessing occurs for that file
 
 Verifies: REQ-039
@@ -1805,12 +1805,12 @@ Then:
 
 Scenario: SPL reformatting does NOT trigger theory rebuild
 Given: SPL block reformatted but logically unchanged
-When: `zetl reason status` is run
+When: `ztl reason status` is run
 Then: Theory cache valid — no rebuild
 
 Scenario: SPL logical change triggers theory rebuild
 Given: A new fact added to SPL block
-When: `zetl reason status` is run
+When: `ztl reason status` is run
 Then:
   - SPL AST hash changed
   - Theory rebuilt with new conclusions
@@ -1884,13 +1884,13 @@ Then:
 
 Scenario: Broken source detected by check
 Given: SPL with (meta fact-x (source "^nonexistent"))
-When: `zetl check` is run
+When: `ztl check` is run
 Then:
   - Reports error: "source references ^nonexistent which does not exist"
 
 Scenario: Broken cross-file source
 Given: SPL with (meta fact-x (source "[[Ghost Page^data]]"))
-When: `zetl check` is run
+When: `ztl check` is run
 Then:
   - Reports error: "page 'Ghost Page' not found"
 
@@ -1905,7 +1905,7 @@ Given:
   - File has: ## Results, Paragraph-A, SplBlock, Paragraph-B
   - Theory was built with these hashes cached
   - Paragraph-A is edited (SPL unchanged)
-When: `zetl check` is run
+When: `ztl check` is run
 Then:
   - Reports drift warning for the SPL block
   - Message references section "## Results"
@@ -1915,23 +1915,23 @@ Given:
   - Fact grounded in ^benchmark-results via (meta ... (source ...))
   - The ^benchmark-results paragraph is edited
   - The SPL fact is unchanged
-When: `zetl check --drift` is run
+When: `ztl check --drift` is run
 Then:
   - Reports drift warning naming the fact and source reference
 
 Scenario: SPL block itself changed — no drift
 Given: Both prose and SPL are edited
-When: `zetl check --drift` is run
+When: `ztl check --drift` is run
 Then: No drift reported (SPL was updated)
 
 Scenario: No changes — no drift
 Given: No modifications since theory build
-When: `zetl check --drift` is run
+When: `ztl check --drift` is run
 Then: Zero drift diagnostics
 
 Scenario: --fail-on applies to drift
 Given: Drift warning exists
-When: `zetl check --drift --fail-on warning` is run
+When: `ztl check --drift --fail-on warning` is run
 Then: Exit code 1
 
 Verifies: REQ-043
@@ -1942,14 +1942,14 @@ TEST-045: Durable Provenance with Staleness
 
 Scenario: Provenance includes grounding freshness
 Given: A theory built from vault with grounding hashes
-When: `zetl reason provenance "literal"` is run
+When: `ztl reason provenance "literal"` is run
 Then:
   - Sources include grounding type (section or explicit)
   - Sources include fresh: true/false
 
 Scenario: Stale provenance warning
 Given: A conclusion's source section was edited after the theory was built
-When: `zetl reason provenance "literal"` is run
+When: `ztl reason provenance "literal"` is run
 Then:
   - The source shows fresh: false
   - A warning message explains what changed
@@ -1965,7 +1965,7 @@ TEST-049: Content Block Discovery and Hash Resolution
 Scenario: List blocks for a file
 Given: An indexed vault with file "Redis.md" containing a heading,
        two paragraphs, a table, and an SPL block
-When: `zetl blocks "Redis"` is run
+When: `ztl blocks "Redis"` is run
 Then:
   - Returns 5+ blocks in document order
   - Each block has type, lines, hash, and text preview
@@ -1973,18 +1973,18 @@ Then:
   - Output matches CON-020 forward mode schema
 
 Scenario: Hash is usable as source metadata
-Given: `zetl blocks "Redis"` returns hash "e5f6a7b8" for a paragraph
+Given: `ztl blocks "Redis"` returns hash "e5f6a7b8" for a paragraph
 When: An SPL block is written with:
        (given fact)
        (meta fact (source "e5f6a7b8"))
-       and `zetl check` is run
+       and `ztl check` is run
 Then:
   - The source resolves successfully (no error)
   - The grounding hash matches the target paragraph
 
 Scenario: Hash becomes stale after edit
 Given: An SPL fact grounded in hash "e5f6a7b8"
-When: The target paragraph is edited and `zetl check` is run
+When: The target paragraph is edited and `ztl check` is run
 Then:
   - Hash no longer matches any leaf
   - Broken grounding error is reported in spl_diagnostics (not
@@ -1993,17 +1993,17 @@ Then:
 Scenario: Position-independent resolution
 Given: A paragraph with hash "e5f6a7b8" is moved from line 7 to line 20
        (content unchanged, only position changed)
-When: `zetl check` is run
+When: `ztl check` is run
 Then:
   - Hash still resolves (same content, same hash)
   - No drift or error reported
 
 Scenario: Page not found
-When: `zetl blocks "Nonexistent"` is run
+When: `ztl blocks "Nonexistent"` is run
 Then: Exit code 1, page not found error
 
 Scenario: Filter by type
-When: `zetl blocks "Redis" --type paragraph` is run
+When: `ztl blocks "Redis" --type paragraph` is run
 Then: Only paragraph blocks are returned
 
 --- Reverse mode ---
@@ -2011,7 +2011,7 @@ Then: Only paragraph blocks are returned
 Scenario: Resolve hash to source location
 Given: An indexed vault where "Redis.md" line 7-9 has a paragraph
        with Merkle hash e5f6a7b8c9d0e1f2
-When: `zetl blocks --resolve e5f6a7b8` is run
+When: `ztl blocks --resolve e5f6a7b8` is run
 Then:
   - Returns file "decisions/Redis vs Memcached.md"
   - Returns page "Redis vs Memcached"
@@ -2023,7 +2023,7 @@ Then:
 
 Scenario: Resolve hash not found
 Given: No leaf in the vault matches prefix "deadbeef"
-When: `zetl blocks --resolve deadbeef` is run
+When: `ztl blocks --resolve deadbeef` is run
 Then:
   - Error: "content hash deadbeef not found"
   - Exit code 1
@@ -2031,7 +2031,7 @@ Then:
 Scenario: Resolve ambiguous hash prefix (different full hashes)
 Given: Two leaves in different files share the prefix "e5f6a7b8" but have
        different full hashes (e5f6a7b8c9d0e1f2 vs e5f6a7b8aabbccdd)
-When: `zetl blocks --resolve e5f6a7b8` is run
+When: `ztl blocks --resolve e5f6a7b8` is run
 Then:
   - Error: "ambiguous hash prefix e5f6a7b8"
   - Lists all matching locations with their distinct full hashes
@@ -2041,7 +2041,7 @@ Then:
 Scenario: Resolve duplicate content (identical full hashes)
 Given: Two paragraphs in different files have identical normalised content,
        producing the same full hash "e5f6a7b8c9d0e1f2"
-When: `zetl blocks --resolve e5f6a7b8` is run
+When: `ztl blocks --resolve e5f6a7b8` is run
 Then:
   - Returns all matching locations (both files)
   - Exit code 0 (not an error — content-identity is by design)
@@ -2049,20 +2049,20 @@ Then:
 Scenario: Resolve with full hash — unique content
 Given: A leaf with hash "e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0..." and no
        other leaf shares that hash
-When: `zetl blocks --resolve e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0` is run
+When: `ztl blocks --resolve e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0` is run
 Then:
   - Returns exactly one location
   - Exit code 0
 
 Scenario: Resolve hash too short
-When: `zetl blocks --resolve e5f6` is run
+When: `ztl blocks --resolve e5f6` is run
 Then:
   - Error: "hash prefix too short (minimum 8 hex characters)"
   - Exit code 1
 
 Scenario: Roundtrip — forward then reverse
-Given: `zetl blocks "Redis"` returns a block with hash "e5f6a7b8"
-When: `zetl blocks --resolve e5f6a7b8` is run
+Given: `ztl blocks "Redis"` returns a block with hash "e5f6a7b8"
+When: `ztl blocks --resolve e5f6a7b8` is run
 Then:
   - Returns the same file, lines, type, and text as the forward mode
 
@@ -2109,7 +2109,7 @@ Verifies: NFR-016
 ```
 OBS-007: Merkle Construction Timing
 
-When --verbose is specified, `zetl index` SHALL emit to stderr:
+When --verbose is specified, `ztl index` SHALL emit to stderr:
   - Files hashed / files skipped (mtime unchanged) / files with
     content-hash match (touched but unchanged)
   - Total leaf nodes computed, SPL leaves with dual hashing
@@ -2120,7 +2120,7 @@ When --verbose is specified, `zetl index` SHALL emit to stderr:
 ```
 OBS-008: Drift Detection Metrics
 
-`zetl check` SHALL include in its summary:
+`ztl check` SHALL include in its summary:
   - Total SPL blocks, drifted blocks (warning + info)
   - Explicitly grounded facts, broken groundings
 ```
@@ -2128,7 +2128,7 @@ OBS-008: Drift Detection Metrics
 ```
 OBS-009: Cache Efficiency
 
-When --verbose is specified, `zetl index` and `zetl reason status`
+When --verbose is specified, `ztl index` and `ztl reason status`
 SHALL emit:
   - Tier 1 hits (mtime) / Tier 1 misses
   - Tier 2 hits (hash match) / Tier 2 misses (actual change)
@@ -2183,7 +2183,7 @@ SHALL emit:
 
 | Item | Effort | Dependencies |
 | --- | --- | --- |
-| `zetl blocks` command (REQ-045) | 2 hours | P0 complete |
+| `ztl blocks` command (REQ-045) | 2 hours | P0 complete |
 | source metadata extraction from (meta ...) (REQ-042) | 2 hours | spindle-core meta API |
 | Merkle hash prefix resolution (REQ-042) | 3 hours | P0 complete |
 | ^block-id resolution to Merkle leaves (REQ-042) | 2 hours | Existing scanner |
@@ -2199,7 +2199,7 @@ SHALL emit:
 
 ### 12.1 Index Cache Extension
 
-The existing `.zetl/index.json` is extended with per-file Merkle roots:
+The existing `.ztl/index.json` is extended with per-file Merkle roots:
 
 ```json
 {
@@ -2220,7 +2220,7 @@ The existing `.zetl/index.json` is extended with per-file Merkle roots:
 
 ### 12.2 Theory Cache Extension
 
-The existing `.zetl/theory.json` is extended with grounding data:
+The existing `.ztl/theory.json` is extended with grounding data:
 
 ```json
 {
@@ -2265,7 +2265,7 @@ No separate `merkle.json` file — Merkle data is folded into the existing cache
 | Named SPL blocks with grounding | Combine SPEC-005 §12.2 named blocks with explicit grounding: `@{caching-base}` + `(meta caching-base (source "^section"))`. |
 | Grounding visualisation in TUI | Show which prose each SPL block is grounded in, highlighted in the page view. |
 | Automatic source suggestion | When drift is detected, suggest adding explicit source metadata to prevent false positives. |
-| Grounding-aware what-if | `zetl reason what-if` could show which groundings would become stale if a hypothetical were applied. |
+| Grounding-aware what-if | `ztl reason what-if` could show which groundings would become stale if a hypothetical were applied. |
 
 ---
 
@@ -2283,7 +2283,7 @@ No separate `merkle.json` file — Merkle data is folded into the existing cache
 
 5. **What happens when a section is split (a new heading inserted in the middle)?** The SPL block's section shrinks. The grounding hash changes because the set of leaves in the section changed. This correctly triggers drift detection. Recommendation: this is the right behaviour — restructuring a section is a meaningful change.
 
-6. **Should the vault root hash be exposed in `zetl stats` or only internally?** Exposing it in stats gives agents a coordination checkpoint. Recommendation: include it in `zetl stats` output as `vault_content_hash`.
+6. **Should the vault root hash be exposed in `ztl stats` or only internally?** Exposing it in stats gives agents a coordination checkpoint. Recommendation: include it in `ztl stats` output as `vault_content_hash`.
 
 ---
 

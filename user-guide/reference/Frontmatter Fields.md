@@ -5,7 +5,7 @@ tags: [reference, frontmatter, metadata]
 
 # Frontmatter Fields
 
-Frontmatter is YAML at the very top of a page, fenced by `---` lines. zetl reads a handful of reserved keys — everything else passes through untouched for templates, hooks, and search. **Nothing is required.** A page with no frontmatter at all is valid.
+Frontmatter is YAML at the very top of a page, fenced by `---` lines. ztl reads a handful of reserved keys — everything else passes through untouched for templates, hooks, and search. **Nothing is required.** A page with no frontmatter at all is valid.
 
 ```markdown
 ---
@@ -22,31 +22,31 @@ Niklas Luhmann's slip-box system…
 
 ## Reserved keys
 
-zetl inspects these during indexing and rendering:
+ztl inspects these during indexing and rendering:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
 | `title` | string | Display title. Falls back to the filename stem when absent. Does *not* rename the file or change its wikilink target. |
 | `parser` | string | Force a specific parser for this page. Values: `commonmark` (default) or `pandoc`. See [[Writing Pages]]. |
-| `tags` | list of strings | Surfaced in templates and in `zetl search --path`. Drives the tag cloud. |
+| `tags` | list of strings | Surfaced in templates and in `ztl search --path`. Drives the tag cloud. |
 | `description` | string | Plain-text `<meta name="description">` / social-preview text. Falls back to the first paragraph. |
 
-No key is mandatory. Omit any of them and zetl infers a sensible default.
+No key is mandatory. Omit any of them and ztl infers a sensible default.
 
 ## Parser selection
 
 The `parser:` key wins over every other selector. Precedence (highest to lowest):
 
 1. `parser:` in the page's frontmatter
-2. First matching `[[parse.rule]]` glob in `.zetl/config.toml`
-3. Top-level `[parse] default` in `.zetl/config.toml`
-4. `commonmark` (zetl's built-in default)
+2. First matching `[[parse.rule]]` glob in `.ztl/config.toml`
+3. Top-level `[parse] default` in `.ztl/config.toml`
+4. `commonmark` (ztl's built-in default)
 
-An unknown parser name (e.g. `parser: djot` when only `commonmark` is registered) produces a per-page error and the page is skipped — the rest of the build proceeds. Run `zetl ecosystem check` to see which parsers are available.
+An unknown parser name (e.g. `parser: djot` when only `commonmark` is registered) produces a per-page error and the page is skipped — the rest of the build proceeds. Run `ztl ecosystem check` to see which parsers are available.
 
 ## Convention-only keys
 
-The following are *conventions*, not reserved — zetl does not parse them, but templates and hooks consume them by name. Use whichever match your workflow.
+The following are *conventions*, not reserved — ztl does not parse them, but templates and hooks consume them by name. Use whichever match your workflow.
 
 | Key | Convention |
 | --- | --- |
@@ -94,7 +94,7 @@ If you want `[[The Zettelkasten Method]]` to resolve, rename the file.
 
 ## Interaction with search
 
-`zetl search` reads both the body *and* the serialised frontmatter text. A query for `status: draft` matches draft pages. `tags:` values are searchable by their string.
+`ztl search` reads both the body *and* the serialised frontmatter text. A query for `status: draft` matches draft pages. `tags:` values are searchable by their string.
 
 ## Interaction with SPL
 

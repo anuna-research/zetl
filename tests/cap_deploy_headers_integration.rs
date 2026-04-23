@@ -2,9 +2,9 @@
 //! end integration tests for SPEC-034 REQ-3407 / REQ-3418 / REQ-3428
 //! (CON-3406, TEST-3407, TEST-3418, TEST-3428).
 //!
-//! Drives `zetl::cap::build::run_capability_build` end-to-end over a
+//! Drives `ztl::cap::build::run_capability_build` end-to-end over a
 //! minimal vault and asserts that every deploy recipe lands under
-//! `<out_dir>/_zetl/deploy/` with the mandated header values — for
+//! `<out_dir>/_ztl/deploy/` with the mandated header values — for
 //! the default `[access.cache]` config and for an operator override
 //! within the `[60, 3600]` bounds. The out-of-bounds override is
 //! asserted to short-circuit the build before any ciphertext lands.
@@ -16,16 +16,16 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use tempfile::TempDir;
 
-use zetl::cap::build::{run_capability_build, BuildConfig, PageInput, Visibility};
-use zetl::cap::genkey::{
+use ztl::cap::build::{run_capability_build, BuildConfig, PageInput, Visibility};
+use ztl::cap::genkey::{
     build_secret, decode_secret, encode_secret, ParsedSecret, SECRET_VERSION_V1,
 };
-use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
-use zetl::cap::recipients::parsing::{
+use ztl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
+use ztl::cap::recipients::parsing::{
     Cohort, CohortMode, RecipientsFile, VaultSection, AGE_RECIPIENT_V1_PREFIX,
 };
-use zetl::cap::scoping::access_config::{AccessConfig, AccessConfigError, CacheConfig};
-use zetl::cap::sign::VaultSigningKey;
+use ztl::cap::scoping::access_config::{AccessConfig, AccessConfigError, CacheConfig};
+use ztl::cap::sign::VaultSigningKey;
 
 fn sample_secret() -> ParsedSecret {
     let random = [0x42u8; 32];
@@ -127,7 +127,7 @@ fn mk_cfg(out: &std::path::Path, cache: CacheConfig) -> BuildConfig {
 }
 
 /// TEST-3407 / TEST-3418 / TEST-3428: every recipe the spec names
-/// lands under `_zetl/deploy/` with the fixed + operator-tunable
+/// lands under `_ztl/deploy/` with the fixed + operator-tunable
 /// header values.
 #[test]
 fn default_build_emits_every_deploy_recipe_with_spec_headers() {
@@ -144,7 +144,7 @@ fn default_build_emits_every_deploy_recipe_with_spec_headers() {
     )
     .expect("build");
 
-    let deploy = tmp.path().join("_zetl").join("deploy");
+    let deploy = tmp.path().join("_ztl").join("deploy");
     for name in [
         "README.md",
         "nginx.conf.snippet",
@@ -190,8 +190,8 @@ fn default_build_emits_every_deploy_recipe_with_spec_headers() {
     assert!(nginx.contains("location = /logout"));
 
     let caddy = fs::read_to_string(deploy.join("Caddyfile.snippet")).unwrap();
-    assert!(caddy.contains("@zetl_cap path /c/*"));
-    assert!(caddy.contains("@zetl_shim path /assets/shim.js"));
+    assert!(caddy.contains("@ztl_cap path /c/*"));
+    assert!(caddy.contains("@ztl_shim path /assets/shim.js"));
     assert!(caddy.contains("private, max-age=300, must-revalidate"));
     assert!(caddy.contains("public, max-age=31536000, immutable"));
 
@@ -229,7 +229,7 @@ fn operator_max_age_override_propagates_to_every_recipe() {
     )
     .expect("build");
 
-    let deploy = tmp.path().join("_zetl").join("deploy");
+    let deploy = tmp.path().join("_ztl").join("deploy");
     for name in [
         "nginx.conf.snippet",
         "Caddyfile.snippet",
@@ -281,7 +281,7 @@ fn out_of_bounds_max_age_rejects_build() {
         );
         // No deploy recipes written.
         assert!(
-            !tmp.path().join("_zetl").join("deploy").exists(),
+            !tmp.path().join("_ztl").join("deploy").exists(),
             "deploy recipes should not exist after rejected build"
         );
 
@@ -319,7 +319,7 @@ fn deploy_recipe_emission_is_additive_over_ciphertext_tree() {
     assert!(envelope_path.is_file(), "ciphertext envelope missing");
     assert!(
         tmp.path()
-            .join("_zetl")
+            .join("_ztl")
             .join("deploy")
             .join("_headers")
             .is_file(),
@@ -329,6 +329,6 @@ fn deploy_recipe_emission_is_additive_over_ciphertext_tree() {
     // Envelope + deploy tree are siblings under out_dir; neither
     // interferes with the other's directory layout.
     let envelope_bytes = fs::read(&envelope_path).unwrap();
-    let parsed = zetl::cap::sign::parse_envelope(&envelope_bytes).expect("parse");
+    let parsed = ztl::cap::sign::parse_envelope(&envelope_bytes).expect("parse");
     assert_eq!(parsed.header.slug, "welcome");
 }

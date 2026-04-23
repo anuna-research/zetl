@@ -6,18 +6,18 @@
 //! The unit tests beside the registry in `src/ecosystems/registry.rs`
 //! cover pure-data invariants (unique ids, non-empty slices, canonical
 //! ordering); this file is the public-facing gate that exercises the
-//! registry through `zetl::ecosystems` and cross-checks the on-disk
-//! `tools/zetl-ecosystem-matrix.toml` payload.
+//! registry through `ztl::ecosystems` and cross-checks the on-disk
+//! `tools/ztl-ecosystem-matrix.toml` payload.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use zetl::ecosystems::{self, Ecosystem};
+use ztl::ecosystems::{self, Ecosystem};
 
 fn matrix_path() -> PathBuf {
     // CARGO_MANIFEST_DIR points at the crate root — the matrix file
-    // lives at `tools/zetl-ecosystem-matrix.toml` relative to that.
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tools/zetl-ecosystem-matrix.toml")
+    // lives at `tools/ztl-ecosystem-matrix.toml` relative to that.
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tools/ztl-ecosystem-matrix.toml")
 }
 
 fn load_matrix() -> toml::Value {
@@ -125,7 +125,7 @@ fn test_3301_default_stage_is_supported() {
 #[test]
 fn matrix_lint_every_registered_ecosystem_has_a_matrix_section() {
     // Adding an entry to ECOSYSTEMS without a corresponding
-    // [ecosystem.<id>] section in tools/zetl-ecosystem-matrix.toml
+    // [ecosystem.<id>] section in tools/ztl-ecosystem-matrix.toml
     // fails this test — the acceptance clause "registering a new
     // ecosystem requires both code + matrix entry (lint enforced)"
     // (SPEC-033 task-eco-registry) lives here.
@@ -135,7 +135,7 @@ fn matrix_lint_every_registered_ecosystem_has_a_matrix_section() {
         assert!(
             matrix_ids.contains(entry.id),
             "ecosystem '{}' is registered in code but has no [ecosystem.{}] \
-             section in tools/zetl-ecosystem-matrix.toml — add one before merging",
+             section in tools/ztl-ecosystem-matrix.toml — add one before merging",
             entry.id,
             entry.id,
         );
@@ -154,7 +154,7 @@ fn matrix_lint_every_matrix_section_is_registered() {
     for id in &matrix_ids {
         assert!(
             registered.contains(id.as_str()),
-            "tools/zetl-ecosystem-matrix.toml has section [ecosystem.{}] \
+            "tools/ztl-ecosystem-matrix.toml has section [ecosystem.{}] \
              but no matching entry in src/ecosystems/registry.rs",
             id,
         );
@@ -195,7 +195,7 @@ fn cargo_features_cover_every_registered_ecosystem() {
     // Every `feature_flag` declared in `src/ecosystems/registry.rs` must
     // exist as a `[features]` entry in Cargo.toml — otherwise the
     // `--features ecosystem-<id>` cargo invocation SPEC-033 REQ-3302
-    // advertises to users (and the `zetl ecosystem check` diagnostic
+    // advertises to users (and the `ztl ecosystem check` diagnostic
     // surfaces in its install hint) would silently resolve to a typo.
     let features = load_cargo_features();
     for entry in ecosystems::all() {

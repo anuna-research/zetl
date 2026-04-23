@@ -5,13 +5,13 @@ tags: [concepts, history, context]
 
 # Intellectual Heritage
 
-zetl sits at the end of a long line of ideas about how humans extend their memory and organise thought. None of the concepts behind it — linked notes, associative trails, transclusion, graph queries — were invented last decade. This page traces the lineage so you can see what zetl inherits, and what it deliberately leaves out.
+ztl sits at the end of a long line of ideas about how humans extend their memory and organise thought. None of the concepts behind it — linked notes, associative trails, transclusion, graph queries — were invented last decade. This page traces the lineage so you can see what ztl inherits, and what it deliberately leaves out.
 
 ---
 
 ## The Zettelkasten (16th century – present)
 
-The name "zetl" comes from *Zettelkasten* — German for "slip-box" or "card file". It is a note-taking method in which ideas are written on individual slips of paper, each given a unique identifier, and then linked to each other by subject headings or explicit cross-references.
+The name "ztl" comes from *Zettelkasten* — German for "slip-box" or "card file". It is a note-taking method in which ideas are written on individual slips of paper, each given a unique identifier, and then linked to each other by subject headings or explicit cross-references.
 
 The practice is older than it sounds. Conrad Gessner (1516–1565) invented an early version in which individual notes could be rearranged at will — an explicit break from the bound commonplace book tradition. Thomas Harrison's "Ark of Studies" (*Arca studiorum*, c. 1640s) described a small cabinet where notes were attached to metal hooks labelled by subject heading. Carl Linnaeus used standardised paper slips to record research in 1767.
 
@@ -19,7 +19,7 @@ The method's most famous practitioner was the German sociologist Niklas Luhmann 
 
 The Zettelkasten's key insight is that a note's value comes less from its content than from its *connections*. A note isolated in a folder is static; the same note linked to twenty others becomes part of an emergent structure that can surprise its author.
 
-zetl inherits the vocabulary directly: a *vault* is a Zettelkasten, a *wikilink* is a slip-to-slip reference, `zetl backlinks` gives you Luhmann's "which cards point here?" lookup.
+ztl inherits the vocabulary directly: a *vault* is a Zettelkasten, a *wikilink* is a slip-to-slip reference, `ztl backlinks` gives you Luhmann's "which cards point here?" lookup.
 
 ---
 
@@ -31,7 +31,7 @@ In July 1945, Vannevar Bush — then head of the US Office of Scientific Researc
 
 Bush's Memex would have been a large desk with microfilm storage. The user could call up any document with a few keystrokes, annotate it, and — crucially — create *associative trails*: named chains of linked frames that could be stored, shared with colleagues, and re-entered later. The trail was Bush's answer to what he saw as the fatal flaw of conventional indexing: "the human mind operates by association. With one item in its grasp, it snaps instantly to the next that is suggested by the association of thoughts."
 
-The Memex was never built — the microfilm technology of the day could not support it — but the conceptual architecture shaped nearly every hypertext system that followed. The associative trail is, in essence, a named link graph. Bush's complaint about rigid hierarchical filing ("artificiality") is the same complaint that motivates most modern personal knowledge management tools, including zetl.
+The Memex was never built — the microfilm technology of the day could not support it — but the conceptual architecture shaped nearly every hypertext system that followed. The associative trail is, in essence, a named link graph. Bush's complaint about rigid hierarchical filing ("artificiality") is the same complaint that motivates most modern personal knowledge management tools, including ztl.
 
 ---
 
@@ -43,7 +43,7 @@ Nelson's insight went further than Bush's in one important way: he wanted links 
 
 Xanadu's other key concept was **transclusion**: rather than copying text into a new document, you include a live reference to the original. When the source changes, so does every transclusion. Nelson saw this as solving plagiarism, enabling micropayment for content, and making the web's link-rot problem structurally impossible.
 
-Project Xanadu was notoriously difficult to ship — Autodesk funded a version in the 1980s that was never completed — but nearly every idea in it has since been partially implemented somewhere. zetl's `![[embed]]` syntax is transclusion in exactly Nelson's sense: the embedded content renders from the source file; it is not a copy.
+Project Xanadu was notoriously difficult to ship — Autodesk funded a version in the 1980s that was never completed — but nearly every idea in it has since been partially implemented somewhere. ztl's `![[embed]]` syntax is transclusion in exactly Nelson's sense: the embedded content renders from the source file; it is not a copy.
 
 ---
 
@@ -58,22 +58,22 @@ The wiki's key design decisions were:
 
 Wikipedia launched in 2001 on wiki software, eventually becoming the largest reference work ever assembled (7 million English-language articles as of 2026). Enterprise wikis — Confluence, MediaWiki, Notion — replicated the model in controlled environments.
 
-The wiki model proved that linked, collaboratively editable text could scale to enormous size. It also revealed the model's limits: wikis have little inherent structure; they tend toward disorganisation without active curation; and they are built for *shared* knowledge rather than *personal* thinking. The personal knowledge management tools that followed — Roam, Obsidian, Logseq, zetl — took the wikilink as the fundamental primitive while reorienting the tool toward individual use, offline ownership, and structured query.
+The wiki model proved that linked, collaboratively editable text could scale to enormous size. It also revealed the model's limits: wikis have little inherent structure; they tend toward disorganisation without active curation; and they are built for *shared* knowledge rather than *personal* thinking. The personal knowledge management tools that followed — Roam, Obsidian, Logseq, ztl — took the wikilink as the fundamental primitive while reorienting the tool toward individual use, offline ownership, and structured query.
 
 ---
 
-## Where zetl fits
+## Where ztl fits
 
-zetl is not trying to be any of the above. It takes specific, bounded ideas from each:
+ztl is not trying to be any of the above. It takes specific, bounded ideas from each:
 
-| Ancestor | What zetl takes |
+| Ancestor | What ztl takes |
 |----------|----------------|
 | Zettelkasten | Local files as primary record; links as first-class objects; backlink traversal |
-| Memex | Associative trails surfaced by graph queries (`zetl links`, `zetl backlinks`) |
+| Memex | Associative trails surfaced by graph queries (`ztl links`, `ztl backlinks`) |
 | Xanadu | Transclusion (`![[embed]]`); bidirectional links; vault-first permanence |
 | Wiki | Wikilink syntax; human-readable Markdown; web UI for browsing |
 
-What zetl explicitly does *not* do: it does not own your data (files stay as Markdown), it does not require a server (the index is a local cache), and it does not try to replace your editor. The intellectual heritage here is long — but the design constraint is minimal.
+What ztl explicitly does *not* do: it does not own your data (files stay as Markdown), it does not require a server (the index is a local cache), and it does not try to replace your editor. The intellectual heritage here is long — but the design constraint is minimal.
 
 ---
 
@@ -87,7 +87,7 @@ What zetl explicitly does *not* do: it does not own your data (files stay as Mar
 
 ## Related
 
-- [[What is zetl]]
+- [[What is ztl]]
 - [[Wikilinks]]
 - [[The Link Graph]]
 - [[Embeds and Transclusion]]

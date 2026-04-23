@@ -7,22 +7,22 @@
   /* Inject the small CSS this needs; page.html carries no per-theme styles.
      Runs before the grouping so the folder headings render with the right
      type treatment on first paint. */
-  if (!document.getElementById('zetl-backlinks-style')) {
+  if (!document.getElementById('ztl-backlinks-style')) {
     var s = document.createElement('style');
-    s.id = 'zetl-backlinks-style';
+    s.id = 'ztl-backlinks-style';
     s.textContent = ''
-      + '.zetl-backlink-hidden{display:none}'
-      + '.zetl-backlink-folder{margin-top:.6rem;font-size:.65rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;opacity:.5}'
-      + '.zetl-backlink-folder:first-child{margin-top:0}'
-      + '.zetl-backlink-more button{font-size:.75rem;color:oklch(var(--p));background:transparent;border:0;padding:.15rem 0;cursor:pointer}'
-      + '.zetl-backlink-more button:hover{text-decoration:underline}';
+      + '.ztl-backlink-hidden{display:none}'
+      + '.ztl-backlink-folder{margin-top:.6rem;font-size:.65rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;opacity:.5}'
+      + '.ztl-backlink-folder:first-child{margin-top:0}'
+      + '.ztl-backlink-more button{font-size:.75rem;color:oklch(var(--p));background:transparent;border:0;padding:.15rem 0;cursor:pointer}'
+      + '.ztl-backlink-more button:hover{text-decoration:underline}';
     document.head.appendChild(s);
   }
 })();
 (function(){
-  var ul = document.querySelector('ul.zetl-backlinks');
+  var ul = document.querySelector('ul.ztl-backlinks');
   if (!ul) return;
-  var items = Array.prototype.slice.call(ul.querySelectorAll('.zetl-backlink'));
+  var items = Array.prototype.slice.call(ul.querySelectorAll('.ztl-backlink'));
   if (items.length < 2) return;
 
   var SHOW_LIMIT = 5;
@@ -47,23 +47,23 @@
     var label = key === '\u0000root' ? 'root' : key;
     if (keys.length > 1) {
       var h = document.createElement('li');
-      h.className = 'zetl-backlink-folder';
+      h.className = 'ztl-backlink-folder';
       h.textContent = label;
       frag.appendChild(h);
     }
     bucket.forEach(function(li, i){
-      if (i >= SHOW_LIMIT) li.classList.add('zetl-backlink-hidden');
+      if (i >= SHOW_LIMIT) li.classList.add('ztl-backlink-hidden');
       frag.appendChild(li);
     });
     if (bucket.length > SHOW_LIMIT) {
       var more = document.createElement('li');
-      more.className = 'zetl-backlink-more';
+      more.className = 'ztl-backlink-more';
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.textContent = 'Show ' + (bucket.length - SHOW_LIMIT) + ' more';
       btn.setAttribute('aria-expanded', 'false');
       btn.addEventListener('click', function(){
-        bucket.forEach(function(li){ li.classList.remove('zetl-backlink-hidden'); });
+        bucket.forEach(function(li){ li.classList.remove('ztl-backlink-hidden'); });
         btn.setAttribute('aria-expanded', 'true');
         more.hidden = true;
       });

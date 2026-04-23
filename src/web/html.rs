@@ -40,7 +40,7 @@ pub fn layout(
     var searchIndex=null;
 
     var pageList=(function(){
-      try{return JSON.parse(document.getElementById('zetl-search-index').textContent||'[]');}
+      try{return JSON.parse(document.getElementById('ztl-search-index').textContent||'[]');}
       catch(e){return [];}
     })();
 
@@ -150,7 +150,7 @@ pub fn layout(
 
     // Embedded page list for fast client-side fallback on short queries (<=2 chars)
     var pageList=(function(){
-      try{return JSON.parse(document.getElementById('zetl-search-index').textContent||'[]');}
+      try{return JSON.parse(document.getElementById('ztl-search-index').textContent||'[]');}
       catch(e){return [];}
     })();
 
@@ -313,8 +313,8 @@ pub fn layout(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{title} — zetl</title>
-  <script type="application/json" id="zetl-search-index">{search_index}</script>
+  <title>{title} — ztl</title>
+  <script type="application/json" id="ztl-search-index">{search_index}</script>
   <link href="https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
   <style>
@@ -549,7 +549,7 @@ pub fn layout(
                   d="M4 6h16M4 12h16M4 18h16"/>
           </svg>
         </label>
-        <span class="text-lg font-bold ml-2">zetl</span>
+        <span class="text-lg font-bold ml-2">ztl</span>
       </div>
 
       {main_section}
@@ -559,7 +559,7 @@ pub fn layout(
     <div class="drawer-side">
       <label for="sidebar-toggle" aria-label="close sidebar" class="drawer-overlay"></label>
       <aside class="bg-base-200 w-64 min-h-screen p-4">
-        <a href="/" class="text-xl font-bold mb-4 block">zetl</a>
+        <a href="/" class="text-xl font-bold mb-4 block">ztl</a>
         <div class="divider my-1"></div>
         <button class="search-btn" onclick="openSearch()">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>

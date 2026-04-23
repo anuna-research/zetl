@@ -41,7 +41,7 @@ SPEC-018 introduced hybrid BM25+vector search with reciprocal rank fusion. This 
 
 2. **Rank fusion ceiling.** RRF treats BM25 and vector signals as equally reliable. In practice, some queries are better served by lexical matching (precise technical terms) while others need semantic understanding (natural-language questions). A flat fusion with no query-level adaptation leaves relevance on the table.
 
-3. **No graph awareness in ranking.** zetl's distinguishing feature is the link graph, but the search pipeline ignores it entirely during ranking. A note two hops from the user's current focus page should rank higher than an equally relevant note in an unconnected cluster — this is the Zettelkasten insight that proximity in the graph reflects conceptual relevance.
+3. **No graph awareness in ranking.** ztl's distinguishing feature is the link graph, but the search pipeline ignores it entirely during ranking. A note two hops from the user's current focus page should rank higher than an equally relevant note in an unconnected cluster — this is the Zettelkasten insight that proximity in the graph reflects conceptual relevance.
 
 ### 1.2 Core Insight
 
@@ -49,13 +49,13 @@ A small local LLM (1-2B parameters, GGUF format, CPU inference) can serve three 
 
 - **Query expander**: Generate lexical, semantic, and hypothetical-document (HyDE) reformulations of the original query, casting a wider retrieval net.
 - **Reranker**: Score candidate results with a cross-encoder-style yes/no relevance judgment, using logprob confidence as a continuous score.
-- **Graph-aware booster**: When combined with zetl's link graph, reranking scores can be blended with graph-distance signals to produce a ranking that respects both content relevance and structural proximity.
+- **Graph-aware booster**: When combined with ztl's link graph, reranking scores can be blended with graph-distance signals to produce a ranking that respects both content relevance and structural proximity.
 
-The key architectural constraint is that all inference runs locally via in-process Rust bindings to llama.cpp. No external API calls, no Python sidecar, no GPU requirement. This preserves zetl's local-first, single-binary, zero-config philosophy.
+The key architectural constraint is that all inference runs locally via in-process Rust bindings to llama.cpp. No external API calls, no Python sidecar, no GPU requirement. This preserves ztl's local-first, single-binary, zero-config philosophy.
 
 ### 1.3 Design Philosophy
 
-1. **Local-first LLM.** All models run in-process via `llama-cpp-2` Rust bindings. No network calls at query time. Models are GGUF files cached in `~/.cache/zetl/models/`.
+1. **Local-first LLM.** All models run in-process via `llama-cpp-2` Rust bindings. No network calls at query time. Models are GGUF files cached in `~/.cache/ztl/models/`.
 2. **Graceful degradation.** Every LLM-augmented stage is optional. `--no-rerank` skips the reranker. If models are missing, fall back to SPEC-018 hybrid search with a warning. The pipeline never fails because a model is unavailable.
 3. **Latency budget.** The full pipeline (expand + multi-retrieve + rerank) must complete within 2 seconds on CPU for a 5,000-page vault. Each stage has an independent timeout; if a stage exceeds its budget, its output is discarded and the pipeline proceeds with what it has.
 4. **Graph is a first-class signal.** Link-graph distance is not a filter (that is SPEC-013's `--near`) but a continuous boost factor blended into the final score. Graph proximity and content relevance reinforce each other.
@@ -71,8 +71,8 @@ The key architectural constraint is that all inference runs locally via in-proce
 - LLM reranking with logprob-based confidence scoring
 - Position-aware blending of RRF and reranker scores
 - Graph-distance boosting relative to a focus page
-- Model auto-download to `~/.cache/zetl/models/`
-- `zetl search --augmented` as the top-tier search mode
+- Model auto-download to `~/.cache/ztl/models/`
+- `ztl search --augmented` as the top-tier search mode
 - `--no-rerank` flag for fast mode
 - `--explain` flag for score trace output
 - Feature gating behind `--features llm-search`
@@ -95,11 +95,11 @@ A knowledge worker with a 3,000-page vault spanning multiple disciplines. They s
 
 ### 2.2 Agent Pipeline
 
-An LLM agent uses `zetl search --augmented` to gather context for answering a user's question. The agent's natural-language query benefits from HyDE expansion (the LLM generates a hypothetical answer passage, which embeds closer to actual vault content than the question does). The agent also passes `--focus economics/monetary-policy` to boost results near the user's current working context in the graph.
+An LLM agent uses `ztl search --augmented` to gather context for answering a user's question. The agent's natural-language query benefits from HyDE expansion (the LLM generates a hypothetical answer passage, which embeds closer to actual vault content than the question does). The agent also passes `--focus economics/monetary-policy` to boost results near the user's current working context in the graph.
 
 ### 2.3 Fast-Mode User
 
-A user who values speed over exhaustiveness. They use `zetl search --augmented --no-rerank` to get the benefits of query expansion without the latency cost of the reranker. On their older laptop, the reranker adds 800ms; skipping it keeps total latency under 500ms.
+A user who values speed over exhaustiveness. They use `ztl search --augmented --no-rerank` to get the benefits of query expansion without the latency cost of the reranker. On their older laptop, the reranker adds 800ms; skipping it keeps total latency under 500ms.
 
 ---
 
@@ -107,7 +107,7 @@ A user who values speed over exhaustiveness. They use `zetl search --augmented -
 
 | ID      | Requirement |
 |---------|-------------|
-| REQ-135 | `zetl search --augmented <QUERY>` runs the full LLM-augmented pipeline: query expansion → multi-query retrieval → RRF fusion → LLM reranking → graph boosting → position-aware blending |
+| REQ-135 | `ztl search --augmented <QUERY>` runs the full LLM-augmented pipeline: query expansion → multi-query retrieval → RRF fusion → LLM reranking → graph boosting → position-aware blending |
 | REQ-136 | Query expansion generates three variant queries from the original: (a) a lexical reformulation emphasising keywords and synonyms, (b) a semantic reformulation as a natural-language statement, (c) a HyDE (Hypothetical Document Embedding) passage that imagines a document answering the query |
 | REQ-137 | Multi-query fusion runs the original query (2x weight) and all expanded queries through both BM25 and vector retrieval in parallel, then fuses via RRF with k=60 |
 | REQ-138 | LLM reranking scores the top 30 RRF candidates by prompting a reranker model with a yes/no relevance judgment; the score is derived from the logprob of the "yes" token |
@@ -115,7 +115,7 @@ A user who values speed over exhaustiveness. They use `zetl search --augmented -
 | REQ-140 | `--focus <PAGE>` enables graph boosting: results within N hops of the focus page receive a multiplicative boost factor that decays with graph distance (boost = 1.0 + 0.3 / distance; distance 0 = same page = 1.3x, distance 1 = 1.3x, distance 2 = 1.15x, distance 3+ = 1.0x) |
 | REQ-141 | `--no-rerank` skips the LLM reranker and graph boosting stages, returning RRF-fused results from the multi-query expansion (fast mode) |
 | REQ-142 | `--explain` includes a score trace object on each result: `{ bm25_rank, vector_rank, rrf_score, reranker_score, graph_distance, graph_boost, final_score }` |
-| REQ-143 | Models are auto-downloaded to `~/.cache/zetl/models/` on first use, with SHA-256 validation, progress reporting on stderr, and a `--model-dir` override |
+| REQ-143 | Models are auto-downloaded to `~/.cache/ztl/models/` on first use, with SHA-256 validation, progress reporting on stderr, and a `--model-dir` override |
 | REQ-144 | The feature is gated behind `--features llm-search`; this feature implies `semantic`. When the feature is not compiled, `--augmented` prints a clear error message |
 | REQ-145 | If no LLM models are available at query time (not downloaded, path invalid), the pipeline falls back to SPEC-018 `--hybrid` behaviour with a warning on stderr |
 
@@ -279,10 +279,10 @@ final_score   = blended_score * graph_boost(d)
 ### 4.3 Storage Layout
 
 ```
-~/.cache/zetl/models/
+~/.cache/ztl/models/
 ├── manifest.json              (model registry: name, sha256, size, url)
-├── zetl-expand-1.7b-q4.gguf  (query expansion model)
-└── zetl-rerank-0.6b-q4.gguf  (reranker model)
+├── ztl-expand-1.7b-q4.gguf  (query expansion model)
+└── ztl-rerank-0.6b-q4.gguf  (reranker model)
 ```
 
 Models are stored in the user-level cache, not the vault, because they are large (0.5–1.5GB) and shared across vaults.
@@ -326,16 +326,16 @@ Dependencies point inward: shell → core. Core MUST NOT import from shell. The 
 
 ## 5. Contracts
 
-### CON-039: `zetl search --augmented` CLI Contract
+### CON-039: `ztl search --augmented` CLI Contract
 
 ```
 Endpoint: CLI subcommand
-Command: zetl search --augmented <QUERY> [--limit N] [--path GLOB]
+Command: ztl search --augmented <QUERY> [--limit N] [--path GLOB]
          [--focus PAGE] [--no-rerank] [--explain] [--model-dir PATH]
 
 Pre-conditions:
   - QUERY is non-empty
-  - Tantivy index and vector index exist at .zetl/search/ (built by `zetl index`)
+  - Tantivy index and vector index exist at .ztl/search/ (built by `ztl index`)
   - Binary compiled with --features llm-search
 
 Post-conditions:
@@ -352,7 +352,7 @@ Fallback behaviour:
   - Reranker timeout (partial) → scored candidates reranked, remainder keeps RRF rank
 
 Error model:
-  - Missing search index → "Search index not found. Run `zetl index` first."
+  - Missing search index → "Search index not found. Run `ztl index` first."
   - Feature not compiled → "Augmented search requires --features llm-search"
   - Empty query → "Empty search query"
 
@@ -488,11 +488,11 @@ Total                    ~1911ms    Under 2000ms budget
 
 | ID      | Signal | Type | Condition |
 |---------|--------|------|-----------|
-| OBS-030 | `[zetl] augmented-search: expansion_ms=N retrieval_ms=M rerank_ms=K total_ms=T` | Log (stderr) | Always when `--augmented` is used |
-| OBS-031 | `[zetl] query-expansion: variants=N model=MODEL timeout=BOOL` | Log (stderr) | When `--verbose` flag is set |
-| OBS-032 | `[zetl] reranker: scored=N/30 model=MODEL timeout=BOOL` | Log (stderr) | When `--verbose` flag is set |
-| OBS-033 | `[zetl] graph-boost: focus=PAGE distances=[d1,d2,...] boosted=N` | Log (stderr) | When `--verbose` and `--focus` are both set |
-| OBS-034 | `[zetl] model-download: name=NAME size_mb=S duration_s=D` | Log (stderr) | During model auto-download |
+| OBS-030 | `[ztl] augmented-search: expansion_ms=N retrieval_ms=M rerank_ms=K total_ms=T` | Log (stderr) | Always when `--augmented` is used |
+| OBS-031 | `[ztl] query-expansion: variants=N model=MODEL timeout=BOOL` | Log (stderr) | When `--verbose` flag is set |
+| OBS-032 | `[ztl] reranker: scored=N/30 model=MODEL timeout=BOOL` | Log (stderr) | When `--verbose` flag is set |
+| OBS-033 | `[ztl] graph-boost: focus=PAGE distances=[d1,d2,...] boosted=N` | Log (stderr) | When `--verbose` and `--focus` are both set |
+| OBS-034 | `[ztl] model-download: name=NAME size_mb=S duration_s=D` | Log (stderr) | During model auto-download |
 
 ---
 
@@ -524,7 +524,7 @@ Total                    ~1911ms    Under 2000ms budget
 
 - C++ build dependency via `cmake`. Mitigated by `llama-cpp-2`'s vendored build (automatic cmake invocation during `cargo build`).
 - Binary size increases ~5-10MB. Acceptable given the existing ONNX Runtime dependency (~20-30MB) from SPEC-018.
-- Model files are large (0.5-1.5GB). Mitigated by lazy download and user-level cache in `~/.cache/zetl/models/`.
+- Model files are large (0.5-1.5GB). Mitigated by lazy download and user-level cache in `~/.cache/ztl/models/`.
 
 **Risks**:
 
@@ -558,8 +558,8 @@ Total                    ~1911ms    Under 2000ms budget
 **Configuration override**: Users can specify alternative models via environment variables:
 
 ```
-ZETL_EXPAND_MODEL=~/.cache/zetl/models/custom-expand.gguf
-ZETL_RERANK_MODEL=~/.cache/zetl/models/custom-rerank.gguf
+ztl_EXPAND_MODEL=~/.cache/ztl/models/custom-expand.gguf
+ztl_RERANK_MODEL=~/.cache/ztl/models/custom-rerank.gguf
 ```
 
 ### ADR-064: Graceful Degradation and the Fallback Ladder
@@ -590,7 +590,7 @@ Full pipeline (--augmented)
   │        with warning: "LLM models not found. Falling back to hybrid search."
   │
   └─ Vector index not available
-      └─► Error: "Search index not found. Run `zetl index` first."
+      └─► Error: "Search index not found. Run `ztl index` first."
 ```
 
 **Rationale**: Users should never be surprised by a search failure caused by optional LLM components. The pipeline degrades in quality, not in availability. Warnings on stderr inform the user about degraded mode without polluting stdout (which carries JSON results for machine consumption).
@@ -607,19 +607,19 @@ A `manifest.json` file in the model directory tracks available models:
 {
   "models": [
     {
-      "name": "zetl-expand-1.7b-q4",
-      "filename": "zetl-expand-1.7b-q4.gguf",
+      "name": "ztl-expand-1.7b-q4",
+      "filename": "ztl-expand-1.7b-q4.gguf",
       "sha256": "abc123...",
       "size_bytes": 1073741824,
-      "url": "https://huggingface.co/zetl/zetl-expand-1.7b-q4/resolve/main/model.gguf",
+      "url": "https://huggingface.co/ztl/ztl-expand-1.7b-q4/resolve/main/model.gguf",
       "role": "expander"
     },
     {
-      "name": "zetl-rerank-0.6b-q4",
-      "filename": "zetl-rerank-0.6b-q4.gguf",
+      "name": "ztl-rerank-0.6b-q4",
+      "filename": "ztl-rerank-0.6b-q4.gguf",
       "sha256": "def456...",
       "size_bytes": 419430400,
-      "url": "https://huggingface.co/zetl/zetl-rerank-0.6b-q4/resolve/main/model.gguf",
+      "url": "https://huggingface.co/ztl/ztl-rerank-0.6b-q4/resolve/main/model.gguf",
       "role": "reranker"
     }
   ]
@@ -629,22 +629,22 @@ A `manifest.json` file in the model directory tracks available models:
 ### 9.2 Download Flow
 
 ```
-zetl search --augmented "query"
+ztl search --augmented "query"
   │
-  ├─ ModelManager::ensure_model("zetl-expand-1.7b-q4")
-  │   ├─ Check ~/.cache/zetl/models/zetl-expand-1.7b-q4.gguf exists
+  ├─ ModelManager::ensure_model("ztl-expand-1.7b-q4")
+  │   ├─ Check ~/.cache/ztl/models/ztl-expand-1.7b-q4.gguf exists
   │   ├─ If exists: validate SHA-256 → return path
   │   ├─ If missing: print "Downloading expansion model (1.0 GB)..." on stderr
   │   │              download with progress bar → validate SHA-256 → return path
   │   └─ If download fails: return None (triggers fallback per ADR-064)
   │
-  └─ ModelManager::ensure_model("zetl-rerank-0.6b-q4")
+  └─ ModelManager::ensure_model("ztl-rerank-0.6b-q4")
       └─ (same flow)
 ```
 
 ### 9.3 Offline Mode
 
-`ZETL_OFFLINE=1` disables all network access for model downloads. If a model is not already cached, the pipeline falls back per ADR-064 without attempting a download.
+`ztl_OFFLINE=1` disables all network access for model downloads. If a model is not already cached, the pipeline falls back per ADR-064 without attempting a download.
 
 ---
 
@@ -701,13 +701,13 @@ zetl search --augmented "query"
 
 ## 12. Web Integration
 
-### Serve Mode (`zetl serve`)
+### Serve Mode (`ztl serve`)
 
 - `GET /api/search?q=QUERY&mode=augmented&limit=N&focus=PAGE&no_rerank=BOOL` — augmented search
 - `GET /api/search?q=QUERY&mode=augmented&explain=true` — with score traces
 - Existing `mode=hybrid` and `mode=semantic` endpoints unchanged
 
-### Build Mode (`zetl build`)
+### Build Mode (`ztl build`)
 
 - Augmented search is not available in static builds (requires LLM inference at query time)
 - A `llm_search_available: bool` template variable indicates whether augmented search was available at build time
@@ -718,7 +718,7 @@ zetl search --augmented "query"
 
 - **GPU acceleration**: llama.cpp supports CUDA and Metal backends. A future `--gpu` flag could enable GPU inference for faster reranking, making the pipeline viable for larger candidate sets (100+ candidates).
 - **Adaptive query routing**: Use a lightweight classifier to predict whether a query benefits more from BM25, semantic, or augmented search, routing to the appropriate pipeline automatically.
-- **Fine-tuned expansion model**: Train a zetl-specific expansion model on the user's vault content, producing reformulations that use the vault's actual vocabulary.
+- **Fine-tuned expansion model**: Train a ztl-specific expansion model on the user's vault content, producing reformulations that use the vault's actual vocabulary.
 - **Cross-encoder reranking**: Replace the generative yes/no prompt with a true cross-encoder architecture (e.g., via ONNX export) for faster and more accurate reranking.
 - **Shared KV cache**: For the reranker, the query portion of the prompt is identical across all 30 candidates. A shared KV cache for the query prefix would reduce reranking latency by ~30%.
 - **Streaming results**: Return initial RRF results immediately, then update rankings as the reranker scores arrive, providing progressive refinement in the TUI.

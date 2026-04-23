@@ -2,7 +2,7 @@
 //! CON-3304 / ADR-3303 / TEST-3304 + REQ-3309 / TEST-3309).
 //!
 //! These tests exercise the adapter through the public
-//! `zetl::ecosystems::mdbook` surface — the path downstream build/serve
+//! `ztl::ecosystems::mdbook` surface — the path downstream build/serve
 //! wiring will use when invoking a real preprocessor. The shapes
 //! validated here:
 //!
@@ -34,19 +34,19 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use zetl::ecosystems::adapter::{
+use ztl::ecosystems::adapter::{
     run_conformance, EcosystemAdapter, HookContext, PluginManifest, PluginResponse, StageInput,
     StageOutput,
 };
-use zetl::ecosystems::default_fixtures;
-use zetl::ecosystems::manifest::MdbookScope;
-use zetl::ecosystems::mdbook::{
+use ztl::ecosystems::default_fixtures;
+use ztl::ecosystems::manifest::MdbookScope;
+use ztl::ecosystems::mdbook::{
     build_envelope_for_page, extract_chapter_content, mdbook_adapter_ctor, validate_envelope,
     MdbookAdapter, MdbookOptions, ENVELOPE_SCHEMA_PATH, MDBOOK_PROTOCOL_VERSION,
 };
-use zetl::hooks::build_context::{BuildContext, BuildMode, PageMeta};
-use zetl::hooks::pipeline::Stage;
-use zetl::hooks::translators::AstType;
+use ztl::hooks::build_context::{BuildContext, BuildMode, PageMeta};
+use ztl::hooks::pipeline::Stage;
+use ztl::hooks::translators::AstType;
 
 fn build_ctx() -> BuildContext {
     BuildContext::new(
@@ -91,7 +91,7 @@ fn test_3302_mdbook_adapter_passes_conformance_suite() {
 fn mdbook_adapter_is_box_dyn_eligible() {
     let adapter: Box<dyn EcosystemAdapter> = Box::new(MdbookAdapter::new());
     assert_eq!(adapter.id(), "mdbook");
-    assert_eq!(adapter.ast_type(), AstType::ZetlExt);
+    assert_eq!(adapter.ast_type(), AstType::ztlExt);
     assert_eq!(adapter.supported_stages(), &[Stage::PreParse]);
 }
 
@@ -567,8 +567,8 @@ fn envelope_schema_validator() -> jsonschema::Validator {
         .expect("envelope schema compiles")
 }
 
-/// REQ-3309 / CON-3309: the envelope zetl constructs MUST validate
-/// against `tools/zetl-mdbook-envelope-schema-v1.json`. Walks the
+/// REQ-3309 / CON-3309: the envelope ztl constructs MUST validate
+/// against `tools/ztl-mdbook-envelope-schema-v1.json`. Walks the
 /// default conformance corpus so every canonical page content shape
 /// (empty, plain paragraph, paragraph with wikilink) is covered.
 #[test]

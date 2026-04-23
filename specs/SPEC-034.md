@@ -17,7 +17,7 @@ supersedes-internally: |
   (BUG-023), and assorted spec-gap fixes.
 related:
   - SPEC-004   # Web UI and static export (host surface)
-  - SPEC-020   # Collaborative vault ACL — orthogonal, `zetl serve` only
+  - SPEC-020   # Collaborative vault ACL — orthogonal, `ztl serve` only
   - SPEC-032   # Three-stage render hooks (post-render stage is the attach point)
   - SPEC-033   # Ecosystem bridges (unaffected)
 ---
@@ -51,7 +51,7 @@ related:
 
 ## 1. Overview
 
-Zetl builds static HTML sites. This specification introduces a **capability-URL build mode** for `zetl build` that encrypts each page with `age` + signs with Ed25519, such that only designated readers can decrypt, and only operator-signed ciphertexts render, without running any server-side component. Two authentication modes are supported per cohort:
+ztl builds static HTML sites. This specification introduces a **capability-URL build mode** for `ztl build` that encrypts each page with `age` + signs with Ed25519, such that only designated readers can decrypt, and only operator-signed ciphertexts render, without running any server-side component. Two authentication modes are supported per cohort:
 
 1. **Delegated-URL mode (default):** operator generates a reader-specific X25519 keypair, sends the private key to the reader in a URL fragment, reader's browser binds it to a WebAuthn passkey via Trust-on-First-Use (TOFU). After first use, the passkey-wrapped key is the reader's durable credential.
 2. **WebAuthn-PRF-only mode (opt-in, hardened):** reader self-enrols at a static `/enroll.html`, derives a long-term X25519 identity from a **cohort-scoped** PRF output, sends public key to operator out-of-band. URL carries no cryptographic material.
@@ -62,7 +62,7 @@ The deployment surface is entirely static in both modes.
 
 ### 1.0 Relationship to SPEC-020
 
-Orthogonal. SPEC-020 = runtime ACL for `zetl serve`. SPEC-034 = build-time ACL for `zetl build --capability`. A vault may run both.
+Orthogonal. SPEC-020 = runtime ACL for `ztl serve`. SPEC-034 = build-time ACL for `ztl build --capability`. A vault may run both.
 
 ### 1.1 Motivation
 
@@ -78,7 +78,7 @@ Unchanged from v0.3.0 except:
 5. Per-cohort mode + per-cohort PRF salt for cross-cohort unlinkability.
 6. **Content authenticity via signature verification is mandatory.** The shim refuses to render ciphertexts whose signature does not verify against the vault-signing pubkey pinned in the shim bundle.
 7. Graceful fallback for non-PRF browsers.
-8. Orthogonal to `zetl serve`.
+8. Orthogonal to `ztl serve`.
 9. Honest revocation semantics: revocation latency = rebuild + cache TTL; **revocation has no retroactive effect** — past-downloaded content remains decryptable by revoked readers (no forward secrecy).
 10. Read-only.
 
@@ -88,7 +88,7 @@ Unchanged from v0.3.0 except:
 - Real-time revocation.
 - Per-user visibility overrides.
 - Write access.
-- **Forward secrecy.** Retroactive revocation of previously-downloaded content is not provided. Operators for whom this matters must use `zetl serve` (SPEC-020).
+- **Forward secrecy.** Retroactive revocation of previously-downloaded content is not provided. Operators for whom this matters must use `ztl serve` (SPEC-020).
 - **Concealment of cohort-membership size from sophisticated observers.** Padding (REQ-3422) provides indistinguishability against observers who cannot distinguish real from dummy X25519 recipients (i.e., observers without any cohort pubkey). Observers who additionally hold at least one valid cohort pubkey can identify it and subtract, revealing a more-precise count. This is documented, not eliminated.
 - **Concealment of multi-cohort reader membership in delegated-URL mode.** Each grant produces a distinct priv/pub pair; a reader in two cohorts has two separate grants with two different pubkeys, so per-grant linkage is not possible. However, an operator-level adversary with `grants.toml` access sees the mapping. This is inherent to the trust model.
 - **Concealment of cohort membership in hardened mode** is provided by REQ-3414 per-cohort PRF salts (new in v0.4.0).
@@ -118,10 +118,10 @@ Unchanged from v0.3.0 except:
 flowchart TB
     subgraph OperatorMachine["Operator's machine"]
         Vault["Vault<br/>(markdown + config)"]
-        Secret["ZETL_CAP_SECRET<br/>+ vault-signing-key<br/>(password manager)"]
+        Secret["ztl_CAP_SECRET<br/>+ vault-signing-key<br/>(password manager)"]
         Grants["grants.toml<br/>recipients.toml<br/>(git)"]
-        CLI["zetl cap CLI<br/>(invite, revoke, rotate,<br/>genkey, sign)"]
-        Build["zetl build<br/>--capability"]
+        CLI["ztl cap CLI<br/>(invite, revoke, rotate,<br/>genkey, sign)"]
+        Build["ztl build<br/>--capability"]
     end
 
     subgraph DistTree["dist/ tree"]
@@ -162,16 +162,16 @@ flowchart TB
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│              Zetl Capability Page v3                         │
+│              ztl Capability Page v3                         │
 ├─────────────────────────────────────────────────────────────┤
 │  Envelope header (plaintext, signed):                        │
-│    Zetl-Schema: v4                                           │
-│    Zetl-Cohort-Id: <id>                                      │
-│    Zetl-Cohort-Mode: delegated-url | webauthn-prf            │
-│    Zetl-Slug: <slug>                                         │
-│    Zetl-Build-Epoch: <timestamp>                             │
+│    ztl-Schema: v4                                           │
+│    ztl-Cohort-Id: <id>                                      │
+│    ztl-Cohort-Mode: delegated-url | webauthn-prf            │
+│    ztl-Slug: <slug>                                         │
+│    ztl-Build-Epoch: <timestamp>                             │
 │                                                              │
-│  Zetl-Signature: <b64url-ed25519-sig over all bytes below>   │
+│  ztl-Signature: <b64url-ed25519-sig over all bytes below>   │
 │                                                              │
 ├─────────────────────────────────────────────────────────────┤
 │  age v1 ciphertext (recipients include padding):            │
@@ -191,13 +191,13 @@ The shim's render algorithm is **verify → decrypt → sanitise → render**, n
 ```mermaid
 sequenceDiagram
     participant Op as Operator
-    participant Tool as zetl cap CLI
+    participant Tool as ztl cap CLI
     participant Alice as Alice
     participant Browser as Alice's browser
     participant Auth as Alice's authenticator
     participant CDN as Static CDN
 
-    Op->>Tool: zetl cap invite alice --cohort eng --expires 30d
+    Op->>Tool: ztl cap invite alice --cohort eng --expires 30d
     Tool->>Tool: generate (priv_A, pub_A)
     Tool->>Tool: append pub_A to recipients.toml (with padding refreshed)
     Tool->>Tool: build: encrypt+sign all cohort pages
@@ -209,7 +209,7 @@ sequenceDiagram
     Alice->>Browser: click URL
     Browser->>CDN: GET /c/<path>/<slug>.html
     CDN-->>Browser: signed envelope + age ciphertext + shim
-    Browser->>Browser: shim: navigator.locks acquire 'zetl-tofu'
+    Browser->>Browser: shim: navigator.locks acquire 'ztl-tofu'
     Browser->>Browser: shim: unregister any ServiceWorkers
     Browser->>Browser: shim: verify Ed25519 signature ← FAIL → abort
     Browser->>Browser: shim: reads #k; no IndexedDB entry
@@ -217,7 +217,7 @@ sequenceDiagram
     Auth-->>Alice: biometric / PIN
     Alice->>Auth: approve
     Auth-->>Browser: credential + prf_output
-    Browser->>Browser: K_wrap = HKDF(prf_output, "zetl/tofu-wrap/v1")
+    Browser->>Browser: K_wrap = HKDF(prf_output, "ztl/tofu-wrap/v1")
     Browser->>Browser: wrap priv_A → IndexedDB (with origin AAD)
     Browser->>Browser: age-decrypt payload
     Browser->>Browser: sanitise HTML (ammonia-equivalent)
@@ -232,7 +232,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Op as Operator
-    participant Build as zetl build
+    participant Build as ztl build
     participant Sign as vault-signing-key
     participant CDN as CDN
     participant Reader as Reader
@@ -290,12 +290,12 @@ flowchart LR
 
 ### Happy Path HP-1: Operator Publishes for the First Time
 
-Preconditions: Vault exists; `ZETL_CAP_SECRET` AND `ZETL_CAP_SIGNING_KEY` produced by `zetl cap genkey` and stored securely.
+Preconditions: Vault exists; `ztl_CAP_SECRET` AND `ztl_CAP_SIGNING_KEY` produced by `ztl cap genkey` and stored securely.
 
 Steps:
-1. `[access] mode = "capability"` in `.zetl/config.toml`
-2. `zetl cap invite <reader> --cohort <name>` per reader (delegated-URL mode)
-3. `zetl build --capability`
+1. `[access] mode = "capability"` in `.ztl/config.toml`
+2. `ztl cap invite <reader> --cohort <name>` per reader (delegated-URL mode)
+3. `ztl build --capability`
    → dist/ contains:
      • signed encrypted pages under /c/
      • /enroll.html (for hardened cohorts if any)
@@ -310,7 +310,7 @@ Preconditions: Invite URL received; WebAuthn-PRF-capable browser and authenticat
 
 Steps:
 1. Reader clicks URL → browser loads shell + shim (SRI-verified)
-2. Shim acquires `navigator.locks.request('zetl-tofu', …)`
+2. Shim acquires `navigator.locks.request('ztl-tofu', …)`
 3. Shim unregisters any ServiceWorkers on the origin
 4. Shim fetches the page envelope
 5. Shim verifies Ed25519 signature against embedded vault-signing-pubkey → ABORT on failure
@@ -328,7 +328,7 @@ Failure modes: signature-verify failure (possibly CDN-substituted content) → r
 
 ### Happy Path HP-0-hardened: Hardened-Mode Self-Enrolment
 
-Modified in v0.4.0: per-cohort PRF salt. Reader visits `/enroll.html?cohort=<cohort-id>`, browser invokes `navigator.credentials.create()` with `prf.eval.first = SHA-256("zetl/webauthn-prf/v1/" || origin || "/" || cohort-id)`, displays derived pubkey. Reader sends pubkey to operator.
+Modified in v0.4.0: per-cohort PRF salt. Reader visits `/enroll.html?cohort=<cohort-id>`, browser invokes `navigator.credentials.create()` with `prf.eval.first = SHA-256("ztl/webauthn-prf/v1/" || origin || "/" || cohort-id)`, displays derived pubkey. Reader sends pubkey to operator.
 
 Consequence: A reader who needs access to multiple hardened cohorts enrols **once per cohort** — a new passkey binding per cohort — so their pubkey varies per cohort and cannot be linked.
 
@@ -380,7 +380,7 @@ Trace: TEST-3404, CON-3402, CON-3403, ADR-3401
 ### REQ-3405: TOFU Passkey Binding
 
 Unchanged from v0.3.0 in principle, with three additions:
-- Acquire `navigator.locks.request('zetl-tofu')` before touching IndexedDB
+- Acquire `navigator.locks.request('ztl-tofu')` before touching IndexedDB
 - Before binding, unregister all ServiceWorkers for the origin
 - WebAuthn `create()` call MUST include a 32-byte `challenge` from `crypto.getRandomValues()`
 
@@ -414,7 +414,7 @@ Trace: TEST-3407, CON-3406, NFR-3409, OBS-3409
 Adds `bound` field (explicit semantics per BUG-022):
 
 **Schema additions:**
-- `bound: bool` — set to `true` by `zetl cap finalise <grant-id>` *after the operator has confirmed the reader has completed TOFU binding on their intended devices*. Operator confirmation is out-of-band (the reader says "I've bound on my laptop and phone"); `bound=true` does not imply cryptographic proof of binding.
+- `bound: bool` — set to `true` by `ztl cap finalise <grant-id>` *after the operator has confirmed the reader has completed TOFU binding on their intended devices*. Operator confirmation is out-of-band (the reader says "I've bound on my laptop and phone"); `bound=true` does not imply cryptographic proof of binding.
 
 Trace: TEST-3408, CON-3402
 
@@ -426,7 +426,7 @@ Trace: TEST-3409, CON-3403
 
 ### REQ-3410: Invite Generation Command
 
-Unchanged from v0.3.0 with one addition: stdout warning banner on every `zetl cap invite` invocation:
+Unchanged from v0.3.0 with one addition: stdout warning banner on every `ztl cap invite` invocation:
 
 ```
 ⚠  SECURITY WARNING (REQ-3412 / §11.2)
@@ -462,7 +462,7 @@ Trace: TEST-3413
 In hardened mode, the WebAuthn PRF salt SHALL include the cohort identifier, computed as:
 
 ```
-prf_salt = SHA-256("zetl/webauthn-prf/v1/" || origin || "/" || cohort_id)
+prf_salt = SHA-256("ztl/webauthn-prf/v1/" || origin || "/" || cohort_id)
 ```
 
 Consequence: a reader in multiple hardened cohorts produces a distinct X25519 pubkey per cohort; observers holding ciphertexts from multiple cohorts cannot link recipient entries to the same reader (BUG-003).
@@ -480,27 +480,27 @@ Unchanged. Search-index format explicitly marked as deferred to future spec (BUG
 
 Trace: TEST-3415
 
-### REQ-3416: CLI Surface — `zetl cap` Subcommand
+### REQ-3416: CLI Surface — `ztl cap` Subcommand
 
 ```
-zetl cap genkey                                          # generate BOTH encryption
+ztl cap genkey                                          # generate BOTH encryption
                                                          # secret AND vault-signing
                                                          # keypair (Ed25519)
-zetl cap invite <name> --cohort <id>
+ztl cap invite <name> --cohort <id>
     [--expires <d>] [--pages <filter>]
     [--recipient <pubkey>] [--via enrol-page]
     [--split-key]                                        # opt-in split mode (REQ-3430)
-zetl cap list    [--cohort <id>] [--output json|text]
-zetl cap revoke  <grant-id>
-zetl cap rotate  --cohort <id>                           # new content salt; URLs stable
-zetl cap finalise <grant-id>                             # sets bound=true post-confirmation
-zetl cap check                                           # stale-grant + public-safety audit
-zetl cap sweep                                           # mark past-expires revoked
-zetl cap pair                                            # SPAKE2 pubkey handoff
-zetl cap audit-diff <old-ref> <new-ref>                  # PR-gate malicious-content check
-zetl cap rotate-signing-key                              # rotate vault-signing key
+ztl cap list    [--cohort <id>] [--output json|text]
+ztl cap revoke  <grant-id>
+ztl cap rotate  --cohort <id>                           # new content salt; URLs stable
+ztl cap finalise <grant-id>                             # sets bound=true post-confirmation
+ztl cap check                                           # stale-grant + public-safety audit
+ztl cap sweep                                           # mark past-expires revoked
+ztl cap pair                                            # SPAKE2 pubkey handoff
+ztl cap audit-diff <old-ref> <new-ref>                  # PR-gate malicious-content check
+ztl cap rotate-signing-key                              # rotate vault-signing key
                                                          # (requires rebuilding all pages)
-zetl cap emergency-shutdown                              # see §11.3; produces operator
+ztl cap emergency-shutdown                              # see §11.3; produces operator
                                                          # instructions for DNS/CDN removal
 ```
 
@@ -512,7 +512,7 @@ Adds `[access.signing]`, `[access.split_key]`, `[access.sw_hygiene]`:
 
 ```toml
 [access.signing]
-key_env = "ZETL_CAP_SIGNING_KEY"          # private signing key source
+key_env = "ztl_CAP_SIGNING_KEY"          # private signing key source
 algorithm = "ed25519"                      # fixed in v0.4.0
 
 [access.split_key]
@@ -534,11 +534,11 @@ Adds:
 
 Trace: TEST-3418, CON-3406
 
-### REQ-3419: Secret Provenance via `zetl cap genkey`
+### REQ-3419: Secret Provenance via `ztl cap genkey`
 
-Extended: `zetl cap genkey` emits BOTH:
-- `ZETL_CAP_SECRET` (48 bytes: version byte + 32-byte random + 15-byte keyed checksum)
-- `ZETL_CAP_SIGNING_KEY` (Ed25519 private key, generated via OS CSPRNG, base64-encoded)
+Extended: `ztl cap genkey` emits BOTH:
+- `ztl_CAP_SECRET` (48 bytes: version byte + 32-byte random + 15-byte keyed checksum)
+- `ztl_CAP_SIGNING_KEY` (Ed25519 private key, generated via OS CSPRNG, base64-encoded)
 
 Both displayed once with explicit storage instructions. Checksum framed as UX safeguard (BUG-017 — rephrased from "security control").
 
@@ -574,7 +574,7 @@ Content-Security-Policy:
   base-uri 'none';
   form-action 'none';
   require-trusted-types-for 'script';
-  trusted-types zetl-cap;
+  trusted-types ztl-cap;
 ```
 
 Shim script tag: `<script src="/assets/shim.js" integrity="sha384-<hash>" crossorigin="anonymous">`.
@@ -605,7 +605,7 @@ Trace: TEST-3423, ADR-3409
 
 ### REQ-3424: Malicious-Author PR Gate with Test Corpus
 
-Revised for BUG-016: `zetl cap audit-diff` is paired with:
+Revised for BUG-016: `ztl cap audit-diff` is paired with:
 - `tools/audit-diff-corpus/` — repository of known-malicious markdown patterns, XSS cheatsheet renderings, and exfiltration templates
 - CI job `audit-corpus` that runs audit-diff against the corpus; fails on ANY miss
 - Corpus update cadence: monthly or on any reported evasion
@@ -662,8 +662,8 @@ Revised for BUG-009. Finalisation's purpose is narrowed to:
 Finalisation does NOT defend against *persistent* channel compromise; if the original channel is still compromised, the finalisation URL is too. This is documented in §11.2.
 
 **Acceptance criteria:**
-- `bound=true` set by `zetl cap finalise` after operator confirmation
-- Reissue-key option available via `zetl cap finalise --rotate-grant <grant-id>`
+- `bound=true` set by `ztl cap finalise` after operator confirmation
+- Reissue-key option available via `ztl cap finalise --rotate-grant <grant-id>`
 - ADR-3411 honestly scopes finalisation's threat defence
 
 Trace: TEST-3426, CON-3407, ADR-3411
@@ -677,7 +677,7 @@ The shim SHALL verify the Ed25519 signature BEFORE attempting decryption. On ver
 **Acceptance criteria:**
 - Every `/c/*.html` response carries a valid Ed25519 signature
 - Shim rejects unsigned or invalid-signature responses before any other processing
-- Signing-key rotation via `zetl cap rotate-signing-key` rebuilds all pages with the new key AND emits a new shim bundle with the new embedded pubkey
+- Signing-key rotation via `ztl cap rotate-signing-key` rebuilds all pages with the new key AND emits a new shim bundle with the new embedded pubkey
 - Signing-key compromise recovery: rotate signing key → rebuild → deploy; old ciphertexts on CDN caches continue to verify against OLD shim if readers have cached OLD shim, so deploy must also invalidate shim cache
 - TEST-3427 verifies positive + negative signature cases
 
@@ -706,7 +706,7 @@ Trace: TEST-3428, CON-3408
 
 ### REQ-3429: TOFU Concurrency via `navigator.locks` — New in v0.4.0 (resolves BUG-010)
 
-The shim SHALL acquire `navigator.locks.request('zetl-capability-shim', …)` with exclusive mode before any IndexedDB write or authenticator `create()` call. On browsers without `navigator.locks` (very old; document compatibility), the shim MAY fall back to a BroadcastChannel-based coordination protocol OR refuse to operate (with a clear diagnostic), at the operator's configuration choice.
+The shim SHALL acquire `navigator.locks.request('ztl-capability-shim', …)` with exclusive mode before any IndexedDB write or authenticator `create()` call. On browsers without `navigator.locks` (very old; document compatibility), the shim MAY fall back to a BroadcastChannel-based coordination protocol OR refuse to operate (with a clear diagnostic), at the operator's configuration choice.
 
 **Acceptance criteria:**
 - No concurrent TOFU bindings across tabs of same origin
@@ -717,7 +717,7 @@ Trace: TEST-3429, CON-3408
 
 ### REQ-3430: Optional Split-Key Mode — New in v0.4.0 (mitigates BUG-002)
 
-When `[access.split_key] enabled = true`, `zetl cap invite` SHALL split `priv_A` into two halves using a cryptographically-sound split-key construction (XOR secret-sharing: `priv_A = half1 XOR half2`), emit the URL with only `half1` in the fragment, and output `half2` as a separate conveyance. The reader's browser prompts for `half2` via a text-input (if `second_factor = "spoken-phrase"`) or a camera-based QR scan (if `second_factor = "qr"`).
+When `[access.split_key] enabled = true`, `ztl cap invite` SHALL split `priv_A` into two halves using a cryptographically-sound split-key construction (XOR secret-sharing: `priv_A = half1 XOR half2`), emit the URL with only `half1` in the fragment, and output `half2` as a separate conveyance. The reader's browser prompts for `half2` via a text-input (if `second_factor = "spoken-phrase"`) or a camera-based QR scan (if `second_factor = "qr"`).
 
 Rationale: if the URL leaks through any channel that captures URL fragments (BUG-002 channels: browser sync, extensions, preview bots), the leaked URL alone does NOT decrypt — the attacker also needs `half2` from a separate channel.
 
@@ -731,10 +731,10 @@ Trace: TEST-3430, CON-3407, ADR-3415
 
 ### REQ-3431: Emergency Shutdown Procedure — New in v0.4.0 (resolves BUG-024)
 
-`zetl cap emergency-shutdown` SHALL produce a printable checklist of operator actions to take the wiki offline at the host level:
+`ztl cap emergency-shutdown` SHALL produce a printable checklist of operator actions to take the wiki offline at the host level:
 1. Remove or point DNS away from the deployment
 2. Instruct CDN to purge/delete all `/c/*` objects
-3. Rotate `ZETL_CAP_SECRET` + `ZETL_CAP_SIGNING_KEY`
+3. Rotate `ztl_CAP_SECRET` + `ztl_CAP_SIGNING_KEY`
 4. Announce breach to readers (who re-enrol after recovery if appropriate)
 
 This is a documentation-generation command, NOT an automated action. The spec has no cryptographic kill-switch.
@@ -806,7 +806,7 @@ Trace: REQ-3427
 
 ### NFR-3414: Forward-Secrecy Non-Goal — New in v0.4.0
 
-Explicit: this spec does NOT provide forward secrecy. Revoked readers retain decryption capability for all ciphertexts they previously received. Operators requiring forward secrecy MUST use `zetl serve` (SPEC-020) or a different design.
+Explicit: this spec does NOT provide forward secrecy. Revoked readers retain decryption capability for all ciphertexts they previously received. Operators requiring forward secrecy MUST use `ztl serve` (SPEC-020) or a different design.
 
 Trace: §1.3, §11.2
 
@@ -844,8 +844,8 @@ priv_A        = half1 XOR half2           ; reconstructed in the shim
 path_cap_full = HKDF-SHA256(
                    ikm  = cohort_secret,
                    salt = cohort_salt_stable,         /* rotates only when explicitly
-                                                        rotated via zetl cap rotate-paths */
-                   info = "zetl/path-cap/v1/" || cohort_id || "/" || slug,
+                                                        rotated via ztl cap rotate-paths */
+                   info = "ztl/path-cap/v1/" || cohort_id || "/" || slug,
                    L    = 32
                 )
 path_cap      = base32-crockford(truncate(path_cap_full, path_cap_bits/8))
@@ -866,7 +866,7 @@ id         = "g_01JABC..."
 cohort     = "engineering"
 recipient  = "age-recipient-v1:<b64url-X25519-pubkey>"
 mode       = "delegated-url"
-bound      = false                          # true after zetl cap finalise
+bound      = false                          # true after ztl cap finalise
                                             # (operator-confirmed, not cryptographic)
 name       = "Alice Jones"
 created    = "2026-04-20T14:22:00Z"
@@ -899,12 +899,12 @@ Implements: REQ-3404, REQ-3409, REQ-3427
 ### CON-3404: Page Ciphertext Envelope (revised — signed envelope)
 
 ```
-Zetl-Schema: v4
-Zetl-Cohort-Id: <id>
-Zetl-Cohort-Mode: delegated-url | webauthn-prf
-Zetl-Slug: <slug>
-Zetl-Build-Epoch: <RFC 3339>
-Zetl-Signature: <b64url-ed25519-sig>
+ztl-Schema: v4
+ztl-Cohort-Id: <id>
+ztl-Cohort-Mode: delegated-url | webauthn-prf
+ztl-Slug: <slug>
+ztl-Build-Epoch: <RFC 3339>
+ztl-Signature: <b64url-ed25519-sig>
 
 <age v1 ciphertext>
 ```
@@ -922,23 +922,23 @@ Adds:
 
 Implements: REQ-3407, REQ-3410, REQ-3418, REQ-3428
 
-### CON-3407: `zetl cap` CLI Surface
+### CON-3407: `ztl cap` CLI Surface
 
-See REQ-3416. `zetl cap genkey` produces two secrets (encryption + signing).
+See REQ-3416. `ztl cap genkey` produces two secrets (encryption + signing).
 
 Implements: REQ-3410, REQ-3416, REQ-3419, REQ-3423, REQ-3424, REQ-3426, REQ-3430, REQ-3431
 
 ### CON-3408: Browser Shim Interface (revised)
 
 ```typescript
-interface ZetlCapShim {
+interface ztlCapShim {
   renderCurrentPage(): Promise<void>;
   forgetBinding(): Promise<void>;
 }
 
 // Internal pipeline (order MATTERS):
 async function renderCurrentPage() {
-  await navigator.locks.request('zetl-capability-shim', { mode: 'exclusive' }, async () => {
+  await navigator.locks.request('ztl-capability-shim', { mode: 'exclusive' }, async () => {
     await unregisterAllServiceWorkers();
     const envelope = await fetch(location.pathname);
     const body = await envelope.text();
@@ -965,7 +965,7 @@ async function renderCurrentPage() {
     rewriteInWikiHrefs();
 
     // STEP 6: render
-    document.querySelector('main[data-zetl-capability]').innerHTML = sanitised;
+    document.querySelector('main[data-ztl-capability]').innerHTML = sanitised;
   });
 }
 ```
@@ -976,13 +976,13 @@ Implements: REQ-3404, REQ-3405, REQ-3406, REQ-3411, REQ-3412, REQ-3421, REQ-3425
 
 ```
 challenge      = crypto.getRandomValues(new Uint8Array(32))
-prf_salt       = SHA-256("zetl/webauthn-prf/v1/" || origin || "/" || cohort_id)
+prf_salt       = SHA-256("ztl/webauthn-prf/v1/" || origin || "/" || cohort_id)
                  /* cohort_id included so hardened-mode readers have distinct
                     PRF outputs per cohort — BUG-003 resolution */
 
 credential     = await navigator.credentials.create({
                     publicKey: {
-                      rp: { id: origin_host, name: "Zetl Wiki" },
+                      rp: { id: origin_host, name: "ztl Wiki" },
                       user: { /* ephemeral handle */ },
                       challenge: challenge,
                       pubKeyCredParams: [{ alg: -8 }, { alg: -7 }],
@@ -995,7 +995,7 @@ credential     = await navigator.credentials.create({
                   })
 
 prf_output     = credential.getClientExtensionResults().prf.results.first
-K_wrap         = HKDF-SHA256(prf_output, "", "zetl/tofu-wrap/v1", 32)
+K_wrap         = HKDF-SHA256(prf_output, "", "ztl/tofu-wrap/v1", 32)
 iv             = crypto.getRandomValues(new Uint8Array(12))
 aad            = utf8(origin || "/" || cohort_id)     /* binds wrap to cohort */
 ciphertext     = AES-256-GCM(K_wrap, iv, aad, priv_A)
@@ -1026,7 +1026,7 @@ Content-Security-Policy:
   base-uri 'none';
   form-action 'none';
   require-trusted-types-for 'script';
-  trusted-types zetl-cap;
+  trusted-types ztl-cap;
 ```
 
 Shim script: `<script src="/assets/shim.js" integrity="sha384-<hash>" crossorigin="anonymous">`
@@ -1036,7 +1036,7 @@ Implements: REQ-3421
 ### CON-3411: Content Signing Protocol — New in v0.4.0
 
 ```
-vault_signing_priv_key    // Ed25519, generated by zetl cap genkey
+vault_signing_priv_key    // Ed25519, generated by ztl cap genkey
 vault_signing_pub_key     // embedded in shim bundle at build, SRI-covered
 
 # At build:
@@ -1056,7 +1056,7 @@ if !Ed25519.verify(VAULT_SIGNING_PUBKEY_EMBEDDED,
 # Only then proceed to decrypt
 ```
 
-**Signing-key rotation:** `zetl cap rotate-signing-key` generates a new Ed25519 keypair, rebuilds all pages with new signatures, emits a new shim bundle with the new embedded pubkey. Old shim bundle MUST be cache-invalidated at the CDN before the new signed pages roll out; otherwise readers with a cached old shim will reject new ciphertexts.
+**Signing-key rotation:** `ztl cap rotate-signing-key` generates a new Ed25519 keypair, rebuilds all pages with new signatures, emits a new shim bundle with the new embedded pubkey. Old shim bundle MUST be cache-invalidated at the CDN before the new signed pages roll out; otherwise readers with a cached old shim will reject new ciphertexts.
 
 Implements: REQ-3427, NFR-3413
 
@@ -1134,9 +1134,9 @@ Finalisation is an operational tool, not a security control. Operators who belie
 
 ### ADR-3414: Per-Cohort PRF Salt — New in v0.4.0 (resolves BUG-003)
 
-**Context:** v0.3.0 hardened mode used `prf_salt = SHA-256("zetl/webauthn-prf/v1/" || origin)`. A reader in multiple cohorts produced the same pubkey in each, enabling cross-cohort linkage by observers holding multi-cohort ciphertexts.
+**Context:** v0.3.0 hardened mode used `prf_salt = SHA-256("ztl/webauthn-prf/v1/" || origin)`. A reader in multiple cohorts produced the same pubkey in each, enabling cross-cohort linkage by observers holding multi-cohort ciphertexts.
 
-**Decision:** Include `cohort_id` in the PRF salt: `prf_salt = SHA-256("zetl/webauthn-prf/v1/" || origin || "/" || cohort_id)`.
+**Decision:** Include `cohort_id` in the PRF salt: `prf_salt = SHA-256("ztl/webauthn-prf/v1/" || origin || "/" || cohort_id)`.
 
 **Rationale:** Distinct PRF input → distinct PRF output → distinct X25519 keypair per cohort. No recipient entry is shared across cohorts for the same reader.
 
@@ -1152,7 +1152,7 @@ Finalisation is an operational tool, not a security control. Operators who belie
 **Decision:** Document the residual leak as acknowledged-not-mitigated in §11.2. Offer an opt-in split-key mode (REQ-3430) for operators for whom the residual is unacceptable.
 
 **Rationale:**
-- No zetl-implementable control can fully scrub the fragment from browser sync, extension APIs, or history-DB capture points.
+- No ztl-implementable control can fully scrub the fragment from browser sync, extension APIs, or history-DB capture points.
 - Honest documentation is better than oversold mitigation.
 - Split-key mode provides a real defence for operators willing to accept the UX cost.
 
@@ -1213,7 +1213,7 @@ Same framework; new tests added:
 
 ### TEST-3430: Split-key mode
 
-- `zetl cap invite --split-key` produces URL with `#k1=` + separate `half2`; reconstructed priv_A decrypts; URL alone does not.
+- `ztl cap invite --split-key` produces URL with `#k1=` + separate `half2`; reconstructed priv_A decrypts; URL alone does not.
 
 ### TEST-3414: Cross-cohort unlinkability
 
@@ -1247,7 +1247,7 @@ Shim emits a mark when `navigator.locks.request` waits > 100 ms; helps detect co
 
 Attackers unchanged: A1 passive web, A2 ciphertext holder, A3 CDN-compromised, A4 stolen authenticator, A5 malicious contributor, A6 compromised CI.
 
-**Added attacker:** A7 **signing-key compromiser** (via CI secret, operator machine, or backup). Attacker with signing key can fabricate ciphertexts that the shim will accept. Mitigation: `zetl cap rotate-signing-key` + shim rebuild.
+**Added attacker:** A7 **signing-key compromiser** (via CI secret, operator machine, or backup). Attacker with signing key can fabricate ciphertexts that the shim will accept. Mitigation: `ztl cap rotate-signing-key` + shim rebuild.
 
 **Attack/mitigation matrix (updated):**
 
@@ -1268,10 +1268,10 @@ Attackers unchanged: A1 passive web, A2 ciphertext holder, A3 CDN-compromised, A
 | Pre-registered ServiceWorker intercepts           | A3, prior compromise | **Fixed (NEW):** shim purges SWs on load (REQ-3428).                                                                 |
 | Concurrent-tab TOFU race                          | —              | **Fixed (NEW):** `navigator.locks` (REQ-3429).                                                                              |
 | Revoked reader retains past access                | —              | Explicit non-goal (NFR-3414); forward secrecy not provided.                                                                 |
-| Signing-key compromise                            | A6, A7         | Rotate via `zetl cap rotate-signing-key`; rebuild; cache-invalidate shim.                                                   |
-| ZETL_CAP_SECRET compromise                        | A6             | Rotate secret; rotate all cohorts; rebuild; re-issue all URLs; re-enrol.                                                    |
+| Signing-key compromise                            | A6, A7         | Rotate via `ztl cap rotate-signing-key`; rebuild; cache-invalidate shim.                                                   |
+| ztl_CAP_SECRET compromise                        | A6             | Rotate secret; rotate all cohorts; rebuild; re-issue all URLs; re-enrol.                                                    |
 | Malicious PR                                      | A5             | Sanitiser (ammonia) + CSP + audit-diff corpus (REQ-3424).                                                                    |
-| URL leak via shortener / preview bot              | A1             | **Fixed (NEW):** CLI warning on every `zetl cap invite` (REQ-3410).                                                         |
+| URL leak via shortener / preview bot              | A1             | **Fixed (NEW):** CLI warning on every `ztl cap invite` (REQ-3410).                                                         |
 
 ### 11.2 Acknowledged Residual Exposures (expanded)
 
@@ -1291,13 +1291,13 @@ Attackers unchanged: A1 passive web, A2 ciphertext holder, A3 CDN-compromised, A
 
 | Incident                                        | Response                                                                                                       |
 | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Reader leaves                                   | `zetl cap revoke` + rebuild. ≤ NFR-3409.                                                                        |
+| Reader leaves                                   | `ztl cap revoke` + rebuild. ≤ NFR-3409.                                                                        |
 | Reader's authenticator compromised              | Rotate affected cohort; redistribute entry URLs.                                                                |
 | Invite URL leaked before first TOFU             | Within expiry: revoke + re-invite. After expiry: already inert.                                                  |
-| Signing-key compromised                         | **NEW:** `zetl cap rotate-signing-key` → rebuild all pages → deploy → cache-invalidate `/assets/shim.js`.         |
-| ZETL_CAP_SECRET compromised                     | New `genkey` → rotate ALL cohorts → rebuild → re-issue all URLs → readers re-TOFU per device.                    |
+| Signing-key compromised                         | **NEW:** `ztl cap rotate-signing-key` → rebuild all pages → deploy → cache-invalidate `/assets/shim.js`.         |
+| ztl_CAP_SECRET compromised                     | New `genkey` → rotate ALL cohorts → rebuild → re-issue all URLs → readers re-TOFU per device.                    |
 | Malicious PR detected                           | Revert + rebuild + audit-diff across exposure window.                                                            |
-| Emergency shutdown                              | `zetl cap emergency-shutdown` → follow printed checklist (DNS, CDN purge, secret rotation, reader notification). |
+| Emergency shutdown                              | `ztl cap emergency-shutdown` → follow printed checklist (DNS, CDN purge, secret rotation, reader notification). |
 
 ### 11.4 AI Trust Boundaries
 
@@ -1306,7 +1306,7 @@ Attackers unchanged: A1 passive web, A2 ciphertext holder, A3 CDN-compromised, A
 - Content-signing layer (REQ-3427, CON-3411): Tier 1.
 - Sanitiser config (REQ-3421): Tier 1.
 - Shim state machine (CON-3408): Tier 1.
-- `zetl cap invite` / `zetl cap genkey`: Tier 1.
+- `ztl cap invite` / `ztl cap genkey`: Tier 1.
 - `audit-diff` heuristics (REQ-3424): Tier 2.
 
 ---
@@ -1325,7 +1325,7 @@ Same as v0.3.0; new docs for:
 Same as v0.3.0 plus: `cap::sanitiser` using ammonia; `cap::sign::envelope_builder`.
 
 ### Phase B: Encryption + signing wire-up
-Integrate `age` and `ed25519-dalek`; `zetl cap genkey` produces both secrets; per-page signing.
+Integrate `age` and `ed25519-dalek`; `ztl cap genkey` produces both secrets; per-page signing.
 
 ### Phase C: Browser shim + enrolment page
 TypeScript shim with typage + `@noble/ed25519` + `navigator.locks` + SW hygiene. Playwright matrix covering both modes + non-PRF fallback.
@@ -1334,7 +1334,7 @@ TypeScript shim with typage + `@noble/ed25519` + `navigator.locks` + SW hygiene.
 All deploy artifacts; CSP per CON-3410; sanitiser integrated; Clear-Site-Data on enrol.
 
 ### Phase E: Advanced operations
-`zetl cap finalise`, `rotate-signing-key`, `pair`, `audit-diff` + corpus, `emergency-shutdown`.
+`ztl cap finalise`, `rotate-signing-key`, `pair`, `audit-diff` + corpus, `emergency-shutdown`.
 
 ### Phase F: Documentation + adversarial review
 Third fresh-context Tier 2 review required before `approved` status. Tier 1 reviews on crypto, signing, TOFU, sanitiser, genkey.
@@ -1345,7 +1345,7 @@ Third fresh-context Tier 2 review required before `approved` status. Tier 1 revi
 
 ## 14. Open Questions
 
-1. **Signing-key storage on operator's machine.** Should `zetl cap genkey` integrate with the OS keychain (macOS Keychain, Windows Credential Manager, libsecret) rather than relying on env var? Probably yes, deferred.
+1. **Signing-key storage on operator's machine.** Should `ztl cap genkey` integrate with the OS keychain (macOS Keychain, Windows Credential Manager, libsecret) rather than relying on env var? Probably yes, deferred.
 2. **Recovery key for signing-key loss.** If the operator loses the signing key, all readers reject all content. Should there be an optional recovery key (M-of-N shamir split)? Complex; deferred.
 3. **Tiering ladder for padding.** Retained as empirical after beta.
 4. **Signing-key pinning via HTTPS headers (not just SRI).** Could add `Signature-Ed25519: <pubkey>` header and compare to embedded shim pubkey. Redundant given SRI; deferred unless real MITM emerges.

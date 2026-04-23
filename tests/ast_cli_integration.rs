@@ -1,10 +1,10 @@
-//! SPEC-032 TEST-3225 — integration tests for `zetl ast sample` and
-//! `zetl ast diff`.
+//! SPEC-032 TEST-3225 — integration tests for `ztl ast sample` and
+//! `ztl ast diff`.
 //!
 //! Matrix coverage (from SPEC-032 §TEST-3225):
 //!
-//! | `zetl ast sample <file.md>`    | output validates against zetl-ast-schema-v1.json |
-//! | `zetl ast diff a.json b.json`  | tree-diff identifies known mutations; exit 1 on non-empty diff |
+//! | `ztl ast sample <file.md>`    | output validates against ztl-ast-schema-v1.json |
+//! | `ztl ast diff a.json b.json`  | tree-diff identifies known mutations; exit 1 on non-empty diff |
 
 use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::*;
@@ -12,7 +12,7 @@ use serde_json::Value;
 use std::fs;
 use tempfile::TempDir;
 
-const SCHEMA_PATH: &str = "tools/zetl-ast-schema-v1.json";
+const SCHEMA_PATH: &str = "tools/ztl-ast-schema-v1.json";
 
 fn schema_validator() -> jsonschema::Validator {
     let bytes = fs::read(SCHEMA_PATH).unwrap_or_else(|e| panic!("cannot read {SCHEMA_PATH}: {e}"));
@@ -45,7 +45,7 @@ fn sample_transform_output_validates_against_schema() {
          ![[Other]]\n",
     );
 
-    let output = cargo_bin_cmd!("zetl")
+    let output = cargo_bin_cmd!("ztl")
         .args(["ast", "sample"])
         .arg(&page)
         .args(["-f", "json"])
@@ -86,7 +86,7 @@ fn sample_pre_parse_stage_emits_raw_markdown() {
     let content = "---\ntitle: T\n---\n\n# Heading\n\ntext [[link]]\n";
     let page = write_page(&dir, "p.md", content);
 
-    let output = cargo_bin_cmd!("zetl")
+    let output = cargo_bin_cmd!("ztl")
         .args(["ast", "sample"])
         .arg(&page)
         .args(["--stage", "pre-parse"])
@@ -102,7 +102,7 @@ fn sample_post_render_stage_emits_html_fragment() {
     let dir = TempDir::new().unwrap();
     let page = write_page(&dir, "p.md", "# Heading\n\nA paragraph.\n");
 
-    let output = cargo_bin_cmd!("zetl")
+    let output = cargo_bin_cmd!("ztl")
         .args(["ast", "sample"])
         .arg(&page)
         .args(["--stage", "post-render"])
@@ -126,7 +126,7 @@ fn sample_wikilink_fields_populated() {
         "see [[Target#Sec|alias]] and [[Other#^bid]]\n",
     );
 
-    let output = cargo_bin_cmd!("zetl")
+    let output = cargo_bin_cmd!("ztl")
         .args(["ast", "sample"])
         .arg(&page)
         .args(["-f", "json"])
@@ -154,7 +154,7 @@ fn sample_wikilink_fields_populated() {
 
 #[test]
 fn sample_missing_file_fails_with_diagnostic() {
-    cargo_bin_cmd!("zetl")
+    cargo_bin_cmd!("ztl")
         .args(["ast", "sample", "/nonexistent/page.md"])
         .assert()
         .failure()
@@ -167,7 +167,7 @@ fn diff_identical_documents_exits_zero() {
     let page = write_page(&dir, "p.md", "# Hi\n\ntext\n");
 
     // Generate a canonical AST, then diff it against itself.
-    let sample = cargo_bin_cmd!("zetl")
+    let sample = cargo_bin_cmd!("ztl")
         .args(["ast", "sample"])
         .arg(&page)
         .args(["-f", "json"])
@@ -177,7 +177,7 @@ fn diff_identical_documents_exits_zero() {
     let ast_path = dir.path().join("a.json");
     fs::write(&ast_path, &sample.stdout).unwrap();
 
-    cargo_bin_cmd!("zetl")
+    cargo_bin_cmd!("ztl")
         .args(["ast", "diff"])
         .arg(&ast_path)
         .arg(&ast_path)
@@ -233,7 +233,7 @@ fn diff_detects_addition_removal_and_attr_change() {
     fs::write(&bp, serde_json::to_string(&before).unwrap()).unwrap();
     fs::write(&ap, serde_json::to_string(&after).unwrap()).unwrap();
 
-    let json_output = cargo_bin_cmd!("zetl")
+    let json_output = cargo_bin_cmd!("ztl")
         .args(["ast", "diff"])
         .arg(&bp)
         .arg(&ap)
@@ -275,7 +275,7 @@ fn diff_rejects_malformed_json() {
     fs::write(&bp, "{not json").unwrap();
     fs::write(&ap, "{}").unwrap();
 
-    cargo_bin_cmd!("zetl")
+    cargo_bin_cmd!("ztl")
         .args(["ast", "diff"])
         .arg(&bp)
         .arg(&ap)
@@ -295,7 +295,7 @@ fn sample_then_diff_round_trip_is_empty() {
         "p.md",
         "# Title\n\nsee [[Target]] and ![[Other]]\n\n```rust\nfn x() {}\n```\n",
     );
-    let sample = cargo_bin_cmd!("zetl")
+    let sample = cargo_bin_cmd!("ztl")
         .args(["ast", "sample"])
         .arg(&page)
         .args(["-f", "json"])
@@ -304,7 +304,7 @@ fn sample_then_diff_round_trip_is_empty() {
     assert!(sample.status.success());
     let p = dir.path().join("x.json");
     fs::write(&p, &sample.stdout).unwrap();
-    cargo_bin_cmd!("zetl")
+    cargo_bin_cmd!("ztl")
         .args(["ast", "diff"])
         .arg(&p)
         .arg(&p)

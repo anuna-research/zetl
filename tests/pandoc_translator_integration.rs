@@ -1,4 +1,4 @@
-//! SPEC-033 REQ-3307 / TEST-3307 integration coverage for the zetl-ext ↔
+//! SPEC-033 REQ-3307 / TEST-3307 integration coverage for the ztl-ext ↔
 //! pandoc-types translator (task-pandoc-translator).
 //!
 //! The translator itself lives in `src/hooks/translators/pandoc.rs`, which
@@ -12,8 +12,8 @@
 //! - SPL block with trailing whitespace.
 //! - Frontmatter with nested structures.
 //! - Position fidelity across translation.
-//! - Pandoc marker-table attrs (Span class `zetl-wikilink` / Div class
-//!   `zetl-embed` / CodeBlock class `spl`) preserved across round-trip.
+//! - Pandoc marker-table attrs (Span class `ztl-wikilink` / Div class
+//!   `ztl-embed` / CodeBlock class `spl`) preserved across round-trip.
 //!
 //! The proptest fidelity gate (NFR-3305 canonical-form equivalence) lives
 //! in `src/hooks/translators/roundtrip.rs` — this file complements it
@@ -22,12 +22,12 @@
 
 use serde_json::json;
 
-use zetl::hooks::ast::{
+use ztl::hooks::ast::{
     Block, BlockQuote, Document, DocumentKind, Embed, Frontmatter, Heading, Inline, ListItem,
     Paragraph, Position, SplBlock, Text, Wikilink, AST_VERSION,
 };
-use zetl::hooks::translators::pandoc::PandocTranslator;
-use zetl::hooks::translators::{AstType, Translator};
+use ztl::hooks::translators::pandoc::PandocTranslator;
+use ztl::hooks::translators::{AstType, Translator};
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -125,10 +125,10 @@ fn wikilinks_inside_a_blockquote_round_trip() {
     })]);
 
     let t = PandocTranslator;
-    let pandoc = t.zetl_to_foreign(&input).unwrap();
+    let pandoc = t.ztl_to_foreign(&input).unwrap();
 
     // Shape probe: blocks[0] is BlockQuote containing one Para; Para's
-    // inline children include two Span[zetl-wikilink] markers.
+    // inline children include two Span[ztl-wikilink] markers.
     let bq = &pandoc["blocks"][0];
     assert_eq!(bq["t"], "BlockQuote");
     let para = &bq["c"][0];
@@ -136,18 +136,18 @@ fn wikilinks_inside_a_blockquote_round_trip() {
     let kids = &para["c"];
     assert_eq!(kids[1]["t"], "Span");
     let attr1 = &kids[1]["c"][0];
-    assert!(attr_classes(attr1).contains(&"zetl-wikilink"));
-    assert_eq!(attr_get(attr1, "zetl-target"), Some("Other"));
-    assert_eq!(attr_get(attr1, "zetl-alias"), Some("alt"));
-    assert_eq!(attr_get(attr1, "zetl-heading"), Some("Sec"));
-    assert_eq!(attr_get(attr1, "zetl-block-id"), Some("blk"));
+    assert!(attr_classes(attr1).contains(&"ztl-wikilink"));
+    assert_eq!(attr_get(attr1, "ztl-target"), Some("Other"));
+    assert_eq!(attr_get(attr1, "ztl-alias"), Some("alt"));
+    assert_eq!(attr_get(attr1, "ztl-heading"), Some("Sec"));
+    assert_eq!(attr_get(attr1, "ztl-block-id"), Some("blk"));
     assert_eq!(kids[3]["t"], "Span");
     let attr2 = &kids[3]["c"][0];
-    assert_eq!(attr_get(attr2, "zetl-target"), Some("Another"));
+    assert_eq!(attr_get(attr2, "ztl-target"), Some("Another"));
     // Bare wikilink omits the optional attr keys entirely.
-    assert_eq!(attr_get(attr2, "zetl-alias"), None);
+    assert_eq!(attr_get(attr2, "ztl-alias"), None);
 
-    let back = t.foreign_to_zetl(pandoc).unwrap();
+    let back = t.foreign_to_ztl(pandoc).unwrap();
     assert_eq!(back, input);
 }
 
@@ -163,20 +163,20 @@ fn embed_with_both_heading_and_block_id_round_trips() {
     })]);
 
     let t = PandocTranslator;
-    let pandoc = t.zetl_to_foreign(&input).unwrap();
+    let pandoc = t.ztl_to_foreign(&input).unwrap();
 
-    // Embed encodes as a Div with class `zetl-embed` and marker attrs
+    // Embed encodes as a Div with class `ztl-embed` and marker attrs
     // for target/heading/block_id; block-level container is required
-    // because zetl-ext Embed is a block node.
+    // because ztl-ext Embed is a block node.
     let div = &pandoc["blocks"][0];
     assert_eq!(div["t"], "Div");
     let attr = &div["c"][0];
-    assert!(attr_classes(attr).contains(&"zetl-embed"));
-    assert_eq!(attr_get(attr, "zetl-target"), Some("Daily"));
-    assert_eq!(attr_get(attr, "zetl-heading"), Some("Morning"));
-    assert_eq!(attr_get(attr, "zetl-block-id"), Some("abc123"));
+    assert!(attr_classes(attr).contains(&"ztl-embed"));
+    assert_eq!(attr_get(attr, "ztl-target"), Some("Daily"));
+    assert_eq!(attr_get(attr, "ztl-heading"), Some("Morning"));
+    assert_eq!(attr_get(attr, "ztl-block-id"), Some("abc123"));
 
-    let back = t.foreign_to_zetl(pandoc).unwrap();
+    let back = t.foreign_to_ztl(pandoc).unwrap();
     assert_eq!(back, input);
 }
 
@@ -194,16 +194,16 @@ fn spl_block_with_trailing_whitespace_round_trips() {
     })]);
 
     let t = PandocTranslator;
-    let pandoc = t.zetl_to_foreign(&input).unwrap();
+    let pandoc = t.ztl_to_foreign(&input).unwrap();
     let node = &pandoc["blocks"][0];
     assert_eq!(node["t"], "CodeBlock");
     let attr = &node["c"][0];
     assert!(attr_classes(attr).contains(&"spl"));
-    assert_eq!(attr_get(attr, "zetl-spl"), Some("true"));
-    assert_eq!(attr_get(attr, "zetl-info"), Some("extra"));
+    assert_eq!(attr_get(attr, "ztl-spl"), Some("true"));
+    assert_eq!(attr_get(attr, "ztl-info"), Some("extra"));
     assert_eq!(node["c"][1], spl_text);
 
-    let back = t.foreign_to_zetl(pandoc).unwrap();
+    let back = t.foreign_to_ztl(pandoc).unwrap();
     assert_eq!(back, input);
     // And specifically that the trailing whitespace survived.
     if let Block::SplBlock(s) = &back.children[0] {
@@ -241,16 +241,16 @@ fn frontmatter_with_nested_structures_round_trips() {
     let input = doc_with_frontmatter(fm, vec![paragraph(vec![text("body")])]);
 
     let t = PandocTranslator;
-    let pandoc = t.zetl_to_foreign(&input).unwrap();
+    let pandoc = t.ztl_to_foreign(&input).unwrap();
 
-    // Frontmatter lands in pandoc's Meta map under `zetl-frontmatter` as
+    // Frontmatter lands in pandoc's Meta map under `ztl-frontmatter` as
     // a MetaInlines-encoded JSON string — preserves arbitrary nested
     // structure even when pandoc filters don't know how to represent it
     // natively. Round-trip brings it back byte-identical.
     let meta = &pandoc["meta"];
     assert!(meta.is_object(), "meta must be a pandoc Meta map");
-    assert_eq!(meta["zetl-frontmatter"]["t"], "MetaInlines");
-    let serialised = meta["zetl-frontmatter"]["c"][0]["c"]
+    assert_eq!(meta["ztl-frontmatter"]["t"], "MetaInlines");
+    let serialised = meta["ztl-frontmatter"]["c"][0]["c"]
         .as_str()
         .expect("frontmatter json string");
     let parsed: serde_json::Value = serde_json::from_str(serialised).unwrap();
@@ -259,7 +259,7 @@ fn frontmatter_with_nested_structures_round_trips() {
     assert_eq!(parsed["author"]["aliases"][1], "A.");
     assert_eq!(parsed["metrics"]["subsections"][1]["heading"], "Body");
 
-    let back = t.foreign_to_zetl(pandoc).unwrap();
+    let back = t.foreign_to_ztl(pandoc).unwrap();
     assert_eq!(back, input);
 }
 
@@ -301,27 +301,27 @@ fn position_information_is_preserved_across_translation() {
     };
 
     let t = PandocTranslator;
-    let pandoc = t.zetl_to_foreign(&input).unwrap();
+    let pandoc = t.ztl_to_foreign(&input).unwrap();
 
-    // Pandoc has no native position concept; zetl-position rides as an
+    // Pandoc has no native position concept; ztl-position rides as an
     // attr on every node that has an Attr tuple (Header, Span, …) and as
     // a top-level extra key on node shapes that don't (Para, Str).
     let header = &pandoc["blocks"][0];
     assert_eq!(header["t"], "Header");
     let hd_attr = &header["c"][1];
-    assert_eq!(attr_get(hd_attr, "zetl-position"), Some("1:1-1:9"));
+    assert_eq!(attr_get(hd_attr, "ztl-position"), Some("1:1-1:9"));
 
     let para = &pandoc["blocks"][1];
     assert_eq!(para["t"], "Para");
-    assert_eq!(para["zetl-position"], "3:1-5:12");
+    assert_eq!(para["ztl-position"], "3:1-5:12");
 
     // The wikilink Span lives inside Para's inline children.
     let span = &para["c"][1];
     assert_eq!(span["t"], "Span");
     let wl_attr = &span["c"][0];
-    assert_eq!(attr_get(wl_attr, "zetl-position"), Some("3:7-3:20"));
+    assert_eq!(attr_get(wl_attr, "ztl-position"), Some("3:7-3:20"));
 
-    let back = t.foreign_to_zetl(pandoc).unwrap();
+    let back = t.foreign_to_ztl(pandoc).unwrap();
     assert_eq!(back, input);
 
     // And a direct positional probe on the rehydrated doc — the header
@@ -344,11 +344,11 @@ fn position_information_is_preserved_across_translation() {
 
 // ── Pandoc marker-table attrs preserved across round-trip ────────────────
 
-/// The four marker attrs that zetl stores on the `zetl-wikilink` Span's
+/// The four marker attrs that ztl stores on the `ztl-wikilink` Span's
 /// Attr map (`target`, `alias`, `heading`, `block_id`) are the REQ-3307
 /// slimmed-model marker convention. This test pins the acceptance
 /// criterion "pandoc marker attrs preserved across round-trip" — a
-/// zetl-ext document carrying every combination round-trips through the
+/// ztl-ext document carrying every combination round-trips through the
 /// pandoc adapter without any attr going missing.
 #[test]
 fn pandoc_wikilink_marker_attrs_all_survive_round_trip() {
@@ -384,32 +384,32 @@ fn pandoc_wikilink_marker_attrs_all_survive_round_trip() {
     ])]);
 
     let t = PandocTranslator;
-    let pandoc = t.zetl_to_foreign(&input).unwrap();
+    let pandoc = t.ztl_to_foreign(&input).unwrap();
 
     // Verify every wikilink kept its Attr map shape on the wire; absent
     // optionals do not appear in the attr list at all (distinguishing
     // `None` from `Some("")`).
     let kids = &pandoc["blocks"][0]["c"];
     let a0 = &kids[0]["c"][0];
-    assert_eq!(attr_get(a0, "zetl-target"), Some("Bare"));
-    assert_eq!(attr_get(a0, "zetl-alias"), None);
+    assert_eq!(attr_get(a0, "ztl-target"), Some("Bare"));
+    assert_eq!(attr_get(a0, "ztl-alias"), None);
     let a1 = &kids[1]["c"][0];
-    assert_eq!(attr_get(a1, "zetl-alias"), Some("display"));
+    assert_eq!(attr_get(a1, "ztl-alias"), Some("display"));
     let a2 = &kids[2]["c"][0];
-    assert_eq!(attr_get(a2, "zetl-heading"), Some("Section"));
+    assert_eq!(attr_get(a2, "ztl-heading"), Some("Section"));
     let a3 = &kids[3]["c"][0];
-    assert_eq!(attr_get(a3, "zetl-block-id"), Some("blk42"));
+    assert_eq!(attr_get(a3, "ztl-block-id"), Some("blk42"));
     let a4 = &kids[4]["c"][0];
-    assert_eq!(attr_get(a4, "zetl-alias"), Some("x"));
-    assert_eq!(attr_get(a4, "zetl-heading"), Some("y"));
-    assert_eq!(attr_get(a4, "zetl-block-id"), Some("z"));
+    assert_eq!(attr_get(a4, "ztl-alias"), Some("x"));
+    assert_eq!(attr_get(a4, "ztl-heading"), Some("y"));
+    assert_eq!(attr_get(a4, "ztl-block-id"), Some("z"));
 
-    let back = t.foreign_to_zetl(pandoc).unwrap();
+    let back = t.foreign_to_ztl(pandoc).unwrap();
     assert_eq!(back, input);
 }
 
-/// Embed carries `zetl-target` + optional `zetl-heading` / `zetl-block-id`
-/// marker attrs on its `zetl-embed` Div. This test pins that the
+/// Embed carries `ztl-target` + optional `ztl-heading` / `ztl-block-id`
+/// marker attrs on its `ztl-embed` Div. This test pins that the
 /// block-level embed marker round-trips regardless of which combination
 /// of optional attrs is present.
 #[test]
@@ -442,16 +442,16 @@ fn pandoc_embed_marker_attrs_all_survive_round_trip() {
     ]);
 
     let t = PandocTranslator;
-    let pandoc = t.zetl_to_foreign(&input).unwrap();
+    let pandoc = t.ztl_to_foreign(&input).unwrap();
 
     for i in 0..4 {
         let div = &pandoc["blocks"][i];
         assert_eq!(div["t"], "Div");
         let attr = &div["c"][0];
-        assert!(attr_classes(attr).contains(&"zetl-embed"));
+        assert!(attr_classes(attr).contains(&"ztl-embed"));
     }
 
-    let back = t.foreign_to_zetl(pandoc).unwrap();
+    let back = t.foreign_to_ztl(pandoc).unwrap();
     assert_eq!(back, input);
 }
 
@@ -459,19 +459,19 @@ fn pandoc_embed_marker_attrs_all_survive_round_trip() {
 
 /// REQ-3307 slimmed model: the `pandoc-ext` translator emits a canonical
 /// pandoc-types document envelope (`pandoc-api-version` + `meta` +
-/// `blocks`) and carries the `zetl-ast-version` marker in `meta` so
+/// `blocks`) and carries the `ztl-ast-version` marker in `meta` so
 /// lossy foreign hooks can still be round-tripped through
-/// `foreign_to_zetl` without losing the schema pin.
+/// `foreign_to_ztl` without losing the schema pin.
 #[test]
-fn pandoc_root_envelope_carries_zetl_ast_version_marker() {
+fn pandoc_root_envelope_carries_ztl_ast_version_marker() {
     let input = doc(vec![paragraph(vec![text("x")])]);
     let t = PandocTranslator;
-    let pandoc = t.zetl_to_foreign(&input).unwrap();
+    let pandoc = t.ztl_to_foreign(&input).unwrap();
     assert!(pandoc["pandoc-api-version"].is_array());
     assert!(pandoc["meta"].is_object());
     assert!(pandoc["blocks"].is_array());
-    assert_eq!(pandoc["meta"]["zetl-ast-version"]["t"], "MetaInlines");
-    assert_eq!(pandoc["meta"]["zetl-ast-version"]["c"][0]["c"], AST_VERSION);
+    assert_eq!(pandoc["meta"]["ztl-ast-version"]["t"], "MetaInlines");
+    assert_eq!(pandoc["meta"]["ztl-ast-version"]["c"][0]["c"], AST_VERSION);
 }
 
 /// Per REQ-3307, the translator declares `AstType::PandocExt` — a
@@ -491,7 +491,7 @@ fn translator_reports_pandoc_ext_ast_type() {
 /// or on the nested children.
 #[test]
 fn nested_mixed_lists_round_trip() {
-    use zetl::hooks::ast::List;
+    use ztl::hooks::ast::List;
     let input = doc(vec![Block::List(List {
         position: Position::origin(),
         ordered: false,
@@ -519,7 +519,7 @@ fn nested_mixed_lists_round_trip() {
     })]);
 
     let t = PandocTranslator;
-    let pandoc = t.zetl_to_foreign(&input).unwrap();
+    let pandoc = t.ztl_to_foreign(&input).unwrap();
     let outer = &pandoc["blocks"][0];
     assert_eq!(outer["t"], "BulletList");
     // Inner list lives in item[1]'s block-children (index 1 after the
@@ -530,6 +530,6 @@ fn nested_mixed_lists_round_trip() {
     // element of the attr triple.
     assert_eq!(inner["c"][0][0], 1);
 
-    let back = t.foreign_to_zetl(pandoc).unwrap();
+    let back = t.foreign_to_ztl(pandoc).unwrap();
     assert_eq!(back, input);
 }

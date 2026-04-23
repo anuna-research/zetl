@@ -9,23 +9,23 @@ use clap::Parser;
 use comfy_table::{Cell, Table};
 use serde::Serialize;
 
-use zetl::cache::{
+use ztl::cache::{
     files_needing_reparse, load_cache, load_theory_cache, load_vault_root_hex, save_cache,
 };
-use zetl::cli::{
+use ztl::cli::{
     AgentCommand, BlockTypeFilter, Cli, Command, EcosystemCommand, FailLevel, HookCommand,
     OutputFormat, ThemeCommand,
 };
-use zetl::drift::{detect_explicit_drift, detect_section_drift};
-use zetl::graph::LinkGraph;
-use zetl::merkle::{
+use ztl::drift::{detect_explicit_drift, detect_section_drift};
+use ztl::graph::LinkGraph;
+use ztl::merkle::{
     build_vault_hash_index, resolve_hash_prefix, validate_source_refs, HashResolutionResult,
 };
-use zetl::scanner::{resolve_page_name, scan_vault};
-use zetl::search::{search_vault, SearchConfig};
-use zetl::search_index::SearchIndex;
-use zetl::simhash::SimHashIndex;
-use zetl::types::{ContentHash, DiagnosticLevel, DriftDiagnostic, DriftSeverity, ParsedFile};
+use ztl::scanner::{resolve_page_name, scan_vault};
+use ztl::search::{search_vault, SearchConfig};
+use ztl::search_index::SearchIndex;
+use ztl::simhash::SimHashIndex;
+use ztl::types::{ContentHash, DiagnosticLevel, DriftDiagnostic, DriftSeverity, ParsedFile};
 
 // ── Common pipeline ────────────────────────────────────────────────────────
 
@@ -255,14 +255,14 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
 ///    cached files and return a fully-formed `Pipeline` with `snapshot` set.
 #[cfg(feature = "history")]
 fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str, verbose: u8) -> Result<Pipeline> {
-    use zetl::history::cache::HistoricalIndexCache;
-    use zetl::history::core::resolve_snapshot;
-    use zetl::history::jj_backend::VcsBackend as _;
+    use ztl::history::cache::HistoricalIndexCache;
+    use ztl::history::core::resolve_snapshot;
+    use ztl::history::jj_backend::VcsBackend as _;
 
-    // Use open_history (not open_or_init) so that a missing .zetl/jj/ directory
+    // Use open_history (not open_or_init) so that a missing .ztl/jj/ directory
     // yields NO_HISTORY rather than silently initialising an empty workspace (REQ-084).
     let backend =
-        zetl::history::open_history(&vault_root).context("opening jj workspace for --at query")?;
+        ztl::history::open_history(&vault_root).context("opening jj workspace for --at query")?;
 
     // list_changes with a large limit to get all history (OBS-011).
     let history_load_start = Instant::now();
@@ -272,7 +272,7 @@ fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str, verbose: u8) -> R
     let history_load_ms = history_load_start.elapsed().as_millis();
     if verbose > 0 {
         eprintln!(
-            "[zetl] history: loaded {} snapshots duration_ms={}",
+            "[ztl] history: loaded {} snapshots duration_ms={}",
             snapshots.len(),
             history_load_ms
         );
@@ -286,7 +286,7 @@ fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str, verbose: u8) -> R
     let at_resolve_ms = at_resolve_start.elapsed().as_millis();
     if verbose > 0 {
         eprintln!(
-            "[zetl] at: resolved {:?} → {} (change={}) duration_ms={}",
+            "[ztl] at: resolved {:?} → {} (change={}) duration_ms={}",
             at_expr,
             snapshot_info.timestamp.to_rfc3339(),
             snapshot_info.change_id,
@@ -295,11 +295,11 @@ fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str, verbose: u8) -> R
     }
 
     let vault_root_hash =
-        zetl::history::core::extract_vault_root_hash_from_description(&snapshot_info.description)
+        ztl::history::core::extract_vault_root_hash_from_description(&snapshot_info.description)
             .ok_or_else(|| {
             anyhow::anyhow!(
                 "Snapshot {} has no vault_root_hash in its description. \
-                     Run `zetl index` to rebuild the historical cache.",
+                     Run `ztl index` to rebuild the historical cache.",
                 snapshot_info.change_id
             )
         })?;
@@ -314,18 +314,18 @@ fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str, verbose: u8) -> R
     if verbose > 0 {
         if file_map_opt.is_some() {
             eprintln!(
-                "[zetl] at: cache hit vault_root_hash={vault_root_hash} duration_ms={cache_load_ms}"
+                "[ztl] at: cache hit vault_root_hash={vault_root_hash} duration_ms={cache_load_ms}"
             );
         } else {
             eprintln!(
-                "[zetl] at: cache miss vault_root_hash={vault_root_hash} duration_ms={cache_load_ms}"
+                "[ztl] at: cache miss vault_root_hash={vault_root_hash} duration_ms={cache_load_ms}"
             );
         }
     }
     let file_map = file_map_opt.ok_or_else(|| {
         anyhow::anyhow!(
             "No cached index for snapshot {} (vault_root_hash={}). \
-                 Run `zetl index` at that point in time to populate the cache.",
+                 Run `ztl index` at that point in time to populate the cache.",
             snapshot_info.change_id,
             vault_root_hash
         )
@@ -393,10 +393,10 @@ fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str, verbose: u8) -> R
 
 /// Pre-launch index check (REQ-072, CON-023).
 ///
-/// Checks whether `.zetl/index.json` exists in the vault root before entering
+/// Checks whether `.ztl/index.json` exists in the vault root before entering
 /// the alternate screen.  When the file is absent the user gets a brief status
 /// message on stderr and the index pipeline runs in-process (identical to
-/// `zetl index`).
+/// `ztl index`).
 ///
 /// * On success the freshly-built `Pipeline` is returned so the caller can
 ///   reuse it rather than scanning a second time.
@@ -409,7 +409,7 @@ fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str, verbose: u8) -> R
 fn check_no_index_fallback(cli: &Cli) -> Result<Option<Pipeline>> {
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
-    let index_path = vault_root.join(".zetl").join("index.json");
+    let index_path = vault_root.join(".ztl").join("index.json");
 
     if !index_path.exists() {
         eprintln!("Building index\u{2026}");
@@ -496,7 +496,7 @@ fn exit_page_not_found(format: &OutputFormat, message: &str) -> ! {
             eprintln!("{message}");
             eprintln!();
             eprintln!(
-                "Hint: run `zetl list` to see all pages, or use --fuzzy for approximate matching."
+                "Hint: run `ztl list` to see all pages, or use --fuzzy for approximate matching."
             );
             std::process::exit(1);
         }
@@ -543,12 +543,12 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         let vault_root_hash = load_vault_root_hex(&pipeline.vault_root).unwrap_or(None);
         // OBS-011: time snapshot creation.
         let snap_start = Instant::now();
-        match zetl::history::auto_snapshot(&pipeline.vault_root, vault_root_hash.as_deref()) {
+        match ztl::history::auto_snapshot(&pipeline.vault_root, vault_root_hash.as_deref()) {
             Ok(Some(change_id)) => {
                 let snap_ms = snap_start.elapsed().as_millis();
                 if cli.verbose > 0 {
                     eprintln!(
-                        "[zetl] snapshot: created change {} (vault_root_hash={}) duration_ms={}",
+                        "[ztl] snapshot: created change {} (vault_root_hash={}) duration_ms={}",
                         change_id,
                         vault_root_hash.as_deref().unwrap_or("unknown"),
                         snap_ms
@@ -558,7 +558,7 @@ fn cmd_index(cli: &Cli) -> Result<()> {
             Ok(None) => {} // deduplicated — vault state unchanged
             Err(e) => {
                 if cli.verbose > 0 {
-                    eprintln!("[zetl] warning: auto-snapshot failed: {e}");
+                    eprintln!("[ztl] warning: auto-snapshot failed: {e}");
                 }
             }
         }
@@ -566,10 +566,10 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         // Store the current index in HistoricalIndexCache so that future
         // --at queries can load it (REQ-079, ADR-047).
         if let Some(ref hash) = vault_root_hash {
-            let hist_cache = zetl::history::cache::HistoricalIndexCache::with_default_capacity();
+            let hist_cache = ztl::history::cache::HistoricalIndexCache::with_default_capacity();
             if let Err(e) = hist_cache.store(&pipeline.vault_root, hash, &pipeline.files) {
                 if cli.verbose > 0 {
-                    eprintln!("[zetl] warning: failed to store historical index: {e}");
+                    eprintln!("[ztl] warning: failed to store historical index: {e}");
                 }
             }
         }
@@ -603,7 +603,7 @@ fn cmd_index(cli: &Cli) -> Result<()> {
     // changed (files_hashed > 0), the index directory is absent, or --no-cache
     // was requested.  For --no-cache, the existing index directory is deleted
     // first so Tantivy starts with a clean on-disk layout.
-    let search_dir = pipeline.vault_root.join(".zetl").join("search");
+    let search_dir = pipeline.vault_root.join(".ztl").join("search");
     let needs_rebuild =
         cli.no_cache || pipeline.scan_stats.files_hashed > 0 || !search_dir.exists();
 
@@ -638,29 +638,29 @@ fn cmd_index(cli: &Cli) -> Result<()> {
     // (REQ-097). OBS-017 is emitted by `VectorIndex::build` unconditionally.
     #[cfg(feature = "semantic")]
     let semantic_stats: Option<serde_json::Value> = if needs_rebuild {
-        let vectors_dir = pipeline.vault_root.join(zetl::semantic::VECTORS_DIR);
-        match zetl::semantic::VectorIndex::build(&pipeline.vault_root, &pipeline.files) {
+        let vectors_dir = pipeline.vault_root.join(ztl::semantic::VECTORS_DIR);
+        match ztl::semantic::VectorIndex::build(&pipeline.vault_root, &pipeline.files) {
             Ok(idx) => {
                 let chunk_count = idx.chunk_count();
                 let index_size_kb = dir_size_kb(&vectors_dir);
                 Some(serde_json::json!({
                     "chunk_count": chunk_count,
                     "index_size_kb": index_size_kb,
-                    "model_name": zetl::semantic::MODEL_NAME,
+                    "model_name": ztl::semantic::MODEL_NAME,
                 }))
             }
             Err(e) => {
                 if cli.verbose > 0 {
-                    eprintln!("[zetl] warning: semantic index build failed: {e}");
+                    eprintln!("[ztl] warning: semantic index build failed: {e}");
                 }
                 None
             }
         }
     } else {
         // No file changes — report existing vector index size if available.
-        let vectors_dir = pipeline.vault_root.join(zetl::semantic::VECTORS_DIR);
+        let vectors_dir = pipeline.vault_root.join(ztl::semantic::VECTORS_DIR);
         if vectors_dir.exists() {
-            let chunks_path = vectors_dir.join(zetl::semantic::CHUNKS_FILE);
+            let chunks_path = vectors_dir.join(ztl::semantic::CHUNKS_FILE);
             let chunk_count = std::fs::read_to_string(&chunks_path)
                 .ok()
                 .and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(&s).ok())
@@ -670,7 +670,7 @@ fn cmd_index(cli: &Cli) -> Result<()> {
             Some(serde_json::json!({
                 "chunk_count": chunk_count,
                 "index_size_kb": index_size_kb,
-                "model_name": zetl::semantic::MODEL_NAME,
+                "model_name": ztl::semantic::MODEL_NAME,
             }))
         } else {
             None
@@ -753,16 +753,16 @@ fn cmd_index(cli: &Cli) -> Result<()> {
 
     // ── post-index hooks (non-fatal) ────────────────────────────────
     let verbose = cli.verbose > 0;
-    let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, "");
+    let theme_hooks = ztl::hooks::resolve_theme_hooks(&pipeline.vault_root, "");
     let manifest =
-        zetl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
+        ztl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
 
     for w in &manifest.warnings {
         eprintln!("warning: {w}");
     }
 
-    if !zetl::hooks::hooks_for(&manifest, "post-index").is_empty() {
-        let ctx = zetl::hooks::context::build_hook_context(
+    if !ztl::hooks::hooks_for(&manifest, "post-index").is_empty() {
+        let ctx = ztl::hooks::context::build_hook_context(
             "post-index",
             &pipeline.vault_root,
             "",
@@ -773,14 +773,14 @@ fn cmd_index(cli: &Cli) -> Result<()> {
 
         let context_json = serde_json::to_vec(&ctx)?;
 
-        let hook_env = zetl::hooks::HookEnv {
+        let hook_env = ztl::hooks::HookEnv {
             vault_root: pipeline.vault_root.clone(),
             theme: String::new(),
-            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+            ztl_version: env!("CARGO_PKG_VERSION").to_string(),
             extra_vars: vec![],
         };
 
-        let results = zetl::hooks::run_hooks_verbose(
+        let results = ztl::hooks::run_hooks_verbose(
             &manifest,
             "post-index",
             &context_json,
@@ -812,7 +812,7 @@ fn cmd_index(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
-// ── zetl watch ─────────────────────────────────────────────────────────────
+// ── ztl watch ─────────────────────────────────────────────────────────────
 
 /// ISO 8601 UTC timestamp using pure std (no external date library needed).
 ///
@@ -865,7 +865,7 @@ fn emit_watch_event(event: &serde_json::Value, exec: Option<&str>, verbose: u8) 
             {
                 Ok(c) => c,
                 Err(e) => {
-                    eprintln!("[zetl watch] --exec spawn failed: {e}");
+                    eprintln!("[ztl watch] --exec spawn failed: {e}");
                     return;
                 }
             };
@@ -877,7 +877,7 @@ fn emit_watch_event(event: &serde_json::Value, exec: Option<&str>, verbose: u8) 
             if let Ok(status) = child.wait() {
                 if !status.success() {
                     let code = status.code().unwrap_or(-1);
-                    eprintln!("[zetl watch] --exec exited {code} for event {event_type}");
+                    eprintln!("[ztl watch] --exec exited {code} for event {event_type}");
                 }
             }
         });
@@ -885,7 +885,7 @@ fn emit_watch_event(event: &serde_json::Value, exec: Option<&str>, verbose: u8) 
     }
 }
 
-/// Collect `.md` paths from a notify event into `changed`, excluding `.zetl/`.
+/// Collect `.md` paths from a notify event into `changed`, excluding `.ztl/`.
 fn collect_md_paths(
     evt: notify::Result<notify::Event>,
     vault_root: &Path,
@@ -896,16 +896,16 @@ fn collect_md_paths(
         if path.extension().and_then(|e| e.to_str()) != Some("md") {
             continue;
         }
-        // Ignore changes inside the .zetl/ metadata directory.
+        // Ignore changes inside the .ztl/ metadata directory.
         let rel = path.strip_prefix(vault_root).unwrap_or(&path);
-        if rel.components().any(|c| c.as_os_str() == ".zetl") {
+        if rel.components().any(|c| c.as_os_str() == ".ztl") {
             continue;
         }
         changed.insert(path);
     }
 }
 
-/// `zetl watch` — watch vault for file changes and emit NDJSON graph events (SPEC-008).
+/// `ztl watch` — watch vault for file changes and emit NDJSON graph events (SPEC-008).
 ///
 /// After each incremental re-index cycle, creates a jj snapshot asynchronously
 /// using the same deduplication as `auto_snapshot` (REQ-082, ADR-048).
@@ -951,7 +951,7 @@ fn cmd_watch(cli: &Cli, debounce_ms: u64, exec: Option<&str>) -> Result<()> {
 
     if cli.verbose > 0 {
         eprintln!(
-            "[zetl watch] started  vault={}  debounce={}ms  pages={}",
+            "[ztl watch] started  vault={}  debounce={}ms  pages={}",
             vault_root.display(),
             debounce_ms,
             current.files.len()
@@ -1053,7 +1053,7 @@ fn cmd_watch(cli: &Cli, debounce_ms: u64, exec: Option<&str>) -> Result<()> {
         let new_pipeline = match run_pipeline(cli) {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("[zetl watch] re-index error: {e:#}");
+                eprintln!("[ztl watch] re-index error: {e:#}");
                 continue;
             }
         };
@@ -1201,7 +1201,7 @@ fn cmd_watch(cli: &Cli, debounce_ms: u64, exec: Option<&str>) -> Result<()> {
 
         if cli.verbose > 0 {
             eprintln!(
-                "[zetl watch] batch  changed={}  total_ms={}",
+                "[ztl watch] batch  changed={}  total_ms={}",
                 changed.len(),
                 duration_ms
             );
@@ -1220,12 +1220,12 @@ fn cmd_watch(cli: &Cli, debounce_ms: u64, exec: Option<&str>) -> Result<()> {
             std::thread::spawn(move || {
                 // OBS-011: time async snapshot creation.
                 let snap_start = std::time::Instant::now();
-                match zetl::history::auto_snapshot(&vr, hash.as_deref()) {
+                match ztl::history::auto_snapshot(&vr, hash.as_deref()) {
                     Ok(Some(change_id)) => {
                         let snap_ms = snap_start.elapsed().as_millis();
                         if verbose > 0 {
                             eprintln!(
-                                "[zetl watch] snapshot: created change {} (vault_root_hash={}) duration_ms={}",
+                                "[ztl watch] snapshot: created change {} (vault_root_hash={}) duration_ms={}",
                                 change_id,
                                 hash.as_deref().unwrap_or("unknown"),
                                 snap_ms
@@ -1235,7 +1235,7 @@ fn cmd_watch(cli: &Cli, debounce_ms: u64, exec: Option<&str>) -> Result<()> {
                     Ok(None) => {} // deduplicated — graph unchanged
                     Err(e) => {
                         if verbose > 0 {
-                            eprintln!("[zetl watch] warning: snapshot failed: {e:#}");
+                            eprintln!("[ztl watch] warning: snapshot failed: {e:#}");
                         }
                     }
                 }
@@ -1246,7 +1246,7 @@ fn cmd_watch(cli: &Cli, debounce_ms: u64, exec: Option<&str>) -> Result<()> {
     }
 
     if cli.verbose > 0 {
-        eprintln!("[zetl watch] shutdown");
+        eprintln!("[ztl watch] shutdown");
     }
     Ok(())
 }
@@ -1642,7 +1642,7 @@ fn cmd_check(
     };
 
     // Collect SPL diagnostics (requires "reason" feature)
-    let mut spl_diagnostics: Vec<zetl::types::Diagnostic> = if show_all || show_spl {
+    let mut spl_diagnostics: Vec<ztl::types::Diagnostic> = if show_all || show_spl {
         collect_spl_diagnostics(&pipeline.files)
     } else {
         vec![]
@@ -1659,7 +1659,7 @@ fn cmd_check(
     }
 
     // Load theory cache once for drift detection, broken_groundings, and explicitly_grounded_facts.
-    // Requires a prior `zetl reason status` that produced theory.json — if none exists,
+    // Requires a prior `ztl reason status` that produced theory.json — if none exists,
     // load_theory_cache returns None and we skip the theory-cache-dependent checks silently.
     let theory_cache = load_theory_cache(&pipeline.vault_root).unwrap_or(None);
 
@@ -1746,10 +1746,10 @@ fn cmd_check(
 
     #[derive(Serialize)]
     struct CheckOutput {
-        dead_links: Vec<zetl::graph::DeadLink>,
-        orphans: Vec<zetl::graph::Orphan>,
-        syntax_errors: Vec<zetl::types::Diagnostic>,
-        spl_diagnostics: Vec<zetl::types::Diagnostic>,
+        dead_links: Vec<ztl::graph::DeadLink>,
+        orphans: Vec<ztl::graph::Orphan>,
+        syntax_errors: Vec<ztl::types::Diagnostic>,
+        spl_diagnostics: Vec<ztl::types::Diagnostic>,
         drift_diagnostics: Vec<DriftDiagnostic>,
         summary: CheckSummary,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1933,25 +1933,25 @@ fn cmd_check(
 
     // ── post-check hooks (REQ-016-004: non-fatal) ──────────────────────
     let verbose = cli.verbose > 0;
-    let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
+    let theme_hooks = ztl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
     let manifest =
-        zetl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
+        ztl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
 
     for w in &manifest.warnings {
         eprintln!("warning: {w}");
     }
 
-    if !zetl::hooks::hooks_for(&manifest, "post-check").is_empty() {
+    if !ztl::hooks::hooks_for(&manifest, "post-check").is_empty() {
         // Collect full diagnostics for hook context (unfiltered by display flags).
         let hook_dead_links = pipeline.graph.dead_links();
         let hook_orphans = pipeline.graph.orphans();
-        let hook_syntax_errors: Vec<zetl::types::Diagnostic> = pipeline
+        let hook_syntax_errors: Vec<ztl::types::Diagnostic> = pipeline
             .files
             .iter()
             .flat_map(|f| f.diagnostics.clone())
             .collect();
 
-        let mut ctx = zetl::hooks::context::build_hook_context(
+        let mut ctx = ztl::hooks::context::build_hook_context(
             "post-check",
             &pipeline.vault_root,
             theme,
@@ -1959,7 +1959,7 @@ fn cmd_check(
             &pipeline.files,
             &pipeline.graph,
         );
-        ctx.diagnostics = Some(zetl::hooks::context::HookDiagnostics {
+        ctx.diagnostics = Some(ztl::hooks::context::HookDiagnostics {
             dead_links: hook_dead_links,
             orphans: hook_orphans,
             syntax_errors: hook_syntax_errors,
@@ -1967,14 +1967,14 @@ fn cmd_check(
 
         let context_json = serde_json::to_vec(&ctx)?;
 
-        let hook_env = zetl::hooks::HookEnv {
+        let hook_env = ztl::hooks::HookEnv {
             vault_root: pipeline.vault_root.clone(),
             theme: theme.to_string(),
-            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+            ztl_version: env!("CARGO_PKG_VERSION").to_string(),
             extra_vars: vec![],
         };
 
-        let results = zetl::hooks::run_hooks_verbose(
+        let results = ztl::hooks::run_hooks_verbose(
             &manifest,
             "post-check",
             &context_json,
@@ -2044,8 +2044,8 @@ fn cmd_check(
 ///
 /// Feature-gated: returns empty vec when the "reason" feature is disabled.
 #[cfg(feature = "reason")]
-fn collect_spl_diagnostics(files: &[ParsedFile]) -> Vec<zetl::types::Diagnostic> {
-    use zetl::reason::build_theory;
+fn collect_spl_diagnostics(files: &[ParsedFile]) -> Vec<ztl::types::Diagnostic> {
+    use ztl::reason::build_theory;
 
     let spl_blocks: Vec<_> = files.iter().flat_map(|f| f.spl_blocks.clone()).collect();
     if spl_blocks.is_empty() {
@@ -2055,7 +2055,7 @@ fn collect_spl_diagnostics(files: &[ParsedFile]) -> Vec<zetl::types::Diagnostic>
     match build_theory(&spl_blocks) {
         Ok(result) => result.diagnostics,
         Err(e) => {
-            vec![zetl::types::Diagnostic {
+            vec![ztl::types::Diagnostic {
                 level: DiagnosticLevel::Error,
                 message: format!("SPL theory construction failed: {e}"),
                 file: std::path::PathBuf::new(),
@@ -2067,7 +2067,7 @@ fn collect_spl_diagnostics(files: &[ParsedFile]) -> Vec<zetl::types::Diagnostic>
 }
 
 #[cfg(not(feature = "reason"))]
-fn collect_spl_diagnostics(_files: &[ParsedFile]) -> Vec<zetl::types::Diagnostic> {
+fn collect_spl_diagnostics(_files: &[ParsedFile]) -> Vec<ztl::types::Diagnostic> {
     vec![]
 }
 
@@ -2087,7 +2087,7 @@ fn cmd_similar(cli: &Cli, query: &str, threshold: u32, limit: usize) -> Result<(
     struct SimilarOutput {
         query: String,
         threshold: u32,
-        results: Vec<zetl::simhash::SimilarResult>,
+        results: Vec<ztl::simhash::SimilarResult>,
     }
 
     let output = SimilarOutput {
@@ -2155,9 +2155,9 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
     // OBS-012: collect history storage stats when the feature is available.
     #[cfg(feature = "history")]
     let history_stats: Option<serde_json::Value> = {
-        use zetl::history::jj_backend::VcsBackend as _;
+        use ztl::history::jj_backend::VcsBackend as _;
         (|| -> Option<serde_json::Value> {
-            let backend = zetl::history::open_history(&pipeline.vault_root).ok()?;
+            let backend = ztl::history::open_history(&pipeline.vault_root).ok()?;
             let snapshots = backend.list_changes(10_000).ok()?;
             if snapshots.is_empty() {
                 return None;
@@ -2170,7 +2170,7 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
             let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
             for snap in &snapshots {
                 if let Some(h) =
-                    zetl::history::core::extract_vault_root_hash_from_description(&snap.description)
+                    ztl::history::core::extract_vault_root_hash_from_description(&snap.description)
                 {
                     seen.insert(h);
                 }
@@ -2178,7 +2178,7 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
             let unique_states = seen.len();
 
             // Scan cache directory for entry count and total size.
-            let history_dir = pipeline.vault_root.join(".zetl").join("history");
+            let history_dir = pipeline.vault_root.join(".ztl").join("history");
             let mut cache_entries = 0usize;
             let mut total_bytes = 0u64;
             if let Ok(rd) = std::fs::read_dir(&history_dir) {
@@ -2211,12 +2211,12 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
     #[cfg(not(feature = "history"))]
     let history_stats: Option<serde_json::Value> = None;
 
-    // OBS-020: semantic stats for `zetl stats` when semantic feature is enabled.
+    // OBS-020: semantic stats for `ztl stats` when semantic feature is enabled.
     #[cfg(feature = "semantic")]
     let semantic_stats: Option<serde_json::Value> = {
-        let vectors_dir = pipeline.vault_root.join(zetl::semantic::VECTORS_DIR);
+        let vectors_dir = pipeline.vault_root.join(ztl::semantic::VECTORS_DIR);
         if vectors_dir.exists() {
-            let chunks_path = vectors_dir.join(zetl::semantic::CHUNKS_FILE);
+            let chunks_path = vectors_dir.join(ztl::semantic::CHUNKS_FILE);
             let chunk_count = std::fs::read_to_string(&chunks_path)
                 .ok()
                 .and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(&s).ok())
@@ -2227,7 +2227,7 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
             Some(serde_json::json!({
                 "chunk_count": chunk_count,
                 "index_size_mb": index_size_mb,
-                "model_name": zetl::semantic::MODEL_NAME,
+                "model_name": ztl::semantic::MODEL_NAME,
             }))
         } else {
             None
@@ -2237,16 +2237,16 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
     let semantic_stats: Option<serde_json::Value> = None;
 
     // OBS-102: graph-index export stats (bytes/nodes/edges) mirror what
-    // `zetl build` would emit as graph-index.json, so authors can size the
+    // `ztl build` would emit as graph-index.json, so authors can size the
     // asset before enabling `graph_inline = true` in a theme.
-    let (page_slug_map, _slug_collisions) = zetl::web::build_slug_map(&pipeline.files);
+    let (page_slug_map, _slug_collisions) = ztl::web::build_slug_map(&pipeline.files);
     let mut tags_by_page: HashMap<String, Vec<String>> = HashMap::new();
     for file in &pipeline.files {
         let full_path = pipeline.vault_root.join(&file.path);
         let Ok(content) = std::fs::read_to_string(&full_path) else {
             continue;
         };
-        let fm = zetl::web::markdown::parse_frontmatter(&content);
+        let fm = ztl::web::markdown::parse_frontmatter(&content);
         let Some(arr) = fm.get("tags").and_then(|v| v.as_array()) else {
             continue;
         };
@@ -2264,8 +2264,8 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
         .and_then(|n| n.to_str())
         .unwrap_or("vault")
         .to_string();
-    let generated_at = zetl::user::access_request::now_iso8601();
-    let graph_index_json = zetl::graph::serialize_graph_index(
+    let generated_at = ztl::user::access_request::now_iso8601();
+    let graph_index_json = ztl::graph::serialize_graph_index(
         &pipeline.graph,
         &page_slug_map,
         &tags_by_page,
@@ -2294,7 +2294,7 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
     #[derive(Serialize)]
     struct StatsOutput {
         #[serde(flatten)]
-        graph: zetl::graph::GraphStats,
+        graph: ztl::graph::GraphStats,
         vault_content_hash: Option<String>,
         spl_blocks: usize,
         grounded_spl_blocks: usize,
@@ -2562,11 +2562,11 @@ fn cmd_search(
         // Historical query: run_pipeline will route to run_historical_pipeline.
         Some(run_pipeline(cli)?)
     } else if near.is_some() {
-        // REQ-013-006: graph requires zetl index — the lazy search-index build does
+        // REQ-013-006: graph requires ztl index — the lazy search-index build does
         // not build the link graph. Check the cache before proceeding.
-        let cache_path = vault_root.join(".zetl").join("index.json");
+        let cache_path = vault_root.join(".ztl").join("index.json");
         if !cache_path.exists() {
-            let msg = "Graph required for --near. Run `zetl index` first.";
+            let msg = "Graph required for --near. Run `ztl index` first.";
             match cli.format {
                 OutputFormat::Json => exit_json_error(msg, 1),
                 _ => {
@@ -2654,16 +2654,16 @@ fn cmd_search(
     // For --semantic (pure vector) the index is loaded sequentially after BM25 is skipped.
     #[cfg(feature = "semantic")]
     let hybrid_vec_thread: Option<
-        std::thread::JoinHandle<anyhow::Result<(Vec<zetl::semantic::VectorHit>, usize, u128)>>,
+        std::thread::JoinHandle<anyhow::Result<(Vec<ztl::semantic::VectorHit>, usize, u128)>>,
     > = if hybrid {
         let vault_root_vec = vault_root.clone();
         let query_owned = query.to_string();
         let vec_limit = limit.saturating_mul(2);
         Some(std::thread::spawn(move || {
-            let idx = zetl::semantic::VectorIndex::open(&vault_root_vec)?;
+            let idx = ztl::semantic::VectorIndex::open(&vault_root_vec)?;
             match idx {
                 None => {
-                    anyhow::bail!("Vector index not found. Run `zetl index` to build it first.")
+                    anyhow::bail!("Vector index not found. Run `ztl index` to build it first.")
                 }
                 Some(idx) => {
                     let start = std::time::Instant::now();
@@ -2701,14 +2701,14 @@ fn cmd_search(
     // is active and the caller requested --semantic or --hybrid.
     #[cfg(feature = "semantic")]
     {
-        use zetl::search::SearchMatch;
+        use ztl::search::SearchMatch;
         if semantic {
             // --semantic: pure vector search — load index sequentially and replace BM25 output.
             let vec_start = std::time::Instant::now();
-            let vec_index = zetl::semantic::VectorIndex::open(&vault_root);
+            let vec_index = ztl::semantic::VectorIndex::open(&vault_root);
             match vec_index {
                 Err(e) => {
-                    let msg = format!("Failed to load vector index: {e}. Run `zetl index` first.");
+                    let msg = format!("Failed to load vector index: {e}. Run `ztl index` first.");
                     match cli.format {
                         OutputFormat::Json => exit_json_error(&msg, 1),
                         OutputFormat::Table | OutputFormat::Auto => {
@@ -2718,7 +2718,7 @@ fn cmd_search(
                     }
                 }
                 Ok(None) => {
-                    let msg = "Vector index not found. Run `zetl index` to build it first.";
+                    let msg = "Vector index not found. Run `ztl index` to build it first.";
                     match cli.format {
                         OutputFormat::Json => exit_json_error(msg, 1),
                         OutputFormat::Table | OutputFormat::Auto => {
@@ -2795,7 +2795,7 @@ fn cmd_search(
 
             if cli.verbose > 0 {
                 eprintln!(
-                    "[zetl] vector-query: chunks_scanned={vec_chunks_scanned} results={} duration_ms={vec_ms}",
+                    "[ztl] vector-query: chunks_scanned={vec_chunks_scanned} results={} duration_ms={vec_ms}",
                     vec_hits.len()
                 );
             }
@@ -2831,16 +2831,16 @@ fn cmd_search(
             };
 
             let fusion_start = std::time::Instant::now();
-            let fused = zetl::semantic::core::reciprocal_rank_fusion(
+            let fused = ztl::semantic::core::reciprocal_rank_fusion(
                 &bm25_ranks,
                 &vec_ranks,
-                zetl::semantic::RRF_K,
+                ztl::semantic::RRF_K,
             );
             let fusion_ms = fusion_start.elapsed().as_millis();
 
             if cli.verbose > 0 {
                 eprintln!(
-                    "[zetl] hybrid-fusion: bm25_candidates={} vec_candidates={} fused={} duration_ms={fusion_ms}",
+                    "[ztl] hybrid-fusion: bm25_candidates={} vec_candidates={} fused={} duration_ms={fusion_ms}",
                     bm25_ranks.len(),
                     vec_ranks.len(),
                     fused.len(),
@@ -2916,7 +2916,7 @@ fn cmd_search(
                 #[derive(Serialize)]
                 struct SearchOutputWithSnapshot<'a> {
                     #[serde(flatten)]
-                    inner: &'a zetl::search::SearchOutput,
+                    inner: &'a ztl::search::SearchOutput,
                     #[serde(skip_serializing_if = "Option::is_none")]
                     snapshot: Option<SnapshotInfo>,
                 }
@@ -2939,7 +2939,7 @@ fn cmd_search(
             #[derive(Serialize)]
             struct SearchOutputWithSnapshot<'a> {
                 #[serde(flatten)]
-                inner: &'a zetl::search::SearchOutput,
+                inner: &'a ztl::search::SearchOutput,
                 #[serde(skip_serializing_if = "Option::is_none")]
                 snapshot: Option<SnapshotInfo>,
             }
@@ -3066,11 +3066,11 @@ fn cmd_blocks(
 
     // ── Helper: convert hex ContentHash to string ──────────────────────────
     let hash_to_hex =
-        |h: &zetl::types::ContentHash| -> String { h.iter().map(|b| format!("{b:02x}")).collect() };
+        |h: &ztl::types::ContentHash| -> String { h.iter().map(|b| format!("{b:02x}")).collect() };
 
     // ── Helper: derive a type label string from a LeafType ─────────────────
-    fn leaf_type_label(leaf_type: &zetl::types::LeafType) -> String {
-        use zetl::types::LeafType;
+    fn leaf_type_label(leaf_type: &ztl::types::LeafType) -> String {
+        use ztl::types::LeafType;
         match leaf_type {
             LeafType::Heading { level } => format!("heading-{level}"),
             LeafType::Paragraph => "paragraph".to_string(),
@@ -3086,8 +3086,8 @@ fn cmd_blocks(
     }
 
     // ── Helper: check if a leaf type passes the filter ─────────────────────
-    fn leaf_matches_filter(leaf_type: &zetl::types::LeafType, filter: &BlockTypeFilter) -> bool {
-        use zetl::types::LeafType;
+    fn leaf_matches_filter(leaf_type: &ztl::types::LeafType, filter: &BlockTypeFilter) -> bool {
+        use ztl::types::LeafType;
         match filter {
             BlockTypeFilter::All => true,
             BlockTypeFilter::Heading => matches!(leaf_type, LeafType::Heading { .. }),
@@ -3306,8 +3306,8 @@ fn cmd_blocks_resolve(cli: &Cli, hash_prefix: &str) -> Result<()> {
     let index = build_vault_hash_index(&pipeline.files);
 
     // ── Helpers ──────────────────────────────────────────────────────────────
-    fn leaf_type_label(leaf_type: &zetl::types::LeafType) -> String {
-        use zetl::types::LeafType;
+    fn leaf_type_label(leaf_type: &ztl::types::LeafType) -> String {
+        use ztl::types::LeafType;
         match leaf_type {
             LeafType::Heading { level } => format!("heading-{level}"),
             LeafType::Paragraph => "paragraph".to_string(),
@@ -3665,8 +3665,8 @@ struct PageConclusionEntry {
 /// page back to the conclusions it supports.
 #[cfg(feature = "reason")]
 fn build_page_conclusions_map(files: &[ParsedFile]) -> HashMap<String, Vec<PageConclusionEntry>> {
-    use zetl::reason::build_theory;
-    use zetl::reason::types::ConclusionType;
+    use ztl::reason::build_theory;
+    use ztl::reason::types::ConclusionType;
 
     let spl_blocks: Vec<_> = files.iter().flat_map(|f| f.spl_blocks.clone()).collect();
 
@@ -3759,7 +3759,7 @@ fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) ->
     use std::io::IsTerminal as _;
     if !std::io::stdin().is_terminal() {
         eprintln!(
-            r#"{{"error":{{"code":"NOT_A_TTY","message":"zetl view requires an interactive terminal."}}}}"#
+            r#"{{"error":{{"code":"NOT_A_TTY","message":"ztl view requires an interactive terminal."}}}}"#
         );
         std::process::exit(1);
     }
@@ -3801,7 +3801,7 @@ fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) ->
                 .map(|(name, path)| (name.clone(), path.to_string_lossy().to_string()))
                 .collect();
 
-            match zetl::view::fuzzy_suggestion_prompt(page_input, &pages)? {
+            match ztl::view::fuzzy_suggestion_prompt(page_input, &pages)? {
                 Some(selected) => selected,
                 None => std::process::exit(0),
             }
@@ -3821,7 +3821,7 @@ fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) ->
         (String::new(), None)
     };
 
-    let mut app = zetl::view::ViewApp::new(
+    let mut app = ztl::view::ViewApp::new(
         page_title,
         file_path,
         context_lines,
@@ -3835,7 +3835,7 @@ fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) ->
 }
 
 /// Validate a theme name: reject names containing '/', '\', or '..'.
-/// When theme is not 'default', verify it exists on disk (.zetl/themes/<name>/)
+/// When theme is not 'default', verify it exists on disk (.ztl/themes/<name>/)
 /// or is a bundled theme. Both can be true (disk shadows bundled).
 fn validate_theme(theme: &str, vault_root: &std::path::Path) -> Result<()> {
     if theme.contains('/') || theme.contains('\\') || theme.contains("..") {
@@ -3843,12 +3843,12 @@ fn validate_theme(theme: &str, vault_root: &std::path::Path) -> Result<()> {
     }
 
     if theme != "default" {
-        let theme_dir = vault_root.join(".zetl/themes").join(theme);
+        let theme_dir = vault_root.join(".ztl/themes").join(theme);
         let is_disk_theme = theme_dir.is_dir();
-        let is_bundled = zetl::web::engine::bundled_theme_names().contains(&theme);
+        let is_bundled = ztl::web::engine::bundled_theme_names().contains(&theme);
 
         if !is_disk_theme && !is_bundled {
-            let themes_root = vault_root.join(".zetl/themes");
+            let themes_root = vault_root.join(".ztl/themes");
             let mut disk_themes: Vec<String> = Vec::new();
             if themes_root.is_dir() {
                 if let Ok(entries) = std::fs::read_dir(&themes_root) {
@@ -3863,7 +3863,7 @@ fn validate_theme(theme: &str, vault_root: &std::path::Path) -> Result<()> {
             }
             disk_themes.sort();
 
-            let mut bundled: Vec<String> = zetl::web::engine::bundled_theme_names()
+            let mut bundled: Vec<String> = ztl::web::engine::bundled_theme_names()
                 .into_iter()
                 .map(|s| s.to_string())
                 .collect();
@@ -3886,7 +3886,7 @@ fn validate_theme(theme: &str, vault_root: &std::path::Path) -> Result<()> {
                 format!("available themes: {}", all_available.join(", "))
             };
             anyhow::bail!(
-                "theme '{theme}' not found: not a bundled theme and .zetl/themes/{theme}/ does not exist\nhint: {hint}",
+                "theme '{theme}' not found: not a bundled theme and .ztl/themes/{theme}/ does not exist\nhint: {hint}",
             );
         }
     }
@@ -3915,7 +3915,7 @@ fn cmd_theme_list(cli: &Cli) -> Result<()> {
     }
 
     // Collect bundled theme names into a set for shadow detection.
-    let bundled_names: std::collections::HashSet<String> = zetl::web::engine::bundled_theme_names()
+    let bundled_names: std::collections::HashSet<String> = ztl::web::engine::bundled_theme_names()
         .into_iter()
         .map(|s| s.to_string())
         .collect();
@@ -3926,7 +3926,7 @@ fn cmd_theme_list(cli: &Cli) -> Result<()> {
     let mut bundled_entries: std::collections::BTreeMap<String, ThemeEntry> =
         std::collections::BTreeMap::new();
     for name in &bundled_names {
-        let (version, description) = match zetl::web::theme::load_bundled_manifest(name) {
+        let (version, description) = match ztl::web::theme::load_bundled_manifest(name) {
             Ok(Some(m)) => (Some(m.theme.version), m.theme.description),
             Ok(None) => (None, None),
             Err(e) => {
@@ -3946,8 +3946,8 @@ fn cmd_theme_list(cli: &Cli) -> Result<()> {
         );
     }
 
-    // 2. Installed themes from .zetl/themes/.
-    let themes_dir = vault_root.join(".zetl/themes");
+    // 2. Installed themes from .ztl/themes/.
+    let themes_dir = vault_root.join(".ztl/themes");
     let mut installed_names: std::collections::HashSet<String> = std::collections::HashSet::new();
     if themes_dir.is_dir() {
         let read_dir = std::fs::read_dir(&themes_dir)
@@ -3962,7 +3962,7 @@ fn cmd_theme_list(cli: &Cli) -> Result<()> {
                 None => continue,
             };
 
-            let (version, description) = match zetl::web::theme::load_theme_manifest(&path) {
+            let (version, description) = match ztl::web::theme::load_theme_manifest(&path) {
                 Ok(Some(m)) => (Some(m.theme.version), m.theme.description),
                 Ok(None) => (None, None),
                 Err(e) => {
@@ -3972,21 +3972,21 @@ fn cmd_theme_list(cli: &Cli) -> Result<()> {
             };
 
             let origin_url = {
-                let source_path = path.join(".zetl-source.toml");
+                let source_path = path.join(".ztl-source.toml");
                 if source_path.exists() {
                     match std::fs::read_to_string(&source_path) {
-                        Ok(content) => match zetl::web::theme::parse_theme_source(&content) {
+                        Ok(content) => match ztl::web::theme::parse_theme_source(&content) {
                             Ok(ts) => Some(ts.source.url),
                             Err(e) => {
                                 eprintln!(
-                                    "warning: failed to parse .zetl-source.toml for {name:?}: {e}"
+                                    "warning: failed to parse .ztl-source.toml for {name:?}: {e}"
                                 );
                                 None
                             }
                         },
                         Err(e) => {
                             eprintln!(
-                                "warning: failed to read .zetl-source.toml for {name:?}: {e}"
+                                "warning: failed to read .ztl-source.toml for {name:?}: {e}"
                             );
                             None
                         }
@@ -4060,7 +4060,7 @@ fn cmd_theme_install(
     name_flag: Option<&str>,
     force: bool,
 ) -> Result<()> {
-    use zetl::web::theme::{
+    use ztl::web::theme::{
         clone_theme, parse_install_source, resolve_theme_name, validate_theme_name,
         write_provenance,
     };
@@ -4097,7 +4097,7 @@ fn cmd_theme_install(
 
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("cannot resolve vault directory: {}", cli.dir))?;
-    let themes_dir = vault_root.join(".zetl/themes");
+    let themes_dir = vault_root.join(".ztl/themes");
 
     // We need a temporary clone to read the manifest so we can resolve the
     // final name — but we first need to detect if the target already exists.
@@ -4107,7 +4107,7 @@ fn cmd_theme_install(
     //   c. Check if target exists; error if !force.
     //   d. Move temp clone into final location.
 
-    // Clone into a unique temporary directory inside .zetl/themes/.
+    // Clone into a unique temporary directory inside .ztl/themes/.
     std::fs::create_dir_all(&themes_dir)
         .with_context(|| format!("failed to create {}", themes_dir.display()))?;
 
@@ -4129,7 +4129,7 @@ fn cmd_theme_install(
     }
     let clone_start = std::time::Instant::now();
     let clone_result = clone_theme(
-        &zetl::web::theme::ThemeInstallSource {
+        &ztl::web::theme::ThemeInstallSource {
             url: install_source.url.clone(),
             git_ref: install_source.git_ref.clone(),
             path: path_flag.map(str::to_string),
@@ -4146,20 +4146,20 @@ fn cmd_theme_install(
     }
 
     // 4. Read theme.toml from cloned files if present.
-    let manifest = zetl::web::theme::load_theme_manifest(&tmp_dir).unwrap_or_else(|e| {
+    let manifest = ztl::web::theme::load_theme_manifest(&tmp_dir).unwrap_or_else(|e| {
         if !cli.quiet {
             eprintln!("warning: failed to read theme.toml: {e}");
         }
         None
     });
 
-    // 5. Warn if min_zetl_version is set and current version is older.
+    // 5. Warn if min_ztl_version is set and current version is older.
     if let Some(ref m) = manifest {
-        if let Some(ref min_ver) = m.theme.min_zetl_version {
+        if let Some(ref min_ver) = m.theme.min_ztl_version {
             let current = env!("CARGO_PKG_VERSION");
             if semver_less_than(current, min_ver) && !cli.quiet {
                 eprintln!(
-                    "warning: theme requires zetl >= {min_ver} but current version is {current}"
+                    "warning: theme requires ztl >= {min_ver} but current version is {current}"
                 );
             }
         }
@@ -4193,7 +4193,7 @@ fn cmd_theme_install(
     })?;
 
     // 9. Write provenance.
-    let prov_source = zetl::web::theme::ThemeInstallSource {
+    let prov_source = ztl::web::theme::ThemeInstallSource {
         url: install_source.url.clone(),
         git_ref: install_source.git_ref.clone(),
         path: path_flag.map(str::to_string),
@@ -4219,7 +4219,7 @@ fn cmd_theme_install(
                 Some(n) => n.to_string(),
                 None => continue,
             };
-            if !zetl::hooks::HOOK_NAMES.contains(&name.as_str()) {
+            if !ztl::hooks::HOOK_NAMES.contains(&name.as_str()) {
                 continue;
             }
             #[cfg(unix)]
@@ -4327,20 +4327,20 @@ fn semver_less_than(a: &str, b: &str) -> bool {
 
 fn cmd_theme_remove(cli: &Cli, name: &str) -> Result<()> {
     // 1. Validate name (rejects path traversal and invalid chars).
-    zetl::web::theme::validate_theme_name(name)
+    ztl::web::theme::validate_theme_name(name)
         .with_context(|| format!("invalid theme name {name:?}"))?;
 
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
 
     // 2. Check if this is a bundled-only theme (not installed on disk).
-    let bundled_names: std::collections::HashSet<String> = zetl::web::engine::bundled_theme_names()
+    let bundled_names: std::collections::HashSet<String> = ztl::web::engine::bundled_theme_names()
         .into_iter()
         .map(|s| s.to_string())
         .collect();
     let is_bundled = bundled_names.contains(name);
 
-    let theme_dir = vault_root.join(".zetl/themes").join(name);
+    let theme_dir = vault_root.join(".ztl/themes").join(name);
     if !theme_dir.is_dir() {
         if is_bundled {
             anyhow::bail!("cannot remove bundled theme {name:?}");
@@ -4357,7 +4357,7 @@ fn cmd_theme_remove(cli: &Cli, name: &str) -> Result<()> {
         );
     }
 
-    // 4. Delete .zetl/themes/<name>/ recursively.
+    // 4. Delete .ztl/themes/<name>/ recursively.
     std::fs::remove_dir_all(&theme_dir)
         .with_context(|| format!("failed to remove theme directory {}", theme_dir.display()))?;
 
@@ -4399,11 +4399,11 @@ fn cmd_theme_remove(cli: &Cli, name: &str) -> Result<()> {
 
 fn cmd_theme_export(cli: &Cli, name: &str, force: bool) -> Result<()> {
     // 1. Validate name (rejects path traversal and invalid chars).
-    zetl::web::theme::validate_theme_name(name)
+    ztl::web::theme::validate_theme_name(name)
         .with_context(|| format!("invalid theme name {name:?}"))?;
 
     // 2. Check name is a bundled theme.
-    let is_bundled = zetl::web::engine::bundled_theme_names().contains(&name);
+    let is_bundled = ztl::web::engine::bundled_theme_names().contains(&name);
     if !is_bundled {
         anyhow::bail!("only bundled themes can be exported");
     }
@@ -4412,10 +4412,10 @@ fn cmd_theme_export(cli: &Cli, name: &str, force: bool) -> Result<()> {
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
 
-    // 4. Check if .zetl/themes/<name>/ already exists.
-    let theme_dir = vault_root.join(".zetl/themes").join(name);
+    // 4. Check if .ztl/themes/<name>/ already exists.
+    let theme_dir = vault_root.join(".ztl/themes").join(name);
     if theme_dir.is_dir() && !force {
-        anyhow::bail!(".zetl/themes/{name}/ already exists\nhint: use --force to overwrite",);
+        anyhow::bail!(".ztl/themes/{name}/ already exists\nhint: use --force to overwrite",);
     }
 
     // 5. Create the destination directory.
@@ -4423,7 +4423,7 @@ fn cmd_theme_export(cli: &Cli, name: &str, force: bool) -> Result<()> {
         .with_context(|| format!("failed to create theme directory {}", theme_dir.display()))?;
 
     // 6. Write all embedded theme files to disk.
-    let files = zetl::web::engine::bundled_theme_files(name);
+    let files = ztl::web::engine::bundled_theme_files(name);
     let files_written = files.len();
     for (rel_path, contents) in &files {
         let dest = theme_dir.join(rel_path);
@@ -4475,9 +4475,9 @@ fn cmd_hook_list(cli: &Cli, theme: &str) -> Result<()> {
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
 
     // Resolve theme hooks directory (disk-installed or bundled).
-    let theme_hooks = zetl::hooks::resolve_theme_hooks(&vault_root, theme);
+    let theme_hooks = ztl::hooks::resolve_theme_hooks(&vault_root, theme);
     let manifest =
-        zetl::hooks::discover_hooks_verbose(&vault_root, theme_hooks.path(), cli.verbose > 0);
+        ztl::hooks::discover_hooks_verbose(&vault_root, theme_hooks.path(), cli.verbose > 0);
 
     #[derive(Serialize)]
     struct HookEntry {
@@ -4535,11 +4535,11 @@ fn cmd_hook_list(cli: &Cli, theme: &str) -> Result<()> {
 
 fn cmd_hook_run(cli: &Cli, name: &str, theme: &str, extra: &[String]) -> Result<()> {
     // Validate hook name.
-    if !zetl::hooks::HOOK_NAMES.contains(&name) {
+    if !ztl::hooks::HOOK_NAMES.contains(&name) {
         anyhow::bail!(
             "unknown hook name '{}'. Valid names: {}",
             name,
-            zetl::hooks::HOOK_NAMES.join(", "),
+            ztl::hooks::HOOK_NAMES.join(", "),
         );
     }
 
@@ -4549,21 +4549,21 @@ fn cmd_hook_run(cli: &Cli, name: &str, theme: &str, extra: &[String]) -> Result<
     let pipeline = run_pipeline(cli)?;
 
     // Discover hooks.
-    let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
+    let theme_hooks = ztl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
     let manifest =
-        zetl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
+        ztl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
 
     for w in &manifest.warnings {
         eprintln!("warning: {w}");
     }
 
-    let matching = zetl::hooks::hooks_for(&manifest, name);
+    let matching = ztl::hooks::hooks_for(&manifest, name);
     if matching.is_empty() {
         anyhow::bail!("no executable hook found for '{name}'");
     }
 
     // Build context JSON.
-    let ctx = zetl::hooks::context::build_hook_context(
+    let ctx = ztl::hooks::context::build_hook_context(
         name,
         &pipeline.vault_root,
         theme,
@@ -4591,16 +4591,16 @@ fn cmd_hook_run(cli: &Cli, name: &str, theme: &str, extra: &[String]) -> Result<
 
     let context_json = serde_json::to_vec(&context_value)?;
 
-    let hook_env = zetl::hooks::HookEnv {
+    let hook_env = ztl::hooks::HookEnv {
         vault_root: pipeline.vault_root.clone(),
         theme: theme.to_string(),
-        zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+        ztl_version: env!("CARGO_PKG_VERSION").to_string(),
         extra_vars: vec![],
     };
 
     // Run all matching hooks sequentially, streaming output.
     let results =
-        zetl::hooks::run_hooks_verbose(&manifest, name, &context_json, &hook_env, verbose);
+        ztl::hooks::run_hooks_verbose(&manifest, name, &context_json, &hook_env, verbose);
 
     let mut worst_exit_code: i32 = 0;
 
@@ -4643,15 +4643,15 @@ fn cmd_hook_run(cli: &Cli, name: &str, theme: &str, extra: &[String]) -> Result<
 
 fn cmd_hook_new(
     cli: &Cli,
-    stage: &zetl::cli::AuthoringStage,
+    stage: &ztl::cli::AuthoringStage,
     name: &str,
-    lang: &zetl::cli::HookLang,
-    ecosystem: Option<&zetl::cli::HookEcosystem>,
+    lang: &ztl::cli::HookLang,
+    ecosystem: Option<&ztl::cli::HookEcosystem>,
     force: bool,
 ) -> Result<()> {
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
-    let paths = zetl::hooks::authoring::scaffold(&vault_root, stage, name, lang, ecosystem, force)?;
+    let paths = ztl::hooks::authoring::scaffold(&vault_root, stage, name, lang, ecosystem, force)?;
 
     if matches!(cli.format, OutputFormat::Json) {
         #[derive(Serialize)]
@@ -4674,7 +4674,7 @@ fn cmd_hook_new(
         println!("  input:    {}", paths.fixture_input.display());
         println!("  expected: {}", paths.fixture_expected.display());
         println!();
-        println!("Run `zetl hook test {name}` to verify the scaffold.");
+        println!("Run `ztl hook test {name}` to verify the scaffold.");
     }
     Ok(())
 }
@@ -4682,17 +4682,17 @@ fn cmd_hook_new(
 fn cmd_hook_test(cli: &Cli, name: &str, update: bool) -> Result<()> {
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
-    let outcome = zetl::hooks::authoring::run_test(&vault_root, name, update)?;
+    let outcome = ztl::hooks::authoring::run_test(&vault_root, name, update)?;
     match outcome {
-        zetl::hooks::authoring::TestOutcome::Match => {
+        ztl::hooks::authoring::TestOutcome::Match => {
             println!("ok: hook '{name}' matches golden");
             Ok(())
         }
-        zetl::hooks::authoring::TestOutcome::Updated { path } => {
+        ztl::hooks::authoring::TestOutcome::Updated { path } => {
             println!("updated golden: {}", path.display());
             Ok(())
         }
-        zetl::hooks::authoring::TestOutcome::Mismatch { diff, .. } => {
+        ztl::hooks::authoring::TestOutcome::Mismatch { diff, .. } => {
             eprintln!("FAIL: hook '{name}' output diverges from golden");
             eprint!("{diff}");
             std::process::exit(1);
@@ -4703,7 +4703,7 @@ fn cmd_hook_test(cli: &Cli, name: &str, update: bool) -> Result<()> {
 fn cmd_hook_fixture(cli: &Cli, page: &str, hook: &str) -> Result<()> {
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
-    let captured = zetl::hooks::authoring::capture_fixture(&vault_root, page, hook)?;
+    let captured = ztl::hooks::authoring::capture_fixture(&vault_root, page, hook)?;
     println!(
         "captured fixture for hook '{hook}' from page '{page}':\n  input:    {}\n  expected: {}",
         captured.input_path.display(),
@@ -4719,11 +4719,11 @@ fn cmd_hook_fixture(cli: &Cli, page: &str, hook: &str) -> Result<()> {
 /// for CI and hook authoring. Exit code mirrors "did the selector hit":
 /// 0 if at least one page matched, 1 if zero matched.
 fn cmd_hook_dry_run(cli: &Cli, spec: &str, theme: &str, limit: usize) -> Result<()> {
-    use zetl::hooks::composition::{compose_stage, default_extension_id, ComposedHook};
-    use zetl::hooks::manifest::{load_manifest, LoadedManifest};
-    use zetl::hooks::pipeline::Stage;
-    use zetl::hooks::selector::{compile, SelectorInput};
-    use zetl::web::markdown::parse_frontmatter;
+    use ztl::hooks::composition::{compose_stage, default_extension_id, ComposedHook};
+    use ztl::hooks::manifest::{load_manifest, LoadedManifest};
+    use ztl::hooks::pipeline::Stage;
+    use ztl::hooks::selector::{compile, SelectorInput};
+    use ztl::web::markdown::parse_frontmatter;
 
     // Parse `<stage>/<name>`.
     let (stage_str, name) = spec.split_once('/').ok_or_else(|| {
@@ -4745,7 +4745,7 @@ fn cmd_hook_dry_run(cli: &Cli, spec: &str, theme: &str, limit: usize) -> Result<
 
     // Compose the requested stage so we see the hook exactly as the build
     // pipeline would (vault shadowing, ordering, disabled entries).
-    let theme_hooks = zetl::hooks::resolve_theme_hooks(&vault_root, theme);
+    let theme_hooks = ztl::hooks::resolve_theme_hooks(&vault_root, theme);
     let pipeline = compose_stage(&vault_root, theme_hooks.path(), stage)
         .with_context(|| format!("failed to compose {stage} hooks"))?;
 
@@ -4883,16 +4883,16 @@ struct CoveragePage {
 fn cmd_hook_coverage(
     cli: &Cli,
     theme: &str,
-    stage_filter: Option<&zetl::cli::AuthoringStage>,
+    stage_filter: Option<&ztl::cli::AuthoringStage>,
 ) -> Result<()> {
-    use zetl::cli::AuthoringStage;
-    use zetl::hooks::composition::compose_stage;
-    use zetl::hooks::pipeline::Stage;
-    use zetl::web::markdown::parse_frontmatter;
+    use ztl::cli::AuthoringStage;
+    use ztl::hooks::composition::compose_stage;
+    use ztl::hooks::pipeline::Stage;
+    use ztl::web::markdown::parse_frontmatter;
 
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
-    let theme_hooks = zetl::hooks::resolve_theme_hooks(&vault_root, theme);
+    let theme_hooks = ztl::hooks::resolve_theme_hooks(&vault_root, theme);
 
     // Pick which stages to report on. REQ-3208 defaults to every stage;
     // `--stage` restricts to one.
@@ -4926,7 +4926,7 @@ fn cmd_hook_coverage(
         .collect();
 
     // Optional persisted build coverage — a future build writes
-    // `.zetl/build/hook-coverage.json` and we merge its latency / failure
+    // `.ztl/build/hook-coverage.json` and we merge its latency / failure
     // data in here. Missing file = "no build on disk; this is a dry-run".
     let persisted = load_persisted_coverage(&vault_root);
     let source = if persisted.is_some() {
@@ -4996,7 +4996,7 @@ fn cmd_hook_coverage(
 
 #[derive(Serialize)]
 struct HookCoverageOutput {
-    /// `"build"` when coverage was read from `.zetl/build/hook-coverage.json`,
+    /// `"build"` when coverage was read from `.ztl/build/hook-coverage.json`,
     /// `"dry-run"` when the report was synthesised from a fresh selector
     /// evaluation against the current vault (REQ-3208 fallback).
     source: String,
@@ -5027,7 +5027,7 @@ struct UnmatchedHookRow {
 }
 
 struct HookCoverageRow {
-    stage: zetl::hooks::pipeline::Stage,
+    stage: ztl::hooks::pipeline::Stage,
     id: String,
     manifest_path: Option<PathBuf>,
     matched: usize,
@@ -5058,12 +5058,12 @@ impl HookCoverageRow {
 }
 
 fn coverage_row_for(
-    hook: &zetl::hooks::composition::ComposedHook,
+    hook: &ztl::hooks::composition::ComposedHook,
     pages: &[CoveragePage],
     persisted: Option<&PersistedCoverage>,
 ) -> Result<HookCoverageRow> {
-    use zetl::hooks::manifest::{load_manifest, LoadedManifest};
-    use zetl::hooks::selector::{compile, SelectorInput};
+    use ztl::hooks::manifest::{load_manifest, LoadedManifest};
+    use ztl::hooks::selector::{compile, SelectorInput};
 
     let selector_spec = match &hook.manifest_path {
         Some(path) => match load_manifest(path)
@@ -5128,7 +5128,7 @@ fn coverage_row_for(
     })
 }
 
-/// Parsed `.zetl/build/hook-coverage.json`. Keys are `(stage, extension_id)`
+/// Parsed `.ztl/build/hook-coverage.json`. Keys are `(stage, extension_id)`
 /// — same identity used throughout SPEC-032 for hook lookup.
 struct PersistedCoverage {
     rows: HashMap<(String, String), PersistedRow>,
@@ -5144,14 +5144,14 @@ struct PersistedRow {
 }
 
 impl PersistedCoverage {
-    fn lookup(&self, stage: zetl::hooks::pipeline::Stage, id: &str) -> Option<&PersistedRow> {
+    fn lookup(&self, stage: ztl::hooks::pipeline::Stage, id: &str) -> Option<&PersistedRow> {
         self.rows.get(&(stage.as_str().to_string(), id.to_string()))
     }
 }
 
 fn load_persisted_coverage(vault_root: &Path) -> Option<PersistedCoverage> {
     let path = vault_root
-        .join(".zetl")
+        .join(".ztl")
         .join("build")
         .join("hook-coverage.json");
     let bytes = std::fs::read(&path).ok()?;
@@ -5240,7 +5240,7 @@ fn render_coverage_table(output: &HookCoverageOutput) {
     }
 }
 
-/// `zetl hook capabilities` — SPEC-032 REQ-3216. Probes every composed
+/// `ztl hook capabilities` — SPEC-032 REQ-3216. Probes every composed
 /// hook and reports supported stages, AST types, and schema version.
 ///
 /// Per-hook the command spawns the executable, waits for the startup
@@ -5252,18 +5252,18 @@ fn render_coverage_table(output: &HookCoverageOutput) {
 fn cmd_hook_capabilities(
     cli: &Cli,
     theme: &str,
-    stage_filter: Option<&zetl::cli::AuthoringStage>,
+    stage_filter: Option<&ztl::cli::AuthoringStage>,
 ) -> Result<()> {
-    use zetl::cli::AuthoringStage;
-    use zetl::hooks::capability::{
+    use ztl::cli::AuthoringStage;
+    use ztl::hooks::capability::{
         probe_stage_pipeline, CapabilityOutcome, CapabilityReport, DEFAULT_PROBE_TIMEOUT,
     };
-    use zetl::hooks::composition::compose_stage;
-    use zetl::hooks::pipeline::Stage;
+    use ztl::hooks::composition::compose_stage;
+    use ztl::hooks::pipeline::Stage;
 
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
-    let theme_hooks = zetl::hooks::resolve_theme_hooks(&vault_root, theme);
+    let theme_hooks = ztl::hooks::resolve_theme_hooks(&vault_root, theme);
 
     let stages: Vec<Stage> = match stage_filter {
         Some(AuthoringStage::PreParse) => vec![Stage::PreParse],
@@ -5302,8 +5302,8 @@ fn cmd_hook_capabilities(
     Ok(())
 }
 
-fn render_capabilities_table(reports: &[zetl::hooks::capability::CapabilityReport]) {
-    use zetl::hooks::capability::{format_diagnostic, CapabilityOutcome};
+fn render_capabilities_table(reports: &[ztl::hooks::capability::CapabilityReport]) {
+    use ztl::hooks::capability::{format_diagnostic, CapabilityOutcome};
 
     if reports.is_empty() {
         println!("No hooks configured.");
@@ -5321,7 +5321,7 @@ fn render_capabilities_table(reports: &[zetl::hooks::capability::CapabilityRepor
             | CapabilityOutcome::StageMismatch { result, .. }
             | CapabilityOutcome::AstVersionMismatch { result, .. } => (
                 result.version.clone(),
-                result.zetl_ast.clone(),
+                result.ztl_ast.clone(),
                 result.stages.join(","),
                 if result.ready { "yes" } else { "no" }.to_string(),
             ),
@@ -5347,7 +5347,7 @@ fn render_capabilities_table(reports: &[zetl::hooks::capability::CapabilityRepor
     println!("{table}");
 
     // Per-hook diagnostic lines for everything except clean `ok`.
-    let problem_reports: Vec<&zetl::hooks::capability::CapabilityReport> = reports
+    let problem_reports: Vec<&ztl::hooks::capability::CapabilityReport> = reports
         .iter()
         .filter(|r| !matches!(r.outcome, CapabilityOutcome::Ok { .. }))
         .collect();
@@ -5367,18 +5367,18 @@ fn render_capabilities_table(reports: &[zetl::hooks::capability::CapabilityRepor
 /// available. The zero-configured state prints the informational footer
 /// and exits 0 regardless of host state.
 fn cmd_ecosystem_check(cli: &Cli, theme: &str, json: bool) -> Result<()> {
-    use zetl::ecosystems::check::{run_ecosystem_check, EcosystemCheckStatus};
-    use zetl::hooks::composition::compose_all_stages;
+    use ztl::ecosystems::check::{run_ecosystem_check, EcosystemCheckStatus};
+    use ztl::hooks::composition::compose_all_stages;
 
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
-    let theme_hooks = zetl::hooks::resolve_theme_hooks(&vault_root, theme);
+    let theme_hooks = ztl::hooks::resolve_theme_hooks(&vault_root, theme);
 
     // Collect every composed hook across the three stages so the
     // configured-count reflects the whole vault, not a single stage.
     let pipelines = compose_all_stages(&vault_root, theme_hooks.path())
         .context("failed to compose hook pipelines for ecosystem check")?;
-    let hooks: Vec<zetl::hooks::composition::ComposedHook> = pipelines
+    let hooks: Vec<ztl::hooks::composition::ComposedHook> = pipelines
         .into_iter()
         .flat_map(|p| p.hooks.into_iter().chain(p.disabled))
         .collect();
@@ -5393,7 +5393,7 @@ fn cmd_ecosystem_check(cli: &Cli, theme: &str, json: bool) -> Result<()> {
     }
 
     // REQ-3315 config-time check: surface any mixed-parser
-    // configurations so authors catch them before `zetl build`.
+    // configurations so authors catch them before `ztl build`.
     // Needs the vault's page list, which `ecosystem check` doesn't
     // otherwise load — do a cheap scan here. Run before the
     // `configured failures` exit so mixed-parser + missing-runtime
@@ -5405,7 +5405,7 @@ fn cmd_ecosystem_check(cli: &Cli, theme: &str, json: bool) -> Result<()> {
         // Emit on stderr regardless of `--json` / format mode: the
         // rendered diagnostic is human-readable by construction and
         // leaves stdout (JSON or table) intact for tool consumers.
-        eprintln!("{}", zetl::parsers::format_mixed_parser_report(&mixed));
+        eprintln!("{}", ztl::parsers::format_mixed_parser_report(&mixed));
     }
 
     if report.has_configured_failures() {
@@ -5414,7 +5414,7 @@ fn cmd_ecosystem_check(cli: &Cli, theme: &str, json: bool) -> Result<()> {
         for e in &report.entries {
             if e.configured > 0 && e.status != EcosystemCheckStatus::Detected {
                 if let Some(hint) = &e.hint {
-                    eprintln!("[zetl] ecosystem {}: {hint}", e.id);
+                    eprintln!("[ztl] ecosystem {}: {hint}", e.id);
                 }
             }
         }
@@ -5424,7 +5424,7 @@ fn cmd_ecosystem_check(cli: &Cli, theme: &str, json: bool) -> Result<()> {
     Ok(())
 }
 
-fn render_ecosystem_check_table(report: &zetl::ecosystems::check::EcosystemCheckReport) {
+fn render_ecosystem_check_table(report: &ztl::ecosystems::check::EcosystemCheckReport) {
     let mut table = Table::new();
     table.set_header(vec![
         "ECOSYSTEM",
@@ -5460,8 +5460,8 @@ fn render_ecosystem_check_table(report: &zetl::ecosystems::check::EcosystemCheck
     if report.hooks_configured_total == 0 {
         println!();
         println!("No ecosystem hooks configured in this vault.");
-        println!("To enable an ecosystem, add a manifest under .zetl/hooks/:");
-        println!("  https://zetl.codeberg.page/docs/ecosystems/");
+        println!("To enable an ecosystem, add a manifest under .ztl/hooks/:");
+        println!("  https://ztl.codeberg.page/docs/ecosystems/");
     }
 }
 
@@ -5470,30 +5470,30 @@ fn cmd_hook_watch(cli: &Cli, name: &str) -> Result<()> {
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
 
     println!("Watching hook '{name}' (Ctrl-C to stop)");
-    zetl::hooks::authoring::watch(
+    ztl::hooks::authoring::watch(
         &vault_root,
         name,
-        zetl::hooks::authoring::WatchOptions::default(),
+        ztl::hooks::authoring::WatchOptions::default(),
         |event| match event {
-            zetl::hooks::authoring::WatchEvent::Spawned => {
-                println!("[zetl] hook spawned");
+            ztl::hooks::authoring::WatchEvent::Spawned => {
+                println!("[ztl] hook spawned");
             }
-            zetl::hooks::authoring::WatchEvent::Restart => {
-                println!("[zetl] change detected, restarting");
+            ztl::hooks::authoring::WatchEvent::Restart => {
+                println!("[ztl] change detected, restarting");
             }
-            zetl::hooks::authoring::WatchEvent::Stderr(s) => {
+            ztl::hooks::authoring::WatchEvent::Stderr(s) => {
                 eprint!("{s}");
             }
-            zetl::hooks::authoring::WatchEvent::Shutdown => {
-                println!("[zetl] watcher stopped");
+            ztl::hooks::authoring::WatchEvent::Shutdown => {
+                println!("[ztl] watcher stopped");
             }
         },
     )
 }
 
-fn cmd_ast_sample(cli: &Cli, file: &str, stage: &zetl::cli::AstStage) -> Result<()> {
+fn cmd_ast_sample(cli: &Cli, file: &str, stage: &ztl::cli::AstStage) -> Result<()> {
     use std::path::Path;
-    use zetl::cli::AstStage;
+    use ztl::cli::AstStage;
 
     let path = Path::new(file);
     let content = std::fs::read_to_string(path)
@@ -5502,13 +5502,13 @@ fn cmd_ast_sample(cli: &Cli, file: &str, stage: &zetl::cli::AstStage) -> Result<
     match stage {
         AstStage::PreParse => {
             // Raw Markdown — what a pre-parse hook receives. Frontmatter is
-            // retained: pre-parse sees the file verbatim before any zetl
+            // retained: pre-parse sees the file verbatim before any ztl
             // processing.
             print!("{content}");
         }
         AstStage::Transform => {
-            // Parsed zetl-ext Document — what a transform hook receives.
-            let doc = zetl::hooks::ast::parse_markdown(&content);
+            // Parsed ztl-ext Document — what a transform hook receives.
+            let doc = ztl::hooks::ast::parse_markdown(&content);
             let json = serde_json::to_value(&doc).context("Failed to serialise AST document")?;
             // Canonical JSON output: pretty-printed for CLI readability,
             // compact when the user forced `--json`.
@@ -5525,7 +5525,7 @@ fn cmd_ast_sample(cli: &Cli, file: &str, stage: &zetl::cli::AstStage) -> Result<
             // is available for link resolution here).
             use std::collections::HashMap;
             let html =
-                zetl::web::markdown::render_to_html(&content, &HashMap::new(), "", "index.html");
+                ztl::web::markdown::render_to_html(&content, &HashMap::new(), "", "index.html");
             print!("{html}");
         }
     }
@@ -5533,7 +5533,7 @@ fn cmd_ast_sample(cli: &Cli, file: &str, stage: &zetl::cli::AstStage) -> Result<
 }
 
 fn cmd_ast_diff(cli: &Cli, before_path: &str, after_path: &str) -> Result<()> {
-    use zetl::hooks::ast::{diff_documents, AstDiffKind};
+    use ztl::hooks::ast::{diff_documents, AstDiffKind};
 
     let before_bytes = std::fs::read(before_path)
         .with_context(|| format!("Cannot read before file: {before_path}"))?;
@@ -5638,21 +5638,21 @@ fn cmd_agent_run(
     let pipeline = run_pipeline(cli)?;
 
     // Discover hooks for the on-agent lifecycle point.
-    let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
+    let theme_hooks = ztl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
     let manifest =
-        zetl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
+        ztl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
 
     for w in &manifest.warnings {
         eprintln!("warning: {w}");
     }
 
-    let matching = zetl::hooks::hooks_for(&manifest, "on-agent");
+    let matching = ztl::hooks::hooks_for(&manifest, "on-agent");
     if matching.is_empty() {
         anyhow::bail!("no executable on-agent hook found");
     }
 
     // Build context JSON with agent-specific fields.
-    let mut ctx = zetl::hooks::context::build_hook_context(
+    let mut ctx = ztl::hooks::context::build_hook_context(
         "on-agent",
         &pipeline.vault_root,
         theme,
@@ -5661,7 +5661,7 @@ fn cmd_agent_run(
         &pipeline.graph,
     );
 
-    ctx.agent = Some(zetl::hooks::context::HookAgent {
+    ctx.agent = Some(ztl::hooks::context::HookAgent {
         task: name.to_string(),
         target_pages: target_pages.to_vec(),
         budget_tokens: budget,
@@ -5687,15 +5687,15 @@ fn cmd_agent_run(
 
     let context_json = serde_json::to_vec(&context_value)?;
 
-    let hook_env = zetl::hooks::HookEnv {
+    let hook_env = ztl::hooks::HookEnv {
         vault_root: pipeline.vault_root.clone(),
         theme: theme.to_string(),
-        zetl_version: env!("CARGO_PKG_VERSION").to_string(),
-        extra_vars: vec![("ZETL_AGENT_TASK".to_string(), name.to_string())],
+        ztl_version: env!("CARGO_PKG_VERSION").to_string(),
+        extra_vars: vec![("ztl_AGENT_TASK".to_string(), name.to_string())],
     };
 
     let results =
-        zetl::hooks::run_hooks_verbose(&manifest, "on-agent", &context_json, &hook_env, verbose);
+        ztl::hooks::run_hooks_verbose(&manifest, "on-agent", &context_json, &hook_env, verbose);
 
     let mut worst_exit_code: i32 = 0;
 
@@ -5763,12 +5763,12 @@ fn cmd_agent_token(cli: &Cli, mnemonic: &str) -> Result<()> {
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
 
     // Derive the public key from the mnemonic to find the matching user
-    let pubkey = zetl::user::recovery::derive_pubkey_from_mnemonic(mnemonic)
+    let pubkey = ztl::user::recovery::derive_pubkey_from_mnemonic(mnemonic)
         .context("invalid BIP39 mnemonic")?;
     let pubkey_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(pubkey.as_bytes());
 
     // Find the user profile whose recovery_pubkey matches
-    let profiles = zetl::user::list_profiles(&vault_root)?;
+    let profiles = ztl::user::list_profiles(&vault_root)?;
     let profile = profiles
         .iter()
         .find(|p| p.recovery_pubkey == pubkey_b64)
@@ -5776,14 +5776,14 @@ fn cmd_agent_token(cli: &Cli, mnemonic: &str) -> Result<()> {
             anyhow::anyhow!("no user in this vault matches the provided mnemonic's public key")
         })?;
 
-    let token = zetl::user::agent_token::generate_agent_token(
+    let token = ztl::user::agent_token::generate_agent_token(
         mnemonic,
         &profile.id,
         profile.agent_token_generation,
     )?;
 
     // Output depends on format
-    if cli.format == zetl::cli::OutputFormat::Json || cli.json {
+    if cli.format == ztl::cli::OutputFormat::Json || cli.json {
         let output = serde_json::json!({
             "token": token,
             "user_id": profile.id,
@@ -5798,14 +5798,14 @@ fn cmd_agent_token(cli: &Cli, mnemonic: &str) -> Result<()> {
 }
 
 fn cmd_derive_ssh_key(mnemonic: &str, out: Option<&str>) -> Result<()> {
-    let signing_key = zetl::user::recovery::derive_ssh_key_from_mnemonic(mnemonic)
+    let signing_key = ztl::user::recovery::derive_ssh_key_from_mnemonic(mnemonic)
         .context("failed to derive SSH key from mnemonic")?;
 
     let private_bytes = signing_key.to_bytes();
     let public_key = signing_key.verifying_key();
     let public_bytes = public_key.to_bytes();
 
-    let openssh_pem = zetl::user::recovery::encode_openssh_ed25519(&private_bytes, &public_bytes);
+    let openssh_pem = ztl::user::recovery::encode_openssh_ed25519(&private_bytes, &public_bytes);
 
     // Build the OpenSSH public key line
     let pub_b64 = base64::engine::general_purpose::STANDARD.encode(
@@ -5817,7 +5817,7 @@ fn cmd_derive_ssh_key(mnemonic: &str, out: Option<&str>) -> Result<()> {
         ]
         .concat(),
     );
-    let pub_line = format!("ssh-ed25519 {pub_b64} zetl-collab\n");
+    let pub_line = format!("ssh-ed25519 {pub_b64} ztl-collab\n");
 
     match out {
         Some(path) => {
@@ -5859,11 +5859,11 @@ fn cmd_invite(
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
 
     // Validate the role
-    let _role: zetl::user::Role = role.parse().context("invalid --role value")?;
+    let _role: ztl::user::Role = role.parse().context("invalid --role value")?;
 
     // Resolve inviter: look up by name (case-insensitive), fall back to user ID
-    let inviter = zetl::user::find_by_name(&vault_root, as_user)?.or_else(|| {
-        zetl::user::load_profile(&vault_root, as_user)
+    let inviter = ztl::user::find_by_name(&vault_root, as_user)?.or_else(|| {
+        ztl::user::load_profile(&vault_root, as_user)
             .ok()
             .flatten()
     });
@@ -5877,7 +5877,7 @@ fn cmd_invite(
         None => None,
     };
 
-    let (token, _nonce) = zetl::user::invite::generate_invitation(
+    let (token, _nonce) = ztl::user::invite::generate_invitation(
         &vault_root,
         &inviter.id,
         role,
@@ -5885,10 +5885,10 @@ fn cmd_invite(
         expires_secs,
     )?;
 
-    let url = zetl::user::invite::invitation_url(host, port, &token);
+    let url = ztl::user::invite::invitation_url(host, port, &token);
 
     // Output depends on format
-    if cli.format == zetl::cli::OutputFormat::Json || cli.json {
+    if cli.format == ztl::cli::OutputFormat::Json || cli.json {
         let output = serde_json::json!({
             "token": token,
             "url": url,
@@ -5988,11 +5988,11 @@ fn cmd_serve(
     // When --collab is active, ensure sensitive dirs are in .gitignore and
     // derive or verify the server key.
     if collab {
-        zetl::user::ensure_gitignore(&pipeline.vault_root)
+        ztl::user::ensure_gitignore(&pipeline.vault_root)
             .context("failed to update .gitignore for collab secrets")?;
 
         // Derive from seed phrase or load/create from file
-        zetl::user::invite::load_or_derive_server_key(&pipeline.vault_root, server_key_seed)
+        ztl::user::invite::load_or_derive_server_key(&pipeline.vault_root, server_key_seed)
             .context("server key setup failed")?;
     }
 
@@ -6001,13 +6001,13 @@ fn cmd_serve(
         let vault_root = &pipeline.vault_root;
 
         // One-time guard: fail if an owner already exists
-        if zetl::user::owner_exists(vault_root)? {
+        if ztl::user::owner_exists(vault_root)? {
             anyhow::bail!("vault already has an owner — --init-owner can only be run once");
         }
 
         // Generate user ID and recovery keypair
-        let user_id = zetl::user::generate_user_id(owner_name);
-        let keypair = zetl::user::recovery::generate_recovery_keypair()
+        let user_id = ztl::user::generate_user_id(owner_name);
+        let keypair = ztl::user::recovery::generate_recovery_keypair()
             .context("failed to generate recovery keypair")?;
 
         // Create owner profile
@@ -6025,7 +6025,7 @@ fn cmd_serve(
             format!("{y:04}-{mo:02}-{d:02}T{h:02}:{m:02}:{s:02}Z")
         };
 
-        let profile = zetl::user::UserProfile {
+        let profile = ztl::user::UserProfile {
             id: user_id.clone(),
             name: owner_name.to_string(),
             created_at: now,
@@ -6036,7 +6036,7 @@ fn cmd_serve(
             agent_token_generation: 0,
         };
 
-        zetl::user::save_profile(vault_root, &profile).context("failed to save owner profile")?;
+        ztl::user::save_profile(vault_root, &profile).context("failed to save owner profile")?;
 
         // Display BIP39 mnemonic on stderr (never stdout, never stored)
         eprintln!();
@@ -6062,13 +6062,13 @@ fn cmd_serve(
     let mut page_names: Vec<String> = pipeline.files.iter().map(|f| f.page_name.clone()).collect();
     page_names.sort_by_key(|a| a.to_lowercase());
 
-    let (page_slug_map, collision_names) = zetl::web::build_slug_map(&pipeline.files);
+    let (page_slug_map, collision_names) = ztl::web::build_slug_map(&pipeline.files);
     let page_slug_map_lower: std::collections::HashMap<String, String> = page_slug_map
         .iter()
         .map(|(k, v)| (k.to_ascii_lowercase(), v.clone()))
         .collect();
 
-    let data = zetl::web::VaultData {
+    let data = ztl::web::VaultData {
         files: pipeline.files,
         graph: pipeline.graph,
         page_names,
@@ -6084,9 +6084,9 @@ fn cmd_serve(
 
     // ── pre-serve hooks (abort on failure) ────────────────────────────
     let verbose = cli.verbose > 0;
-    let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
+    let theme_hooks = ztl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
     let manifest =
-        zetl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
+        ztl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
 
     for w in &manifest.warnings {
         eprintln!("warning: {w}");
@@ -6094,7 +6094,7 @@ fn cmd_serve(
 
     // ── REQ-3223 theme hook declaration audit (serve) ─────────────────
     let theme_manifest = load_theme_manifest_for_audit(&pipeline.vault_root, theme);
-    let audit = zetl::hooks::safe_mode::audit_theme_declarations(
+    let audit = ztl::hooks::safe_mode::audit_theme_declarations(
         theme,
         &pipeline.vault_root,
         theme_hooks.path(),
@@ -6103,17 +6103,17 @@ fn cmd_serve(
     if audit.has_undeclared() && !safe_mode {
         eprintln!(
             "{}",
-            zetl::hooks::safe_mode::format_undeclared_warning(&audit)
+            ztl::hooks::safe_mode::format_undeclared_warning(&audit)
         );
     }
     if safe_mode {
-        let policy = zetl::hooks::safe_mode::SafeMode::from_manifest(theme_manifest.as_ref());
-        match zetl::hooks::composition::compose_all_stages(&pipeline.vault_root, theme_hooks.path())
+        let policy = ztl::hooks::safe_mode::SafeMode::from_manifest(theme_manifest.as_ref());
+        match ztl::hooks::composition::compose_all_stages(&pipeline.vault_root, theme_hooks.path())
         {
             Ok(pipes) => {
-                let (_kept, skipped) = zetl::hooks::safe_mode::apply_all(pipes, &policy);
+                let (_kept, skipped) = ztl::hooks::safe_mode::apply_all(pipes, &policy);
                 for s in &skipped {
-                    eprintln!("{}", zetl::hooks::safe_mode::format_skip_line(s));
+                    eprintln!("{}", ztl::hooks::safe_mode::format_skip_line(s));
                 }
             }
             Err(e) => {
@@ -6122,8 +6122,8 @@ fn cmd_serve(
         }
     }
 
-    if !safe_mode && !zetl::hooks::hooks_for(&manifest, "pre-serve").is_empty() {
-        let mut ctx = zetl::hooks::context::build_hook_context(
+    if !safe_mode && !ztl::hooks::hooks_for(&manifest, "pre-serve").is_empty() {
+        let mut ctx = ztl::hooks::context::build_hook_context(
             "pre-serve",
             &pipeline.vault_root,
             theme,
@@ -6135,14 +6135,14 @@ fn cmd_serve(
 
         let context_json = serde_json::to_vec(&ctx)?;
 
-        let hook_env = zetl::hooks::HookEnv {
+        let hook_env = ztl::hooks::HookEnv {
             vault_root: pipeline.vault_root.clone(),
             theme: theme.to_string(),
-            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
-            extra_vars: vec![("ZETL_PORT".into(), port.to_string())],
+            ztl_version: env!("CARGO_PKG_VERSION").to_string(),
+            extra_vars: vec![("ztl_PORT".into(), port.to_string())],
         };
 
-        let results = zetl::hooks::run_hooks_verbose(
+        let results = ztl::hooks::run_hooks_verbose(
             &manifest,
             "pre-serve",
             &context_json,
@@ -6177,7 +6177,7 @@ fn cmd_serve(
         }
     }
 
-    let engine = zetl::web::engine::TemplateEngine::new(
+    let engine = ztl::web::engine::TemplateEngine::new(
         &pipeline.vault_root,
         theme,
         true, // reload templates on every request in serve mode
@@ -6187,11 +6187,11 @@ fn cmd_serve(
     // Failures are non-fatal: serve continues without semantic support.
     #[cfg(feature = "semantic")]
     let vector_index = {
-        match zetl::semantic::VectorIndex::open(&pipeline.vault_root) {
+        match ztl::semantic::VectorIndex::open(&pipeline.vault_root) {
             Ok(Some(idx)) => {
                 if cli.verbose > 0 {
                     eprintln!(
-                        "[zetl] semantic: loaded vector index ({} chunks)",
+                        "[ztl] semantic: loaded vector index ({} chunks)",
                         idx.chunk_count()
                     );
                 }
@@ -6199,12 +6199,12 @@ fn cmd_serve(
             }
             Ok(None) => {
                 if cli.verbose > 0 {
-                    eprintln!("[zetl] semantic: no vector index found (run `zetl index` to build)");
+                    eprintln!("[ztl] semantic: no vector index found (run `ztl index` to build)");
                 }
                 None
             }
             Err(e) => {
-                eprintln!("[zetl] warning: could not load vector index: {e}");
+                eprintln!("[ztl] warning: could not load vector index: {e}");
                 None
             }
         }
@@ -6212,12 +6212,12 @@ fn cmd_serve(
 
     // Open git repository for auto-commit on save (REQ-020-015).
     let git_commit_lock =
-        zetl::web::git_commit::open_repo(&pipeline.vault_root).map(std::sync::Arc::new);
+        ztl::web::git_commit::open_repo(&pipeline.vault_root).map(std::sync::Arc::new);
 
     let public_dir = public.map(|p| {
         let path = std::path::PathBuf::from(p);
         if path.is_dir() {
-            eprintln!("zetl serve  →  public overlay: {p}");
+            eprintln!("ztl serve  →  public overlay: {p}");
         } else {
             eprintln!("warning: --public directory does not exist: {p}");
         }
@@ -6226,9 +6226,9 @@ fn cmd_serve(
 
     let vault_root = std::sync::Arc::new(pipeline.vault_root);
 
-    let state = zetl::web::WebState {
+    let state = ztl::web::WebState {
         data: std::sync::Arc::new(std::sync::RwLock::new(data)),
-        crdt_store: zetl::web::ws::CrdtDocStore::new(vault_root.clone()),
+        crdt_store: ztl::web::ws::CrdtDocStore::new(vault_root.clone()),
         vault_root: vault_root.clone(),
         search_index: std::sync::Arc::new(search_index),
         engine: std::sync::Arc::new(engine),
@@ -6237,29 +6237,29 @@ fn cmd_serve(
         collab,
         tls: false,
         trust_proxy: false,
-        sessions: zetl::web::session::SessionStore::new(),
+        sessions: ztl::web::session::SessionStore::new(),
         recovery_challenges: std::sync::Arc::new(
-            zetl::user::recovery::RecoveryChallengeStore::new(),
+            ztl::user::recovery::RecoveryChallengeStore::new(),
         ),
         mnemonic_shown: std::sync::Arc::new(
             std::sync::Mutex::new(std::collections::HashSet::new()),
         ),
         bootstrap_used: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        rate_limiters: zetl::web::rate_limit::AuthRateLimiters::new(),
+        rate_limiters: ztl::web::rate_limit::AuthRateLimiters::new(),
         #[cfg(feature = "reason")]
-        acl_cache: std::sync::Arc::new(std::sync::Mutex::new(zetl::web::AclCache::new())),
+        acl_cache: std::sync::Arc::new(std::sync::Mutex::new(ztl::web::AclCache::new())),
         git_commit_lock,
-        ws_hub: zetl::web::ws::WsHub::new(),
-        ticket_store: zetl::web::ws::TicketStore::new(),
-        wal_store: std::sync::Arc::new(zetl::web::wal::WalStore::new(&vault_root)),
-        pending_writes: zetl::web::fs_watch::PendingWrites::new(),
-        passkey_mgr: zetl::user::passkey::PasskeyManager::new(
+        ws_hub: ztl::web::ws::WsHub::new(),
+        ticket_store: ztl::web::ws::TicketStore::new(),
+        wal_store: std::sync::Arc::new(ztl::web::wal::WalStore::new(&vault_root)),
+        pending_writes: ztl::web::fs_watch::PendingWrites::new(),
+        passkey_mgr: ztl::user::passkey::PasskeyManager::new(
             hostname.unwrap_or("localhost"),
             &match hostname {
                 Some(h) => format!("https://{h}"),
                 None => format!("http://localhost:{port}"),
             },
-            "zetl vault",
+            "ztl vault",
         )
         .ok()
         .map(std::sync::Arc::new),
@@ -6271,10 +6271,10 @@ fn cmd_serve(
 
     // ── TLS enforcement (REQ-020-067) ──────────────────────────────────
     // When --collab is active, default to loopback-only binding.
-    // Non-loopback binding requires ZETL_INSECURE_COLLAB=1 and emits a
+    // Non-loopback binding requires ztl_INSECURE_COLLAB=1 and emits a
     // warning.  Without the env var, refuse to start on non-loopback.
     let bind_addr = if collab {
-        let insecure = std::env::var("ZETL_INSECURE_COLLAB")
+        let insecure = std::env::var("ztl_INSECURE_COLLAB")
             .map(|v| v == "1")
             .unwrap_or(false);
         if insecure {
@@ -6291,7 +6291,7 @@ fn cmd_serve(
     };
 
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(zetl::web::run(state, port, bind_addr, git_poll_interval))?;
+    rt.block_on(ztl::web::run(state, port, bind_addr, git_poll_interval))?;
     Ok(())
 }
 
@@ -6303,14 +6303,14 @@ fn cmd_serve(
 fn load_theme_manifest_for_audit(
     vault_root: &std::path::Path,
     theme: &str,
-) -> Option<zetl::web::theme::ThemeManifest> {
-    let disk = vault_root.join(".zetl/themes").join(theme);
+) -> Option<ztl::web::theme::ThemeManifest> {
+    let disk = vault_root.join(".ztl/themes").join(theme);
     if disk.is_dir() {
-        if let Ok(Some(m)) = zetl::web::theme::load_theme_manifest(&disk) {
+        if let Ok(Some(m)) = ztl::web::theme::load_theme_manifest(&disk) {
             return Some(m);
         }
     }
-    zetl::web::theme::load_bundled_manifest(theme)
+    ztl::web::theme::load_bundled_manifest(theme)
         .ok()
         .flatten()
 }
@@ -6320,18 +6320,18 @@ fn load_theme_manifest_for_audit(
 /// parser doesn't match the ecosystem the hook belongs to.
 ///
 /// Pure plumbing — all the detection logic lives in
-/// [`zetl::parsers::detect_mixed_parsers`]; this function's only job
+/// [`ztl::parsers::detect_mixed_parsers`]; this function's only job
 /// is gathering the inputs (pages, parsers, compiled selectors) from
 /// on-disk state.
 fn detect_mixed_parser_violations(
     vault_root: &std::path::Path,
     theme_hooks_dir: Option<&std::path::Path>,
-    files: &[zetl::types::ParsedFile],
-) -> Result<zetl::parsers::MixedParserReport> {
-    use zetl::hooks::composition::compose_all_stages;
-    use zetl::hooks::manifest::{load_manifest, LoadedManifest, SelectorSpec};
-    use zetl::hooks::selector::{compile, CompiledSelector};
-    use zetl::parsers::{
+    files: &[ztl::types::ParsedFile],
+) -> Result<ztl::parsers::MixedParserReport> {
+    use ztl::hooks::composition::compose_all_stages;
+    use ztl::hooks::manifest::{load_manifest, LoadedManifest, SelectorSpec};
+    use ztl::hooks::selector::{compile, CompiledSelector};
+    use ztl::parsers::{
         detect_mixed_parsers, ecosystem_expected_parser, HookForDetection, PageForDetection,
         ParseConfig,
     };
@@ -6358,7 +6358,7 @@ fn detect_mixed_parser_violations(
     // borrows them by reference. Selectors are compiled once per hook
     // (REQ-3204).
     struct HookEntry {
-        stage: zetl::hooks::pipeline::Stage,
+        stage: ztl::hooks::pipeline::Stage,
         hook_id: String,
         ecosystem: String,
         selector: CompiledSelector,
@@ -6416,13 +6416,13 @@ fn detect_mixed_parser_violations(
         let Ok(content) = std::fs::read_to_string(&abs) else {
             continue;
         };
-        let fm_value = zetl::web::markdown::parse_frontmatter(&content);
+        let fm_value = ztl::web::markdown::parse_frontmatter(&content);
         let body = strip_leading_frontmatter(&content).to_string();
         let parser = match &fm_value {
             serde_json::Value::Object(m) => {
-                zetl::parsers::select_parser_name(Some(m), &f.path, &parse_config)
+                ztl::parsers::select_parser_name(Some(m), &f.path, &parse_config)
             }
-            _ => zetl::parsers::select_parser_name(None, &f.path, &parse_config),
+            _ => ztl::parsers::select_parser_name(None, &f.path, &parse_config),
         };
         page_entries.push(PageEntry {
             path: f.path.clone(),
@@ -6470,13 +6470,13 @@ fn cmd_build(
     let mut page_names: Vec<String> = pipeline.files.iter().map(|f| f.page_name.clone()).collect();
     page_names.sort_by_key(|a| a.to_lowercase());
 
-    let (page_slug_map, collision_names) = zetl::web::build_slug_map(&pipeline.files);
+    let (page_slug_map, collision_names) = ztl::web::build_slug_map(&pipeline.files);
     let page_slug_map_lower: std::collections::HashMap<String, String> = page_slug_map
         .iter()
         .map(|(k, v)| (k.to_ascii_lowercase(), v.clone()))
         .collect();
 
-    let data = zetl::web::VaultData {
+    let data = ztl::web::VaultData {
         files: pipeline.files,
         graph: pipeline.graph,
         page_names,
@@ -6488,9 +6488,9 @@ fn cmd_build(
 
     // ── hook discovery (shared by pre-build and post-build) ────────────
     let verbose = cli.verbose > 0;
-    let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
+    let theme_hooks = ztl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
     let manifest =
-        zetl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
+        ztl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
 
     for w in &manifest.warnings {
         eprintln!("warning: {w}");
@@ -6504,7 +6504,7 @@ fn cmd_build(
     // legacy SPEC-016 lifecycle hooks the audit is a no-op so existing
     // themes don't trip the warning until they migrate.
     let theme_manifest = load_theme_manifest_for_audit(&pipeline.vault_root, theme);
-    let audit = zetl::hooks::safe_mode::audit_theme_declarations(
+    let audit = ztl::hooks::safe_mode::audit_theme_declarations(
         theme,
         &pipeline.vault_root,
         theme_hooks.path(),
@@ -6513,17 +6513,17 @@ fn cmd_build(
     if audit.has_undeclared() && !safe_mode {
         eprintln!(
             "{}",
-            zetl::hooks::safe_mode::format_undeclared_warning(&audit)
+            ztl::hooks::safe_mode::format_undeclared_warning(&audit)
         );
     }
     if safe_mode {
-        let policy = zetl::hooks::safe_mode::SafeMode::from_manifest(theme_manifest.as_ref());
-        match zetl::hooks::composition::compose_all_stages(&pipeline.vault_root, theme_hooks.path())
+        let policy = ztl::hooks::safe_mode::SafeMode::from_manifest(theme_manifest.as_ref());
+        match ztl::hooks::composition::compose_all_stages(&pipeline.vault_root, theme_hooks.path())
         {
             Ok(pipes) => {
-                let (_kept, skipped) = zetl::hooks::safe_mode::apply_all(pipes, &policy);
+                let (_kept, skipped) = ztl::hooks::safe_mode::apply_all(pipes, &policy);
                 for s in &skipped {
-                    eprintln!("{}", zetl::hooks::safe_mode::format_skip_line(s));
+                    eprintln!("{}", ztl::hooks::safe_mode::format_skip_line(s));
                 }
             }
             Err(e) => {
@@ -6543,7 +6543,7 @@ fn cmd_build(
     if !mixed_report.is_empty() {
         eprintln!(
             "{}",
-            zetl::parsers::format_mixed_parser_report(&mixed_report)
+            ztl::parsers::format_mixed_parser_report(&mixed_report)
         );
         if strict_parsers {
             anyhow::bail!(
@@ -6555,8 +6555,8 @@ fn cmd_build(
     }
 
     // ── pre-build hooks (abort on failure) ─────────────────────────────
-    if !safe_mode && !zetl::hooks::hooks_for(&manifest, "pre-build").is_empty() {
-        let mut ctx = zetl::hooks::context::build_hook_context(
+    if !safe_mode && !ztl::hooks::hooks_for(&manifest, "pre-build").is_empty() {
+        let mut ctx = ztl::hooks::context::build_hook_context(
             "pre-build",
             &pipeline.vault_root,
             theme,
@@ -6568,14 +6568,14 @@ fn cmd_build(
 
         let context_json = serde_json::to_vec(&ctx)?;
 
-        let hook_env = zetl::hooks::HookEnv {
+        let hook_env = ztl::hooks::HookEnv {
             vault_root: pipeline.vault_root.clone(),
             theme: theme.to_string(),
-            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
-            extra_vars: vec![("ZETL_OUT_DIR".into(), out_dir.to_string())],
+            ztl_version: env!("CARGO_PKG_VERSION").to_string(),
+            extra_vars: vec![("ztl_OUT_DIR".into(), out_dir.to_string())],
         };
 
-        let results = zetl::hooks::run_hooks_verbose(
+        let results = ztl::hooks::run_hooks_verbose(
             &manifest,
             "pre-build",
             &context_json,
@@ -6610,7 +6610,7 @@ fn cmd_build(
         }
     }
 
-    let build_result = zetl::web::build::build_static(
+    let build_result = ztl::web::build::build_static(
         &data,
         &pipeline.vault_root,
         out_dir,
@@ -6635,8 +6635,8 @@ fn cmd_build(
         println!("{}", serde_json::to_string_pretty(&out)?);
     }
 
-    if !safe_mode && !zetl::hooks::hooks_for(&manifest, "post-build").is_empty() {
-        let mut ctx = zetl::hooks::context::build_hook_context(
+    if !safe_mode && !ztl::hooks::hooks_for(&manifest, "post-build").is_empty() {
+        let mut ctx = ztl::hooks::context::build_hook_context(
             "post-build",
             &pipeline.vault_root,
             theme,
@@ -6649,14 +6649,14 @@ fn cmd_build(
 
         let context_json = serde_json::to_vec(&ctx)?;
 
-        let hook_env = zetl::hooks::HookEnv {
+        let hook_env = ztl::hooks::HookEnv {
             vault_root: pipeline.vault_root.clone(),
             theme: theme.to_string(),
-            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
-            extra_vars: vec![("ZETL_OUT_DIR".into(), out_dir.to_string())],
+            ztl_version: env!("CARGO_PKG_VERSION").to_string(),
+            extra_vars: vec![("ztl_OUT_DIR".into(), out_dir.to_string())],
         };
 
-        let results = zetl::hooks::run_hooks_verbose(
+        let results = ztl::hooks::run_hooks_verbose(
             &manifest,
             "post-build",
             &context_json,
@@ -6712,7 +6712,7 @@ fn literal_matches(literal: &str, pattern: &str) -> bool {
 /// Build theory using the theory cache when possible.
 ///
 /// On cache hit (no SPL-containing file has changed), reconstructs the theory
-/// from `.zetl/theory.json` and re-reasons (~100ms).  On cache miss, runs the
+/// from `.ztl/theory.json` and re-reasons (~100ms).  On cache miss, runs the
 /// full parse + combine + validate + reason pipeline and saves the cache.
 ///
 /// Returns `(TheoryResult, theory_cache_hit)` where `theory_cache_hit` is `true`
@@ -6722,12 +6722,12 @@ fn build_or_load_theory(
     pipeline: &Pipeline,
     no_cache: bool,
     verbose: u8,
-) -> Result<(zetl::reason::types::TheoryResult, bool)> {
-    use zetl::cache::{
+) -> Result<(ztl::reason::types::TheoryResult, bool)> {
+    use ztl::cache::{
         build_theory_cache, collect_spl_ast_hashes, load_theory_cache, save_theory_cache,
         theory_cache_valid,
     };
-    use zetl::reason::{build_theory, build_theory_from_cache};
+    use ztl::reason::{build_theory, build_theory_from_cache};
 
     let total_start = Instant::now();
 
@@ -6811,7 +6811,7 @@ fn build_or_load_theory(
 fn emit_timing_metrics(
     spl_block_count: usize,
     spl_file_count: usize,
-    result: &zetl::reason::types::TheoryResult,
+    result: &ztl::reason::types::TheoryResult,
     parse_ms: u128,
     construction_ms: u128,
     reasoning_ms: u128,
@@ -6837,10 +6837,10 @@ fn emit_timing_metrics(
 /// A conflict exists when rules produce both a literal and its complement (~p vs p)
 /// without a superiority relation resolving the dispute.
 #[cfg(feature = "reason")]
-fn count_unresolved_conflicts(result: &zetl::reason::types::TheoryResult) -> usize {
-    use zetl::reason::types::RuleType;
+fn count_unresolved_conflicts(result: &ztl::reason::types::TheoryResult) -> usize {
+    use ztl::reason::types::RuleType;
 
-    let mut rules_by_head: HashMap<String, Vec<&zetl::reason::types::ProvenancedRule>> =
+    let mut rules_by_head: HashMap<String, Vec<&ztl::reason::types::ProvenancedRule>> =
         HashMap::new();
     for rule in &result.rules {
         rules_by_head
@@ -6942,7 +6942,7 @@ fn cmd_reason_status(
     defeasible: bool,
     literal_pat: Option<&str>,
 ) -> Result<()> {
-    use zetl::reason::types::ConclusionType;
+    use ztl::reason::types::ConclusionType;
 
     let pipeline = run_pipeline(cli)?;
 
@@ -7052,9 +7052,9 @@ fn cmd_reason_status(
             #[derive(Serialize)]
             struct ReasonStatusOutput {
                 theory: TheoryJsonSummary,
-                conclusions: Vec<zetl::reason::types::ProvenancedConclusion>,
+                conclusions: Vec<ztl::reason::types::ProvenancedConclusion>,
                 summary: ConclusionCounts,
-                diagnostics: Vec<zetl::types::Diagnostic>,
+                diagnostics: Vec<ztl::types::Diagnostic>,
                 #[serde(skip_serializing_if = "Option::is_none")]
                 snapshot: Option<SnapshotInfo>,
             }
@@ -7202,9 +7202,9 @@ fn cmd_reason_explain(
     cli: &Cli,
     literal_input: &str,
     max_depth: usize,
-    explain_format: &zetl::cli::ExplainFormat,
+    explain_format: &ztl::cli::ExplainFormat,
 ) -> Result<()> {
-    use zetl::cli::ExplainFormat;
+    use ztl::cli::ExplainFormat;
 
     let pipeline = run_pipeline(cli)?;
 
@@ -7254,7 +7254,7 @@ fn cmd_reason_explain(
             .find(|c| {
                 matches!(
                     c.conclusion_type,
-                    zetl::reason::types::ConclusionType::DefeasiblyNotProvable
+                    ztl::reason::types::ConclusionType::DefeasiblyNotProvable
                 )
             })
             .or_else(|| matching_conclusions.first())
@@ -7350,7 +7350,7 @@ fn cmd_reason_explain(
 
 #[cfg(feature = "reason")]
 fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
-    use zetl::reason::types::ConclusionType;
+    use ztl::reason::types::ConclusionType;
 
     let pipeline = run_pipeline(cli)?;
 
@@ -7424,7 +7424,7 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
 
     if is_provable {
         let msg = format!(
-            "Literal '{literal_input}' IS provable. Use 'zetl reason explain {literal_input}' instead."
+            "Literal '{literal_input}' IS provable. Use 'ztl reason explain {literal_input}' instead."
         );
         match cli.format {
             OutputFormat::Json => {
@@ -7437,7 +7437,7 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
                 let output = ProvableOutput {
                     error: msg.clone(),
                     literal: literal_input.to_string(),
-                    hint: format!("zetl reason explain {literal_input}"),
+                    hint: format!("ztl reason explain {literal_input}"),
                 };
                 print_json(&output)?;
                 std::process::exit(1);
@@ -7507,7 +7507,7 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
 
         // Find defeaters that target this literal (produce its negation)
         for def_rule in &result.rules {
-            if def_rule.rule_type == zetl::reason::types::RuleType::Defeater
+            if def_rule.rule_type == ztl::reason::types::RuleType::Defeater
                 && def_rule.head.to_string() == negated_literal
             {
                 // Check if the defeater's body is satisfied
@@ -7538,7 +7538,7 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
         // Also check if a superior rule for the negation defeats this rule
         for other_rule in &result.rules {
             if other_rule.head.to_string() == negated_literal
-                && other_rule.rule_type != zetl::reason::types::RuleType::Defeater
+                && other_rule.rule_type != ztl::reason::types::RuleType::Defeater
             {
                 // Is there a superiority relation defeating our rule?
                 let other_superior = result
@@ -7761,7 +7761,7 @@ fn cmd_reason_require(
     max_solutions: usize,
     assume_spl: Option<&str>,
 ) -> Result<()> {
-    use zetl::reason::types::ConclusionType;
+    use ztl::reason::types::ConclusionType;
 
     let pipeline = run_pipeline(cli)?;
 
@@ -8119,7 +8119,7 @@ struct RequiredFact {
 
 #[cfg(feature = "reason")]
 fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Result<()> {
-    use zetl::reason::types::RuleType;
+    use ztl::reason::types::RuleType;
 
     let pipeline = run_pipeline(cli)?;
 
@@ -8139,7 +8139,7 @@ fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Re
     // Build a set of all rule heads grouped by their base literal name.
     // A conflict exists when there are rules for both `p` and `~p`.
     // We need to find literal names where rules produce both a literal and its complement.
-    let mut rules_for_literal: HashMap<String, Vec<&zetl::reason::types::ProvenancedRule>> =
+    let mut rules_for_literal: HashMap<String, Vec<&ztl::reason::types::ProvenancedRule>> =
         HashMap::new();
     for rule in &result.rules {
         let head_str = rule.head.to_string();
@@ -8147,7 +8147,7 @@ fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Re
     }
 
     // Also include facts as potential sources of conflict
-    let mut facts_for_literal: HashMap<String, Vec<&zetl::reason::types::ProvenancedFact>> =
+    let mut facts_for_literal: HashMap<String, Vec<&ztl::reason::types::ProvenancedFact>> =
         HashMap::new();
     for fact in &result.facts {
         let lit_str = fact.literal.to_string();
@@ -8443,12 +8443,12 @@ fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Re
 #[cfg(feature = "reason")]
 fn build_conflict_suggestions(
     base_name: &str,
-    pos_rules: &[&zetl::reason::types::ProvenancedRule],
-    neg_rules: &[&zetl::reason::types::ProvenancedRule],
-    pos_facts: &[&zetl::reason::types::ProvenancedFact],
-    neg_facts: &[&zetl::reason::types::ProvenancedFact],
+    pos_rules: &[&ztl::reason::types::ProvenancedRule],
+    neg_rules: &[&ztl::reason::types::ProvenancedRule],
+    pos_facts: &[&ztl::reason::types::ProvenancedFact],
+    neg_facts: &[&ztl::reason::types::ProvenancedFact],
 ) -> Vec<String> {
-    use zetl::reason::types::RuleType;
+    use ztl::reason::types::RuleType;
 
     let mut suggestions = Vec::new();
 
@@ -8547,7 +8547,7 @@ fn build_conflict_suggestions(
 struct ConflictsOutput {
     conflicts: Vec<ConflictEntry>,
     conflict_count: usize,
-    diagnostics: Vec<zetl::types::Diagnostic>,
+    diagnostics: Vec<ztl::types::Diagnostic>,
     #[serde(skip_serializing_if = "Option::is_none")]
     snapshot: Option<SnapshotInfo>,
 }
@@ -8593,7 +8593,7 @@ struct WhatIfOutput {
     changed_conclusions: Vec<WhatIfChanged>,
     removed_conclusions: Vec<WhatIfConclusion>,
     unchanged_count: usize,
-    diagnostics: Vec<zetl::types::Diagnostic>,
+    diagnostics: Vec<ztl::types::Diagnostic>,
     #[serde(skip_serializing_if = "Option::is_none")]
     snapshot: Option<SnapshotInfo>,
 }
@@ -8682,12 +8682,12 @@ fn cmd_reason_what_if(
     let (result, _theory_cache_hit) = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Build baseline conclusion set: (literal, type_symbol) pairs
-    let conclusion_symbol = |ct: &zetl::reason::types::ConclusionType| -> &'static str {
+    let conclusion_symbol = |ct: &ztl::reason::types::ConclusionType| -> &'static str {
         match ct {
-            zetl::reason::types::ConclusionType::DefinitelyProvable => "+D",
-            zetl::reason::types::ConclusionType::DefinitelyNotProvable => "-D",
-            zetl::reason::types::ConclusionType::DefeasiblyProvable => "+d",
-            zetl::reason::types::ConclusionType::DefeasiblyNotProvable => "-d",
+            ztl::reason::types::ConclusionType::DefinitelyProvable => "+D",
+            ztl::reason::types::ConclusionType::DefinitelyNotProvable => "-D",
+            ztl::reason::types::ConclusionType::DefeasiblyProvable => "+d",
+            ztl::reason::types::ConclusionType::DefeasiblyNotProvable => "-d",
         }
     };
 
@@ -8880,7 +8880,7 @@ fn cmd_reason_what_if(
 
 #[cfg(feature = "reason")]
 fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
-    use zetl::reason::types::ConclusionType;
+    use ztl::reason::types::ConclusionType;
 
     let pipeline = run_pipeline(cli)?;
 
@@ -8907,7 +8907,7 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
     let theory_built_at = theory_cache.as_ref().and_then(|tc| tc.built_at.clone());
 
     // Read fresh VCS metadata (§1.6). Always reflects current environment, not cached state.
-    let (git_commit, git_dirty) = zetl::vcs::get_git_metadata(&pipeline.vault_root);
+    let (git_commit, git_dirty) = ztl::vcs::get_git_metadata(&pipeline.vault_root);
 
     // Normalize literal input: handle ~ prefix for negation
     let literal_str = literal_input.trim();
@@ -8921,7 +8921,7 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
 
     if matching.is_empty() {
         let msg = format!(
-            "Literal '{literal_str}' not found in conclusions. Use `zetl reason status` to see all conclusions."
+            "Literal '{literal_str}' not found in conclusions. Use `ztl reason status` to see all conclusions."
         );
         match cli.format {
             OutputFormat::Json => exit_json_error(&msg, 1),
@@ -9154,9 +9154,9 @@ struct EnrichedProofSource {
 /// or the section index is out of range.
 #[cfg(feature = "reason")]
 fn get_current_grounding_hash(
-    file: &zetl::types::ParsedFile,
+    file: &ztl::types::ParsedFile,
     spl_start_line: u32,
-) -> Option<zetl::types::ContentHash> {
+) -> Option<ztl::types::ContentHash> {
     let fm = file.file_merkle.as_ref()?;
     let spl_leaf = fm
         .spl_leaves
@@ -9179,11 +9179,11 @@ fn get_current_grounding_hash(
 /// hash (first run or pre-v2 cache).
 #[cfg(feature = "reason")]
 fn compute_grounding(
-    proof_source: &zetl::reason::types::ProofSource,
-    files: &[zetl::types::ParsedFile],
-    theory_cache: Option<&zetl::cache::TheoryCache>,
+    proof_source: &ztl::reason::types::ProofSource,
+    files: &[ztl::types::ParsedFile],
+    theory_cache: Option<&ztl::cache::TheoryCache>,
 ) -> ProvenanceGrounding {
-    use zetl::types::ContentHash;
+    use ztl::types::ContentHash;
 
     // Find the ParsedFile for this proof source.
     let Some(file) = files.iter().find(|f| f.path == proof_source.path) else {
@@ -9303,7 +9303,7 @@ fn compute_grounding(
 #[cfg(feature = "reason")]
 fn find_potential_sources(
     literal_str: &str,
-    theory_result: &zetl::reason::types::TheoryResult,
+    theory_result: &ztl::reason::types::TheoryResult,
 ) -> Vec<WhyNotSource> {
     let mut sources = Vec::new();
 
@@ -9336,11 +9336,11 @@ fn find_potential_sources(
 
 /// Format a rule as human-readable text.
 #[cfg(feature = "reason")]
-fn format_rule_text(rule: &zetl::reason::types::ProvenancedRule) -> String {
+fn format_rule_text(rule: &ztl::reason::types::ProvenancedRule) -> String {
     let arrow = match rule.rule_type {
-        zetl::reason::types::RuleType::Strict => "->",
-        zetl::reason::types::RuleType::Defeasible => "=>",
-        zetl::reason::types::RuleType::Defeater => "~>",
+        ztl::reason::types::RuleType::Strict => "->",
+        ztl::reason::types::RuleType::Defeasible => "=>",
+        ztl::reason::types::RuleType::Defeater => "~>",
     };
     if rule.body.is_empty() {
         format!("{}: {} {}", rule.label, arrow, rule.head)
@@ -9419,7 +9419,7 @@ struct ExplainBlocked {
 #[cfg(feature = "reason")]
 fn enrich_proof_tree(
     explanation: &spindle_core::explanation::Explanation,
-    theory_result: &zetl::reason::types::TheoryResult,
+    theory_result: &ztl::reason::types::TheoryResult,
     literal_input: &str,
     max_depth: usize,
     snapshot: Option<SnapshotInfo>,
@@ -9471,7 +9471,7 @@ fn enrich_proof_tree(
 #[cfg(feature = "reason")]
 fn enrich_node(
     node: &spindle_core::explanation::ProofNode,
-    theory_result: &zetl::reason::types::TheoryResult,
+    theory_result: &ztl::reason::types::TheoryResult,
     depth: usize,
     max_depth: usize,
 ) -> ExplainNode {
@@ -9524,7 +9524,7 @@ fn enrich_node(
 #[cfg(feature = "reason")]
 fn lookup_source(
     rule_label: &str,
-    theory_result: &zetl::reason::types::TheoryResult,
+    theory_result: &ztl::reason::types::TheoryResult,
 ) -> Option<ExplainSource> {
     // Check provenanced rules
     if let Some(rule) = theory_result.rules.iter().find(|r| r.label == rule_label) {
@@ -9564,13 +9564,13 @@ fn lookup_source(
 #[cfg(feature = "reason")]
 fn print_negative_explanation(
     _cli: &Cli,
-    explain_format: &zetl::cli::ExplainFormat,
+    explain_format: &ztl::cli::ExplainFormat,
     literal_input: &str,
-    conclusion: &zetl::reason::types::ProvenancedConclusion,
-    theory_result: &zetl::reason::types::TheoryResult,
+    conclusion: &ztl::reason::types::ProvenancedConclusion,
+    theory_result: &ztl::reason::types::TheoryResult,
 ) -> Result<()> {
-    use zetl::cli::ExplainFormat;
-    use zetl::reason::types::ConclusionType;
+    use ztl::cli::ExplainFormat;
+    use ztl::reason::types::ConclusionType;
 
     let conclusion_type_str = match conclusion.conclusion_type {
         ConclusionType::DefinitelyProvable => "+D",
@@ -9745,7 +9745,7 @@ fn print_negative_explanation(
 
 #[cfg(feature = "reason")]
 fn fuzzy_match_literals(query: &str, literals: &[String]) -> Vec<String> {
-    use zetl::simhash::{compute_simhash, hamming_distance};
+    use ztl::simhash::{compute_simhash, hamming_distance};
 
     let query_hash = compute_simhash(query);
     let mut scored: Vec<(String, u32)> = literals
@@ -10000,11 +10000,11 @@ fn emit_dot_node(node: &ExplainNode, parent_id: &str, counter: &mut usize) {
 #[cfg(feature = "reason")]
 fn cmd_reason_export(
     cli: &Cli,
-    format: &zetl::cli::ExportFormat,
+    format: &ztl::cli::ExportFormat,
     with_conclusions: bool,
 ) -> Result<()> {
-    use zetl::cli::ExportFormat;
-    use zetl::reason::types::{ConclusionType, RuleType};
+    use ztl::cli::ExportFormat;
+    use ztl::reason::types::{ConclusionType, RuleType};
 
     let pipeline = run_pipeline(cli)?;
 
@@ -10137,8 +10137,8 @@ fn cmd_reason_export(
                 superiority: Vec<ExportSuperiority>,
                 #[serde(skip_serializing_if = "Option::is_none")]
                 conclusions: Option<Vec<ExportConclusion>>,
-                diagnostics: Vec<zetl::types::Diagnostic>,
-                summary: zetl::reason::types::TheorySummary,
+                diagnostics: Vec<ztl::types::Diagnostic>,
+                summary: ztl::reason::types::TheorySummary,
                 #[serde(skip_serializing_if = "Option::is_none")]
                 snapshot: Option<SnapshotInfo>,
             }
@@ -10172,7 +10172,7 @@ fn cmd_reason_export(
             struct ExportConclusion {
                 literal: String,
                 conclusion_type: ConclusionType,
-                proof_sources: Vec<zetl::reason::types::ProofSource>,
+                proof_sources: Vec<ztl::reason::types::ProofSource>,
             }
 
             let facts: Vec<ExportFact> = result
@@ -10275,9 +10275,9 @@ fn reason_not_available() -> ! {
     std::process::exit(2);
 }
 
-// ── zetl diff ─────────────────────────────────────────────────────────────
+// ── ztl diff ─────────────────────────────────────────────────────────────
 
-/// Structured output for `zetl diff` (CON-021, REQ-049, REQ-083).
+/// Structured output for `ztl diff` (CON-021, REQ-049, REQ-083).
 #[derive(Serialize)]
 struct GraphDiff {
     from: DiffRef,
@@ -10314,7 +10314,7 @@ struct DiffLink {
     target: String,
 }
 
-/// `zetl diff` — compute graph-level diff against a baseline (REQ-046 – REQ-051, REQ-083).
+/// `ztl diff` — compute graph-level diff against a baseline (REQ-046 – REQ-051, REQ-083).
 ///
 /// When the `history` feature is compiled in: uses the jj-backend for finer-grained
 /// history (SPEC-017).  Falls back to SPEC-007 git-subprocess mode when the feature
@@ -10323,7 +10323,7 @@ fn cmd_diff(
     cli: &Cli,
     from: Option<&str>,
     since: Option<&str>,
-    filter: Option<&zetl::cli::DiffFilter>,
+    filter: Option<&ztl::cli::DiffFilter>,
 ) -> Result<()> {
     // Resolve the baseline expression (--from takes precedence over --since).
     let baseline_expr = from.or(since);
@@ -10340,21 +10340,21 @@ fn cmd_diff(
 
 /// jj-backed diff implementation (SPEC-017, REQ-083).
 ///
-/// Uses `open_history` so that a missing `.zetl/jj/` yields `NO_HISTORY` (REQ-084).
+/// Uses `open_history` so that a missing `.ztl/jj/` yields `NO_HISTORY` (REQ-084).
 #[cfg(feature = "history")]
 fn cmd_diff_history(
     cli: &Cli,
     baseline_expr: Option<&str>,
-    filter: Option<&zetl::cli::DiffFilter>,
+    filter: Option<&ztl::cli::DiffFilter>,
 ) -> Result<()> {
-    use zetl::history::cache::HistoricalIndexCache;
-    use zetl::history::core::resolve_snapshot;
-    use zetl::history::jj_backend::VcsBackend as _;
+    use ztl::history::cache::HistoricalIndexCache;
+    use ztl::history::core::resolve_snapshot;
+    use ztl::history::jj_backend::VcsBackend as _;
 
     let pipeline = run_pipeline(cli)?;
 
-    // Open jj workspace — errors with NO_HISTORY if .zetl/jj/ is absent (REQ-084).
-    let backend = zetl::history::open_history(&pipeline.vault_root)
+    // Open jj workspace — errors with NO_HISTORY if .ztl/jj/ is absent (REQ-084).
+    let backend = ztl::history::open_history(&pipeline.vault_root)
         .context("opening jj workspace for diff")?;
 
     let snapshots = backend
@@ -10363,21 +10363,21 @@ fn cmd_diff_history(
 
     if snapshots.is_empty() {
         anyhow::bail!(
-            "NO_HISTORY: No snapshots found. Run `zetl index` to create the first snapshot."
+            "NO_HISTORY: No snapshots found. Run `ztl index` to create the first snapshot."
         );
     }
 
     // Resolve the baseline to a snapshot.
     // When no --from/--since is given, default to the previous distinct snapshot (@-).
     let now = chrono::Local::now().fixed_offset();
-    let baseline_snap: &zetl::history::jj_backend::ChangeInfo = if let Some(expr) = baseline_expr {
+    let baseline_snap: &ztl::history::jj_backend::ChangeInfo = if let Some(expr) = baseline_expr {
         resolve_snapshot(expr, now, &snapshots)
             .with_context(|| format!("resolving diff baseline {expr:?}"))?
     } else {
         // @- semantics: need at least two snapshots to compute a diff (REQ-083, ADR-046).
         snapshots.get(1).ok_or_else(|| {
             anyhow::anyhow!(
-                "NO_PREVIOUS_SNAPSHOT: only one snapshot exists; run `zetl index` again \
+                "NO_PREVIOUS_SNAPSHOT: only one snapshot exists; run `ztl index` again \
                  after making changes to create a second snapshot to diff against."
             )
         })?
@@ -10385,11 +10385,11 @@ fn cmd_diff_history(
 
     // Load the historical index for the baseline snapshot.
     let vault_root_hash =
-        zetl::history::core::extract_vault_root_hash_from_description(&baseline_snap.description)
+        ztl::history::core::extract_vault_root_hash_from_description(&baseline_snap.description)
             .ok_or_else(|| {
             anyhow::anyhow!(
                 "Baseline snapshot {} has no vault_root_hash. \
-                     Run `zetl index` to populate the historical index.",
+                     Run `ztl index` to populate the historical index.",
                 baseline_snap.change_id
             )
         })?;
@@ -10401,7 +10401,7 @@ fn cmd_diff_history(
         .ok_or_else(|| {
             anyhow::anyhow!(
                 "No cached index for baseline snapshot {} (vault_root_hash={}). \
-                 Run `zetl index` at that point in time to populate the cache.",
+                 Run `ztl index` at that point in time to populate the cache.",
                 baseline_snap.change_id,
                 vault_root_hash
             )
@@ -10420,14 +10420,14 @@ fn cmd_diff_history(
             let key = link.raw_target.clone();
             if let std::collections::hash_map::Entry::Vacant(e) = baseline_resolved.entry(key) {
                 if let Some(r) =
-                    zetl::scanner::resolve_page_name(&link.target_page, &baseline_file_index)
+                    ztl::scanner::resolve_page_name(&link.target_page, &baseline_file_index)
                 {
                     e.insert(r);
                 }
             }
         }
     }
-    let baseline_graph = zetl::graph::LinkGraph::build(&baseline_files, &baseline_resolved);
+    let baseline_graph = ztl::graph::LinkGraph::build(&baseline_files, &baseline_resolved);
 
     diff_graphs_and_output(
         cli,
@@ -10456,7 +10456,7 @@ fn cmd_diff_history(
 fn cmd_diff_git(
     cli: &Cli,
     baseline_expr: Option<&str>,
-    filter: Option<&zetl::cli::DiffFilter>,
+    filter: Option<&ztl::cli::DiffFilter>,
 ) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
@@ -10488,7 +10488,7 @@ fn cmd_diff_git(
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_else(|| changed.to_owned());
             // extract_wikilinks gives us the links without running the full SPEC-006 pipeline.
-            let links = zetl::scanner::extract_wikilinks(&old_content);
+            let links = ztl::scanner::extract_wikilinks(&old_content);
             baseline_files.push(ParsedFile {
                 path,
                 page_name,
@@ -10514,17 +10514,17 @@ fn cmd_diff_git(
             let key = link.raw_target.clone();
             if let std::collections::hash_map::Entry::Vacant(e) = baseline_resolved.entry(key) {
                 if let Some(r) =
-                    zetl::scanner::resolve_page_name(&link.target_page, &baseline_file_index)
+                    ztl::scanner::resolve_page_name(&link.target_page, &baseline_file_index)
                 {
                     e.insert(r);
                 }
             }
         }
     }
-    let baseline_graph = zetl::graph::LinkGraph::build(&baseline_files, &baseline_resolved);
+    let baseline_graph = ztl::graph::LinkGraph::build(&baseline_files, &baseline_resolved);
 
     // Get current HEAD commit info for the "to" ref.
-    let (git_commit, _) = zetl::vcs::get_git_metadata(&pipeline.vault_root);
+    let (git_commit, _) = ztl::vcs::get_git_metadata(&pipeline.vault_root);
 
     diff_graphs_and_output(
         cli,
@@ -10665,15 +10665,15 @@ fn git_show(vault_root: &Path, git_ref: &str, rel_path: &str) -> Result<Option<S
 #[allow(clippy::too_many_arguments)] // shared helper with two graph halves, files, refs, cli, and filter
 fn diff_graphs_and_output(
     cli: &Cli,
-    filter: Option<&zetl::cli::DiffFilter>,
-    old_graph: &zetl::graph::LinkGraph,
+    filter: Option<&ztl::cli::DiffFilter>,
+    old_graph: &ztl::graph::LinkGraph,
     old_files: &[ParsedFile],
-    new_graph: &zetl::graph::LinkGraph,
+    new_graph: &ztl::graph::LinkGraph,
     new_files: &[ParsedFile],
     from_ref: DiffRef,
     to_ref: DiffRef,
 ) -> Result<()> {
-    use zetl::cli::DiffFilter;
+    use ztl::cli::DiffFilter;
 
     let old_pages: HashSet<&str> = old_files.iter().map(|f| f.page_name.as_str()).collect();
     let new_pages: HashSet<&str> = new_files.iter().map(|f| f.page_name.as_str()).collect();
@@ -10805,18 +10805,18 @@ fn diff_graphs_and_output(
     Ok(())
 }
 
-// ── zetl history ───────────────────────────────────────────────────────────
+// ── ztl history ───────────────────────────────────────────────────────────
 
-/// `zetl history timeline` — list recent snapshots (REQ-080, REQ-081).
+/// `ztl history timeline` — list recent snapshots (REQ-080, REQ-081).
 #[cfg(feature = "history")]
 fn cmd_history_timeline(cli: &Cli, limit: usize) -> Result<()> {
-    use zetl::history::jj_backend::VcsBackend as _;
+    use ztl::history::jj_backend::VcsBackend as _;
 
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
 
-    // open_history errors with NO_HISTORY if .zetl/jj/ is absent (REQ-084).
-    let backend = zetl::history::open_history(&vault_root)
+    // open_history errors with NO_HISTORY if .ztl/jj/ is absent (REQ-084).
+    let backend = ztl::history::open_history(&vault_root)
         .context("opening jj workspace for history timeline")?;
 
     let snapshots = backend
@@ -10827,10 +10827,10 @@ fn cmd_history_timeline(cli: &Cli, limit: usize) -> Result<()> {
         match cli.format {
             OutputFormat::Json => print_json(&serde_json::json!({
                 "snapshots": [],
-                "message": "No snapshots yet. Run `zetl index` to create the first snapshot."
+                "message": "No snapshots yet. Run `ztl index` to create the first snapshot."
             }))?,
             _ => {
-                println!("No snapshots yet. Run `zetl index` to create the first snapshot.");
+                println!("No snapshots yet. Run `ztl index` to create the first snapshot.");
             }
         }
         return Ok(());
@@ -10853,7 +10853,7 @@ fn cmd_history_timeline(cli: &Cli, limit: usize) -> Result<()> {
             commit_id: s.commit_id.clone(),
             timestamp: s.timestamp.to_rfc3339(),
             description: s.description.clone(),
-            has_cached_index: zetl::history::core::extract_vault_root_hash_from_description(
+            has_cached_index: ztl::history::core::extract_vault_root_hash_from_description(
                 &s.description,
             )
             .is_some(),
@@ -10879,20 +10879,20 @@ fn cmd_history_timeline(cli: &Cli, limit: usize) -> Result<()> {
     Ok(())
 }
 
-/// `zetl history page <name>` — per-page evolution timeline (REQ-081, CON-025).
+/// `ztl history page <name>` — per-page evolution timeline (REQ-081, CON-025).
 ///
 /// Only snapshots where the page's neighbourhood (forward links, backlinks, or
 /// existence) changed are included in the output.
 #[cfg(feature = "history")]
 fn cmd_history_page(cli: &Cli, page_name: &str, limit: usize) -> Result<()> {
-    use zetl::history::cache::HistoricalIndexCache;
-    use zetl::history::core::{extract_page_history, extract_vault_root_hash_from_description};
-    use zetl::history::jj_backend::VcsBackend as _;
+    use ztl::history::cache::HistoricalIndexCache;
+    use ztl::history::core::{extract_page_history, extract_vault_root_hash_from_description};
+    use ztl::history::jj_backend::VcsBackend as _;
 
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
 
-    let backend = zetl::history::open_history(&vault_root)
+    let backend = ztl::history::open_history(&vault_root)
         .context("opening jj workspace for history page")?;
 
     let snapshots = backend
@@ -10948,7 +10948,7 @@ fn cmd_history_page(cli: &Cli, page_name: &str, limit: usize) -> Result<()> {
 
 /// Format a page neighbourhood delta into a compact human-readable string.
 #[cfg(feature = "history")]
-fn format_page_delta(d: &zetl::history::core::PageNeighborhoodDelta) -> String {
+fn format_page_delta(d: &ztl::history::core::PageNeighborhoodDelta) -> String {
     if d.appeared {
         return "appeared".to_owned();
     }
@@ -10975,17 +10975,17 @@ fn format_page_delta(d: &zetl::history::core::PageNeighborhoodDelta) -> String {
     }
 }
 
-/// `zetl history log` — reverse-chronological delta timeline (REQ-080, CON-025).
+/// `ztl history log` — reverse-chronological delta timeline (REQ-080, CON-025).
 #[cfg(feature = "history")]
 fn cmd_history_log(cli: &Cli, since: Option<&str>, limit: usize) -> Result<()> {
-    use zetl::history::core::build_vault_history;
-    use zetl::history::jj_backend::VcsBackend as _;
+    use ztl::history::core::build_vault_history;
+    use ztl::history::jj_backend::VcsBackend as _;
 
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
 
     let backend =
-        zetl::history::open_history(&vault_root).context("opening jj workspace for history log")?;
+        ztl::history::open_history(&vault_root).context("opening jj workspace for history log")?;
 
     // Load all snapshots (we may need them for --since ref resolution and
     // delta computation beyond the final `limit`).
@@ -11001,10 +11001,10 @@ fn cmd_history_log(cli: &Cli, since: Option<&str>, limit: usize) -> Result<()> {
         match cli.format {
             OutputFormat::Json => print_json(&serde_json::json!({
                 "entries": [],
-                "message": "No snapshots found. Run `zetl index` to create the first snapshot."
+                "message": "No snapshots found. Run `ztl index` to create the first snapshot."
             }))?,
             _ => {
-                println!("No snapshots found. Run `zetl index` to create the first snapshot.");
+                println!("No snapshots found. Run `ztl index` to create the first snapshot.");
             }
         }
         return Ok(());
@@ -11225,7 +11225,7 @@ fn main() -> anyhow::Result<()> {
             EcosystemCommand::Check { theme, json } => cmd_ecosystem_check(&cli, theme, *json),
         },
         Command::Ast { command } => {
-            use zetl::cli::AstCommand;
+            use ztl::cli::AstCommand;
             match command {
                 AstCommand::Sample { file, stage } => cmd_ast_sample(&cli, file, stage),
                 AstCommand::Diff { before, after } => cmd_ast_diff(&cli, before, after),
@@ -11302,7 +11302,7 @@ fn main() -> anyhow::Result<()> {
         ),
         #[cfg(feature = "reason")]
         Command::Reason { command } => {
-            use zetl::cli::ReasonCommand;
+            use ztl::cli::ReasonCommand;
             match command {
                 ReasonCommand::Status {
                     positive,
@@ -11357,7 +11357,7 @@ fn main() -> anyhow::Result<()> {
         } => cmd_diff(&cli, from.as_deref(), since.as_deref(), filter.as_ref()),
         #[cfg(feature = "history")]
         Command::History { command } => {
-            use zetl::cli::HistoryCommand;
+            use ztl::cli::HistoryCommand;
             match command {
                 HistoryCommand::Timeline { limit } => cmd_history_timeline(&cli, *limit),
                 HistoryCommand::Page { name, limit } => cmd_history_page(&cli, name, *limit),
@@ -11425,8 +11425,8 @@ fn main() -> anyhow::Result<()> {
             Ok(())
         }
         Command::Cap { command } => match command {
-            zetl::cli::CapCommand::Genkey => cmd_cap_genkey(&cli),
-            zetl::cli::CapCommand::Invite {
+            ztl::cli::CapCommand::Genkey => cmd_cap_genkey(&cli),
+            ztl::cli::CapCommand::Invite {
                 name,
                 cohort,
                 expires,
@@ -11450,17 +11450,17 @@ fn main() -> anyhow::Result<()> {
                     slug: slug.clone(),
                 },
             ),
-            zetl::cli::CapCommand::List { .. } => cmd_cap_stub(&cli, "list"),
-            zetl::cli::CapCommand::Revoke { grant_id } => cmd_cap_revoke(&cli, grant_id),
-            zetl::cli::CapCommand::Rotate { cohort } => cmd_cap_rotate(&cli, cohort),
-            zetl::cli::CapCommand::Finalise {
+            ztl::cli::CapCommand::List { .. } => cmd_cap_stub(&cli, "list"),
+            ztl::cli::CapCommand::Revoke { grant_id } => cmd_cap_revoke(&cli, grant_id),
+            ztl::cli::CapCommand::Rotate { cohort } => cmd_cap_rotate(&cli, cohort),
+            ztl::cli::CapCommand::Finalise {
                 grant_id,
                 rotate_grant,
             } => cmd_cap_finalise(&cli, grant_id, *rotate_grant),
-            zetl::cli::CapCommand::Share { .. } => cmd_cap_stub(&cli, "share"),
-            zetl::cli::CapCommand::Check { public_safety } => cmd_cap_check(&cli, *public_safety),
-            zetl::cli::CapCommand::Sweep => cmd_cap_sweep(&cli),
-            zetl::cli::CapCommand::Pair {
+            ztl::cli::CapCommand::Share { .. } => cmd_cap_stub(&cli, "share"),
+            ztl::cli::CapCommand::Check { public_safety } => cmd_cap_check(&cli, *public_safety),
+            ztl::cli::CapCommand::Sweep => cmd_cap_sweep(&cli),
+            ztl::cli::CapCommand::Pair {
                 grantor,
                 grantee,
                 peer,
@@ -11476,9 +11476,9 @@ fn main() -> anyhow::Result<()> {
                     pubkey: pubkey.clone(),
                 },
             ),
-            zetl::cli::CapCommand::RotateSigningKey => cmd_cap_rotate_signing_key(&cli),
-            zetl::cli::CapCommand::EmergencyShutdown => cmd_cap_emergency_shutdown(&cli),
-            zetl::cli::CapCommand::AuditDiff {
+            ztl::cli::CapCommand::RotateSigningKey => cmd_cap_rotate_signing_key(&cli),
+            ztl::cli::CapCommand::EmergencyShutdown => cmd_cap_emergency_shutdown(&cli),
+            ztl::cli::CapCommand::AuditDiff {
                 old_ref,
                 new_ref,
                 corpus,
@@ -11494,7 +11494,7 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
-/// Exit code emitted by `zetl cap` stubs whose implementation has not
+/// Exit code emitted by `ztl cap` stubs whose implementation has not
 /// landed yet. Follows SPEC-004's 0/1/2/64+ convention — we pick `2`
 /// for "not-yet-implemented" so CI gates can distinguish a skeleton
 /// verb from a runtime failure (`1`) and a usage error (clap's default
@@ -11502,7 +11502,7 @@ fn main() -> anyhow::Result<()> {
 /// failure).
 const CAP_NOT_YET_IMPLEMENTED_EXIT: i32 = 2;
 
-/// Stub for `zetl cap` verbs whose implementation has not landed. Emits
+/// Stub for `ztl cap` verbs whose implementation has not landed. Emits
 /// a diagnostic and exits with `CAP_NOT_YET_IMPLEMENTED_EXIT`. When
 /// `--json`/`-f json` is in effect the diagnostic is JSON on stdout so
 /// agents can parse it (CLIG-adjacent behaviour mirroring
@@ -11513,7 +11513,7 @@ const CAP_NOT_YET_IMPLEMENTED_EXIT: i32 = 2;
 /// handler exists.
 fn cmd_cap_stub(cli: &Cli, verb: &str) -> Result<()> {
     let message =
-        format!("zetl cap {verb}: not-yet-implemented (SPEC-034 REQ-3416 CLI surface stub)");
+        format!("ztl cap {verb}: not-yet-implemented (SPEC-034 REQ-3416 CLI surface stub)");
     let json_requested = cli.json || matches!(cli.format, OutputFormat::Json);
     if json_requested {
         exit_json_error(&message, CAP_NOT_YET_IMPLEMENTED_EXIT);
@@ -11525,19 +11525,19 @@ fn cmd_cap_stub(cli: &Cli, verb: &str) -> Result<()> {
     std::process::exit(CAP_NOT_YET_IMPLEMENTED_EXIT);
 }
 
-/// `zetl cap genkey` — SPEC-034 REQ-3419.
+/// `ztl cap genkey` — SPEC-034 REQ-3419.
 ///
-/// Prints BOTH capability-mode secrets (`ZETL_CAP_SECRET` +
-/// `ZETL_CAP_SIGNING_KEY`) to stdout exactly once, with secure-storage
+/// Prints BOTH capability-mode secrets (`ztl_CAP_SECRET` +
+/// `ztl_CAP_SIGNING_KEY`) to stdout exactly once, with secure-storage
 /// instructions. Never writes to any file; never logs. The random
 /// bytes come from [`rand_core::OsRng`] via `cap::genkey::generate`.
 ///
-/// The 15-byte checksum embedded in `ZETL_CAP_SECRET` is framed as a
+/// The 15-byte checksum embedded in `ztl_CAP_SECRET` is framed as a
 /// UX safeguard — BUG-017 resolution — so operators paste-corrupting
 /// the value hit a targeted remediation message at build time rather
 /// than a surprise decryption failure in prod.
 fn cmd_cap_genkey(cli: &Cli) -> Result<()> {
-    let out = zetl::cap::genkey::generate();
+    let out = ztl::cap::genkey::generate();
 
     // JSON only when the operator explicitly asked for it — `--json`
     // or `-f json` / `--format json` on the command line. The auto-TTY
@@ -11564,12 +11564,12 @@ fn cmd_cap_genkey(cli: &Cli) -> Result<()> {
     }
 
     if json_requested {
-        print_json(&zetl::cap::genkey::render_json(&out))?;
+        print_json(&ztl::cap::genkey::render_json(&out))?;
     } else {
         // Direct write to stdout — avoid any intermediate logging /
         // tracing layer that might echo the secret into a log sink.
         // A single `print!` emits the banner once.
-        print!("{}", zetl::cap::genkey::render_human(&out));
+        print!("{}", ztl::cap::genkey::render_human(&out));
     }
     Ok(())
 }
@@ -11590,7 +11590,7 @@ struct CapInviteArgs {
     slug: String,
 }
 
-/// `zetl cap invite` — SPEC-034 REQ-3410 / REQ-3416 / CON-3402.
+/// `ztl cap invite` — SPEC-034 REQ-3410 / REQ-3416 / CON-3402.
 ///
 /// Three operating modes, dispatched on the flags:
 ///
@@ -11603,14 +11603,14 @@ struct CapInviteArgs {
 ///    banner before the URL.
 /// 2. **Hardened, pre-collected recipient** (`--recipient <pubkey>`).
 ///    The operator already has the reader's `age-recipient-v1:`
-///    pubkey (e.g. via `zetl cap pair` SPAKE2 handoff); we skip key
+///    pubkey (e.g. via `ztl cap pair` SPAKE2 handoff); we skip key
 ///    generation, add the pubkey to the cohort, and print the
 ///    hardened URL (no fragment).
 /// 3. **Hardened, enrol-page** (`--via enrol-page`). We don't yet
 ///    know the reader's pubkey; print the `/enroll.html?cohort=<id>`
 ///    URL so the reader can self-enrol and send back their pubkey.
 ///    No grant is written until the operator runs
-///    `zetl cap invite --recipient <pubkey>` with the returned
+///    `ztl cap invite --recipient <pubkey>` with the returned
 ///    pubkey.
 ///
 /// `--split-key` (REQ-3430) is orthogonal to the mode: when set (and
@@ -11620,16 +11620,16 @@ struct CapInviteArgs {
 fn cmd_cap_invite(cli: &Cli, args: CapInviteArgs) -> Result<()> {
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use zetl::cap::derivation::{derive_path_cap, PATH_CAP_DEFAULT_BITS};
-    use zetl::cap::genkey::{decode_secret, ZETL_CAP_SECRET_ENV};
-    use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
-    use zetl::cap::invite::{
+    use ztl::cap::derivation::{derive_path_cap, PATH_CAP_DEFAULT_BITS};
+    use ztl::cap::genkey::{decode_secret, ztl_CAP_SECRET_ENV};
+    use ztl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
+    use ztl::cap::invite::{
         encode_age_recipient_v1, format_rfc3339_utc, generate_grant_id, generate_invite_keypair,
         parse_expires, xor_split_private_key, DEFAULT_EXPIRES_SECS, URL_SHORTENER_WARNING,
     };
-    use zetl::cap::public_repo::{parse_config_lens, SplitKeyConfig, SplitKeySecondFactor};
-    use zetl::cap::recipients::parsing::{CohortMode, RecipientsFile, AGE_RECIPIENT_V1_PREFIX};
-    use zetl::cap::url_format::CapUrl;
+    use ztl::cap::public_repo::{parse_config_lens, SplitKeyConfig, SplitKeySecondFactor};
+    use ztl::cap::recipients::parsing::{CohortMode, RecipientsFile, AGE_RECIPIENT_V1_PREFIX};
+    use ztl::cap::url_format::CapUrl;
 
     // ─── Resolve site URL (scheme + host) ──────────────────────────
     let site_url = args
@@ -11639,8 +11639,8 @@ fn cmd_cap_invite(cli: &Cli, args: CapInviteArgs) -> Result<()> {
         .filter(|s| !s.is_empty())
         .ok_or_else(|| {
             anyhow::anyhow!(
-                "zetl cap invite requires a canonical site URL: pass --site-url <URL> \
-                 or set ZETL_CAP_SITE_URL=<URL> in the environment"
+                "ztl cap invite requires a canonical site URL: pass --site-url <URL> \
+                 or set ztl_CAP_SITE_URL=<URL> in the environment"
             )
         })?
         .to_string();
@@ -11664,7 +11664,7 @@ fn cmd_cap_invite(cli: &Cli, args: CapInviteArgs) -> Result<()> {
     let recipients_path = vault_root.join("recipients.toml");
     let body = std::fs::read_to_string(&recipients_path).with_context(|| {
         format!(
-            "Cannot read {}. Run `zetl cap genkey` + populate `recipients.toml` \
+            "Cannot read {}. Run `ztl cap genkey` + populate `recipients.toml` \
              before issuing invites (see SPEC-034 REQ-3409).",
             recipients_path.display()
         )
@@ -11672,12 +11672,12 @@ fn cmd_cap_invite(cli: &Cli, args: CapInviteArgs) -> Result<()> {
     let mut recipients = RecipientsFile::parse(&body)
         .with_context(|| format!("{} is invalid", recipients_path.display()))?;
 
-    // ─── Read `.zetl/config.toml` for REQ-3417 `[access.split_key]` ──
+    // ─── Read `.ztl/config.toml` for REQ-3417 `[access.split_key]` ──
     // Missing config + missing block both deserialise as
     // `split_key = None`, which the gate below treats as "disabled"
     // per REQ-3430 acceptance ("default is `enabled = false`").
     let split_key_cfg: SplitKeyConfig = {
-        let config_path = vault_root.join(".zetl").join("config.toml");
+        let config_path = vault_root.join(".ztl").join("config.toml");
         match std::fs::read_to_string(&config_path) {
             Ok(body) => parse_config_lens(&body)
                 .with_context(|| format!("{} is invalid", config_path.display()))?
@@ -11696,7 +11696,7 @@ fn cmd_cap_invite(cli: &Cli, args: CapInviteArgs) -> Result<()> {
     if args.split_key && !split_key_cfg.enabled {
         anyhow::bail!(
             "`--split-key` refused: SPEC-034 REQ-3430 requires an explicit opt-in via \
-             `[access.split_key] enabled = true` in .zetl/config.toml \
+             `[access.split_key] enabled = true` in .ztl/config.toml \
              (default is disabled)"
         );
     }
@@ -11743,21 +11743,21 @@ fn cmd_cap_invite(cli: &Cli, args: CapInviteArgs) -> Result<()> {
         );
         eprintln!(
             "After the reader sends back their `age-recipient-v1:` pubkey, re-run:\n  \
-             zetl cap invite {name:?} --cohort {cohort} --recipient <pubkey>",
+             ztl cap invite {name:?} --cohort {cohort} --recipient <pubkey>",
             name = args.name,
             cohort = args.cohort,
         );
         return Ok(());
     }
 
-    // ─── Load ZETL_CAP_SECRET (needed to derive path-cap) ──────────
-    let secret_env = std::env::var(ZETL_CAP_SECRET_ENV).map_err(|_| {
+    // ─── Load ztl_CAP_SECRET (needed to derive path-cap) ──────────
+    let secret_env = std::env::var(ztl_CAP_SECRET_ENV).map_err(|_| {
         anyhow::anyhow!(
-            "{ZETL_CAP_SECRET_ENV} is not set in the environment; run `zetl cap genkey` first"
+            "{ztl_CAP_SECRET_ENV} is not set in the environment; run `ztl cap genkey` first"
         )
     })?;
     let secret =
-        decode_secret(&secret_env).with_context(|| format!("{ZETL_CAP_SECRET_ENV} is invalid"))?;
+        decode_secret(&secret_env).with_context(|| format!("{ztl_CAP_SECRET_ENV} is invalid"))?;
 
     // ─── Ensure cohort has a stable path salt ──────────────────────
     // First invite for a cohort initialises salt_stable; persist on
@@ -11922,7 +11922,7 @@ fn cmd_cap_invite(cli: &Cli, args: CapInviteArgs) -> Result<()> {
         println!("half2 = {half2}");
     }
     eprintln!(
-        "[zetl cap invite] grant id: {grant_id} (stored in {})",
+        "[ztl cap invite] grant id: {grant_id} (stored in {})",
         grants_path.display(),
     );
     Ok(())
@@ -11951,13 +11951,13 @@ fn write_toml_file<T: serde::Serialize>(path: &Path, value: &T) -> Result<()> {
 struct CapStateFiles {
     recipients_path: PathBuf,
     grants_path: PathBuf,
-    recipients: zetl::cap::recipients::parsing::RecipientsFile,
-    grants: zetl::cap::grants::validation::GrantsFile,
+    recipients: ztl::cap::recipients::parsing::RecipientsFile,
+    grants: ztl::cap::grants::validation::GrantsFile,
 }
 
 fn load_cap_state(cli: &Cli) -> Result<CapStateFiles> {
-    use zetl::cap::grants::validation::GrantsFile;
-    use zetl::cap::recipients::parsing::RecipientsFile;
+    use ztl::cap::grants::validation::GrantsFile;
+    use ztl::cap::recipients::parsing::RecipientsFile;
 
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
@@ -11995,7 +11995,7 @@ fn load_cap_state(cli: &Cli) -> Result<CapStateFiles> {
     })
 }
 
-/// `zetl cap revoke <grant-id>` — SPEC-034 REQ-3416.
+/// `ztl cap revoke <grant-id>` — SPEC-034 REQ-3416.
 ///
 /// Loads `grants.toml`, flips `revoked=true` on the matching grant,
 /// and writes the file back atomically. Emits a reminder that the
@@ -12003,7 +12003,7 @@ fn load_cap_state(cli: &Cli) -> Result<CapStateFiles> {
 /// revocation — revocation latency is bounded by `Cache-Control` and
 /// edge purge time per SPEC-034 §13 NFR-3409.
 fn cmd_cap_revoke(cli: &Cli, grant_id: &str) -> Result<()> {
-    use zetl::cap::revocation::{revoke_grant, RevocationError};
+    use ztl::cap::revocation::{revoke_grant, RevocationError};
 
     let mut state = load_cap_state(cli)?;
     match revoke_grant(&mut state.grants, grant_id) {
@@ -12016,16 +12016,16 @@ fn cmd_cap_revoke(cli: &Cli, grant_id: &str) -> Result<()> {
                 .with_context(|| format!("writing {}", state.grants_path.display()))?;
             if out.already_revoked {
                 eprintln!(
-                    "[zetl cap revoke] grant {grant_id} was already revoked; grants.toml unchanged."
+                    "[ztl cap revoke] grant {grant_id} was already revoked; grants.toml unchanged."
                 );
             } else {
                 eprintln!(
-                    "[zetl cap revoke] grant {grant_id} marked revoked (cohort={}, recipient={}).",
+                    "[ztl cap revoke] grant {grant_id} marked revoked (cohort={}, recipient={}).",
                     out.cohort, out.recipient
                 );
             }
             eprintln!(
-                "Next: run `zetl build` to rebuild without the revoked recipient, then \
+                "Next: run `ztl build` to rebuild without the revoked recipient, then \
                  invalidate the `/c/*` cache on your CDN (revocation takes effect after the \
                  rebuild + cache expiry per SPEC-034 NFR-3409)."
             );
@@ -12033,7 +12033,7 @@ fn cmd_cap_revoke(cli: &Cli, grant_id: &str) -> Result<()> {
         }
         Err(RevocationError::GrantNotFound(_)) => {
             anyhow::bail!(
-                "grant {grant_id:?} not found in {}; run `zetl cap list` to enumerate \
+                "grant {grant_id:?} not found in {}; run `ztl cap list` to enumerate \
                  issued grants.",
                 state.grants_path.display(),
             );
@@ -12042,7 +12042,7 @@ fn cmd_cap_revoke(cli: &Cli, grant_id: &str) -> Result<()> {
     }
 }
 
-/// `zetl cap rotate --cohort <id>` — SPEC-034 REQ-3416 / REQ-3402 / BUG-023.
+/// `ztl cap rotate --cohort <id>` — SPEC-034 REQ-3416 / REQ-3402 / BUG-023.
 ///
 /// Samples a fresh 32-byte content-key salt from OsRng and records it
 /// on the cohort alongside an RFC 3339 UTC `last_rotated` timestamp.
@@ -12054,8 +12054,8 @@ fn cmd_cap_rotate(cli: &Cli, cohort_id: &str) -> Result<()> {
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine as _;
     use rand_core::{OsRng, RngCore};
-    use zetl::cap::invite::format_rfc3339_utc;
-    use zetl::cap::revocation::{rotate_cohort_salt, RevocationError};
+    use ztl::cap::invite::format_rfc3339_utc;
+    use ztl::cap::revocation::{rotate_cohort_salt, RevocationError};
 
     let mut state = load_cap_state(cli)?;
 
@@ -12083,11 +12083,11 @@ fn cmd_cap_rotate(cli: &Cli, cohort_id: &str) -> Result<()> {
             write_toml_file(&state.recipients_path, &state.recipients)
                 .with_context(|| format!("writing {}", state.recipients_path.display()))?;
             eprintln!(
-                "[zetl cap rotate] cohort {cohort_id} salt rotated (last_rotated={now_rfc3339}, \
+                "[ztl cap rotate] cohort {cohort_id} salt rotated (last_rotated={now_rfc3339}, \
                  URLs unchanged per SPEC-034 REQ-3402 / BUG-023)."
             );
             eprintln!(
-                "Next: run `zetl build` to re-encrypt every page under the new content key, \
+                "Next: run `ztl build` to re-encrypt every page under the new content key, \
                  then invalidate the `/c/*` cache on your CDN so readers pick up the new \
                  ciphertexts."
             );
@@ -12110,7 +12110,7 @@ fn cmd_cap_rotate(cli: &Cli, cohort_id: &str) -> Result<()> {
     }
 }
 
-/// `zetl cap finalise <grant-id> [--rotate-grant]` — SPEC-034 REQ-3416 / REQ-3426.
+/// `ztl cap finalise <grant-id> [--rotate-grant]` — SPEC-034 REQ-3416 / REQ-3426.
 ///
 /// Without `--rotate-grant`: set `bound=true` on the grant (operator
 /// confirmation of TOFU completion; no URL change, no cryptographic
@@ -12123,17 +12123,17 @@ fn cmd_cap_rotate(cli: &Cli, cohort_id: &str) -> Result<()> {
 /// delegated-URL invite on stdout with the standard REQ-3410 warning
 /// banner. The new private key appears **only** on stdout, once.
 fn cmd_cap_finalise(cli: &Cli, grant_id: &str, rotate_grant: bool) -> Result<()> {
-    use zetl::cap::derivation::{derive_path_cap, PATH_CAP_DEFAULT_BITS};
-    use zetl::cap::genkey::{decode_secret, ZETL_CAP_SECRET_ENV};
-    use zetl::cap::grants::validation::GrantMode;
-    use zetl::cap::invite::{
+    use ztl::cap::derivation::{derive_path_cap, PATH_CAP_DEFAULT_BITS};
+    use ztl::cap::genkey::{decode_secret, ztl_CAP_SECRET_ENV};
+    use ztl::cap::grants::validation::GrantMode;
+    use ztl::cap::invite::{
         encode_age_recipient_v1, generate_invite_keypair, URL_SHORTENER_WARNING,
     };
-    use zetl::cap::recipients::parsing::CohortMode;
-    use zetl::cap::revocation::{
+    use ztl::cap::recipients::parsing::CohortMode;
+    use ztl::cap::revocation::{
         finalise_grant, replace_grant_recipient, swap_cohort_pubkey, RevocationError,
     };
-    use zetl::cap::url_format::CapUrl;
+    use ztl::cap::url_format::CapUrl;
 
     let mut state = load_cap_state(cli)?;
 
@@ -12148,12 +12148,12 @@ fn cmd_cap_finalise(cli: &Cli, grant_id: &str, rotate_grant: bool) -> Result<()>
                     .with_context(|| format!("writing {}", state.grants_path.display()))?;
                 if out.already_bound {
                     eprintln!(
-                        "[zetl cap finalise] grant {grant_id} was already bound; grants.toml \
+                        "[ztl cap finalise] grant {grant_id} was already bound; grants.toml \
                          unchanged."
                     );
                 } else {
                     eprintln!(
-                        "[zetl cap finalise] grant {grant_id} marked bound=true \
+                        "[ztl cap finalise] grant {grant_id} marked bound=true \
                          (cohort={}, recipient={}).",
                         out.cohort, out.recipient,
                     );
@@ -12193,7 +12193,7 @@ fn cmd_cap_finalise(cli: &Cli, grant_id: &str, rotate_grant: bool) -> Result<()>
         if !matches!(g.mode, GrantMode::DelegatedUrl) {
             anyhow::bail!(
                 "grant {grant_id:?} is in {:?} mode; --rotate-grant only reissues delegated-URL \
-                 grants (hardened readers re-enrol via `zetl cap invite --via enrol-page`).",
+                 grants (hardened readers re-enrol via `ztl cap invite --via enrol-page`).",
                 g.mode,
             );
         }
@@ -12236,36 +12236,36 @@ fn cmd_cap_finalise(cli: &Cli, grant_id: &str, rotate_grant: bool) -> Result<()>
     }
 
     // Resolve site URL for the reissued invite — same env-var fallback
-    // as `zetl cap invite`.
-    let site_url = std::env::var("ZETL_CAP_SITE_URL").map_err(|_| {
+    // as `ztl cap invite`.
+    let site_url = std::env::var("ztl_CAP_SITE_URL").map_err(|_| {
         anyhow::anyhow!(
-            "zetl cap finalise --rotate-grant needs a canonical site URL: set \
-             ZETL_CAP_SITE_URL=<URL> in the environment (same convention as `zetl cap invite`)."
+            "ztl cap finalise --rotate-grant needs a canonical site URL: set \
+             ztl_CAP_SITE_URL=<URL> in the environment (same convention as `ztl cap invite`)."
         )
     })?;
     let (scheme, host) = site_url.split_once("://").ok_or_else(|| {
-        anyhow::anyhow!("ZETL_CAP_SITE_URL must be of the form <scheme>://<host>")
+        anyhow::anyhow!("ztl_CAP_SITE_URL must be of the form <scheme>://<host>")
     })?;
     if scheme.is_empty() || host.is_empty() {
-        anyhow::bail!("ZETL_CAP_SITE_URL must be of the form <scheme>://<host>");
+        anyhow::bail!("ztl_CAP_SITE_URL must be of the form <scheme>://<host>");
     }
 
-    // Load ZETL_CAP_SECRET to derive the path-cap for the reissued URL.
-    let secret_env = std::env::var(ZETL_CAP_SECRET_ENV).map_err(|_| {
+    // Load ztl_CAP_SECRET to derive the path-cap for the reissued URL.
+    let secret_env = std::env::var(ztl_CAP_SECRET_ENV).map_err(|_| {
         anyhow::anyhow!(
-            "{ZETL_CAP_SECRET_ENV} is not set in the environment; --rotate-grant needs the \
+            "{ztl_CAP_SECRET_ENV} is not set in the environment; --rotate-grant needs the \
              cohort secret to re-derive the landing-page path-cap."
         )
     })?;
     let secret =
-        decode_secret(&secret_env).with_context(|| format!("{ZETL_CAP_SECRET_ENV} is invalid"))?;
+        decode_secret(&secret_env).with_context(|| format!("{ztl_CAP_SECRET_ENV} is invalid"))?;
 
     let cohort_salt_stable = state.recipients.cohorts[cohort_idx]
         .salt_stable
         .as_deref()
         .ok_or_else(|| {
             anyhow::anyhow!(
-                "cohort {cohort_id:?} has no `salt_stable`; run `zetl cap invite` at least \
+                "cohort {cohort_id:?} has no `salt_stable`; run `ztl cap invite` at least \
                  once to initialise the cohort before --rotate-grant."
             )
         })?
@@ -12318,14 +12318,14 @@ fn cmd_cap_finalise(cli: &Cli, grant_id: &str, rotate_grant: bool) -> Result<()>
     println!("{URL_SHORTENER_WARNING}");
     println!("{url}");
     eprintln!(
-        "[zetl cap finalise --rotate-grant] reissued invite for grant {grant_id} \
+        "[ztl cap finalise --rotate-grant] reissued invite for grant {grant_id} \
          (cohort={cohort_id}, new recipient={new_recipient}). Old URL is now inert; \
          bound=false until the reader re-TOFUs on the new URL."
     );
     Ok(())
 }
 
-/// `zetl cap sweep` — SPEC-034 REQ-3416.
+/// `ztl cap sweep` — SPEC-034 REQ-3416.
 ///
 /// Walks `grants.toml`, marks every past-expires grant `revoked=true`,
 /// and writes the file back. Idempotent: a sweep that finds nothing
@@ -12334,8 +12334,8 @@ fn cmd_cap_finalise(cli: &Cli, grant_id: &str, rotate_grant: bool) -> Result<()>
 fn cmd_cap_sweep(cli: &Cli) -> Result<()> {
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use zetl::cap::invite::format_rfc3339_utc;
-    use zetl::cap::revocation::sweep_expired;
+    use ztl::cap::invite::format_rfc3339_utc;
+    use ztl::cap::revocation::sweep_expired;
 
     let mut state = load_cap_state(cli)?;
 
@@ -12349,7 +12349,7 @@ fn cmd_cap_sweep(cli: &Cli) -> Result<()> {
 
     if outcome.newly_revoked.is_empty() {
         eprintln!(
-            "[zetl cap sweep] no past-expires grants to revoke at {now_rfc3339} \
+            "[ztl cap sweep] no past-expires grants to revoke at {now_rfc3339} \
              (active={}, already-revoked-expired={}).",
             outcome.active,
             outcome.already_revoked_expired.len(),
@@ -12365,7 +12365,7 @@ fn cmd_cap_sweep(cli: &Cli) -> Result<()> {
         .with_context(|| format!("writing {}", state.grants_path.display()))?;
 
     eprintln!(
-        "[zetl cap sweep] revoked {} past-expires grant(s) at {now_rfc3339} (active={}, \
+        "[ztl cap sweep] revoked {} past-expires grant(s) at {now_rfc3339} (active={}, \
          already-revoked-expired={}).",
         outcome.newly_revoked.len(),
         outcome.active,
@@ -12375,13 +12375,13 @@ fn cmd_cap_sweep(cli: &Cli) -> Result<()> {
         eprintln!("  - {id}");
     }
     eprintln!(
-        "Next: run `zetl build` to rebuild without the swept recipients, then invalidate \
+        "Next: run `ztl build` to rebuild without the swept recipients, then invalidate \
          the `/c/*` cache on your CDN."
     );
     Ok(())
 }
 
-/// `zetl cap check [--public-safety]` — SPEC-034 REQ-3416 / REQ-3423.
+/// `ztl cap check [--public-safety]` — SPEC-034 REQ-3416 / REQ-3423.
 ///
 /// Audit: exit 1 when any grant has expired since the last build and
 /// has not been revoked. Designed for CI loops that want a sharp
@@ -12395,14 +12395,14 @@ fn cmd_cap_sweep(cli: &Cli) -> Result<()> {
 fn cmd_cap_check(cli: &Cli, public_safety_only: bool) -> Result<()> {
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use zetl::cap::invite::format_rfc3339_utc;
-    use zetl::cap::revocation::check_grants;
+    use ztl::cap::invite::format_rfc3339_utc;
+    use ztl::cap::revocation::check_grants;
 
     let state = load_cap_state(cli)?;
 
     if public_safety_only {
         eprintln!(
-            "[zetl cap check --public-safety] public-safety audit passed \
+            "[ztl cap check --public-safety] public-safety audit passed \
              (REQ-3423 hook is satisfied by the in-repo grants path gate in the build driver)."
         );
         return Ok(());
@@ -12418,7 +12418,7 @@ fn cmd_cap_check(cli: &Cli, public_safety_only: bool) -> Result<()> {
 
     if report.expired_unrevoked.is_empty() {
         eprintln!(
-            "[zetl cap check] OK at {now_rfc3339} (active={}, expired-revoked={}).",
+            "[ztl cap check] OK at {now_rfc3339} (active={}, expired-revoked={}).",
             report.active,
             report.expired_revoked.len()
         );
@@ -12426,8 +12426,8 @@ fn cmd_cap_check(cli: &Cli, public_safety_only: bool) -> Result<()> {
     }
 
     eprintln!(
-        "[zetl cap check] FAIL at {now_rfc3339}: {} expired grant(s) are still active \
-         (revoked=false). Run `zetl cap sweep` or `zetl cap revoke <id>` to resolve.",
+        "[ztl cap check] FAIL at {now_rfc3339}: {} expired grant(s) are still active \
+         (revoked=false). Run `ztl cap sweep` or `ztl cap revoke <id>` to resolve.",
         report.expired_unrevoked.len()
     );
     for rec in &report.expired_unrevoked {
@@ -12441,17 +12441,17 @@ fn cmd_cap_check(cli: &Cli, public_safety_only: bool) -> Result<()> {
     std::process::exit(1);
 }
 
-/// `zetl cap rotate-signing-key` — SPEC-034 REQ-3427.
+/// `ztl cap rotate-signing-key` — SPEC-034 REQ-3427.
 ///
 /// Generates a fresh Ed25519 keypair via OsRng, writes the new public
 /// key into `recipients.toml::[vault].signing_pubkey`, and emits the
-/// new `ZETL_CAP_SIGNING_KEY` on stdout exactly once with a reminder
+/// new `ztl_CAP_SIGNING_KEY` on stdout exactly once with a reminder
 /// that the operator must (1) store it, (2) rebuild the vault so every
 /// page is re-signed under the new key, and (3) cache-invalidate the
 /// shim bundle at the CDN so readers with a cached OLD shim pick up
 /// the new embedded pubkey.
 ///
-/// This handler does NOT rebuild the vault itself — `zetl build` is
+/// This handler does NOT rebuild the vault itself — `ztl build` is
 /// the dedicated surface for that. Combining the two here would
 /// intertwine secret emission (which must appear on stdout once) with
 /// long-running encryption (which emits build diagnostics that could
@@ -12461,8 +12461,8 @@ fn cmd_cap_rotate_signing_key(cli: &Cli) -> Result<()> {
     use base64::Engine as _;
     use ed25519_dalek::SigningKey;
     use rand_core::OsRng;
-    use zetl::cap::genkey::ZETL_CAP_SIGNING_KEY_ENV;
-    use zetl::cap::revocation::{encode_signing_pubkey, replace_vault_signing_pubkey};
+    use ztl::cap::genkey::ztl_CAP_SIGNING_KEY_ENV;
+    use ztl::cap::revocation::{encode_signing_pubkey, replace_vault_signing_pubkey};
 
     let mut state = load_cap_state(cli)?;
 
@@ -12480,26 +12480,26 @@ fn cmd_cap_rotate_signing_key(cli: &Cli) -> Result<()> {
     write_toml_file(&state.recipients_path, &state.recipients)
         .with_context(|| format!("writing {}", state.recipients_path.display()))?;
 
-    // Banner — emitted to stdout so `zetl cap rotate-signing-key >
+    // Banner — emitted to stdout so `ztl cap rotate-signing-key >
     // signing-key.txt` captures the key-bearing line. The banner frames
-    // the new key the same way `zetl cap genkey` does: export line, UX
+    // the new key the same way `ztl cap genkey` does: export line, UX
     // safeguard disclaimer, rotation guidance.
-    println!("# zetl cap rotate-signing-key — new Ed25519 vault-signing key (SPEC-034 REQ-3427)");
+    println!("# ztl cap rotate-signing-key — new Ed25519 vault-signing key (SPEC-034 REQ-3427)");
     println!("#");
     println!("# Store the new signing-key in your password manager BEFORE rebuilding.");
-    println!("# This key is printed to this terminal exactly once; zetl does not");
+    println!("# This key is printed to this terminal exactly once; ztl does not");
     println!("# persist or log it.");
     println!("#");
     println!("# recipients.toml[vault].signing_pubkey has been updated in-place:");
     println!("#   {new_pubkey_wire}");
     println!("#");
-    println!("export {ZETL_CAP_SIGNING_KEY_ENV}='{new_signing_key_b64}'");
+    println!("export {ztl_CAP_SIGNING_KEY_ENV}='{new_signing_key_b64}'");
     eprintln!(
-        "[zetl cap rotate-signing-key] new public key written to {}.",
+        "[ztl cap rotate-signing-key] new public key written to {}.",
         state.recipients_path.display()
     );
     eprintln!(
-        "Next: (1) rebuild the vault with the new `{ZETL_CAP_SIGNING_KEY_ENV}` exported so \
+        "Next: (1) rebuild the vault with the new `{ztl_CAP_SIGNING_KEY_ENV}` exported so \
          every page is re-signed; (2) deploy the rebuilt dist + new shim bundle; \
          (3) cache-invalidate `/assets/shim.js` (and any versioned shim URL) at the CDN so \
          readers with a cached OLD shim pick up the new embedded pubkey. See SPEC-034 \
@@ -12508,7 +12508,7 @@ fn cmd_cap_rotate_signing_key(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
-/// `zetl cap emergency-shutdown` — SPEC-034 REQ-3431 / §11.3.
+/// `ztl cap emergency-shutdown` — SPEC-034 REQ-3431 / §11.3.
 ///
 /// Documentation-generation only: prints an operator checklist for
 /// taking a capability-mode deployment offline at the host level and
@@ -12520,10 +12520,10 @@ fn cmd_cap_rotate_signing_key(cli: &Cli) -> Result<()> {
 /// cohorts + the on-disk signing pubkey. Missing or malformed files
 /// degrade gracefully (the checklist still covers every REQ-3431 step).
 fn cmd_cap_emergency_shutdown(cli: &Cli) -> Result<()> {
-    use zetl::cap::emergency_shutdown::{
+    use ztl::cap::emergency_shutdown::{
         checklist_json, render_checklist, CohortRef, ShutdownContext,
     };
-    use zetl::cap::recipients::parsing::RecipientsFile;
+    use ztl::cap::recipients::parsing::RecipientsFile;
 
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
@@ -12554,7 +12554,7 @@ fn cmd_cap_emergency_shutdown(cli: &Cli) -> Result<()> {
             }
             Err(e) => {
                 eprintln!(
-                    "[zetl cap emergency-shutdown] warning: {} is unparseable ({e}); continuing without cohort enumeration.",
+                    "[ztl cap emergency-shutdown] warning: {} is unparseable ({e}); continuing without cohort enumeration.",
                     recipients_path.display(),
                 );
                 (Vec::new(), None)
@@ -12612,7 +12612,7 @@ struct CapPairArgs {
     pubkey: Option<String>,
 }
 
-/// `zetl cap pair` — SPEC-034 REQ-3408 (CLI) / REQ-3416.
+/// `ztl cap pair` — SPEC-034 REQ-3408 (CLI) / REQ-3416.
 ///
 /// SPAKE2-authenticated pubkey handoff. Two roles:
 ///
@@ -12634,12 +12634,12 @@ struct CapPairArgs {
 /// invocations on the grantor side would break convergence.
 ///
 /// Phrase reuse within 30 days is refused via
-/// `.zetl/caps/.pair-nonces`; see [`zetl::cap::pair`] for the on-disk
+/// `.ztl/caps/.pair-nonces`; see [`ztl::cap::pair`] for the on-disk
 /// format and the SPAKE2 state machine.
 fn cmd_cap_pair(cli: &Cli, args: CapPairArgs) -> Result<()> {
     use base64::engine::general_purpose::STANDARD_NO_PAD as B64;
     use base64::Engine as _;
-    use zetl::cap::pair::{
+    use ztl::cap::pair::{
         generate_phrase, NonceStore, PairMessage, PairPhrase, PairSession, PAIR_HMAC_LEN,
         PAIR_PUBKEY_LEN,
     };
@@ -12647,7 +12647,7 @@ fn cmd_cap_pair(cli: &Cli, args: CapPairArgs) -> Result<()> {
     let json_requested = cli.json || matches!(cli.format, OutputFormat::Json);
 
     // Default to grantor if neither flag set — operators running
-    // `zetl cap pair` without arguments are the one who controls the
+    // `ztl cap pair` without arguments are the one who controls the
     // vault, so that's the safer default.
     let is_grantee = args.grantee;
     let is_grantor = args.grantor || !is_grantee;
@@ -12655,7 +12655,7 @@ fn cmd_cap_pair(cli: &Cli, args: CapPairArgs) -> Result<()> {
 
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
-    let caps_dir = vault_root.join(".zetl").join("caps");
+    let caps_dir = vault_root.join(".ztl").join("caps");
     let nonce_store_path = caps_dir.join(".pair-nonces");
 
     let now_unix = std::time::SystemTime::now()
@@ -12744,7 +12744,7 @@ fn cmd_cap_pair(cli: &Cli, args: CapPairArgs) -> Result<()> {
             })
         )?;
     } else {
-        writeln!(stdout, "zetl cap pair (REQ-3408) — session started")?;
+        writeln!(stdout, "ztl cap pair (REQ-3408) — session started")?;
         writeln!(stdout, "================================================")?;
         writeln!(stdout)?;
         writeln!(
@@ -12816,10 +12816,10 @@ fn cmd_cap_pair(cli: &Cli, args: CapPairArgs) -> Result<()> {
                 );
             } else {
                 println!();
-                println!("zetl cap pair — pubkey verified");
+                println!("ztl cap pair — pubkey verified");
                 println!("================================");
                 println!();
-                println!("Verified pubkey (safe to pass to `zetl cap invite --recipient`):");
+                println!("Verified pubkey (safe to pass to `ztl cap invite --recipient`):");
                 println!("    {peer_pubkey_b64}");
             }
             Ok(())
@@ -12848,7 +12848,7 @@ fn cmd_cap_pair_grantee(
 ) -> Result<()> {
     use base64::engine::general_purpose::STANDARD_NO_PAD as B64;
     use base64::Engine as _;
-    use zetl::cap::pair::{NonceStore, PairMessage, PairPhrase, PairSession, PAIR_PUBKEY_LEN};
+    use ztl::cap::pair::{NonceStore, PairMessage, PairPhrase, PairSession, PAIR_PUBKEY_LEN};
 
     let json_requested = cli.json || matches!(cli.format, OutputFormat::Json);
 
@@ -12906,11 +12906,11 @@ fn cmd_cap_pair_grantee(
             "hmac_b64": B64.encode(tag),
         }))?;
     } else {
-        println!("zetl cap pair (REQ-3408) — grantee response");
+        println!("ztl cap pair (REQ-3408) — grantee response");
         println!("==========================================");
         println!();
         println!(
-            "Paste the following three lines into the grantor's running `zetl cap pair` terminal:"
+            "Paste the following three lines into the grantor's running `ztl cap pair` terminal:"
         );
         println!();
         println!("    {}", outbound.to_b64());
@@ -12938,7 +12938,7 @@ fn read_trimmed_stdin_line(what: &str) -> Result<String> {
     Ok(buf.trim().to_string())
 }
 
-/// `zetl cap audit-diff` — SPEC-034 REQ-3424 / ADR-3410 PR gate.
+/// `ztl cap audit-diff` — SPEC-034 REQ-3424 / ADR-3410 PR gate.
 ///
 /// Three invocation shapes:
 /// 1. `<old_ref> <new_ref>` — git-backed vault diff.
@@ -12953,7 +12953,7 @@ fn cmd_cap_audit_diff(
     corpus: Option<&Path>,
     corpus_root: Option<&Path>,
 ) -> Result<()> {
-    use zetl::cap::audit_diff::{format_report, scan_diff, Page};
+    use ztl::cap::audit_diff::{format_report, scan_diff, Page};
 
     if let Some(root) = corpus_root {
         return cmd_cap_audit_diff_corpus_root(root);
@@ -12963,7 +12963,7 @@ fn cmd_cap_audit_diff(
         println!("{}", report.report_text);
         if !report.missed.is_empty() {
             eprintln!(
-                "[zetl cap audit-diff] CORPUS MISS: {} expected marker(s) not detected",
+                "[ztl cap audit-diff] CORPUS MISS: {} expected marker(s) not detected",
                 report.missed.len(),
             );
             for m in &report.missed {
@@ -13011,7 +13011,7 @@ fn cmd_cap_audit_diff(
 /// Enumerate `.md` files in the vault at two git refs and return
 /// `(baseline, new)` pairs. Uses `git ls-tree` to walk each ref and
 /// `git show` to read file contents — same mechanism the existing
-/// `zetl diff` backend relies on.
+/// `ztl diff` backend relies on.
 type MdFileList = Vec<(PathBuf, String)>;
 
 fn load_vault_at_refs(
@@ -13066,7 +13066,7 @@ struct CorpusFixtureReport {
 }
 
 fn cmd_cap_audit_diff_corpus_one(fixture_dir: &Path) -> Result<CorpusFixtureReport> {
-    use zetl::cap::audit_diff::{format_report, scan_diff, Page};
+    use ztl::cap::audit_diff::{format_report, scan_diff, Page};
 
     let new_dir = fixture_dir.join("new");
     let baseline_dir = fixture_dir.join("baseline");
@@ -13149,20 +13149,20 @@ fn cmd_cap_audit_diff_corpus_root(root: &Path) -> Result<()> {
             .unwrap_or_default();
         let report = cmd_cap_audit_diff_corpus_one(fx)?;
         if report.missed.is_empty() {
-            println!("[zetl cap audit-diff] PASS {name}");
+            println!("[ztl cap audit-diff] PASS {name}");
         } else {
             any_missed = true;
-            println!("[zetl cap audit-diff] MISS {name}");
+            println!("[ztl cap audit-diff] MISS {name}");
             for m in &report.missed {
                 println!("  - expected finding kind `{m}` not detected");
             }
         }
     }
     if any_missed {
-        eprintln!("[zetl cap audit-diff] corpus regression — REQ-3424 gate FAILED");
+        eprintln!("[ztl cap audit-diff] corpus regression — REQ-3424 gate FAILED");
         std::process::exit(1);
     }
-    println!("[zetl cap audit-diff] {} fixture(s) OK", entries.len());
+    println!("[ztl cap audit-diff] {} fixture(s) OK", entries.len());
     Ok(())
 }
 
@@ -13200,14 +13200,14 @@ fn cmd_delegate(
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;
     use ed25519_dalek::SigningKey;
-    use zetl::mcp::delegate::{parse_expiry, sign_delegate_jwt};
-    use zetl::mcp::types::DelegateClaims;
+    use ztl::mcp::delegate::{parse_expiry, sign_delegate_jwt};
+    use ztl::mcp::types::DelegateClaims;
 
     let config_dir = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
         .unwrap_or_else(|| PathBuf::from(".config"))
-        .join("zetl");
+        .join("ztl");
     let key_path = config_dir.join("identity.key");
 
     // Try to load signing key from file, or derive from mnemonic.
@@ -13225,7 +13225,7 @@ fn cmd_delegate(
         arr.copy_from_slice(&key_bytes);
         SigningKey::from_bytes(&arr)
     } else if let Some(phrase) = mnemonic {
-        let sk = zetl::user::recovery::derive_signing_key_from_mnemonic(phrase)
+        let sk = ztl::user::recovery::derive_signing_key_from_mnemonic(phrase)
             .context("deriving signing key from mnemonic")?;
         if save_key {
             std::fs::create_dir_all(&config_dir)
@@ -13273,7 +13273,7 @@ fn cmd_delegate(
 
     let claims = DelegateClaims {
         iss: user_id,
-        sub: "zetl-mcp".into(),
+        sub: "ztl-mcp".into(),
         aud: String::new(),
         iat: now,
         exp,
@@ -13290,17 +13290,17 @@ fn cmd_delegate(
 #[cfg(feature = "mcp")]
 fn cmd_mcp(
     cli: &Cli,
-    transport: &zetl::cli::McpTransport,
+    transport: &ztl::cli::McpTransport,
     host: &str,
     port: u16,
     insecure: bool,
     allowed_issuers: &[String],
     cors_origin: Option<&str>,
 ) -> Result<()> {
-    use zetl::mcp::{server::McpServer, transport as mcp_transport, types::McpState};
+    use ztl::mcp::{server::McpServer, transport as mcp_transport, types::McpState};
 
     if cors_origin.is_some() {
-        eprintln!("zetl-mcp: WARNING: --cors-origin is not yet implemented; value ignored");
+        eprintln!("ztl-mcp: WARNING: --cors-origin is not yet implemented; value ignored");
     }
 
     // -- Bind safety checks (Task 17) --
@@ -13317,7 +13317,7 @@ fn cmd_mcp(
                  Either:\n  \
                    1. Use --host 127.0.0.1 (default) for local-only access\n  \
                    2. Pass --insecure to override this safety check\n  \
-                   3. (Future) Configure auth tokens via `zetl delegate`"
+                   3. (Future) Configure auth tokens via `ztl delegate`"
             );
         }
     }
@@ -13325,7 +13325,7 @@ fn cmd_mcp(
     let pipeline = run_pipeline(cli)?;
 
     // Build search index.
-    let tantivy = zetl::search_index::SearchIndex::build(&pipeline.vault_root, &pipeline.files)
+    let tantivy = ztl::search_index::SearchIndex::build(&pipeline.vault_root, &pipeline.files)
         .context("building search index for MCP")?;
 
     // Collect sorted page names.
@@ -13343,12 +13343,12 @@ fn cmd_mcp(
     let resolved: std::collections::HashSet<String> = pipeline.graph_resolved.clone();
 
     // Build allowed issuers map: user_id → recovery_pubkey (base64url ed25519).
-    // Sources: (1) user profiles in .zetl/users/*/profile.json,
+    // Sources: (1) user profiles in .ztl/users/*/profile.json,
     //          (2) --allowed-issuer CLI values (format: "id:pubkey_b64").
     let mut allowed_issuers_map = std::collections::HashMap::new();
 
     // Load from vault user profiles.
-    if let Ok(profiles) = zetl::user::list_profiles(&pipeline.vault_root) {
+    if let Ok(profiles) = ztl::user::list_profiles(&pipeline.vault_root) {
         for profile in profiles {
             if !profile.recovery_pubkey.is_empty() {
                 allowed_issuers_map.insert(profile.id.clone(), profile.recovery_pubkey.clone());
@@ -13375,11 +13375,11 @@ fn cmd_mcp(
         .iter()
         .map(|f| (f.page_name.clone(), f.path.to_string_lossy().into_owned()))
         .collect();
-    let simhash = zetl::simhash::SimHashIndex::build(&simhash_pages);
+    let simhash = ztl::simhash::SimHashIndex::build(&simhash_pages);
 
     let transport_str = match transport {
-        zetl::cli::McpTransport::Stdio => "stdio",
-        zetl::cli::McpTransport::Http => "http",
+        ztl::cli::McpTransport::Stdio => "stdio",
+        ztl::cli::McpTransport::Http => "http",
     }
     .to_string();
 
@@ -13401,8 +13401,8 @@ fn cmd_mcp(
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         match transport {
-            zetl::cli::McpTransport::Stdio => mcp_transport::serve_stdio(server).await,
-            zetl::cli::McpTransport::Http => {
+            ztl::cli::McpTransport::Stdio => mcp_transport::serve_stdio(server).await,
+            ztl::cli::McpTransport::Http => {
                 mcp_transport::serve_http(
                     server,
                     host,

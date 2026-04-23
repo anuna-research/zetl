@@ -83,7 +83,7 @@ pub async fn serve_http(
     let listener = tokio::net::TcpListener::bind(&addr).await?;
 
     eprintln!(
-        "zetl-mcp listening on http://{addr}  (MCP at /mcp, health at /health{})",
+        "ztl-mcp listening on http://{addr}  (MCP at /mcp, health at /health{})",
         if require_auth { ", auth required" } else { "" }
     );
 
@@ -142,7 +142,7 @@ pub async fn health_handler(
 ) -> axum::Json<serde_json::Value> {
     axum::Json(serde_json::json!({
         "status": "ok",
-        "server": "zetl-mcp",
+        "server": "ztl-mcp",
         "version": env!("CARGO_PKG_VERSION"),
         "vault_pages": hs.vault_pages,
         "uptime_seconds": hs.started_at.elapsed().as_secs(),

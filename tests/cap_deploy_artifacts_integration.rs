@@ -1,8 +1,8 @@
 //! Deploy-artifact emission — end-to-end integration tests for
 //! SPEC-034 REQ-3418 / CON-3406 (task-cap-deploy-artifacts).
 //!
-//! Exercises [`zetl::cap::deploy_artifacts`] both at the pure-renderer
-//! layer and under [`zetl::cap::build::run_capability_build`] so the
+//! Exercises [`ztl::cap::deploy_artifacts`] both at the pure-renderer
+//! layer and under [`ztl::cap::build::run_capability_build`] so the
 //! deploy tree (`_gone.map`, `_redirects`, top-level `vercel.json`,
 //! per-platform `deploy-*.conf`, optional `<vault>-<cohort>.html`
 //! single-file bundle) lands alongside the ciphertext root.
@@ -15,29 +15,29 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use tempfile::TempDir;
 
-use zetl::cap::build::{run_capability_build, BuildConfig, PageInput, Visibility};
-use zetl::cap::deploy_artifacts::{
+use ztl::cap::build::{run_capability_build, BuildConfig, PageInput, Visibility};
+use ztl::cap::deploy_artifacts::{
     render_deploy_nginx, render_gone_map, render_netlify_redirects, render_top_vercel_json,
     GENERATED_MARKER,
 };
-use zetl::cap::deploy_headers::HeaderSpec;
-use zetl::cap::genkey::{
+use ztl::cap::deploy_headers::HeaderSpec;
+use ztl::cap::genkey::{
     build_secret, decode_secret, encode_secret, ParsedSecret, SECRET_VERSION_V1,
 };
-use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
-use zetl::cap::recipients::parsing::{
+use ztl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
+use ztl::cap::recipients::parsing::{
     Cohort, CohortMode, RecipientsFile, VaultSection, AGE_RECIPIENT_V1_PREFIX,
 };
-use zetl::cap::scoping::access_config::{AccessConfig, SingleFileConfig};
-use zetl::cap::sign::VaultSigningKey;
+use ztl::cap::scoping::access_config::{AccessConfig, SingleFileConfig};
+use ztl::cap::sign::VaultSigningKey;
 
 const ARTIFACT_FILES: &[(&str, bool)] = &[
-    ("_zetl/_gone.map", true),
-    ("_zetl/deploy-nginx.conf", true),
-    ("_zetl/deploy-caddy.conf", true),
-    ("_zetl/deploy-netlify.conf", true),
-    ("_zetl/deploy-vercel.conf", true),
-    ("_zetl/deploy-cloudflare.conf", true),
+    ("_ztl/_gone.map", true),
+    ("_ztl/deploy-nginx.conf", true),
+    ("_ztl/deploy-caddy.conf", true),
+    ("_ztl/deploy-netlify.conf", true),
+    ("_ztl/deploy-vercel.conf", true),
+    ("_ztl/deploy-cloudflare.conf", true),
     ("_redirects", true),
     ("vercel.json", false),
 ];
@@ -230,7 +230,7 @@ fn tombstones_propagate_to_all_platforms() {
     )
     .unwrap();
 
-    let gone = fs::read_to_string(tmp.path().join("_zetl").join("_gone.map")).unwrap();
+    let gone = fs::read_to_string(tmp.path().join("_ztl").join("_gone.map")).unwrap();
     let redirects = fs::read_to_string(tmp.path().join("_redirects")).unwrap();
     let vercel: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(tmp.path().join("vercel.json")).unwrap()).unwrap();
@@ -285,9 +285,9 @@ fn single_file_bundle_emits_one_file_per_cohort_when_enabled() {
         let path = tmp.path().join(name);
         assert!(path.is_file(), "missing bundle {name}");
         let body = fs::read_to_string(&path).unwrap();
-        assert!(body.contains("<main data-zetl-capability data-zetl-bundle>"));
-        assert!(body.contains("<meta name=\"zetl-cohort\""));
-        assert!(body.contains("<meta name=\"zetl-envelope-count\" content=\"2\">"));
+        assert!(body.contains("<main data-ztl-capability data-ztl-bundle>"));
+        assert!(body.contains("<meta name=\"ztl-cohort\""));
+        assert!(body.contains("<meta name=\"ztl-envelope-count\" content=\"2\">"));
         assert!(body.contains("data-slug=\"welcome\""));
         assert!(body.contains("data-slug=\"runbook\""));
     }
@@ -347,7 +347,7 @@ fn pure_renderers_are_stable_across_calls() {
 
 /// Robots.txt is already covered by `cap_robots_txt_integration.rs`
 /// but the deploy-artifact task ties it to the same `Disallow: /c/`
-/// + `Disallow: /_zetl/` expectation, so we pin that a capability
+/// + `Disallow: /_ztl/` expectation, so we pin that a capability
 /// build leaves the existing web-layer emission untouched.
 #[test]
 fn robots_txt_preserved_alongside_deploy_artifacts() {
@@ -369,7 +369,7 @@ fn robots_txt_preserved_alongside_deploy_artifacts() {
     .unwrap();
 
     // Capability build alone must not write a `robots.txt` — that job
-    // belongs to `zetl::web::build::build_static` per REQ-3418 general
+    // belongs to `ztl::web::build::build_static` per REQ-3418 general
     // robots.txt handling (cap_robots_txt_integration.rs).
     assert!(
         !tmp.path().join("robots.txt").exists(),

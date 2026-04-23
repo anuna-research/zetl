@@ -4,7 +4,7 @@
 //! "is the ecosystem's interpreter on PATH?" to "does the *plugin* on
 //! PATH match the version we tested against?". Matrix entries
 //! (REQ-3311) pin a `version_range` per (ecosystem, plugin) tuple; at
-//! probe time, zetl invokes each configured plugin's `--version`
+//! probe time, ztl invokes each configured plugin's `--version`
 //! (Pandoc filters and mdBook preprocessors) or reads its
 //! `package.json#version` (remark plugins), parses the observed
 //! version, and classifies it against the matrix range:
@@ -13,7 +13,7 @@
 //!   tested version component-wise. Silent.
 //! - **[`PluginVersionDrift::MinorDrift`]** — same major, observed
 //!   minor/patch is newer than tested, still within the range. Emits
-//!   one `[zetl] ecosystem <eco>: <plugin> v<observed> is newer than
+//!   one `[ztl] ecosystem <eco>: <plugin> v<observed> is newer than
 //!   last-tested v<tested>; proceeding` log line per session; the hook
 //!   runs.
 //! - **[`PluginVersionDrift::Incompatible`]** — different major, or
@@ -413,7 +413,7 @@ pub fn classify(
 
 /// Canonical minor-drift log line matching REQ-3314 verbatim.
 ///
-/// Example: `[zetl] ecosystem pandoc: pandoc-crossref v0.3.16 is newer
+/// Example: `[ztl] ecosystem pandoc: pandoc-crossref v0.3.16 is newer
 /// than last-tested v0.3.14; proceeding`.
 ///
 /// Emit once per session per (ecosystem, plugin) pair — caller
@@ -425,7 +425,7 @@ pub fn format_minor_drift_log(
     tested: Version,
 ) -> String {
     format!(
-        "[zetl] ecosystem {ecosystem}: {plugin} v{observed} is newer than last-tested v{tested}; proceeding"
+        "[ztl] ecosystem {ecosystem}: {plugin} v{observed} is newer than last-tested v{tested}; proceeding"
     )
 }
 
@@ -433,7 +433,7 @@ pub fn format_minor_drift_log(
 /// [`PluginVersionDrift::Incompatible`] classification. The summary is
 /// the typed `plugin_version_incompatible` string REQ-3314 names so
 /// log-grep tooling can pick these out; the hint directs the user at
-/// the matrix range and the `zetl ecosystem check` subcommand.
+/// the matrix range and the `ztl ecosystem check` subcommand.
 pub fn diagnostic_for_incompatible(
     ecosystem: &str,
     plugin: &str,
@@ -454,7 +454,7 @@ pub fn diagnostic_for_incompatible(
     .with_cause(reason.cause_for())
     .with_hint(format!(
         "install a version of '{plugin}' matching {range:?}, or update the matrix \
-         entry after re-testing; `zetl ecosystem check` lists every configured plugin \
+         entry after re-testing; `ztl ecosystem check` lists every configured plugin \
          and its observed version"
     ))
 }
@@ -795,7 +795,7 @@ mod tests {
         );
         assert_eq!(
             line,
-            "[zetl] ecosystem pandoc: pandoc-crossref v0.3.16 is newer than last-tested v0.3.14; proceeding"
+            "[ztl] ecosystem pandoc: pandoc-crossref v0.3.16 is newer than last-tested v0.3.14; proceeding"
         );
     }
 
@@ -814,14 +814,14 @@ mod tests {
         assert!(diag.summary.contains("plugin_version_incompatible"));
         // Rendered body carries all five parts.
         let rendered = diag.to_string();
-        assert!(rendered.starts_with("[zetl] "));
+        assert!(rendered.starts_with("[ztl] "));
         assert!(rendered.contains("plugin_version_incompatible"));
         assert!(rendered.contains("version_range"));
         assert!(rendered.contains("v1.0.0"));
         assert!(rendered.contains("v0.3.14"));
         assert!(rendered.contains("Likely cause: "));
         assert!(rendered.contains("Hint: "));
-        assert!(rendered.contains("zetl ecosystem check"));
+        assert!(rendered.contains("ztl ecosystem check"));
     }
 
     #[test]
@@ -837,17 +837,17 @@ mod tests {
         let hint = diag.hint.as_deref().unwrap_or_default();
         assert!(hint.contains(">=0.14 <0.16"));
         assert!(hint.contains("mdbook-mermaid"));
-        assert!(hint.contains("zetl ecosystem check"));
+        assert!(hint.contains("ztl ecosystem check"));
     }
 
     // ── probe_plugin_version: NotFound ────────────────────────────────
 
     #[test]
     fn probe_plugin_returns_not_found_for_bogus_binary() {
-        let err = probe_plugin_version("definitely-not-a-real-plugin-zetl-test").unwrap_err();
+        let err = probe_plugin_version("definitely-not-a-real-plugin-ztl-test").unwrap_err();
         match err {
             PluginProbeError::NotFound { binary } => {
-                assert_eq!(binary, "definitely-not-a-real-plugin-zetl-test");
+                assert_eq!(binary, "definitely-not-a-real-plugin-ztl-test");
             }
             other => panic!("expected NotFound, got {other:?}"),
         }

@@ -8,8 +8,8 @@ steps:
     commands:
       - cargo build --release --features "reason,history,mcp" --target x86_64-unknown-linux-gnu
       - mkdir -p dist
-      - cp target/x86_64-unknown-linux-gnu/release/zetl dist/zetl
-      - cd dist && tar czf zetl-linux-x86_64.tar.gz zetl && rm zetl && cd ..
+      - cp target/x86_64-unknown-linux-gnu/release/ztl dist/ztl
+      - cd dist && tar czf ztl-linux-x86_64.tar.gz ztl && rm ztl && cd ..
 
   - name: build-linux-arm64
     image: rust:1-bookworm
@@ -29,8 +29,8 @@ steps:
       - export PKG_CONFIG_ALLOW_CROSS=1
       - cargo build --release --features "reason,history,mcp" --target aarch64-unknown-linux-gnu
       - mkdir -p dist
-      - cp target/aarch64-unknown-linux-gnu/release/zetl dist/zetl
-      - cd dist && tar czf zetl-linux-arm64.tar.gz zetl && rm zetl && cd ..
+      - cp target/aarch64-unknown-linux-gnu/release/ztl dist/ztl
+      - cd dist && tar czf ztl-linux-arm64.tar.gz ztl && rm ztl && cd ..
 
   - name: build-macos-arm64
     image: rust:1-bookworm
@@ -49,8 +49,8 @@ steps:
         cd -
         cargo build --release --features "reason,history,mcp,vendored-openssl" --target aarch64-apple-darwin
         mkdir -p dist
-        cp target/aarch64-apple-darwin/release/zetl dist/zetl
-        cd dist && tar czf zetl-macos-arm64.tar.gz zetl && rm zetl && cd ..
+        cp target/aarch64-apple-darwin/release/ztl dist/ztl
+        cd dist && tar czf ztl-macos-arm64.tar.gz ztl && rm ztl && cd ..
 
   - name: build-macos-x86_64
     image: rust:1-bookworm
@@ -69,8 +69,8 @@ steps:
         cd -
         cargo build --release --features "reason,history,mcp,vendored-openssl" --target x86_64-apple-darwin
         mkdir -p dist
-        cp target/x86_64-apple-darwin/release/zetl dist/zetl
-        cd dist && tar czf zetl-macos-x86_64.tar.gz zetl && rm zetl && cd ..
+        cp target/x86_64-apple-darwin/release/ztl dist/ztl
+        cd dist && tar czf ztl-macos-x86_64.tar.gz ztl && rm ztl && cd ..
 
   - name: build-windows
     image: rust:1-bookworm
@@ -81,8 +81,8 @@ steps:
       # OOMs the shared CI runner at link time (see pipelines #158/#159).
       - CARGO_PROFILE_RELEASE_LTO=thin CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 cargo build --release --features "reason,history,mcp,vendored-openssl" --target x86_64-pc-windows-gnu
       - mkdir -p dist
-      - cp target/x86_64-pc-windows-gnu/release/zetl.exe dist/zetl.exe
-      - cd dist && zip zetl-windows-x86_64.zip zetl.exe && rm zetl.exe && cd ..
+      - cp target/x86_64-pc-windows-gnu/release/ztl.exe dist/ztl.exe
+      - cd dist && zip ztl-windows-x86_64.zip ztl.exe && rm ztl.exe && cd ..
 
   - name: create-metadata
     image: alpine:3
@@ -92,12 +92,12 @@ steps:
         cat > dist/version.json << EOF
         {
           "version": "${CI_COMMIT_TAG#v}",
-          "download_url": "https://files.anuna.io/zetl/${CI_COMMIT_TAG}",
+          "download_url": "https://files.anuna.io/ztl/${CI_COMMIT_TAG}",
           "features": "reason,history,mcp"
         }
         EOF
       - cp install.sh dist/install.sh
-      - cd dist && sha256sum zetl-*.tar.gz zetl-*.zip > SHA256SUMS && cd ..
+      - cd dist && sha256sum ztl-*.tar.gz ztl-*.zip > SHA256SUMS && cd ..
       - ls -la dist/
 
   - name: upload-to-cloudflare-r2
@@ -113,12 +113,12 @@ steps:
       - export AWS_DEFAULT_REGION=auto
       - export R2_ENDPOINT="https://$${CF_ACCOUNT_ID}.r2.cloudflarestorage.com"
       - export BUCKET="anuna-files"
-      - export PROJECT="zetl"
+      - export PROJECT="ztl"
 
       # Upload versioned release
       - echo "Uploading to $${PROJECT}/$${CI_COMMIT_TAG}/..."
       - |
-        for file in dist/zetl-*.tar.gz dist/zetl-*.zip dist/version.json dist/install.sh dist/SHA256SUMS; do
+        for file in dist/ztl-*.tar.gz dist/ztl-*.zip dist/version.json dist/install.sh dist/SHA256SUMS; do
           if [ -f "$$file" ]; then
             filename=$$(basename "$$file")
             aws s3 cp "$$file" "s3://$${BUCKET}/$${PROJECT}/$${CI_COMMIT_TAG}/$$filename" \
@@ -130,7 +130,7 @@ steps:
       # Upload to latest/
       - echo "Uploading to $${PROJECT}/latest/..."
       - |
-        for file in dist/zetl-*.tar.gz dist/zetl-*.zip dist/version.json dist/install.sh dist/SHA256SUMS; do
+        for file in dist/ztl-*.tar.gz dist/ztl-*.zip dist/version.json dist/install.sh dist/SHA256SUMS; do
           if [ -f "$$file" ]; then
             filename=$$(basename "$$file")
             aws s3 cp "$$file" "s3://$${BUCKET}/$${PROJECT}/latest/$$filename" \

@@ -5,11 +5,11 @@ tags: [concepts, blocks, merkle]
 
 # Blocks
 
-zetl breaks every page into **blocks** — headings, paragraphs, code fences, lists, tables, blockquotes, and SPL fragments — and gives each block a stable hash. This turns a page into a small Merkle tree of content, which is what makes `[[Page^block-id]]` links work, what makes the incremental cache fast, and what will later make sync possible.
+ztl breaks every page into **blocks** — headings, paragraphs, code fences, lists, tables, blockquotes, and SPL fragments — and gives each block a stable hash. This turns a page into a small Merkle tree of content, which is what makes `[[Page^block-id]]` links work, what makes the incremental cache fast, and what will later make sync possible.
 
 ## What a block is
 
-A block is the smallest unit of page content zetl tracks. Parsing a page yields a sequence of typed blocks:
+A block is the smallest unit of page content ztl tracks. Parsing a page yields a sequence of typed blocks:
 
 | Type | Example |
 |------|---------|
@@ -25,8 +25,8 @@ A block is the smallest unit of page content zetl tracks. Parsing a page yields 
 List what's in a page:
 
 ```bash
-zetl blocks "Zettelkasten Method"
-zetl blocks "Zettelkasten Method" --type heading
+ztl blocks "Zettelkasten Method"
+ztl blocks "Zettelkasten Method" --type heading
 ```
 
 ## Why content-addressable
@@ -35,19 +35,19 @@ Every block's content is hashed with [BLAKE3](https://github.com/BLAKE3-team/BLA
 
 ### 1. Block links survive file moves
 
-`[[Some Page^b3a9f1]]` links to the block whose hash starts with `b3a9f1`. Rename `Some Page.md` to `Renamed Page.md` and the hash doesn't change — the block is the same content. zetl can still resolve the link. It keeps pointers to *what you said*, not to *where it lived*.
+`[[Some Page^b3a9f1]]` links to the block whose hash starts with `b3a9f1`. Rename `Some Page.md` to `Renamed Page.md` and the hash doesn't change — the block is the same content. ztl can still resolve the link. It keeps pointers to *what you said*, not to *where it lived*.
 
 Resolve a hash back to its source:
 
 ```bash
-zetl blocks --resolve b3a9f1
+ztl blocks --resolve b3a9f1
 ```
 
 Paste that hash from anywhere (another page, a chat log, a commit message) and get the block back.
 
 ### 2. Incremental caching is cheap
 
-When you reindex, zetl compares block hashes to the cached ones and skips anything unchanged. Edit one paragraph in a 300-block page, and only that one paragraph's block is re-parsed; the other 299 hashes match the cache, no work. That's how the two-tier index (see [[The Link Graph]]) stays fast on vaults with thousands of pages.
+When you reindex, ztl compares block hashes to the cached ones and skips anything unchanged. Edit one paragraph in a 300-block page, and only that one paragraph's block is re-parsed; the other 299 hashes match the cache, no work. That's how the two-tier index (see [[The Link Graph]]) stays fast on vaults with thousands of pages.
 
 ### 3. Deduplication and diffs are natural
 
@@ -61,7 +61,7 @@ Two blocks with identical content hash the same — whether they live on the sam
 
 When you link to a block you rarely type the hash by hand. The common flow is:
 
-1. Open a page in `zetl serve`; each block has an anchor with its short hash.
+1. Open a page in `ztl serve`; each block has an anchor with its short hash.
 2. Copy the `[[Page^hash]]` form from the anchor.
 3. Paste into your current note.
 

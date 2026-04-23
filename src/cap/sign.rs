@@ -4,12 +4,12 @@
 //! Composes the per-page wire format:
 //!
 //! ```text
-//! Zetl-Schema: v4\n
-//! Zetl-Cohort-Id: <id>\n
-//! Zetl-Cohort-Mode: delegated-url|webauthn-prf\n
-//! Zetl-Slug: <slug>\n
-//! Zetl-Build-Epoch: <rfc3339>\n
-//! Zetl-Signature: <b64url-ed25519-sig>\n
+//! ztl-Schema: v4\n
+//! ztl-Cohort-Id: <id>\n
+//! ztl-Cohort-Mode: delegated-url|webauthn-prf\n
+//! ztl-Slug: <slug>\n
+//! ztl-Build-Epoch: <rfc3339>\n
+//! ztl-Signature: <b64url-ed25519-sig>\n
 //! \n
 //! <age v1 ciphertext bytes>
 //! ```
@@ -32,7 +32,7 @@
 //!   identical signatures, which is what makes REQ-3420 determinism
 //!   survive across the signing step.
 //! - **Effectful shell:** [`load_signing_key_from_env`] reads
-//!   [`ZETL_CAP_SIGNING_KEY_ENV`] and is the *only* surface that
+//!   [`ztl_CAP_SIGNING_KEY_ENV`] and is the *only* surface that
 //!   touches process state. The signing-key material NEVER touches
 //!   disk (SPEC-034 §8 "Signing-key material NEVER crosses into shim
 //!   JS — only the public key does").
@@ -51,7 +51,7 @@ use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine as _;
 use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
 
-use crate::cap::genkey::{SIGNING_KEY_LEN, ZETL_CAP_SIGNING_KEY_ENV};
+use crate::cap::genkey::{SIGNING_KEY_LEN, ztl_CAP_SIGNING_KEY_ENV};
 use crate::cap::recipients::parsing::{CohortMode, ED25519_PUBKEY_PREFIX};
 
 /// Envelope schema tag pinned by CON-3404. Any future wire-format
@@ -68,12 +68,12 @@ pub const SIGNATURE_LEN: usize = 64;
 
 /// Header field names. Kept as named constants so the byte-stable
 /// integration tests and the shim JS stay in lock-step.
-pub const HEADER_SCHEMA: &str = "Zetl-Schema";
-pub const HEADER_COHORT_ID: &str = "Zetl-Cohort-Id";
-pub const HEADER_COHORT_MODE: &str = "Zetl-Cohort-Mode";
-pub const HEADER_SLUG: &str = "Zetl-Slug";
-pub const HEADER_BUILD_EPOCH: &str = "Zetl-Build-Epoch";
-pub const HEADER_SIGNATURE: &str = "Zetl-Signature";
+pub const HEADER_SCHEMA: &str = "ztl-Schema";
+pub const HEADER_COHORT_ID: &str = "ztl-Cohort-Id";
+pub const HEADER_COHORT_MODE: &str = "ztl-Cohort-Mode";
+pub const HEADER_SLUG: &str = "ztl-Slug";
+pub const HEADER_BUILD_EPOCH: &str = "ztl-Build-Epoch";
+pub const HEADER_SIGNATURE: &str = "ztl-Signature";
 
 /// Plaintext envelope header fields (CON-3404). Deterministic given
 /// inputs; feeding the same values to [`build_envelope`] always
@@ -151,7 +151,7 @@ impl VaultSigningPubkey {
     }
 
     /// Standard-alphabet base64 (padded). Matches the output of
-    /// `zetl cap genkey` so operators can cross-check the pubkey
+    /// `ztl cap genkey` so operators can cross-check the pubkey
     /// shown in the genkey banner against `recipients.toml`.
     pub fn to_b64_standard(&self) -> String {
         STANDARD.encode(self.to_bytes())
@@ -177,16 +177,16 @@ impl VaultSigningPubkey {
 #[derive(Debug, thiserror::Error)]
 pub enum KeyLoadError {
     #[error(
-        "{env} is not set — run `zetl cap genkey` to generate one, then export it in the build shell"
+        "{env} is not set — run `ztl cap genkey` to generate one, then export it in the build shell"
     )]
     EnvMissing { env: &'static str },
-    #[error("{env} is set but empty — re-run `zetl cap genkey`")]
+    #[error("{env} is set but empty — re-run `ztl cap genkey`")]
     EnvEmpty { env: &'static str },
     #[error(
-        "{env} does not parse as base64 ({detail}) — re-run `zetl cap genkey` and paste the output verbatim"
+        "{env} does not parse as base64 ({detail}) — re-run `ztl cap genkey` and paste the output verbatim"
     )]
     Base64 { env: &'static str, detail: String },
-    #[error("{env} decodes to {got} bytes but {expected} are required — re-run `zetl cap genkey`")]
+    #[error("{env} decodes to {got} bytes but {expected} are required — re-run `ztl cap genkey`")]
     Length {
         env: &'static str,
         got: usize,
@@ -218,7 +218,7 @@ pub enum EnvelopeParseError {
     #[error("required header {0:?} is missing")]
     MissingHeader(&'static str),
     #[error(
-        "header `{header}` has value {got:?} but schema requires {expected:?} — this shim is too old; rebuild with a matching zetl binary"
+        "header `{header}` has value {got:?} but schema requires {expected:?} — this shim is too old; rebuild with a matching ztl binary"
     )]
     SchemaMismatch {
         header: &'static str,
@@ -236,7 +236,7 @@ pub enum EnvelopeParseError {
 }
 
 /// Parse a base64-encoded Ed25519 private scalar. Accepts the
-/// STANDARD alphabet (what `zetl cap genkey` emits) with or without
+/// STANDARD alphabet (what `ztl cap genkey` emits) with or without
 /// padding.
 pub fn parse_signing_key_b64(env: &'static str, s: &str) -> Result<VaultSigningKey, KeyLoadError> {
     let trimmed = s.trim();
@@ -265,7 +265,7 @@ pub fn parse_signing_key_b64(env: &'static str, s: &str) -> Result<VaultSigningK
 /// for the prefixed form.
 ///
 /// Accepts either the URL_SAFE_NO_PAD alphabet (the spec's canonical
-/// form) or the STANDARD alphabet (what `zetl cap genkey` prints
+/// form) or the STANDARD alphabet (what `ztl cap genkey` prints
 /// next to the shell-export block). Operators who copy either form
 /// into `recipients.toml` should not be greeted with a parser
 /// surprise.
@@ -310,16 +310,16 @@ pub fn parse_signing_pubkey_recipients_toml(s: &str) -> Result<VaultSigningPubke
     parse_signing_pubkey_b64(payload)
 }
 
-/// Effectful-shell entry point: read [`ZETL_CAP_SIGNING_KEY_ENV`]
+/// Effectful-shell entry point: read [`ztl_CAP_SIGNING_KEY_ENV`]
 /// from the process environment and parse it. The only function in
 /// this module that touches `std::env`. SPEC-034 §8 forbids the
 /// private key from *ever* touching disk — this is the single
 /// authorised channel.
 pub fn load_signing_key_from_env() -> Result<VaultSigningKey, KeyLoadError> {
-    let raw = env::var(ZETL_CAP_SIGNING_KEY_ENV).map_err(|_| KeyLoadError::EnvMissing {
-        env: ZETL_CAP_SIGNING_KEY_ENV,
+    let raw = env::var(ztl_CAP_SIGNING_KEY_ENV).map_err(|_| KeyLoadError::EnvMissing {
+        env: ztl_CAP_SIGNING_KEY_ENV,
     })?;
-    parse_signing_key_b64(ZETL_CAP_SIGNING_KEY_ENV, &raw)
+    parse_signing_key_b64(ztl_CAP_SIGNING_KEY_ENV, &raw)
 }
 
 /// Ed25519-sign the given ciphertext with the vault-signing key.
@@ -347,12 +347,12 @@ pub fn verify_ciphertext(
 /// The resulting byte layout is:
 ///
 /// ```text
-/// Zetl-Schema: v4\n
-/// Zetl-Cohort-Id: <id>\n
-/// Zetl-Cohort-Mode: delegated-url|webauthn-prf\n
-/// Zetl-Slug: <slug>\n
-/// Zetl-Build-Epoch: <rfc3339>\n
-/// Zetl-Signature: <b64url>\n
+/// ztl-Schema: v4\n
+/// ztl-Cohort-Id: <id>\n
+/// ztl-Cohort-Mode: delegated-url|webauthn-prf\n
+/// ztl-Slug: <slug>\n
+/// ztl-Build-Epoch: <rfc3339>\n
+/// ztl-Signature: <b64url>\n
 /// \n
 /// <ciphertext bytes verbatim>
 /// ```
@@ -710,12 +710,12 @@ mod tests {
 
     #[test]
     fn schema_mismatch_is_rejected() {
-        let mut bytes = b"Zetl-Schema: v99\n".to_vec();
-        bytes.extend_from_slice(b"Zetl-Cohort-Id: eng\n");
-        bytes.extend_from_slice(b"Zetl-Cohort-Mode: delegated-url\n");
-        bytes.extend_from_slice(b"Zetl-Slug: s\n");
-        bytes.extend_from_slice(b"Zetl-Build-Epoch: 2026-04-20T00:00:00Z\n");
-        bytes.extend_from_slice(b"Zetl-Signature: AAAA\n");
+        let mut bytes = b"ztl-Schema: v99\n".to_vec();
+        bytes.extend_from_slice(b"ztl-Cohort-Id: eng\n");
+        bytes.extend_from_slice(b"ztl-Cohort-Mode: delegated-url\n");
+        bytes.extend_from_slice(b"ztl-Slug: s\n");
+        bytes.extend_from_slice(b"ztl-Build-Epoch: 2026-04-20T00:00:00Z\n");
+        bytes.extend_from_slice(b"ztl-Signature: AAAA\n");
         bytes.extend_from_slice(b"\nbody");
         let err = parse_envelope(&bytes).expect_err("schema v99 is rejected");
         assert!(matches!(err, EnvelopeParseError::SchemaMismatch { .. }));
@@ -723,7 +723,7 @@ mod tests {
 
     #[test]
     fn missing_separator_is_rejected() {
-        let bytes = b"Zetl-Schema: v4\nZetl-Cohort-Id: x\n".to_vec();
+        let bytes = b"ztl-Schema: v4\nztl-Cohort-Id: x\n".to_vec();
         assert!(matches!(
             parse_envelope(&bytes),
             Err(EnvelopeParseError::MissingSeparator)
@@ -737,13 +737,13 @@ mod tests {
         let sig = sign_ciphertext(&key, b"body");
         let sig_b64 = URL_SAFE_NO_PAD.encode(sig);
         let mut bytes = Vec::new();
-        bytes.extend_from_slice(b"Zetl-Schema: v4\n");
-        bytes.extend_from_slice(b"Zetl-Cohort-Id: engineering\n");
-        bytes.extend_from_slice(b"Zetl-Cohort-Mode: delegated-url\n");
-        bytes.extend_from_slice(b"Zetl-Slug: onboarding\n");
-        bytes.extend_from_slice(b"Zetl-Build-Epoch: 2026-04-20T10:15:00Z\n");
-        bytes.extend_from_slice(format!("Zetl-Signature: {sig_b64}\n").as_bytes());
-        bytes.extend_from_slice(b"Zetl-Future-Hint: reserved-for-v0.5.x\n");
+        bytes.extend_from_slice(b"ztl-Schema: v4\n");
+        bytes.extend_from_slice(b"ztl-Cohort-Id: engineering\n");
+        bytes.extend_from_slice(b"ztl-Cohort-Mode: delegated-url\n");
+        bytes.extend_from_slice(b"ztl-Slug: onboarding\n");
+        bytes.extend_from_slice(b"ztl-Build-Epoch: 2026-04-20T10:15:00Z\n");
+        bytes.extend_from_slice(format!("ztl-Signature: {sig_b64}\n").as_bytes());
+        bytes.extend_from_slice(b"ztl-Future-Hint: reserved-for-v0.5.x\n");
         bytes.extend_from_slice(b"\nbody");
         let parsed = parse_envelope(&bytes).expect("unknown headers tolerated");
         assert_eq!(parsed.header, header);
@@ -753,12 +753,12 @@ mod tests {
 
     #[test]
     fn parse_signing_key_round_trips_genkey_standard_alphabet() {
-        // `zetl cap genkey` emits STANDARD base64; parser must accept
+        // `ztl cap genkey` emits STANDARD base64; parser must accept
         // that verbatim as the env-var payload.
         let raw = [9u8; SIGNING_KEY_LEN];
         let encoded = STANDARD.encode(raw);
         let parsed =
-            parse_signing_key_b64("ZETL_CAP_SIGNING_KEY", &encoded).expect("parse STANDARD");
+            parse_signing_key_b64("ztl_CAP_SIGNING_KEY", &encoded).expect("parse STANDARD");
         assert_eq!(
             parsed.verifying_key().to_bytes(),
             VaultSigningKey::from_bytes(&raw).verifying_key().to_bytes()
@@ -768,7 +768,7 @@ mod tests {
     #[test]
     fn parse_signing_key_rejects_wrong_length() {
         let short = STANDARD.encode([0u8; SIGNING_KEY_LEN - 1]);
-        match parse_signing_key_b64("ZETL_CAP_SIGNING_KEY", &short) {
+        match parse_signing_key_b64("ztl_CAP_SIGNING_KEY", &short) {
             Err(KeyLoadError::Length { got, .. }) => assert_eq!(got, SIGNING_KEY_LEN - 1),
             Err(other) => panic!("expected Length, got {other:?}"),
             Ok(_) => panic!("short key must be rejected"),
@@ -777,7 +777,7 @@ mod tests {
 
     #[test]
     fn parse_signing_key_rejects_empty() {
-        match parse_signing_key_b64("ZETL_CAP_SIGNING_KEY", "   \n ") {
+        match parse_signing_key_b64("ztl_CAP_SIGNING_KEY", "   \n ") {
             Err(KeyLoadError::EnvEmpty { .. }) => {}
             Err(other) => panic!("expected EnvEmpty, got {other:?}"),
             Ok(_) => panic!("empty key must be rejected"),
@@ -845,7 +845,7 @@ mod tests {
     }
 
     #[test]
-    fn load_from_env_reads_zetl_cap_signing_key() {
+    fn load_from_env_reads_ztl_cap_signing_key() {
         // The effectful shell path. Uses an in-process env mutation
         // guarded by a serialisation to avoid cross-test interleaving.
         static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -853,17 +853,17 @@ mod tests {
 
         let raw = [3u8; SIGNING_KEY_LEN];
         let encoded = STANDARD.encode(raw);
-        let prev = env::var(ZETL_CAP_SIGNING_KEY_ENV).ok();
+        let prev = env::var(ztl_CAP_SIGNING_KEY_ENV).ok();
         // SAFETY: test-only env mutation; guarded by LOCK above.
-        unsafe { env::set_var(ZETL_CAP_SIGNING_KEY_ENV, &encoded) };
+        unsafe { env::set_var(ztl_CAP_SIGNING_KEY_ENV, &encoded) };
         let loaded = load_signing_key_from_env().expect("loads");
         assert_eq!(
             loaded.verifying_key().to_bytes(),
             VaultSigningKey::from_bytes(&raw).verifying_key().to_bytes()
         );
         match prev {
-            Some(v) => unsafe { env::set_var(ZETL_CAP_SIGNING_KEY_ENV, v) },
-            None => unsafe { env::remove_var(ZETL_CAP_SIGNING_KEY_ENV) },
+            Some(v) => unsafe { env::set_var(ztl_CAP_SIGNING_KEY_ENV, v) },
+            None => unsafe { env::remove_var(ztl_CAP_SIGNING_KEY_ENV) },
         }
     }
 
@@ -872,26 +872,26 @@ mod tests {
         static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let _guard = LOCK.lock().unwrap_or_else(|p| p.into_inner());
 
-        let prev = env::var(ZETL_CAP_SIGNING_KEY_ENV).ok();
-        unsafe { env::remove_var(ZETL_CAP_SIGNING_KEY_ENV) };
+        let prev = env::var(ztl_CAP_SIGNING_KEY_ENV).ok();
+        unsafe { env::remove_var(ztl_CAP_SIGNING_KEY_ENV) };
         let err = match load_signing_key_from_env() {
             Ok(_) => panic!("missing env must be rejected"),
             Err(e) => e,
         };
         let rendered = format!("{err}");
         assert!(
-            rendered.contains("zetl cap genkey"),
+            rendered.contains("ztl cap genkey"),
             "remediation hint missing: {rendered}"
         );
         assert!(matches!(err, KeyLoadError::EnvMissing { .. }));
         if let Some(v) = prev {
-            unsafe { env::set_var(ZETL_CAP_SIGNING_KEY_ENV, v) };
+            unsafe { env::set_var(ztl_CAP_SIGNING_KEY_ENV, v) };
         }
     }
 
     #[test]
     fn signature_is_base64url_not_standard_alphabet() {
-        // The envelope's `Zetl-Signature` header is base64url
+        // The envelope's `ztl-Signature` header is base64url
         // (URL_SAFE_NO_PAD). A signature that happened to contain
         // `+` or `/` (i.e. STANDARD alphabet) would be wrong.
         let key = sample_key();

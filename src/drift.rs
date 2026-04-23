@@ -7,7 +7,7 @@
 //!
 //! **Explicit drift** is detected when an explicit source-metadata grounding
 //! target still exists in the vault but its leaf hash has changed since the
-//! last `zetl build`.  Only targets that still resolve (same block-id
+//! last `ztl build`.  Only targets that still resolve (same block-id
 //! annotation or same hash prefix) are checked; targets that can no longer
 //! be found are static validation errors reported by
 //! [`crate::merkle::validate_source_refs`], not drift.
@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 ///
 /// Compares, for each SPL block in `current`, the freshly-computed section
 /// grounding hash against the value stored in [`TheoryCache::spl_blocks`]
-/// from the last `zetl build`.
+/// from the last `ztl build`.
 ///
 /// **Drift condition**: grounding hash changed **AND** SPL AST hash unchanged.
 ///
@@ -107,7 +107,7 @@ pub fn detect_section_drift(
 /// [`crate::types::ResolvedTarget`] in the corresponding
 /// [`crate::cache::SplBlockCache`] against the current vault state.  Emits a
 /// [`DriftDiagnostic`] when the target still exists but its leaf hash has
-/// changed since the last `zetl build`.
+/// changed since the last `ztl build`.
 ///
 /// **Drift condition**: SPL AST hash **unchanged** AND target can still be
 /// resolved in the vault but its current leaf hash differs from the cached

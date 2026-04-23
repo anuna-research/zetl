@@ -2,8 +2,8 @@
 //!
 //! Implements the [`EcosystemAdapter`] trait for the Pandoc ecosystem.
 //! Compiled behind the `ecosystem-pandoc` cargo feature (NFR-3304) so a
-//! minimal zetl build can drop this code entirely; the registry entry
-//! stays unconditional in [`crate::ecosystems::registry`] so `zetl
+//! minimal ztl build can drop this code entirely; the registry entry
+//! stays unconditional in [`crate::ecosystems::registry`] so `ztl
 //! ecosystem check` can still list pandoc as a known id on a stripped
 //! binary.
 //!
@@ -18,7 +18,7 @@
 //!   `PANDOC_READER_OPTIONS` / `PANDOC_WRITER_OPTIONS` /
 //!   `PANDOC_SCRIPT_FILE` set per CON-3303. stdin / stdout is pandoc-types
 //!   JSON. Identical to Pandoc's own filter contract — filters cannot
-//!   distinguish zetl-run from pandoc-run invocations.
+//!   distinguish ztl-run from pandoc-run invocations.
 //! - **`native`** — spawn the installed `pandoc` binary with
 //!   `--from json --to json` plus the manifest's `args` (typically
 //!   `--citeproc`, `--lua-filter=...`, etc.). stdin / stdout stays
@@ -385,11 +385,11 @@ impl EcosystemAdapter for PandocAdapter {
     }
 
     fn translate_to_foreign(&self, doc: &Document) -> Result<Value, TranslationError> {
-        self.translator.zetl_to_foreign(doc)
+        self.translator.ztl_to_foreign(doc)
     }
 
     fn translate_from_foreign(&self, foreign: Value) -> Result<Document, TranslationError> {
-        self.translator.foreign_to_zetl(foreign)
+        self.translator.foreign_to_ztl(foreign)
     }
 
     fn invoke_plugin(
@@ -556,7 +556,7 @@ enum SpawnError {
 /// stderr with a hard deadline.
 ///
 /// Kept minimal on purpose — Pandoc filters are one-shot by convention
-/// (CON-3303 persistent-mode is a per-filter capability zetl will layer
+/// (CON-3303 persistent-mode is a per-filter capability ztl will layer
 /// in later). The caller's `PluginManifest::timeout` is enforced here by
 /// spawning a watchdog thread that kills the child on expiry.
 fn spawn_and_exchange(
@@ -960,7 +960,7 @@ mod tests {
             PageMeta::synthetic("Page", "page"),
         );
         let ctx = HookContext::new(Stage::Transform, "test-pandoc", &build);
-        let manifest = sample_manifest("/definitely-not-a-real-binary-zetl-pandoc-test", vec![]);
+        let manifest = sample_manifest("/definitely-not-a-real-binary-ztl-pandoc-test", vec![]);
         let input = StageInput::Transform {
             foreign: serde_json::json!({"pandoc-api-version": [1,23,1,0], "meta": {}, "blocks": []}),
         };

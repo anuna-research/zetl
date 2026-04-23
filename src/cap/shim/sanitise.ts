@@ -5,8 +5,8 @@
 // injecting it into the DOM. Allowlist mirrors `tools/sanitiser-config.toml`.
 //
 // Under the capability-mode CSP (`require-trusted-types-for 'script';
-// trusted-types zetl-cap;`) both `DOMParser.parseFromString` and
-// `innerHTML` are TrustedHTML sinks. We register a shared `zetl-cap`
+// trusted-types ztl-cap;`) both `DOMParser.parseFromString` and
+// `innerHTML` are TrustedHTML sinks. We register a shared `ztl-cap`
 // policy here so the sanitiser's parse step can feed TrustedHTML into
 // DOMParser; `render.ts` pulls the same policy for its `innerHTML`
 // assignment. `createHTML` is an identity wrap — the sanitiser below
@@ -24,7 +24,7 @@ function capPolicy(): TrustedCapPolicy | null {
     return null;
   }
   try {
-    CAP_POLICY = tt.createPolicy("zetl-cap", { createHTML: (s: string) => s });
+    CAP_POLICY = tt.createPolicy("ztl-cap", { createHTML: (s: string) => s });
   } catch {
     CAP_POLICY = null;
   }

@@ -1,7 +1,7 @@
 // Minimal static-file server for the NFR harness. Avoids external deps — we
 // rely only on Node's standard library so CI doesn't need to install a server
 // package. Serves exactly one directory tree and responds with sensible MIME
-// types for the handful of extensions zetl's dist/ emits.
+// types for the handful of extensions ztl's dist/ emits.
 
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
@@ -87,7 +87,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, root: string): 
     let info = await safeStat(target);
 
     // If the path has no extension and isn't a file, try `${path}.html` — the
-    // shape `zetl build` emits pages under.
+    // shape `ztl build` emits pages under.
     if (!info && !extname(requested)) {
       const htmlCandidate = `${requested}.html`;
       info = await safeStat(htmlCandidate);

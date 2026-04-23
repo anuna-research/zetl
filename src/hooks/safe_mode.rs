@@ -17,10 +17,10 @@
 //!    `[[theme.hooks]]` declarations, reporting hooks present on disk
 //!    but missing from the manifest (the warning surface
 //!    [`format_undeclared_warning`] formats) plus declared entries with
-//!    no on-disk match (informational; surfaced by `zetl theme show`).
+//!    no on-disk match (informational; surfaced by `ztl theme show`).
 //!
 //! This module owns the pure logic only. CLI flag wiring (`--safe-mode`
-//! on `zetl build` / `zetl serve`) and the actual stderr writes happen
+//! on `ztl build` / `ztl serve`) and the actual stderr writes happen
 //! in their respective command handlers.
 
 use std::collections::BTreeSet;
@@ -101,7 +101,7 @@ impl SafeMode {
 /// One skipped hook reported by [`apply`].
 ///
 /// The fields are exactly what [`format_skip_line`] needs to render the
-/// SPEC-mandated `[zetl] --safe-mode: skipped <stage>/<extension_id> from <source>`
+/// SPEC-mandated `[ztl] --safe-mode: skipped <stage>/<extension_id> from <source>`
 /// log line, kept as structured data so JSON-mode callers can serialise
 /// them too.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -121,7 +121,7 @@ pub struct SkippedHook {
 ///
 /// `shadowed` and `disabled` carry-throughs are preserved unchanged —
 /// safe-mode is a runtime filter on the *enabled* set, not a discovery-
-/// time pruning. This keeps `zetl hook coverage` honest about what
+/// time pruning. This keeps `ztl hook coverage` honest about what
 /// composed but did not run.
 pub fn apply(pipeline: StagePipeline, policy: &SafeMode) -> (StagePipeline, Vec<SkippedHook>) {
     let StagePipeline {
@@ -178,10 +178,10 @@ pub fn apply_all(
 /// Format the SPEC-mandated stderr line for one skipped hook.
 ///
 /// Shape (REQ-3223):
-/// `[zetl] --safe-mode: skipped <stage>/<extension_id> from <source>`
+/// `[ztl] --safe-mode: skipped <stage>/<extension_id> from <source>`
 pub fn format_skip_line(skipped: &SkippedHook) -> String {
     format!(
-        "[zetl] --safe-mode: skipped {}/{} from {}",
+        "[ztl] --safe-mode: skipped {}/{} from {}",
         skipped.stage, skipped.extension_id, skipped.source
     )
 }
@@ -191,7 +191,7 @@ pub fn format_skip_line(skipped: &SkippedHook) -> String {
 /// `undeclared` are on-disk hooks the manifest forgot to list — the
 /// SPEC's first-use warning surface. `missing_on_disk` are declarations
 /// that point at hooks no longer present (typo, deleted file, never
-/// shipped); informational, surfaced by `zetl theme show` so theme
+/// shipped); informational, surfaced by `ztl theme show` so theme
 /// authors can spot their own drift.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ThemeAudit {
@@ -227,15 +227,15 @@ impl ThemeAudit {
 /// undeclared hooks.
 ///
 /// Shape (REQ-3223):
-/// `[zetl] theme <name> ships <N> undeclared hook(s); run`
-/// `'zetl theme show <name>' for details, or --safe-mode to suppress`
+/// `[ztl] theme <name> ships <N> undeclared hook(s); run`
+/// `'ztl theme show <name>' for details, or --safe-mode to suppress`
 ///
 /// The two-line wrap matches the prose in the spec; callers that want
 /// a single line can `.replace('\n', " ")` after formatting.
 pub fn format_undeclared_warning(audit: &ThemeAudit) -> String {
     format!(
-        "[zetl] theme {} ships {} undeclared hook(s); run \
-         'zetl theme show {}' for details, or --safe-mode to suppress",
+        "[ztl] theme {} ships {} undeclared hook(s); run \
+         'ztl theme show {}' for details, or --safe-mode to suppress",
         audit.theme_name,
         audit.undeclared.len(),
         audit.theme_name,
@@ -438,7 +438,7 @@ mod tests {
         };
         assert_eq!(
             format_skip_line(&s),
-            "[zetl] --safe-mode: skipped transform/callouts from theme"
+            "[ztl] --safe-mode: skipped transform/callouts from theme"
         );
     }
 
@@ -459,8 +459,8 @@ mod tests {
             missing_on_disk: Vec::new(),
         };
         let line = format_undeclared_warning(&audit);
-        assert!(line.starts_with("[zetl] theme fountain ships 2 undeclared hook(s); run"));
-        assert!(line.contains("'zetl theme show fountain'"));
+        assert!(line.starts_with("[ztl] theme fountain ships 2 undeclared hook(s); run"));
+        assert!(line.contains("'ztl theme show fountain'"));
         assert!(line.contains("--safe-mode to suppress"));
     }
 
@@ -483,7 +483,7 @@ mod tests {
                 author: None,
                 license: None,
                 homepage: None,
-                min_zetl_version: None,
+                min_ztl_version: None,
                 templates: None,
                 hooks: vec![
                     ThemeHookDecl {
@@ -534,7 +534,7 @@ mod tests {
                 author: None,
                 license: None,
                 homepage: None,
-                min_zetl_version: None,
+                min_ztl_version: None,
                 templates: None,
                 hooks: vec![ThemeHookDecl {
                     stage: "transform".to_string(),
@@ -578,7 +578,7 @@ mod tests {
                 author: None,
                 license: None,
                 homepage: None,
-                min_zetl_version: None,
+                min_ztl_version: None,
                 templates: None,
                 hooks: vec![
                     ThemeHookDecl {
@@ -618,7 +618,7 @@ mod tests {
         write_hook(&theme_root, "", Stage::Transform, "callouts.py");
         write_hook(&theme_root, "", Stage::Transform, "rogue.py");
         // Vault adds its own transform.
-        write_hook(&vault_root, ".zetl/hooks", Stage::Transform, "tasks.py");
+        write_hook(&vault_root, ".ztl/hooks", Stage::Transform, "tasks.py");
 
         let pipe = compose_stage(&vault_root, Some(&theme_root), Stage::Transform).unwrap();
         assert_eq!(pipe.hooks.len(), 3);
@@ -632,9 +632,9 @@ mod tests {
         let lines: Vec<String> = skipped.iter().map(format_skip_line).collect();
         assert!(lines
             .iter()
-            .any(|l| l == "[zetl] --safe-mode: skipped transform/rogue from theme"));
+            .any(|l| l == "[ztl] --safe-mode: skipped transform/rogue from theme"));
         assert!(lines
             .iter()
-            .any(|l| l == "[zetl] --safe-mode: skipped transform/tasks from vault"));
+            .any(|l| l == "[ztl] --safe-mode: skipped transform/tasks from vault"));
     }
 }

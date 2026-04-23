@@ -1,6 +1,6 @@
 //! User profile storage for multi-user collaborative editing (SPEC-020).
 //!
-//! Profiles are stored at `.zetl/users/<user-id>/profile.json` following
+//! Profiles are stored at `.ztl/users/<user-id>/profile.json` following
 //! the CON-020-001 schema.
 
 pub mod access_request;
@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const USERS_DIR: &str = ".zetl/users";
+const USERS_DIR: &str = ".ztl/users";
 
 /// Hardcoded role levels for collab authorization (placeholder for SPL rules).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -44,7 +44,7 @@ impl Role {
     /// Determine the role for a user profile.
     ///
     /// Owner → Admin.  For non-owners, reads the role from
-    /// `.zetl/collab/access.spl` (written by `/_admin/permissions`).
+    /// `.ztl/collab/access.spl` (written by `/_admin/permissions`).
     /// Falls back to Reader when no explicit assignment exists.
     pub fn for_profile(profile: &UserProfile) -> Self {
         if profile.owner {
@@ -63,7 +63,7 @@ impl Role {
         }
 
         // Read role from access.spl
-        let path = vault_root.join(".zetl/collab/access.spl");
+        let path = vault_root.join(".ztl/collab/access.spl");
         if let Ok(content) = std::fs::read_to_string(&path) {
             for line in content.lines() {
                 let trimmed = line.trim();
@@ -224,7 +224,7 @@ pub fn profile_path(vault_root: &Path, user_id: &str) -> PathBuf {
     user_dir(vault_root, user_id).join("profile.json")
 }
 
-/// Save a user profile to `.zetl/users/<id>/profile.json`.
+/// Save a user profile to `.ztl/users/<id>/profile.json`.
 pub fn save_profile(vault_root: &Path, profile: &UserProfile) -> Result<()> {
     let dir = user_dir(vault_root, &profile.id);
     fs::create_dir_all(&dir)
@@ -238,7 +238,7 @@ pub fn save_profile(vault_root: &Path, profile: &UserProfile) -> Result<()> {
     Ok(())
 }
 
-/// Load a user profile from `.zetl/users/<id>/profile.json`.
+/// Load a user profile from `.ztl/users/<id>/profile.json`.
 pub fn load_profile(vault_root: &Path, user_id: &str) -> Result<Option<UserProfile>> {
     let path = profile_path(vault_root, user_id);
     if !path.exists() {
@@ -310,13 +310,13 @@ pub fn delete_profile(vault_root: &Path, user_id: &str) -> Result<()> {
     Ok(())
 }
 
-/// Ensure sensitive `.zetl/` subdirectories are listed in the vault's `.gitignore`.
+/// Ensure sensitive `.ztl/` subdirectories are listed in the vault's `.gitignore`.
 ///
-/// Appends `.zetl/collab/`, `.zetl/users/`, and `.zetl/sessions/` if they are
+/// Appends `.ztl/collab/`, `.ztl/users/`, and `.ztl/sessions/` if they are
 /// not already present. Creates the `.gitignore` file if it does not exist.
 pub fn ensure_gitignore(vault_root: &Path) -> Result<()> {
     let gitignore = vault_root.join(".gitignore");
-    let entries = [".zetl/collab/", ".zetl/users/", ".zetl/sessions/"];
+    let entries = [".ztl/collab/", ".ztl/users/", ".ztl/sessions/"];
 
     let existing = if gitignore.exists() {
         fs::read_to_string(&gitignore)
@@ -346,7 +346,7 @@ pub fn ensure_gitignore(vault_root: &Path) -> Result<()> {
 
     // Add a header comment if we're adding to an existing file
     if !content.is_empty() {
-        content.push_str("\n# zetl collab secrets (auto-added)\n");
+        content.push_str("\n# ztl collab secrets (auto-added)\n");
     }
 
     for entry in &missing {
@@ -622,7 +622,7 @@ mod tests {
         save_profile(tmp.path(), &profile).unwrap();
 
         // Verify the directory structure matches spec
-        let expected_dir = tmp.path().join(".zetl/users").join(&profile.id);
+        let expected_dir = tmp.path().join(".ztl/users").join(&profile.id);
         assert!(expected_dir.is_dir());
         assert!(expected_dir.join("profile.json").is_file());
     }
@@ -645,25 +645,25 @@ mod tests {
         ensure_gitignore(tmp.path()).unwrap();
 
         let content = fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
-        assert!(content.contains(".zetl/collab/"));
-        assert!(content.contains(".zetl/users/"));
-        assert!(content.contains(".zetl/sessions/"));
+        assert!(content.contains(".ztl/collab/"));
+        assert!(content.contains(".ztl/users/"));
+        assert!(content.contains(".ztl/sessions/"));
     }
 
     #[test]
     fn test_ensure_gitignore_appends_missing() {
         let tmp = TempDir::new().unwrap();
-        fs::write(tmp.path().join(".gitignore"), "/target\n.zetl/collab/\n").unwrap();
+        fs::write(tmp.path().join(".gitignore"), "/target\n.ztl/collab/\n").unwrap();
 
         ensure_gitignore(tmp.path()).unwrap();
 
         let content = fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
         // Should preserve existing entries
         assert!(content.contains("/target"));
-        assert!(content.contains(".zetl/collab/"));
+        assert!(content.contains(".ztl/collab/"));
         // Should add missing ones
-        assert!(content.contains(".zetl/users/"));
-        assert!(content.contains(".zetl/sessions/"));
+        assert!(content.contains(".ztl/users/"));
+        assert!(content.contains(".ztl/sessions/"));
     }
 
     #[test]

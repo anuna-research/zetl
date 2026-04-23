@@ -1,10 +1,10 @@
 ;; ────────────────────────────────────────────────────────────────────
-;; IMPL-002: zetl search — Full-Text Content Search
+;; IMPL-002: ztl search — Full-Text Content Search
 ;; ────────────────────────────────────────────────────────────────────
 
 (meta plan
   (id "IMPL-002")
-  (title "Implement zetl search — Full-Text Content Search")
+  (title "Implement ztl search — Full-Text Content Search")
   (version "0.1.0")
   (status "active")
   (created "2026-02-18")
@@ -54,7 +54,7 @@
 
 (meta task-cmd-search
   (description "Wire up cmd_search in main.rs: parse CLI args, call search_vault(), format output as JSON or table. Add Line/Col/Context columns to table. Handle exit codes: 0 matches found, 1 no matches, 2 bad regex.")
-  (acceptance "Manual test: zetl search 'idea' --context 40 returns correct results from demo-vault in both JSON and table format")
+  (acceptance "Manual test: ztl search 'idea' --context 40 returns correct results from demo-vault in both JSON and table format")
   (file "src/main.rs")
   (req "REQ-013")
   (con "CON-008"))
@@ -67,7 +67,7 @@
 
 (meta task-verify
   (description "Run cargo test, cargo clippy -- -D warnings, and manual smoke tests against demo-vault to verify the full implementation")
-  (acceptance "All tests pass; zero clippy warnings; manual test of zetl search 'idea' --context 40 on demo-vault produces correct output"))
+  (acceptance "All tests pass; zero clippy warnings; manual test of ztl search 'idea' --context 40 on demo-vault produces correct output"))
 
 (meta task-cleanup-similar
   (description "Remove the line/context fields from SimilarResult and the extract_text_context helper, since search now handles content lookup properly. Revert similar to its original clean page-name-only output per SPEC-001 CON-005.")

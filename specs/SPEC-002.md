@@ -1,34 +1,34 @@
 ---
-title: "SPEC-002: zetl search — Full-Text Content Search"
+title: "SPEC-002: ztl search — Full-Text Content Search"
 version: 0.1.0
 status: draft
 audience: agent, human
 date: 2026-02-18
 ---
 
-# SPEC-002: zetl search — Full-Text Content Search
+# SPEC-002: ztl search — Full-Text Content Search
 
 ## Information Table
 
 | Field          | Value                                              |
 | -------------- | -------------------------------------------------- |
 | Document ID    | SPEC-002                                           |
-| Title          | zetl search — Full-Text Content Search             |
+| Title          | ztl search — Full-Text Content Search             |
 | Version        | 0.1.0                                              |
 | Status         | Draft                                              |
 | Author         | Agent (USDD Protocol v1.0.0)                       |
 | Date           | 2026-02-18                                         |
 | Audience       | Agent, Human                                       |
 | Trace          | USDD Agent Protocol v1.0.0                         |
-| Parent         | SPEC-001: zetl — Bi-directional Link Graph CLI     |
+| Parent         | SPEC-001: ztl — Bi-directional Link Graph CLI     |
 
 ---
 
 ## 1. Overview
 
-SPEC-001 defined zetl as a link-graph tool. It explicitly placed full-text search **out of scope**, deferring to `rg`, `grep`, or dedicated tools. In practice, users reach for `similar` when they want content search, but `similar` is a SimHash page-name matcher — it cannot find arbitrary text inside files.
+SPEC-001 defined ztl as a link-graph tool. It explicitly placed full-text search **out of scope**, deferring to `rg`, `grep`, or dedicated tools. In practice, users reach for `similar` when they want content search, but `similar` is a SimHash page-name matcher — it cannot find arbitrary text inside files.
 
-This specification adds a `search` subcommand that performs fast, local, case-insensitive content search across all Markdown files in the vault. It reuses zetl's existing file-walking and ignore-pattern infrastructure but does **not** require the link graph or SimHash index — it reads raw file contents directly.
+This specification adds a `search` subcommand that performs fast, local, case-insensitive content search across all Markdown files in the vault. It reuses ztl's existing file-walking and ignore-pattern infrastructure but does **not** require the link graph or SimHash index — it reads raw file contents directly.
 
 ### 1.1 Motivation
 
@@ -54,7 +54,7 @@ A dedicated `search` command solves this cleanly:
 - Optional regex mode (`--regex`)
 - Body-text-only search (default) and raw-content search (`--all`)
 - Line number, column, and configurable context for each match
-- Respects `.zetlignore` and default ignore patterns (`.git`, `node_modules`, `.zetl`)
+- Respects `.ztlignore` and default ignore patterns (`.git`, `node_modules`, `.ztl`)
 - Result limiting (`--limit`)
 - JSON and table output
 
@@ -76,25 +76,25 @@ The existing user profiles from SPEC-001 (section 2) apply. This specification e
 ```
 Daily workflow (updated):
   1. Create/edit markdown files with [[wikilinks]]
-  2. Run `zetl check` to validate link integrity
-  3. Run `zetl search "concept"` to find all mentions of a topic across the vault
-  4. Run `zetl similar <query>` to find near-duplicate page names before creating new pages
-  5. Run `zetl backlinks <page>` to discover link context
+  2. Run `ztl check` to validate link integrity
+  3. Run `ztl search "concept"` to find all mentions of a topic across the vault
+  4. Run `ztl similar <query>` to find near-duplicate page names before creating new pages
+  5. Run `ztl backlinks <page>` to discover link context
 ```
 
-**Key use case:** An agent creating a new page about "spaced repetition" runs `zetl search "spaced repetition"` to discover all existing mentions — finding related context in files that may not link to each other. This is fundamentally different from `backlinks` (which requires an existing page) and `similar` (which matches page names, not content).
+**Key use case:** An agent creating a new page about "spaced repetition" runs `ztl search "spaced repetition"` to discover all existing mentions — finding related context in files that may not link to each other. This is fundamentally different from `backlinks` (which requires an existing page) and `similar` (which matches page names, not content).
 
 ### 2.2 Human Knowledge Worker — Extended Workflow
 
 ```
 Daily workflow (updated):
   1. Write notes in Obsidian/Logseq/editor
-  2. Run `zetl search "meeting notes" --context 60 -f table` to find scattered references
-  3. Run `zetl stats` for an overview
-  4. Run `zetl check --orphans` to find disconnected notes
+  2. Run `ztl search "meeting notes" --context 60 -f table` to find scattered references
+  3. Run `ztl stats` for an overview
+  4. Run `ztl check --orphans` to find disconnected notes
 ```
 
-**Key use case:** A researcher remembers writing about "elaborative encoding" but can't recall which notes contain it. `zetl search "elaborative encoding" --context 40` returns every occurrence with surrounding text, across all files, respecting their ignore patterns.
+**Key use case:** A researcher remembers writing about "elaborative encoding" but can't recall which notes contain it. `ztl search "elaborative encoding" --context 40` returns every occurrence with surrounding text, across all files, respecting their ignore patterns.
 
 ---
 
@@ -211,7 +211,7 @@ Rationale:
   - For the target vault size (≤ 10,000 files, ≤ 50 MB total), sequential
     read + search completes in < 2 seconds. This meets NFR-006.
   - No new cache format or invalidation logic required.
-  - Consistent with zetl's "fast and disposable" philosophy (SPEC-001 §1.1).
+  - Consistent with ztl's "fast and disposable" philosophy (SPEC-001 §1.1).
   - The existing file-walk and ignore-pattern infrastructure from the scanner
     module can be reused directly.
   - If vaults grow beyond 10K files, an inverted index can be added in a
@@ -302,7 +302,7 @@ For each file in the vault (respecting ignore patterns):
 ```
 CON-008: search
 
-zetl search <QUERY> [OPTIONS]
+ztl search <QUERY> [OPTIONS]
 
 Search vault file contents for text matching the query.
 
@@ -379,7 +379,7 @@ Given: A vault with 3 files:
   - "Alpha.md" containing "The quick brown fox" on line 3
   - "Beta.md" containing "A quick summary" on line 5
   - "Gamma.md" containing "No match here"
-When: `zetl search "quick"` is run
+When: `ztl search "quick"` is run
 Then:
   - Returns 2 results (Alpha line 3, Beta line 5)
   - Each result has page, path, line, column
@@ -388,7 +388,7 @@ Then:
 
 Scenario: Search with context
 Given: Same vault
-When: `zetl search "quick" --context 10` is run
+When: `ztl search "quick" --context 10` is run
 Then:
   - Each result has a context field with surrounding text
   - Alpha result context includes "The quick brown"
@@ -396,7 +396,7 @@ Then:
 
 Scenario: No matches
 Given: Same vault
-When: `zetl search "nonexistent"` is run
+When: `ztl search "nonexistent"` is run
 Then:
   - Returns empty results array with total_matches: 0
   - Exit code 1
@@ -410,25 +410,25 @@ TEST-014: Body-Text Exclusion
 Scenario: Frontmatter excluded by default
 Given: A file with YAML frontmatter containing "title: Quick Start"
        and body text not containing "Quick Start"
-When: `zetl search "Quick Start"` is run (default body-text mode)
+When: `ztl search "Quick Start"` is run (default body-text mode)
 Then:
   - No match found in that file
 
 Scenario: Frontmatter included with --all
-When: `zetl search "Quick Start" --all` is run
+When: `ztl search "Quick Start" --all` is run
 Then:
   - Match found in the frontmatter line
 
 Scenario: Code block excluded by default
 Given: A file with a fenced code block containing "quick_sort()" on line 10
        and body text containing "quick overview" on line 3
-When: `zetl search "quick"` is run
+When: `ztl search "quick"` is run
 Then:
   - Returns match at line 3 (body text)
   - Does NOT return match at line 10 (code block)
 
 Scenario: Code block included with --all
-When: `zetl search "quick" --all` is run
+When: `ztl search "quick" --all` is run
 Then:
   - Returns matches at both line 3 and line 10
 
@@ -440,7 +440,7 @@ TEST-015: Regex Search
 
 Scenario: Regex pattern matching
 Given: A vault with files containing "note", "notes", and "notation"
-When: `zetl search "note[s]?" --regex` is run
+When: `ztl search "note[s]?" --regex` is run
 Then:
   - Matches "note" and "notes" but not "notation"
     (since the pattern anchors to "note" or "notes" exactly within
@@ -449,7 +449,7 @@ Then:
     boundaries if needed: `\bnotes?\b`)
 
 Scenario: Invalid regex
-When: `zetl search "[invalid" --regex` is run
+When: `ztl search "[invalid" --regex` is run
 Then:
   - Exit code 2
   - Error message describes the regex syntax problem
@@ -462,12 +462,12 @@ TEST-016: Case Sensitivity
 
 Scenario: Default case-insensitive search
 Given: A file containing "Zettelkasten" on line 1 and "zettelkasten" on line 5
-When: `zetl search "ZETTELKASTEN"` is run
+When: `ztl search "ZETTELKASTEN"` is run
 Then:
   - Returns both matches (lines 1 and 5)
 
 Scenario: Case-sensitive search
-When: `zetl search "Zettelkasten" --case-sensitive` is run
+When: `ztl search "Zettelkasten" --case-sensitive` is run
 Then:
   - Returns only line 1
   - Line 5 ("zettelkasten") is not matched
@@ -479,17 +479,17 @@ Verifies: REQ-016
 TEST-017: Search Respects Ignore Patterns
 
 Scenario: Ignored directories are not searched
-Given: A vault with `.zetlignore` containing "drafts/"
+Given: A vault with `.ztlignore` containing "drafts/"
        A file "drafts/Draft.md" containing "secret draft content"
        A file "Public.md" containing "public content"
-When: `zetl search "content"` is run
+When: `ztl search "content"` is run
 Then:
   - Returns match from Public.md
   - Does NOT return match from drafts/Draft.md
 
 Scenario: Default ignores apply
 Given: Files under .git/ and node_modules/ containing searchable text
-When: `zetl search "text"` is run
+When: `ztl search "text"` is run
 Then:
   - .git/ and node_modules/ files are not searched
 
@@ -501,7 +501,7 @@ TEST-018: Search Result Limiting
 
 Scenario: Limit caps returned results
 Given: A vault where "the" appears 100 times across files
-When: `zetl search "the" --limit 5` is run
+When: `ztl search "the" --limit 5` is run
 Then:
   - results array contains exactly 5 entries
   - total_matches reports the full count (100)
@@ -540,7 +540,7 @@ to support performance monitoring.
 
 ### 9.1 Scope Update
 
-SPEC-001 section 1.2 lists "Full-text search (defer to `rg`, `grep`, or dedicated tools)" as **out of scope**. This SPEC narrows that exclusion: zetl now provides basic content search over its own vault files, but does **not** replace general-purpose tools like `rg` for complex queries across arbitrary file types.
+SPEC-001 section 1.2 lists "Full-text search (defer to `rg`, `grep`, or dedicated tools)" as **out of scope**. This SPEC narrows that exclusion: ztl now provides basic content search over its own vault files, but does **not** replace general-purpose tools like `rg` for complex queries across arbitrary file types.
 
 ### 9.2 Relationship to `similar`
 

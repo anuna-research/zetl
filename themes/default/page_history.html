@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}History: {{ page_title }} — zetl{% endblock %}
+{% block title %}History: {{ page_title }} — ztl{% endblock %}
 
 {% block styles %}
 <style>
@@ -293,7 +293,7 @@
     content.textContent = 'Loading diff...';
     panel.style.display = '';
 
-    var csrfCookie = document.cookie.split(';').map(function(c){return c.trim();}).find(function(c){return c.startsWith('zetl_csrf=');});
+    var csrfCookie = document.cookie.split(';').map(function(c){return c.trim();}).find(function(c){return c.startsWith('ztl_csrf=');});
     var csrfVal = csrfCookie ? csrfCookie.split('=')[1] : '';
 
     fetch(ROOT + 'api/history/file-diff?commit=' + encodeURIComponent(commitId) + '&slug=' + encodeURIComponent(SLUG), {
@@ -340,7 +340,7 @@
     btn.disabled = true;
     btn.textContent = 'Restoring...';
 
-    var csrfCookie = document.cookie.split(';').map(function(c){return c.trim();}).find(function(c){return c.startsWith('zetl_csrf=');});
+    var csrfCookie = document.cookie.split(';').map(function(c){return c.trim();}).find(function(c){return c.startsWith('ztl_csrf=');});
     var csrfVal = csrfCookie ? csrfCookie.split('=')[1] : '';
 
     fetch(ROOT + 'api/history/restore', {

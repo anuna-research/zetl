@@ -12,23 +12,23 @@
 //! Covered verbs:
 //!
 //! - [`revoke_grant`] — set `revoked=true` on a grant by id
-//!   (REQ-3416 `zetl cap revoke`).
+//!   (REQ-3416 `ztl cap revoke`).
 //! - [`finalise_grant`] — set `bound=true` on a grant
-//!   (REQ-3416 / REQ-3426 `zetl cap finalise`). The `--rotate-grant`
+//!   (REQ-3416 / REQ-3426 `ztl cap finalise`). The `--rotate-grant`
 //!   branch (reissuing priv_A) is orchestrated in the shell because it
 //!   needs both randomness and cohort-pubkey updates; the shell calls
 //!   [`replace_grant_recipient`] to perform the in-memory swap.
 //! - [`sweep_expired`] — mark every past-expires grant revoked
-//!   (REQ-3416 `zetl cap sweep`).
+//!   (REQ-3416 `ztl cap sweep`).
 //! - [`check_grants`] — produce a report for the stale-grant audit
-//!   (REQ-3416 `zetl cap check`; exits 1 in the shell when any grant
+//!   (REQ-3416 `ztl cap check`; exits 1 in the shell when any grant
 //!   has expired since the last build).
 //! - [`rotate_cohort_salt`] — record a new content-key salt on a
 //!   cohort without touching `salt_stable` (REQ-3402 / BUG-023 URL
-//!   stability; `zetl cap rotate --cohort`).
+//!   stability; `ztl cap rotate --cohort`).
 //! - [`replace_vault_signing_pubkey`] — write a new Ed25519 pubkey to
 //!   `recipients.toml::[vault].signing_pubkey` (REQ-3427
-//!   `zetl cap rotate-signing-key`).
+//!   `ztl cap rotate-signing-key`).
 //!
 //! The "is this RFC 3339 timestamp in the past?" check is lexicographic
 //! over `Z`-suffixed strings — exactly the same comparison the build
@@ -54,7 +54,7 @@ pub enum RevocationError {
     CohortNotFound(String),
     #[error(
         "recipient pubkey {recipient:?} for grant {grant_id:?} is not present in cohort \
-         {cohort:?}; re-issue the grant via `zetl cap invite`"
+         {cohort:?}; re-issue the grant via `ztl cap invite`"
     )]
     RecipientNotInCohort {
         grant_id: String,
@@ -136,7 +136,7 @@ pub fn finalise_grant(
 }
 
 /// Rotate the recipient pubkey on a grant. Used by
-/// `zetl cap finalise --rotate-grant`: the shell generates a fresh
+/// `ztl cap finalise --rotate-grant`: the shell generates a fresh
 /// (priv_A, pub_A) keypair, swaps the cohort's old pubkey for the new
 /// one in `recipients.toml`, and calls this to update the grant row.
 ///
@@ -199,7 +199,7 @@ pub struct SweepOutcome {
     /// flipped to `revoked=true` by this call.
     pub newly_revoked: Vec<String>,
     /// Grants that were past-expires AND already revoked — included so
-    /// `zetl cap sweep --json` can report the full expired-set.
+    /// `ztl cap sweep --json` can report the full expired-set.
     pub already_revoked_expired: Vec<String>,
     /// Grants whose `expires` is in the future (or absent) — untouched.
     pub active: usize,
@@ -235,7 +235,7 @@ pub struct ExpiredGrantRecord {
     pub revoked: bool,
 }
 
-/// Report produced by `zetl cap check`. The shell exits 1 when
+/// Report produced by `ztl cap check`. The shell exits 1 when
 /// `expired_unrevoked` is non-empty — that's the CI gate REQ-3416
 /// alludes to ("exits 1 if any grant has expired since last build").
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

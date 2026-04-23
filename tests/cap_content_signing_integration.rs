@@ -3,7 +3,7 @@
 //!
 //! The unit tests in `src/cap/sign.rs` pin internal invariants
 //! (header layout, pure-core determinism, parser). This integration
-//! file exercises the public API through the `zetl::cap::sign` path
+//! file exercises the public API through the `ztl::cap::sign` path
 //! the build driver will import, and composes the signing layer with
 //! a real age v1 ciphertext produced by `cap::age_encrypt` — the
 //! same pair the shim will see on the wire.
@@ -29,11 +29,11 @@ use age::x25519;
 use rand_chacha::ChaCha20Rng;
 use rand_core::SeedableRng;
 
-use zetl::cap::age_encrypt::encrypt_to_cohort_with_rng;
-use zetl::cap::genkey::{SIGNING_KEY_LEN, ZETL_CAP_SIGNING_KEY_ENV};
-use zetl::cap::pad::X25519Pubkey;
-use zetl::cap::recipients::parsing::CohortMode;
-use zetl::cap::sign::{
+use ztl::cap::age_encrypt::encrypt_to_cohort_with_rng;
+use ztl::cap::genkey::{SIGNING_KEY_LEN, ztl_CAP_SIGNING_KEY_ENV};
+use ztl::cap::pad::X25519Pubkey;
+use ztl::cap::recipients::parsing::CohortMode;
+use ztl::cap::sign::{
     build_envelope, parse_envelope, sign_and_build_envelope, sign_ciphertext, verify_ciphertext,
     EnvelopeHeader, EnvelopeParseError, KeyLoadError, VaultSigningKey, VerifyError,
     ENVELOPE_SCHEMA, HEADER_SCHEMA, HEADER_SIGNATURE, SIGNATURE_LEN,
@@ -194,8 +194,8 @@ fn test_3427_signature_covers_ciphertext_only_headers_untrusted() {
     let envelope = sign_and_build_envelope(&key, &sample_header(), &ciphertext);
 
     // In-place overwrite of the slug header — same byte length.
-    let needle = b"Zetl-Slug: onboarding";
-    let replace = b"Zetl-Slug: ATTACKER-X";
+    let needle = b"ztl-Slug: onboarding";
+    let replace = b"ztl-Slug: ATTACKER-X";
     assert_eq!(needle.len(), replace.len());
     let at = envelope
         .windows(needle.len())
@@ -217,7 +217,7 @@ fn test_3427_signature_covers_ciphertext_only_headers_untrusted() {
 
 #[test]
 fn test_3427_envelope_byte_layout_matches_con_3404() {
-    // The wire envelope starts with `Zetl-Schema: v4\n`. Pin the
+    // The wire envelope starts with `ztl-Schema: v4\n`. Pin the
     // first bytes so a builder refactor that accidentally reorders
     // headers is caught here, not by the shim.
     let key = sample_signing_key();
@@ -263,7 +263,7 @@ fn test_3427_unsigned_envelope_is_rejected_by_parser() {
     assert!(matches!(err, EnvelopeParseError::MissingSeparator));
 
     // A blob that happens to contain a stray `\n\n` still fails
-    // because the mandatory `Zetl-Schema` header is absent.
+    // because the mandatory `ztl-Schema` header is absent.
     let with_sep = b"garbage\n\nmore garbage";
     let err = parse_envelope(with_sep).expect_err("must not parse");
     assert!(
@@ -277,14 +277,14 @@ fn test_3427_unsigned_envelope_is_rejected_by_parser() {
 
 #[test]
 fn test_3427_key_load_surfaces_missing_env_with_remediation_hint() {
-    // TEST-3427 adjacent: if the build can't find ZETL_CAP_SIGNING_KEY,
-    // the operator must be pointed at `zetl cap genkey`. We don't
+    // TEST-3427 adjacent: if the build can't find ztl_CAP_SIGNING_KEY,
+    // the operator must be pointed at `ztl cap genkey`. We don't
     // mutate the real env from an integration test; instead we
     // exercise the parser with an empty string, which surfaces the
     // same EnvEmpty variant the env-missing path would.
-    match zetl::cap::sign::parse_signing_key_b64(ZETL_CAP_SIGNING_KEY_ENV, "") {
+    match ztl::cap::sign::parse_signing_key_b64(ztl_CAP_SIGNING_KEY_ENV, "") {
         Err(KeyLoadError::EnvEmpty { env }) => {
-            assert_eq!(env, ZETL_CAP_SIGNING_KEY_ENV);
+            assert_eq!(env, ztl_CAP_SIGNING_KEY_ENV);
         }
         Err(other) => panic!("expected EnvEmpty variant, got {other:?}"),
         Ok(_) => panic!("empty key string must be rejected"),

@@ -1,6 +1,6 @@
 # Pandoc ecosystem guide
 
-The Pandoc adapter lets zetl run Pandoc filters (the
+The Pandoc adapter lets ztl run Pandoc filters (the
 `pandoc-<name>` binary convention) and Pandoc-native features
 (`--citeproc`, `--lua-filter=…`) over vault pages as part of the
 normal hook pipeline. This guide covers install, configuration, the
@@ -18,7 +18,7 @@ with the shipped `ecosystem-pandoc` feature flag.
 - [Invocation contract](#invocation-contract)
 - [Known-working filters](#known-working-filters)
 - [Using Quarto filters](#using-quarto-filters)
-- [`zetl ecosystem check` walkthrough](#zetl-ecosystem-check-walkthrough)
+- [`ztl ecosystem check` walkthrough](#ztl-ecosystem-check-walkthrough)
 - [Troubleshooting](#troubleshooting)
 
 ## Install
@@ -54,12 +54,12 @@ pip install --user pantable
 cargo install pandoc-include-code
 ```
 
-zetl does not install filters for you — it defers to each
+ztl does not install filters for you — it defers to each
 ecosystem's native install mechanism and only provides hints when a
 configured filter is missing at build time (SPEC-033 §13 Q4).
 
-The Pandoc adapter is compiled into default zetl builds via the
-`ecosystem-pandoc` cargo feature. To build zetl without it:
+The Pandoc adapter is compiled into default ztl builds via the
+`ecosystem-pandoc` cargo feature. To build ztl without it:
 
 ```sh
 cargo build --no-default-features --features "<your-other-flags>"
@@ -71,8 +71,8 @@ at the matrix entry (SPEC-032 CON-3225).
 
 ## Configuration
 
-Pandoc hooks live under `.zetl/hooks/transform.d/` (default) or
-`.zetl/hooks/pre-parse.d/` (for native-mode pages whose entire
+Pandoc hooks live under `.ztl/hooks/transform.d/` (default) or
+`.ztl/hooks/pre-parse.d/` (for native-mode pages whose entire
 pipeline is Pandoc's). One TOML manifest per hook, named by the
 default-extension-id convention (see SPEC-032 REQ-3217).
 
@@ -81,7 +81,7 @@ default-extension-id convention (see SPEC-032 REQ-3217).
 External filter plugins — the `pandoc-*` binary convention.
 
 ```toml
-# .zetl/hooks/transform.d/crossref.toml
+# .ztl/hooks/transform.d/crossref.toml
 stage = "transform"
 ecosystem = "pandoc"
 exec = "pandoc-crossref"
@@ -106,7 +106,7 @@ Pandoc-native invocation modes (`--citeproc`, `--lua-filter`,
 path is now the built-in `--citeproc` flag.
 
 ```toml
-# .zetl/hooks/pre-parse.d/citeproc.toml
+# .ztl/hooks/pre-parse.d/citeproc.toml
 stage = "pre-parse"
 ecosystem = "pandoc"
 mode = "native"
@@ -114,9 +114,9 @@ args = ["--citeproc", "--bibliography=references.bib"]
 ```
 
 Native mode at `pre-parse` replaces the page's raw Markdown with
-Pandoc's HTML output before zetl's own parser runs — effectively
+Pandoc's HTML output before ztl's own parser runs — effectively
 delegating the full pipeline to Pandoc for that page. Native mode
-at `transform` is also supported: it runs after zetl's translator
+at `transform` is also supported: it runs after ztl's translator
 boundary on the pandoc-types AST.
 
 Lua filters live in native mode too:
@@ -152,8 +152,8 @@ cross-ecosystem field validation).
 ### Parser selection
 
 For best fidelity, pages processed by Pandoc transform hooks
-should also be parsed by Pandoc — otherwise zetl translates the
-commonmark-zetl-ext AST to pandoc-types at the adapter boundary,
+should also be parsed by Pandoc — otherwise ztl translates the
+commonmark-ztl-ext AST to pandoc-types at the adapter boundary,
 which is functional but lossy for Pandoc-specific syntax
 pulldown-cmark does not recognise (attribute blocks, fenced divs,
 extended table dialects).
@@ -161,7 +161,7 @@ extended table dialects).
 Vault-wide:
 
 ```toml
-# .zetl/config.toml
+# .ztl/config.toml
 [parse]
 default = "pandoc"
 ```
@@ -183,12 +183,12 @@ parser: pandoc
 ---
 ```
 
-Precedence is frontmatter > rule > vault default > zetl default
+Precedence is frontmatter > rule > vault default > ztl default
 (`commonmark`). See CON-3306.
 
-If you run Pandoc hooks over some pages but not others, zetl's
+If you run Pandoc hooks over some pages but not others, ztl's
 mixed-parser diagnostic (REQ-3315) will flag any
-parser-ambiguous syntax it finds under `zetl build`. Pass
+parser-ambiguous syntax it finds under `ztl build`. Pass
 `--strict-parsers` to fail the build on any such warning.
 
 ## Invocation contract
@@ -208,32 +208,32 @@ env:
 
 stdin:   pandoc-types AST, JSON, UTF-8
 stdout:  pandoc-types AST, JSON, UTF-8
-stderr:  free-form; zetl forwards under --verbose
+stderr:  free-form; ztl forwards under --verbose
 
 persistent mode: line-delimited JSON per SPEC-032 CON-3201.
 ```
 
 This is byte-identical to Pandoc's own filter contract (see
 <https://pandoc.org/filters.html>). Filters that work under
-`pandoc --filter <name>` work under zetl without modification, and
-cannot distinguish zetl-run from pandoc-run invocations.
+`pandoc --filter <name>` work under ztl without modification, and
+cannot distinguish ztl-run from pandoc-run invocations.
 
 ### Translation boundary
 
-zetl-specific concepts are preserved across filter invocations via
+ztl-specific concepts are preserved across filter invocations via
 marker conventions (REQ-3307):
 
-| zetl-ext node | pandoc-types shape                                            |
+| ztl-ext node | pandoc-types shape                                            |
 |---------------|---------------------------------------------------------------|
-| `Wikilink`    | `Span` with class `zetl-wikilink`; attrs `target`, `alias`, `heading`, `block_id`. |
-| `Embed`       | `Span` with class `zetl-embed`; attrs `target`, `heading`, `block_id`. |
+| `Wikilink`    | `Span` with class `ztl-wikilink`; attrs `target`, `alias`, `heading`, `block_id`. |
+| `Embed`       | `Span` with class `ztl-embed`; attrs `target`, `heading`, `block_id`. |
 | `SplBlock`    | `CodeBlock` with language `spl` (both directions).            |
 | `FrontMatter` | Pandoc `Meta` map at document root.                           |
 | Source position | `sourcepos` attribute on the enclosing Pandoc node.         |
 
 A filter that strips a wikilink span (by class match or attr
 access) is caught by the round-trip preservation check defined in
-SPEC-032 CON-3221: zetl counts node types before and after,
+SPEC-032 CON-3221: ztl counts node types before and after,
 compares against the plugin's declared `preserves` list in the
 matrix (or the manifest's own `[contract]` table), and emits a
 `contract_violation` diagnostic naming the dropped node types.
@@ -246,7 +246,7 @@ ast-reference-check gate).
 ## Known-working filters
 
 The v1 compatibility matrix ships three seed entries in
-`tools/zetl-ecosystem-matrix.toml`. All land at
+`tools/ztl-ecosystem-matrix.toml`. All land at
 `tier = "experimental"` — documenting the shape of a canonical
 render without a live golden-HTML CI assertion yet. Promotion to
 `partial` and `supported` is gated by the REQ-3311 tier checklist
@@ -262,7 +262,7 @@ Adds numbered cross-references for figures, equations, and tables.
 Example manifest:
 
 ```toml
-# .zetl/hooks/transform.d/crossref.toml
+# .ztl/hooks/transform.d/crossref.toml
 stage    = "transform"
 ecosystem = "pandoc"
 exec     = "pandoc-crossref"
@@ -272,7 +272,7 @@ mode     = "persistent"
 Known limitations at experimental tier:
 
 1. pandoc-types major version must match the installed pandoc binary; mismatches surface via REQ-3314 plugin-version-drift detection.
-2. Round-trip preservation of zetl Wikilink/Embed/SPL markers is inferred from CON-3221 defaults but not yet verified by a live golden run.
+2. Round-trip preservation of ztl Wikilink/Embed/SPL markers is inferred from CON-3221 defaults but not yet verified by a live golden run.
 3. Crossref may inject caption spans that inflate node counts beyond the default REQ-3224 expansion-bound advisory.
 
 ### `pandoc-citeproc` (legacy)
@@ -307,7 +307,7 @@ runtime probe checks for the Python module, not a standalone
 binary.
 
 ```toml
-# .zetl/hooks/transform.d/pantable.toml
+# .ztl/hooks/transform.d/pantable.toml
 stage    = "transform"
 ecosystem = "pandoc"
 exec     = "pantable"            # resolves to `python3 -m pantable`
@@ -315,16 +315,16 @@ exec     = "pantable"            # resolves to `python3 -m pantable`
 
 Known limitations at experimental tier:
 
-1. Tables produced may carry `colspecs` with non-default alignment that round-trip through zetl-ext as plain Table nodes; alignment fidelity is best-effort.
+1. Tables produced may carry `colspecs` with non-default alignment that round-trip through ztl-ext as plain Table nodes; alignment fidelity is best-effort.
 2. Promotion to `partial` blocks on a golden-HTML fixture confirming CSV-cell content survives the translate → filter → translate-back cycle without markup corruption.
 
 ### Other filters
 
-Filters not in the matrix run too — zetl does not reject unknown
+Filters not in the matrix run too — ztl does not reject unknown
 filter binaries — but emit a one-shot warning at first use:
 
 ```
-[zetl] ecosystem pandoc: <plugin> not in matrix; behavioural
+[ztl] ecosystem pandoc: <plugin> not in matrix; behavioural
        contract unknown, no preservation checks active
 ```
 
@@ -346,7 +346,7 @@ SPEC-033 REQ-3311.
 
 ## Using Quarto filters
 
-Quarto layers on Pandoc, so if zetl runs Pandoc correctly, most
+Quarto layers on Pandoc, so if ztl runs Pandoc correctly, most
 filters distributed as Quarto extensions work through the same
 Pandoc adapter with no Quarto-specific code path.
 
@@ -357,11 +357,11 @@ rather than a distinct `ecosystem = "quarto"` adapter.
 ### Quarto Lua filters
 
 Most Quarto extensions ship as Lua filters. Install the extension
-with `quarto install extension …`, then point zetl's manifest at
+with `quarto install extension …`, then point ztl's manifest at
 the resolved Lua file:
 
 ```toml
-# .zetl/hooks/transform.d/quarto-diagram.toml
+# .ztl/hooks/transform.d/quarto-diagram.toml
 stage       = "transform"
 ecosystem   = "pandoc"
 mode        = "native"
@@ -379,7 +379,7 @@ pre-render scripts that depend on the full `quarto render` run
 Those features do not run under the filter contract and are out of
 scope for the Pandoc adapter. If you need the full Quarto
 pipeline, run `quarto render` separately and serve its HTML output
-outside zetl.
+outside ztl.
 
 ### What round-trips
 
@@ -389,14 +389,14 @@ marker conventions. Filters that unwrap spans indiscriminately
 will strip those markers; the REQ-3224 preservation check catches
 that in the build-summary diagnostics.
 
-## `zetl ecosystem check` walkthrough
+## `ztl ecosystem check` walkthrough
 
-`zetl ecosystem check` probes every compiled-in adapter and reports
+`ztl ecosystem check` probes every compiled-in adapter and reports
 detection state, detected version, and plugin availability
 (REQ-3310, CON-3310).
 
 ```
-$ zetl ecosystem check
+$ ztl ecosystem check
 ECOSYSTEM  STATUS        VERSION              PLUGINS CONFIGURED   PLUGINS AVAILABLE
 pandoc     detected      3.1.12.1             2                    2
 mdbook     missing       (binary absent)      0                    0
@@ -407,7 +407,7 @@ Per-ecosystem rows report:
 
 - **STATUS** — `detected`, `missing` (runtime not found), or `wrong-version` (runtime present but below the adapter's minimum).
 - **VERSION** — detected binary version string, or `"(binary absent)"` when missing.
-- **PLUGINS CONFIGURED** — count of hooks for this ecosystem declared in `.zetl/hooks/` + theme-bundled manifests.
+- **PLUGINS CONFIGURED** — count of hooks for this ecosystem declared in `.ztl/hooks/` + theme-bundled manifests.
 - **PLUGINS AVAILABLE** — count of those configured plugins actually resolvable on this machine.
 
 ### Zero-configured state
@@ -415,15 +415,15 @@ Per-ecosystem rows report:
 Fresh vault with no hooks declared:
 
 ```
-$ zetl ecosystem check
+$ ztl ecosystem check
 ECOSYSTEM  STATUS        VERSION              PLUGINS CONFIGURED   PLUGINS AVAILABLE
 pandoc     detected      3.1.12.1             0                    0
 mdbook     detected      0.4.37               0                    0
 remark     detected      node 20.10.0         0                    0
 
 No ecosystem hooks configured in this vault.
-To enable an ecosystem, add a manifest under .zetl/hooks/:
-  https://zetl.codeberg.page/docs/ecosystems/
+To enable an ecosystem, add a manifest under .ztl/hooks/:
+  https://ztl.codeberg.page/docs/ecosystems/
 ```
 
 Exit code is 0 in the zero-configured state regardless of which
@@ -434,7 +434,7 @@ runtimes are detected.
 - `0` — all *configured* ecosystems are available (or none are configured).
 - non-zero — at least one configured ecosystem is missing its runtime.
 
-Under `zetl build`, a missing runtime disables the affected hook
+Under `ztl build`, a missing runtime disables the affected hook
 and continues the build with a `RuntimeAbsence` diagnostic; it is
 not a hard failure unless `--ecosystem-required=pandoc` is passed
 (REQ-3313), which is the CI gate mode.
@@ -458,10 +458,10 @@ Machine-readable form suitable for CI pre-flight:
 
 At probe time the adapter invokes each configured filter's
 `--version` and compares against the `version_range` in
-`tools/zetl-ecosystem-matrix.toml` (REQ-3314):
+`tools/ztl-ecosystem-matrix.toml` (REQ-3314):
 
 - **Exact match** — silent.
-- **Minor drift** (same major, observed minor ≥ tested) — log `[zetl] ecosystem pandoc: pandoc-crossref v0.3.16 is newer than last-tested v0.3.14; proceeding` once per session. The hook still runs.
+- **Minor drift** (same major, observed minor ≥ tested) — log `[ztl] ecosystem pandoc: pandoc-crossref v0.3.16 is newer than last-tested v0.3.14; proceeding` once per session. The hook still runs.
 - **Incompatible** (different major, or below the tested range) — hook disabled with a `plugin_version_incompatible` diagnostic pointing at the matrix entry.
 
 ## Troubleshooting
@@ -469,7 +469,7 @@ At probe time the adapter invokes each configured filter's
 ### `pandoc` binary not found
 
 ```
-[zetl] ecosystem pandoc: runtime missing
+[ztl] ecosystem pandoc: runtime missing
        Install pandoc 2.11 or later:
          brew install pandoc   # macOS
          apt install pandoc    # Debian / Ubuntu
@@ -483,18 +483,18 @@ The build continues with the hook disabled. Pass
 The adapter reports the filter path it tried and a hint:
 
 ```
-[zetl] hook transform/crossref: filter "pandoc-crossref" not found on $PATH
+[ztl] hook transform/crossref: filter "pandoc-crossref" not found on $PATH
        Install via: cabal install pandoc-crossref
-       (matrix entry: tools/zetl-ecosystem-matrix.toml)
+       (matrix entry: tools/ztl-ecosystem-matrix.toml)
 ```
 
 ### Wikilinks / embeds missing from rendered output
 
-Filter is stripping the `zetl-wikilink` / `zetl-embed` span markers.
-zetl catches this via preservation checks and emits:
+Filter is stripping the `ztl-wikilink` / `ztl-embed` span markers.
+ztl catches this via preservation checks and emits:
 
 ```
-[zetl] contract violation: pandoc-crossref dropped 4 Wikilink nodes
+[ztl] contract violation: pandoc-crossref dropped 4 Wikilink nodes
        on projects/q2-review.md
        Hint: add `preserves = ["Wikilink", "Embed", "SplBlock"]`
              to the hook's [contract] table, or file an issue with
@@ -512,7 +512,7 @@ containing parser-ambiguous syntax (curly-brace attribute syntax,
 extended table dialects, fenced-div shortcuts):
 
 ```
-[zetl] warning: mixed parsers in vault with ambiguous syntax:
+[ztl] warning: mixed parsers in vault with ambiguous syntax:
          papers/draft-a.md:42   (parser: pandoc)    :::note
          notes/idea-7.md:5      (parser: commonmark) :::note
        Consider unifying on one parser, or inspecting the flagged
@@ -525,7 +525,7 @@ advisory. Pass `--strict-parsers` to turn it into a build error.
 ### Transient filter crashes
 
 Pandoc filter crashes mid-build revert the page fragment per
-SPEC-032 REQ-3207 and record a `hook_failure` diagnostic. zetl
+SPEC-032 REQ-3207 and record a `hook_failure` diagnostic. ztl
 does not retry in v1 — if crashes look transient (GC pauses,
 transient OOM), that is noted as SPEC-033 §13 Q10 and deferred
 pending field data.

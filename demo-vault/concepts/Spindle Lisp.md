@@ -4,7 +4,7 @@ title: Spindle Lisp
 
 # Spindle Lisp
 
-Spindle Lisp (SPL) is a domain-specific language for expressing [[Defeasible Reasoning]] theories. zetl extracts SPL from fenced code blocks in Markdown and from standalone `.spl` files.
+Spindle Lisp (SPL) is a domain-specific language for expressing [[Defeasible Reasoning]] theories. ztl extracts SPL from fenced code blocks in Markdown and from standalone `.spl` files.
 
 ## Syntax reference
 

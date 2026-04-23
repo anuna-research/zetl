@@ -1,9 +1,9 @@
 //! robots.txt emission — integration tests for SPEC-034 REQ-3418 /
 //! CON-3406 ("general robots.txt REQ", per task-cap-robots-txt).
 //!
-//! Drives `zetl::web::build::build_static` end-to-end over a minimal vault
+//! Drives `ztl::web::build::build_static` end-to-end over a minimal vault
 //! and asserts that the emitted `dist/robots.txt` always carries the
-//! required `Disallow: /c/` + `Disallow: /_zetl/` rules while preserving
+//! required `Disallow: /c/` + `Disallow: /_ztl/` rules while preserving
 //! any operator-supplied `public/robots.txt` — including broader rules
 //! like `Disallow: /` that cover our paths implicitly.
 
@@ -26,8 +26,8 @@ fn minimal_vault() -> TempDir {
 
 fn build(vault: &Path, out: &Path, public: Option<&Path>) {
     let data =
-        zetl::web::reindex_with(vault, &zetl::scanner::ScanOptions::default()).expect("reindex");
-    zetl::web::build::build_static(
+        ztl::web::reindex_with(vault, &ztl::scanner::ScanOptions::default()).expect("reindex");
+    ztl::web::build::build_static(
         &data,
         vault,
         out.to_str().unwrap(),
@@ -51,12 +51,12 @@ fn test_3414_default_build_emits_both_disallows() {
         "missing Disallow: /c/ in {body:?}"
     );
     assert!(
-        body.contains("Disallow: /_zetl/\n"),
-        "missing Disallow: /_zetl/ in {body:?}"
+        body.contains("Disallow: /_ztl/\n"),
+        "missing Disallow: /_ztl/ in {body:?}"
     );
     // No operator content ⇒ the canonical single-block form.
     assert_eq!(
-        body, "User-agent: *\nDisallow: /c/\nDisallow: /_zetl/\n",
+        body, "User-agent: *\nDisallow: /c/\nDisallow: /_ztl/\n",
         "unexpected default body: {body:?}"
     );
 }
@@ -84,7 +84,7 @@ fn test_3414_operator_robots_merged_verbatim() {
         "appended *-block not found in {body:?}"
     );
     assert!(body.contains("Disallow: /c/\n"));
-    assert!(body.contains("Disallow: /_zetl/\n"));
+    assert!(body.contains("Disallow: /_ztl/\n"));
     // Operator's private rule preserved.
     assert!(body.contains("Disallow: /private/\n"));
     assert!(body.contains("Sitemap: https://example.com/sitemap.xml\n"));
@@ -109,7 +109,7 @@ fn test_3414_stricter_disallow_root_preserved() {
         "strict root disallow dropped: {body:?}"
     );
     assert!(body.contains("Disallow: /c/\n"));
-    assert!(body.contains("Disallow: /_zetl/\n"));
+    assert!(body.contains("Disallow: /_ztl/\n"));
     // Exactly one `Disallow: /` — we must never duplicate the operator's
     // rule when re-emitting.
     assert_eq!(
@@ -125,7 +125,7 @@ fn test_3414_operator_already_covers_required_no_duplicate() {
     let pub_dir = tmp.path().join("public");
     let operator = "User-agent: *\n\
                     Disallow: /c/\n\
-                    Disallow: /_zetl/\n";
+                    Disallow: /_ztl/\n";
     write(&pub_dir, "robots.txt", operator);
 
     let out = tmp.path().join("dist");
@@ -140,5 +140,5 @@ fn test_3414_operator_already_covers_required_no_duplicate() {
         "expected exactly one UA block: {body:?}"
     );
     assert_eq!(body.matches("Disallow: /c/").count(), 1);
-    assert_eq!(body.matches("Disallow: /_zetl/").count(), 1);
+    assert_eq!(body.matches("Disallow: /_ztl/").count(), 1);
 }

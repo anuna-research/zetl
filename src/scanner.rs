@@ -20,16 +20,16 @@ pub use exclude::{classify_entry, classify_entry_os, Decision, ExcludeReason, Sc
 ///
 /// Walks the directory tree using the `ignore` crate. Applies the precedence
 /// rule stack defined in SPEC-026 §REQ-205: hardcoded force-ignores → dotdir
-/// default → .gitignore → .zetlignore → CLI `--exclude` patterns.
+/// default → .gitignore → .ztlignore → CLI `--exclude` patterns.
 pub fn scan_vault(root: &Path, opts: &ScanOptions) -> Result<Vec<ParsedFile>> {
     // Defect 1 (REQ-203): reject `--exclude '!pattern'` with a clear error
     // rather than silently producing `!!pattern` in the override stack.
-    // Per SPEC-026 §1.3, gitignore-style negations belong in `.zetlignore`.
+    // Per SPEC-026 §1.3, gitignore-style negations belong in `.ztlignore`.
     for pattern in &opts.exclude_patterns {
         if pattern.starts_with('!') {
             anyhow::bail!(
                 "--exclude '{pattern}' uses gitignore negation syntax, which is not supported \
-                 on the CLI. Put the negation in `.zetlignore` instead (e.g. `{pattern}` on its own line)."
+                 on the CLI. Put the negation in `.ztlignore` instead (e.g. `{pattern}` on its own line)."
             );
         }
     }
@@ -41,12 +41,12 @@ pub fn scan_vault(root: &Path, opts: &ScanOptions) -> Result<Vec<ParsedFile>> {
         .git_global(false)
         .git_exclude(false);
 
-    // Build a single "whitelist matcher" from `.gitignore` + `.zetlignore`
+    // Build a single "whitelist matcher" from `.gitignore` + `.ztlignore`
     // that filter_entry can consult when deciding whether to override the
     // dotdir default. The walker also applies these files independently —
     // this matcher exists *only* to surface their negated entries before
     // filter_entry vetoes a directory (defects 2/3 / REQ-205 levels 3-4).
-    let zetlignore_path = root.join(".zetlignore");
+    let ztlignore_path = root.join(".ztlignore");
     let gitignore_path = root.join(".gitignore");
     let whitelist_matcher: Option<Arc<ignore::gitignore::Gitignore>> = {
         let mut gi = ignore::gitignore::GitignoreBuilder::new(root);
@@ -55,9 +55,9 @@ pub fn scan_vault(root: &Path, opts: &ScanOptions) -> Result<Vec<ParsedFile>> {
             gi.add(&gitignore_path);
             any = true;
         }
-        if zetlignore_path.exists() {
-            builder.add_ignore(&zetlignore_path);
-            gi.add(&zetlignore_path);
+        if ztlignore_path.exists() {
+            builder.add_ignore(&ztlignore_path);
+            gi.add(&ztlignore_path);
             any = true;
         }
         if any {
@@ -77,12 +77,12 @@ pub fn scan_vault(root: &Path, opts: &ScanOptions) -> Result<Vec<ParsedFile>> {
     }
     overrides.add("!.git/")?;
     overrides.add("!node_modules/")?;
-    overrides.add("!.zetl/")?;
+    overrides.add("!.ztl/")?;
     builder.overrides(overrides.build()?);
 
     // Combined filter_entry handles:
     //   - level-1 nested-vault force-ignore (parent vault must not absorb child vault pages)
-    //   - level-2 dotdir default (overridable by .gitignore / .zetlignore negation)
+    //   - level-2 dotdir default (overridable by .gitignore / .ztlignore negation)
     let opts_for_filter = opts.clone();
     let whitelist_for_filter = whitelist_matcher.clone();
     let root_owned = root.to_path_buf();
@@ -105,8 +105,8 @@ pub fn scan_vault(root: &Path, opts: &ScanOptions) -> Result<Vec<ParsedFile>> {
         let basename_str = basename_os.to_str();
         let rel = path.strip_prefix(&root_owned).unwrap_or(path);
 
-        // Nested-vault probe: a child directory containing its own .zetl/ is its own vault.
-        let nested_vault = is_dir && path.join(".zetl").is_dir();
+        // Nested-vault probe: a child directory containing its own .ztl/ is its own vault.
+        let nested_vault = is_dir && path.join(".ztl").is_dir();
 
         let decision = classify_entry_os(
             rel,
@@ -123,7 +123,7 @@ pub fn scan_vault(root: &Path, opts: &ScanOptions) -> Result<Vec<ParsedFile>> {
             Decision::Exclude(reason) => {
                 if verbose {
                     eprintln!(
-                        "[zetl] scan: skipped {} reason={}",
+                        "[ztl] scan: skipped {} reason={}",
                         rel.display(),
                         reason.as_str()
                     );

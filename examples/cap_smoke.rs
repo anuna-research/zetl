@@ -23,19 +23,19 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use rand_core::{OsRng, RngCore};
 
-use zetl::cap::build::{run_capability_build, BuildConfig, PageInput, Visibility};
-use zetl::cap::derivation::{derive_path_cap, PATH_CAP_DEFAULT_BITS};
-use zetl::cap::genkey::{
+use ztl::cap::build::{run_capability_build, BuildConfig, PageInput, Visibility};
+use ztl::cap::derivation::{derive_path_cap, PATH_CAP_DEFAULT_BITS};
+use ztl::cap::genkey::{
     build_secret, decode_secret, encode_secret, ParsedSecret, SECRET_VERSION_V1,
 };
-use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
-use zetl::cap::html_shell::{load_shim_integrity, CAPABILITY_SHELL_FILENAME};
-use zetl::cap::invite::generate_invite_keypair;
-use zetl::cap::recipients::parsing::{
+use ztl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
+use ztl::cap::html_shell::{load_shim_integrity, CAPABILITY_SHELL_FILENAME};
+use ztl::cap::invite::generate_invite_keypair;
+use ztl::cap::recipients::parsing::{
     Cohort, CohortMode, RecipientsFile, VaultSection, AGE_RECIPIENT_V1_PREFIX,
 };
-use zetl::cap::sign::VaultSigningKey;
-use zetl::cap::url_format::CapUrl;
+use ztl::cap::sign::VaultSigningKey;
+use ztl::cap::url_format::CapUrl;
 
 fn main() -> anyhow::Result<()> {
     let out_dir: PathBuf = std::env::args()
@@ -51,7 +51,7 @@ fn main() -> anyhow::Result<()> {
     let shim_dist: PathBuf = PathBuf::from("src/cap/shim/dist");
 
     // ── 1. secrets ─────────────────────────────────────────────
-    // `zetl cap genkey`-equivalent: produce a v1 48-byte content secret
+    // `ztl cap genkey`-equivalent: produce a v1 48-byte content secret
     // and a fresh Ed25519 signing key. Both stay in memory — nothing
     // is written to disk.
     let mut random = [0u8; 32];
@@ -70,7 +70,7 @@ fn main() -> anyhow::Result<()> {
     let status = std::process::Command::new("node")
         .arg("build.mjs")
         .current_dir("src/cap/shim")
-        .env("ZETL_CAP_SIGNING_PUBKEY_B64URL", &signing_pubkey_b64)
+        .env("ztl_CAP_SIGNING_PUBKEY_B64URL", &signing_pubkey_b64)
         .status()?;
     if !status.success() {
         anyhow::bail!("src/cap/shim/build.mjs failed (status {status:?})");
@@ -206,7 +206,7 @@ fn main() -> anyhow::Result<()> {
         out_dir.display()
     );
     println!(
-        "shell:          {}/_zetl/{CAPABILITY_SHELL_FILENAME}",
+        "shell:          {}/_ztl/{CAPABILITY_SHELL_FILENAME}",
         out_dir.display()
     );
     println!("invite_url:     {url}");
@@ -214,7 +214,7 @@ fn main() -> anyhow::Result<()> {
     println!("      serve the shell on HTML navigation and the envelope on subsequent fetch.");
 
     // Also dump the URL to a sibling file the next step can slurp.
-    fs::write(out_dir.join("_zetl").join("invite-url.txt"), &url)?;
+    fs::write(out_dir.join("_ztl").join("invite-url.txt"), &url)?;
 
     Ok(())
 }

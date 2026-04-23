@@ -32,7 +32,7 @@ related:
 
 ## 1. Overview
 
-zetl renders every user-facing page by hydrating a set of Rust-side context structs — `VaultContext`, `PageContext`, `PageHistoryContext`, `FolderContext`, `TagCloudContext` — and handing them to minijinja via `serde`. The theme layer (`themes/default/*.html` plus three bundled siblings and an unknown number of third-party overrides under `.zetl/themes/<theme>/`) reads fields from that hydrated context to produce HTML.
+ztl renders every user-facing page by hydrating a set of Rust-side context structs — `VaultContext`, `PageContext`, `PageHistoryContext`, `FolderContext`, `TagCloudContext` — and handing them to minijinja via `serde`. The theme layer (`themes/default/*.html` plus three bundled siblings and an unknown number of third-party overrides under `.ztl/themes/<theme>/`) reads fields from that hydrated context to produce HTML.
 
 **The contract between the two sides has historically been implicit.** Fields are accessed freely from templates; names, optionality, and types are inferred by reading `src/web/context.rs`. Two recent defects traced directly to this gap:
 
@@ -44,13 +44,13 @@ SPEC-030 specifies the contract explicitly and adds machine-checkable enforcemen
 ### 1.1 Motivation
 
 - **Anti-Slop Bias (Protocol §Constitutional).** Template code is an "artifact accepted on surface quality" today — it appears to work because missing fields render as empty strings. The contract test enumerates failure modes explicitly.
-- **Third-party theme viability.** `themes/default/` is one of four bundled themes (`docs`, `fountain`, `minimal`). zetl already supports disk-level theme overrides at `.zetl/themes/<name>/`. Without a contract, every zetl upgrade silently breaks downstream themes whose authors cannot read the Rust source.
+- **Third-party theme viability.** `themes/default/` is one of four bundled themes (`docs`, `fountain`, `minimal`). ztl already supports disk-level theme overrides at `.ztl/themes/<name>/`. Without a contract, every ztl upgrade silently breaks downstream themes whose authors cannot read the Rust source.
 - **Traceability (Protocol §Traceability).** REQ → CON → TEST → CODE must hold at the theme boundary. Today there is no CON for the context; templates reference fields that are not documented anywhere except as `pub` fields on a struct.
 - **Integration-First Testing (Protocol §Constitutional).** A realistic fixture exercising every `render_*` entrypoint in strict mode is the cheapest realistic test we can write for this surface.
 
 ### 1.2 Design Principles
 
-1. **The context is a versioned contract, not an implementation detail.** `VaultContext`, `PageContext`, `PageHistoryContext`, `FolderContext`, `TagCloudContext`, and their transitively-serialised children are stable fields. Breaking changes require a minor-version bump in the zetl crate (`Cargo.toml`) and a migration note in `CHANGELOG.md`.
+1. **The context is a versioned contract, not an implementation detail.** `VaultContext`, `PageContext`, `PageHistoryContext`, `FolderContext`, `TagCloudContext`, and their transitively-serialised children are stable fields. Breaking changes require a minor-version bump in the ztl crate (`Cargo.toml`) and a migration note in `CHANGELOG.md`.
 2. **Additive evolution is always safe.** New fields SHALL be additive: templates that do not reference a newly-added field continue to render identically. Strict-undefined mode only errors on field *reads*, so an unread new field is invisible to existing themes.
 3. **Field removal or rename is a breaking change.** A removed field is a silent break for any theme that still reads it. The contract test catches this for the default theme at CI time; third-party theme authors MUST be warned via CHANGELOG.
 4. **Optional fields are always present, possibly as null.** A field that is semantically optional (e.g. `page.history` when the `history` feature is off) MUST still serialise (as JSON `null` / minijinja `none`) rather than be absent from the map. Templates may then test `{% if page.history %}` safely. Strict-undefined mode treats `none` as falsy but a missing key as an error.
@@ -82,17 +82,17 @@ SPEC-030 specifies the contract explicitly and adds machine-checkable enforcemen
 
 ### 2.1 Default-Theme Developer
 
-Role: zetl maintainer working on the Rust side of the template pipeline.
+Role: ztl maintainer working on the Rust side of the template pipeline.
 Goals: add, rename, or remove a context field and know immediately whether any bundled theme breaks.
 Constraints: works in-tree; has access to `cargo test` locally; expects CI to catch what they miss.
 Daily workflow: edit `src/web/context.rs` or a `render_*` method → run `cargo test --features history` → see green → merge.
 
 ### 2.2 Third-Party Theme Author
 
-Role: zetl user with a custom theme under `.zetl/themes/<name>/` derived from the default.
-Goals: track upstream zetl releases and update their theme when the contract changes, without having to read Rust source.
+Role: ztl user with a custom theme under `.ztl/themes/<name>/` derived from the default.
+Goals: track upstream ztl releases and update their theme when the contract changes, without having to read Rust source.
 Constraints: knows HTML, CSS, and minijinja; does not read Rust; relies on documentation and CHANGELOG.
-Daily workflow: upgrade zetl → skim CHANGELOG → if contract changed, patch their theme → run `zetl build --strict-theme` (future) or `cargo test` against a vendored harness.
+Daily workflow: upgrade ztl → skim CHANGELOG → if contract changed, patch their theme → run `ztl build --strict-theme` (future) or `cargo test` against a vendored harness.
 
 ### 2.3 Template Reviewer (Human or AI Agent)
 
@@ -145,7 +145,7 @@ Daily workflow: open the PR → read the CON section → diff the template again
 
 **Failure modes:**
 
-- Skipping step 6 → third-party themes break silently at their reader's next zetl upgrade. No CI catches this; only the CHANGELOG discipline does. This is the strongest argument for ADR-401 (semver-aware theme-contract versioning).
+- Skipping step 6 → third-party themes break silently at their reader's next ztl upgrade. No CI catches this; only the CHANGELOG discipline does. This is the strongest argument for ADR-401 (semver-aware theme-contract versioning).
 - Partial rename (missed a template) → TEST-400 catches in the default theme; test coverage for other bundled themes (REQ-406) catches them.
 
 ### 3.3 Happy Path: Field Removal
@@ -206,7 +206,7 @@ Trace:
 
 ### REQ-403: Theme-Contract Version Discipline
 
-The `zetl` crate Cargo version SHALL be bumped AT MINOR LEVEL OR HIGHER WHENEVER a field is renamed, removed, or changes type in any of the context structs specified by CON-400..CON-404. Additive changes (new fields, new template filters) MAY ship in a patch version.
+The `ztl` crate Cargo version SHALL be bumped AT MINOR LEVEL OR HIGHER WHENEVER a field is renamed, removed, or changes type in any of the context structs specified by CON-400..CON-404. Additive changes (new fields, new template filters) MAY ship in a patch version.
 
 **Verification:** Reviewer checks `Cargo.toml` version against the nature of the change during PR review. CI does not yet enforce this automatically; ADR-401 discusses a future `cargo-semver-checks` integration.
 
@@ -246,7 +246,7 @@ Every bundled theme (`docs`, `fountain`, `minimal`) SHOULD pass TEST-400 against
 
 **v1.0 scope:** Only the `default` theme is covered. Bundled-theme parity is a follow-on: each theme's maintainer adds a `theme_contract_<theme>_strict` test mirroring the default one.
 
-**Non-default themes that fail this requirement** ship at the theme author's risk; a warning appears in `zetl --help` / theme listing ("untested against data contract").
+**Non-default themes that fail this requirement** ship at the theme author's risk; a warning appears in `ztl --help` / theme listing ("untested against data contract").
 
 Trace:
 - TEST-401 (placeholder: bundled-theme strict renders; not yet implemented)
@@ -309,7 +309,7 @@ Trace:
 
 ### ADR-401: Semver Policy for Theme Contract
 
-**Context:** When is a field rename a major, minor, or patch change? The `zetl` crate's `Cargo.toml` version has historically bumped by developer intuition.
+**Context:** When is a field rename a major, minor, or patch change? The `ztl` crate's `Cargo.toml` version has historically bumped by developer intuition.
 
 **Decision:** Theme-contract changes track the crate version with the following rules, codified in REQ-403:
 
@@ -338,7 +338,7 @@ Trace:
 - Strict-undefined rendering already catches the class of bugs a schema would catch (missing field references).
 - A schema export would help third-party theme authors — but we have zero data on how many exist or whether they'd consume a schema.
 
-**Consequences:** Revisit when (1) a third-party theme author requests it, (2) zetl gains a second programmatic consumer of the context (e.g. a non-minijinja template engine).
+**Consequences:** Revisit when (1) a third-party theme author requests it, (2) ztl gains a second programmatic consumer of the context (e.g. a non-minijinja template engine).
 
 **Trace:** Deferred to successor spec.
 
@@ -380,7 +380,7 @@ Each CON below specifies one Rust-side context struct, its serialised field set,
 | `stats`             | `StatsContext`             | required    | `total_pages`, `total_links`, `dead_links`, `orphans` — all `usize`                  |
 | `history`           | `serde_json::Value`        | required    | `null` if `history` feature off or vault has no snapshots; otherwise object per CON-403 |
 | `semantic_available`| `bool`                     | required    | True when `semantic` feature + vector index are both active                          |
-| `site_url`          | `String`                   | required    | Canonical site URL when set via `zetl build --site-url`; empty string otherwise      |
+| `site_url`          | `String`                   | required    | Canonical site URL when set via `ztl build --site-url`; empty string otherwise      |
 
 **Implements:** REQ-400, REQ-401
 

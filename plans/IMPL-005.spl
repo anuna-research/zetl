@@ -1,17 +1,17 @@
 ;; ════════════════════════════════════════════════════════════════════════════
-;; IMPL-005: zetl reason — Defeasible Logic over Markdown Vaults
+;; IMPL-005: ztl reason — Defeasible Logic over Markdown Vaults
 ;; Implementation plan for SPEC-005
 ;; ════════════════════════════════════════════════════════════════════════════
 
 (meta plan
   (id "IMPL-005")
-  (title "zetl reason — Defeasible Logic over Markdown Vaults")
+  (title "ztl reason — Defeasible Logic over Markdown Vaults")
   (version "0.1.0")
   (status "active")
   (created "2026-02-23")
   (author "agent:claude")
   (spec "SPEC-005")
-  (description "Implement defeasible reasoning over Markdown vaults by embedding Spindle Lisp (SPL) in fenced code blocks. Extends the scanner to extract SPL, builds a unified theory via spindle-core, and exposes reasoning queries (status, explain, what-if, why-not, require, conflicts, export) through a new `zetl reason` subcommand group. Four phases: P0 core pipeline, P1 query operators, P2 advanced queries, P3 caching and feature gating."))
+  (description "Implement defeasible reasoning over Markdown vaults by embedding Spindle Lisp (SPL) in fenced code blocks. Extends the scanner to extract SPL, builds a unified theory via spindle-core, and exposes reasoning queries (status, explain, what-if, why-not, require, conflicts, export) through a new `ztl reason` subcommand group. Four phases: P0 core pipeline, P1 query operators, P2 advanced queries, P3 caching and feature gating."))
 
 ;; ════════════════════════════════════════════════════════════════════════════
 ;; Agents
@@ -128,7 +128,7 @@
 
 (meta task-cmd-reason-status
   (description "Add a Reason subcommand group to src/cli.rs with sub-subcommands: Status, Explain, WhatIf, WhyNot, Require, Conflicts, Export, Provenance. Initially implement only Status. In src/main.rs, wire up cmd_reason_status: scan vault, extract SPL, build theory, compute conclusions, format output. CLI options per CON-012: --positive, --negative, --definite, --defeasible, --literal <PAT>. JSON output includes theory summary (facts/rules/defeaters/superiority/source_files), conclusions array with provenance, summary counts, and diagnostics. Table output shows conclusions in a human-readable table. Exit codes: 0 success, 1 no SPL blocks, 2 parse errors.")
-  (acceptance "zetl reason status produces JSON matching CON-012 example; filter flags work (--positive shows only +D/+d); --literal filters by glob; table output readable; exit codes correct; works against demo-vault with SPL content")
+  (acceptance "ztl reason status produces JSON matching CON-012 example; filter flags work (--positive shows only +D/+d); --literal filters by glob; table output readable; exit codes correct; works against demo-vault with SPL content")
   (file "src/cli.rs, src/main.rs")
   (req "REQ-028")
   (con "CON-012")
@@ -142,13 +142,13 @@
   (description "Status command needs the reason engine to produce conclusions")
   (justification "cmd_reason_status calls build_theory() and formats the output"))
 
-;; ── Task: Extend zetl check with --spl validation ────────────────────────
+;; ── Task: Extend ztl check with --spl validation ────────────────────────
 
 (given task-check-spl)
 
 (meta task-check-spl
-  (description "Extend the existing `zetl check` command to include SPL diagnostics alongside dead links, orphans, and syntax errors. Add --spl flag to filter to SPL diagnostics only. SPL diagnostics include: 1) Parse errors (malformed SPL syntax) with file/line/column/message, 2) Undefined rule labels in superiority relations (warning), 3) Duplicate rule labels across documents (warning with both locations), 4) Body literals that appear nowhere as a head or fact (warning, possible typo). Integrate into existing check output format — add spl_diagnostics array to JSON, add SPL section to table. The existing --fail-on flag applies to SPL diagnostics (errors count as errors, warnings as warnings). Per CON-004 extended.")
-  (acceptance "zetl check --spl shows SPL diagnostics only; zetl check shows all diagnostics including SPL; parse errors reported with file/line/column; duplicate labels detected across files; undefined superiority labels caught; unreachable body literals warned; --fail-on error exits 1 on SPL errors; JSON output matches CON-004 extended example")
+  (description "Extend the existing `ztl check` command to include SPL diagnostics alongside dead links, orphans, and syntax errors. Add --spl flag to filter to SPL diagnostics only. SPL diagnostics include: 1) Parse errors (malformed SPL syntax) with file/line/column/message, 2) Undefined rule labels in superiority relations (warning), 3) Duplicate rule labels across documents (warning with both locations), 4) Body literals that appear nowhere as a head or fact (warning, possible typo). Integrate into existing check output format — add spl_diagnostics array to JSON, add SPL section to table. The existing --fail-on flag applies to SPL diagnostics (errors count as errors, warnings as warnings). Per CON-004 extended.")
+  (acceptance "ztl check --spl shows SPL diagnostics only; ztl check shows all diagnostics including SPL; parse errors reported with file/line/column; duplicate labels detected across files; undefined superiority labels caught; unreachable body literals warned; --fail-on error exits 1 on SPL errors; JSON output matches CON-004 extended example")
   (file "src/main.rs, src/reason.rs")
   (req "REQ-034")
   (con "CON-004")
@@ -171,7 +171,7 @@
 (given task-cmd-reason-explain)
 
 (meta task-cmd-reason-explain
-  (description "Implement `zetl reason explain <LITERAL>` per CON-013. Uses spindle-core's explanation API to build a proof tree for the given literal. Output includes: conclusion type, the rule chain that derives it (for +D/+d), the defeat chain that blocks it (for -d), and for each rule/fact in the chain the source document name, file path, and line number (from provenance metadata). Support --depth <N> for max proof tree depth [default: 10] and --format json|table|natural|dot. JSON output: nested proof tree with sources. Table/natural output: human-readable explanation with [[PageName]]:line references. If the literal is not found, exit code 1 with 'did you mean?' suggestions using existing SimHash fuzzy matching on literal names.")
+  (description "Implement `ztl reason explain <LITERAL>` per CON-013. Uses spindle-core's explanation API to build a proof tree for the given literal. Output includes: conclusion type, the rule chain that derives it (for +D/+d), the defeat chain that blocks it (for -d), and for each rule/fact in the chain the source document name, file path, and line number (from provenance metadata). Support --depth <N> for max proof tree depth [default: 10] and --format json|table|natural|dot. JSON output: nested proof tree with sources. Table/natural output: human-readable explanation with [[PageName]]:line references. If the literal is not found, exit code 1 with 'did you mean?' suggestions using existing SimHash fuzzy matching on literal names.")
   (acceptance "Explain shows correct proof tree for +D facts (simple), +d defeasible conclusions (rule chain), and -d defeated conclusions (defeat chain); provenance traces to correct file/line; --depth limits tree; unknown literal suggests similar ones; JSON matches CON-013 example; natural language output readable; works on demo-vault examples")
   (file "src/reason.rs, src/main.rs")
   (req "REQ-029")
@@ -191,7 +191,7 @@
 (given task-cmd-reason-conflicts)
 
 (meta task-cmd-reason-conflicts
-  (description "Implement `zetl reason conflicts` per CON-017. Analyze the theory for unresolved logical conflicts: literals where both p and ~p have applicable rules but no superiority relation resolves the conflict. For each conflict, report: the contested literal, competing rules with source provenance, whether a superiority relation exists, and (with --suggest) suggested resolutions. Exit codes: 0 no conflicts or listed successfully, 1 with --fail-on-conflicts if conflicts found.")
+  (description "Implement `ztl reason conflicts` per CON-017. Analyze the theory for unresolved logical conflicts: literals where both p and ~p have applicable rules but no superiority relation resolves the conflict. For each conflict, report: the contested literal, competing rules with source provenance, whether a superiority relation exists, and (with --suggest) suggested resolutions. Exit codes: 0 no conflicts or listed successfully, 1 with --fail-on-conflicts if conflicts found.")
   (acceptance "Detects ambiguous conflicts where competing rules have no superiority; reports both sides with provenance; --suggest provides resolution hints with (prefer ...) syntax; no false positives when superiority exists; JSON matches CON-017 example; empty conflicts list when vault is consistent")
   (file "src/reason.rs, src/main.rs")
   (req "REQ-033")
@@ -211,7 +211,7 @@
 (given task-cmd-reason-why-not)
 
 (meta task-cmd-reason-why-not
-  (description "Implement `zetl reason why-not <LITERAL>` per CON-015. Explains why a literal is NOT provable by analyzing: which rules could prove it, what body literals are missing or failed, and which defeaters are blocking it. Each missing/failed literal includes the document(s) that would need to assert it. Two blocker types: 'failed_body' (missing precondition) and 'defeated' (blocked by a defeater). Exit codes: 0 explanation generated, 1 literal not in theory.")
+  (description "Implement `ztl reason why-not <LITERAL>` per CON-015. Explains why a literal is NOT provable by analyzing: which rules could prove it, what body literals are missing or failed, and which defeaters are blocking it. Each missing/failed literal includes the document(s) that would need to assert it. Two blocker types: 'failed_body' (missing precondition) and 'defeated' (blocked by a defeater). Exit codes: 0 explanation generated, 1 literal not in theory.")
   (acceptance "Reports missing body literals with their rule sources; reports defeaters with provenance; handles both 'no rule fires' and 'rule fires but defeated' cases; JSON matches CON-015 example; works for demo-vault's ready-for-production (missing preconditions) and decided-use-redis (defeated)")
   (file "src/reason.rs, src/main.rs")
   (req "REQ-031")
@@ -235,7 +235,7 @@
 (given task-cmd-reason-what-if)
 
 (meta task-cmd-reason-what-if
-  (description "Implement `zetl reason what-if <SPL>` per CON-014. Temporarily add facts/rules to the theory and compute what changes. Parse inline SPL argument (or --file <PATH> for file input), clone the theory, add hypothetical facts/rules, re-reason, then diff conclusions against the base theory. Report: new conclusions, changed conclusions (was/now), and unchanged count. Optional --goal <LITERAL> focuses on a specific literal's change. Hypothetical additions SHALL NOT modify the vault or cached theory.")
+  (description "Implement `ztl reason what-if <SPL>` per CON-014. Temporarily add facts/rules to the theory and compute what changes. Parse inline SPL argument (or --file <PATH> for file input), clone the theory, add hypothetical facts/rules, re-reason, then diff conclusions against the base theory. Report: new conclusions, changed conclusions (was/now), and unchanged count. Optional --goal <LITERAL> focuses on a specific literal's change. Hypothetical additions SHALL NOT modify the vault or cached theory.")
   (acceptance "Adding a missing fact changes dependent conclusions; diff correctly identifies changed/new/unchanged; --goal filters to specific literal; --file reads SPL from file; base theory unmodified after query; invalid hypothetical SPL returns exit code 2; JSON matches CON-014 example; works for demo-vault 'what if verified-load-test' scenario")
   (file "src/reason.rs, src/main.rs")
   (req "REQ-030")
@@ -255,7 +255,7 @@
 (given task-cmd-reason-require)
 
 (meta task-cmd-reason-require
-  (description "Implement `zetl reason require <LITERAL>` per CON-016. Abductive reasoning: find what facts are needed to make a goal literal provable. Uses spindle-core's abduce API (or manual analysis if not available): find rules with the literal as head, identify which body literals are not provable, recursively find what's needed. Return solution sets of required facts, each annotated with the rule that needs it and the document where that rule is defined. Options: --max-solutions <N> [default: 5], --assume <SPL> (assume these facts already true). Special cases: goal already provable returns empty solution with message; no rules exist returns exit code 1.")
+  (description "Implement `ztl reason require <LITERAL>` per CON-016. Abductive reasoning: find what facts are needed to make a goal literal provable. Uses spindle-core's abduce API (or manual analysis if not available): find rules with the literal as head, identify which body literals are not provable, recursively find what's needed. Return solution sets of required facts, each annotated with the rule that needs it and the document where that rule is defined. Options: --max-solutions <N> [default: 5], --assume <SPL> (assume these facts already true). Special cases: goal already provable returns empty solution with message; no rules exist returns exit code 1.")
   (acceptance "Finds required facts for unprovable goals; each fact traces to the rule/document that needs it; --max-solutions limits output; --assume adds temporary facts before analysis; already-provable goals handled; impossible goals handled; JSON matches CON-016 example; works for demo-vault ready-for-production scenario")
   (file "src/reason.rs, src/main.rs")
   (req "REQ-032")
@@ -275,7 +275,7 @@
 (given task-cmd-reason-export)
 
 (meta task-cmd-reason-export
-  (description "Implement `zetl reason export` per CON-018. Export the combined theory in two formats: 1) SPL format — reconstructed SPL with provenance comments ('; --- From: file:line ---' before each rule/fact), valid parseable SPL; 2) JSON format — structured { rules[], facts[], superiority[], conclusions[] } with provenance fields on each item. Option: --with-conclusions includes reasoning results in the export. Always exits 0.")
+  (description "Implement `ztl reason export` per CON-018. Export the combined theory in two formats: 1) SPL format — reconstructed SPL with provenance comments ('; --- From: file:line ---' before each rule/fact), valid parseable SPL; 2) JSON format — structured { rules[], facts[], superiority[], conclusions[] } with provenance fields on each item. Option: --with-conclusions includes reasoning results in the export. Always exits 0.")
   (acceptance "SPL export produces valid SPL parseable by spindle-parser; provenance comments reference correct files/lines; JSON export contains all theory components; --with-conclusions adds conclusion data; output matches CON-018 examples")
   (file "src/reason.rs, src/main.rs")
   (req "REQ-035")
@@ -295,7 +295,7 @@
 (given task-cross-ref)
 
 (meta task-cross-ref
-  (description "Implement cross-referencing between the link graph and logical theory per REQ-036. Three features: 1) `zetl reason provenance <LITERAL>` — show which documents contribute to a literal's proof, cross-referenced with backlinks between those documents (CON-013 extended), 2) `zetl links <page> --with-conclusions` — for each linked page, show which conclusions that page contributes, 3) `zetl backlinks <page> --with-conclusions` — same for backlinking pages. The --with-conclusions flags are additive enrichments to existing output. Requires both link graph and theory to be computed (full pipeline run).")
+  (description "Implement cross-referencing between the link graph and logical theory per REQ-036. Three features: 1) `ztl reason provenance <LITERAL>` — show which documents contribute to a literal's proof, cross-referenced with backlinks between those documents (CON-013 extended), 2) `ztl links <page> --with-conclusions` — for each linked page, show which conclusions that page contributes, 3) `ztl backlinks <page> --with-conclusions` — same for backlinking pages. The --with-conclusions flags are additive enrichments to existing output. Requires both link graph and theory to be computed (full pipeline run).")
   (acceptance "reason provenance shows contributing documents with backlink cross-references; --with-conclusions enriches links/backlinks output with conclusion data; pages without SPL show empty conclusions; JSON output extends existing schemas; works on demo-vault")
   (file "src/reason.rs, src/main.rs, src/cli.rs")
   (req "REQ-036")
@@ -319,8 +319,8 @@
 (given task-theory-cache)
 
 (meta task-theory-cache
-  (description "Implement theory caching per ADR-006 and NFR-011. Cache the parsed theory (not conclusions — re-reason each time per Open Question 4) to .zetl/theory.json alongside the existing index.json. Use the same mtime-based invalidation: if any file containing an SPL block has changed, invalidate and rebuild. Track which files contain SPL blocks for targeted invalidation. Cache format: serialized Theory with provenance metadata. Subsequent reason queries should load cache + re-reason (~100ms) instead of full extract + parse + reason (~2-3s for large vaults).")
-  (acceptance "theory.json created in .zetl/ after first reason command; subsequent runs with no changes use cache (measurably faster); file modification invalidates cache; new files trigger rebuild; --no-cache forces full rebuild; TEST-037 scenarios pass")
+  (description "Implement theory caching per ADR-006 and NFR-011. Cache the parsed theory (not conclusions — re-reason each time per Open Question 4) to .ztl/theory.json alongside the existing index.json. Use the same mtime-based invalidation: if any file containing an SPL block has changed, invalidate and rebuild. Track which files contain SPL blocks for targeted invalidation. Cache format: serialized Theory with provenance metadata. Subsequent reason queries should load cache + re-reason (~100ms) instead of full extract + parse + reason (~2-3s for large vaults).")
+  (acceptance "theory.json created in .ztl/ after first reason command; subsequent runs with no changes use cache (measurably faster); file modification invalidates cache; new files trigger rebuild; --no-cache forces full rebuild; TEST-037 scenarios pass")
   (file "src/cache.rs, src/reason.rs")
   (nfr "NFR-011")
   (adr "ADR-006")
@@ -339,8 +339,8 @@
 (given task-feature-gate)
 
 (meta task-feature-gate
-  (description "Implement graceful degradation per NFR-013. When zetl is compiled without --features reason, all `zetl reason` commands return a structured error: {\"error\": \"Reasoning engine not available. Build with --features reason\", \"code\": 2}. All non-reasoning commands continue to work unchanged. The --spl flag on check also returns this error. Implement via cfg(feature) guards on the reason module and CLI dispatch.")
-  (acceptance "cargo build (no features) produces binary without spindle code; zetl reason status returns structured error JSON with exit code 2; zetl check --spl returns same error; all other commands work normally; binary size without reason feature is unchanged from before IMPL-005")
+  (description "Implement graceful degradation per NFR-013. When ztl is compiled without --features reason, all `ztl reason` commands return a structured error: {\"error\": \"Reasoning engine not available. Build with --features reason\", \"code\": 2}. All non-reasoning commands continue to work unchanged. The --spl flag on check also returns this error. Implement via cfg(feature) guards on the reason module and CLI dispatch.")
+  (acceptance "cargo build (no features) produces binary without spindle code; ztl reason status returns structured error JSON with exit code 2; ztl check --spl returns same error; all other commands work normally; binary size without reason feature is unchanged from before IMPL-005")
   (file "src/main.rs, src/cli.rs")
   (nfr "NFR-013")
   (adr "ADR-005"))
@@ -358,7 +358,7 @@
 (given task-integration-tests-reason)
 
 (meta task-integration-tests-reason
-  (description "Create comprehensive integration tests for all reason commands per TEST-026 through TEST-037. Use a test vault fixture (tests/fixtures/reason-vault/) with known SPL content designed to exercise: basic extraction (single block, multiple blocks, HTML comment exclusion, standalone .spl), theory construction (multi-file, parse errors, provenance), reasoning (penguin/bird scenario, defeated conclusions), explanation (proof trees, defeat chains, unknown literal), what-if (add fact, verify no side effects), why-not (missing preconditions, defeated), require (missing facts, already provable, impossible), conflicts (ambiguous, resolved), export (SPL with provenance, JSON), cross-referencing (links --with-conclusions), and caching (cache hit, invalidation). Each test invokes zetl as a binary via assert_cmd and validates JSON output structure and values.")
+  (description "Create comprehensive integration tests for all reason commands per TEST-026 through TEST-037. Use a test vault fixture (tests/fixtures/reason-vault/) with known SPL content designed to exercise: basic extraction (single block, multiple blocks, HTML comment exclusion, standalone .spl), theory construction (multi-file, parse errors, provenance), reasoning (penguin/bird scenario, defeated conclusions), explanation (proof trees, defeat chains, unknown literal), what-if (add fact, verify no side effects), why-not (missing preconditions, defeated), require (missing facts, already provable, impossible), conflicts (ambiguous, resolved), export (SPL with provenance, JSON), cross-referencing (links --with-conclusions), and caching (cache hit, invalidation). Each test invokes ztl as a binary via assert_cmd and validates JSON output structure and values.")
   (acceptance "All test scenarios from TEST-026 through TEST-037 pass; test vault is self-contained; tests cover extraction, construction, reasoning, explanation, what-if, why-not, require, conflicts, export, cross-ref, caching; cargo test --features reason passes with zero failures")
   (file "tests/reason_integration.rs, tests/fixtures/reason-vault/")
   (test "TEST-026, TEST-027, TEST-028, TEST-029, TEST-030, TEST-031, TEST-032, TEST-033, TEST-034, TEST-035, TEST-036, TEST-037"))
@@ -376,7 +376,7 @@
 (given task-verify-reason)
 
 (meta task-verify-reason
-  (description "Run cargo test --features reason, cargo clippy --features reason -- -D warnings, and manual smoke tests against demo-vault. Verify: 1) All tests pass, 2) Zero clippy warnings, 3) zetl reason status on demo-vault shows correct conclusions, 4) zetl reason explain shows proof trees with correct provenance, 5) zetl reason conflicts reports no unresolved conflicts (or expected ones), 6) zetl check --spl reports no errors in demo-vault, 7) cargo build without --features reason still works, 8) Verbose output (--verbose) shows timing metrics per OBS-005/OBS-006.")
+  (description "Run cargo test --features reason, cargo clippy --features reason -- -D warnings, and manual smoke tests against demo-vault. Verify: 1) All tests pass, 2) Zero clippy warnings, 3) ztl reason status on demo-vault shows correct conclusions, 4) ztl reason explain shows proof trees with correct provenance, 5) ztl reason conflicts reports no unresolved conflicts (or expected ones), 6) ztl check --spl reports no errors in demo-vault, 7) cargo build without --features reason still works, 8) Verbose output (--verbose) shows timing metrics per OBS-005/OBS-006.")
   (acceptance "All tests pass; zero clippy warnings; demo-vault smoke tests produce expected output; both feature-enabled and feature-disabled builds work; timing metrics emitted with --verbose")
   (req "OBS-005, OBS-006"))
 

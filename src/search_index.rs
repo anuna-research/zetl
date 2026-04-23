@@ -25,7 +25,7 @@ struct Fields {
     body: Field,
 }
 
-/// Tantivy-backed full-text search index stored at `.zetl/search/`.
+/// Tantivy-backed full-text search index stored at `.ztl/search/`.
 ///
 /// REQ-013-001, ADR-013-001.
 pub struct SearchIndex {
@@ -36,7 +36,7 @@ pub struct SearchIndex {
 impl SearchIndex {
     /// Build or rebuild the full-text index from the supplied parsed files.
     ///
-    /// Creates `.zetl/search/` under `vault_root` if it does not exist. The index is
+    /// Creates `.ztl/search/` under `vault_root` if it does not exist. The index is
     /// always rebuilt from scratch; incremental updates are handled by the caller via
     /// the file cache.
     ///
@@ -44,7 +44,7 @@ impl SearchIndex {
     /// same exclusion logic as SPEC-002 (no frontmatter, fenced code blocks, inline
     /// code, HTML comments).
     pub fn build(vault_root: &Path, files: &[ParsedFile]) -> Result<Self> {
-        let index_dir = vault_root.join(".zetl").join("search");
+        let index_dir = vault_root.join(".ztl").join("search");
         std::fs::create_dir_all(&index_dir)
             .with_context(|| format!("creating search index directory {index_dir:?}"))?;
 
@@ -83,11 +83,11 @@ impl SearchIndex {
         Ok(Self { index, fields })
     }
 
-    /// Open an existing index from `.zetl/search/`.
+    /// Open an existing index from `.ztl/search/`.
     ///
     /// Returns `None` if the directory does not exist.
     pub fn open(vault_root: &Path) -> Result<Option<Self>> {
-        let index_dir = vault_root.join(".zetl").join("search");
+        let index_dir = vault_root.join(".ztl").join("search");
         if !index_dir.exists() {
             return Ok(None);
         }

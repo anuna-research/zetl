@@ -1,8 +1,8 @@
-//! Theme manifest parsing for zetl themes.
+//! Theme manifest parsing for ztl themes.
 //!
 //! Handles loading and validation of `theme.toml` files from both on-disk
 //! user-installed themes and compile-time-bundled themes. Also provides the
-//! `ThemeSource` struct for parsing `.zetl-source.toml` provenance files.
+//! `ThemeSource` struct for parsing `.ztl-source.toml` provenance files.
 
 use std::path::Path;
 
@@ -14,10 +14,10 @@ use super::engine::bundled_template;
 
 // ── Install source ────────────────────────────────────────────────────────────
 
-/// Parsed representation of a `zetl theme install <source>` argument.
+/// Parsed representation of a `ztl theme install <source>` argument.
 ///
 /// This is distinct from [`ThemeSource`], which is the provenance record stored
-/// in `.zetl-source.toml` after installation.
+/// in `.ztl-source.toml` after installation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ThemeInstallSource {
     pub url: String,             // Resolved git URL
@@ -168,7 +168,7 @@ pub struct ThemeInfo {
     #[serde(default)]
     pub homepage: Option<String>,
     #[serde(default)]
-    pub min_zetl_version: Option<String>,
+    pub min_ztl_version: Option<String>,
     #[serde(default)]
     pub templates: Option<ThemeTemplates>,
     /// SPEC-032 REQ-3223 — `[[theme.hooks]]` array of hook declarations a
@@ -188,7 +188,7 @@ pub struct ThemeInfo {
 ///
 /// `stage` + `extension_id` identify the hook against the on-disk
 /// composition (REQ-3206); `summary` and `contract` are surfaced by
-/// `zetl theme show` so users can audit both execution and behaviour.
+/// `ztl theme show` so users can audit both execution and behaviour.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ThemeHookDecl {
     /// One of `pre-parse`, `transform`, `post-render`.
@@ -198,7 +198,7 @@ pub struct ThemeHookDecl {
     /// [`crate::hooks::composition::default_extension_id`]).
     pub extension_id: String,
     /// Optional ecosystem adapter id (SPEC-033 REQ-3301), e.g.
-    /// `"pandoc"`. Surfaced verbatim by `zetl theme show`.
+    /// `"pandoc"`. Surfaced verbatim by `ztl theme show`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ecosystem: Option<String>,
     /// One-line author-supplied description.
@@ -206,7 +206,7 @@ pub struct ThemeHookDecl {
     pub summary: Option<String>,
     /// Optional `[contract]` table — REQ-3224. Stored as opaque TOML so
     /// this module stays decoupled from the contract parser; consumers
-    /// (`zetl theme show`, REQ-3224 enforcement) re-parse as needed.
+    /// (`ztl theme show`, REQ-3224 enforcement) re-parse as needed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contract: Option<toml::value::Table>,
 }
@@ -259,7 +259,7 @@ pub struct ThemeSourceInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     pub installed_at: String,
-    pub zetl_version: String,
+    pub ztl_version: String,
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -335,13 +335,13 @@ pub fn load_bundled_manifest(theme_name: &str) -> Result<Option<ThemeManifest>> 
 
 /// Parse TOML content into a [`ThemeSource`] provenance record.
 pub fn parse_theme_source(content: &str) -> Result<ThemeSource> {
-    toml::from_str(content).context("failed to parse .zetl-source.toml")
+    toml::from_str(content).context("failed to parse .ztl-source.toml")
 }
 
-/// Write a `.zetl-source.toml` provenance file into `theme_dir`.
+/// Write a `.ztl-source.toml` provenance file into `theme_dir`.
 ///
 /// Records the git URL, optional ref, resolved commit SHA, optional subdirectory
-/// path, installation timestamp (UTC ISO 8601), and the current zetl version
+/// path, installation timestamp (UTC ISO 8601), and the current ztl version
 /// from `CARGO_PKG_VERSION`.
 pub fn write_provenance(
     theme_dir: &Path,
@@ -355,25 +355,25 @@ pub fn write_provenance(
             commit: clone_result.commit_sha.clone(),
             path: source.path.clone(),
             installed_at: current_utc_iso8601(),
-            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+            ztl_version: env!("CARGO_PKG_VERSION").to_string(),
         },
     };
 
     let content =
         toml::to_string_pretty(&record).context("failed to serialize provenance record")?;
 
-    let dest = theme_dir.join(".zetl-source.toml");
+    let dest = theme_dir.join(".ztl-source.toml");
     std::fs::write(&dest, content)
         .with_context(|| format!("failed to write {}", dest.display()))?;
 
     Ok(())
 }
 
-/// Read and parse `.zetl-source.toml` from `theme_dir`.
+/// Read and parse `.ztl-source.toml` from `theme_dir`.
 ///
 /// Returns `None` if the file does not exist or cannot be parsed.
 pub fn read_provenance(theme_dir: &Path) -> Option<ThemeSource> {
-    let path = theme_dir.join(".zetl-source.toml");
+    let path = theme_dir.join(".ztl-source.toml");
     let content = std::fs::read_to_string(&path).ok()?;
     parse_theme_source(&content).ok()
 }
@@ -833,11 +833,11 @@ version = "1.0.0"
 [theme]
 name = "default"
 version = "0.9.0"
-description = "The default zetl theme"
-author = "zetl contributors"
+description = "The default ztl theme"
+author = "ztl contributors"
 license = "AGPL-3.0"
 homepage = "https://example.com"
-min_zetl_version = "0.1.0"
+min_ztl_version = "0.1.0"
 
 [theme.templates]
 overrides = ["base.html", "index.html", "page.html", "folder.html"]
@@ -846,7 +846,7 @@ overrides = ["base.html", "index.html", "page.html", "folder.html"]
         assert_eq!(m.theme.name, "default");
         assert_eq!(
             m.theme.description.as_deref(),
-            Some("The default zetl theme")
+            Some("The default ztl theme")
         );
         let templates = m.theme.templates.unwrap();
         assert_eq!(templates.overrides.len(), 4);
@@ -1053,7 +1053,7 @@ name = "my-theme"
     #[test]
     fn test_sanitize_repo_name() {
         assert_eq!(sanitize_theme_name("dark-theme"), "dark-theme");
-        assert_eq!(sanitize_theme_name("zetl.theme"), "zetl-theme");
+        assert_eq!(sanitize_theme_name("ztl.theme"), "ztl-theme");
     }
 
     // ── resolve_theme_name ───────────────────────────────────────────────────
@@ -1075,7 +1075,7 @@ name = "my-theme"
                 author: None,
                 license: None,
                 homepage: None,
-                min_zetl_version: None,
+                min_ztl_version: None,
                 templates: None,
                 hooks: Vec::new(),
             },
@@ -1142,7 +1142,7 @@ name = "my-theme"
 url = "https://example.com/theme.git"
 commit = "abc123def456"
 installed_at = "2024-01-01T00:00:00Z"
-zetl_version = "0.1.0"
+ztl_version = "0.1.0"
 "#;
         let s = parse_theme_source(toml).unwrap();
         assert_eq!(s.source.url, "https://example.com/theme.git");
@@ -1160,7 +1160,7 @@ ref = "main"
 commit = "abc123"
 path = "themes/dark"
 installed_at = "2024-06-15T12:00:00Z"
-zetl_version = "0.2.0"
+ztl_version = "0.2.0"
 "#;
         let s = parse_theme_source(toml).unwrap();
         assert_eq!(s.source.ref_name.as_deref(), Some("main"));
@@ -1368,7 +1368,7 @@ zetl_version = "0.2.0"
 
         write_provenance(tmp.path(), &source, &clone).unwrap();
 
-        let dest = tmp.path().join(".zetl-source.toml");
+        let dest = tmp.path().join(".ztl-source.toml");
         assert!(dest.exists());
         let content = std::fs::read_to_string(&dest).unwrap();
         assert!(content.contains("url = \"https://github.com/user/repo.git\""));
@@ -1376,7 +1376,7 @@ zetl_version = "0.2.0"
         assert!(content.contains("commit = \"abc1234def5678abcdef1234def56789abc12345\""));
         assert!(content.contains("path = \"themes/garden\""));
         assert!(content.contains("installed_at ="));
-        assert!(content.contains("zetl_version ="));
+        assert!(content.contains("ztl_version ="));
     }
 
     #[test]
@@ -1391,7 +1391,7 @@ zetl_version = "0.2.0"
 
         write_provenance(tmp.path(), &source, &clone).unwrap();
 
-        let content = std::fs::read_to_string(tmp.path().join(".zetl-source.toml")).unwrap();
+        let content = std::fs::read_to_string(tmp.path().join(".ztl-source.toml")).unwrap();
         // Optional fields must be absent when None
         assert!(!content.contains("ref ="));
         assert!(!content.contains("path ="));
@@ -1416,7 +1416,7 @@ zetl_version = "0.2.0"
         assert_eq!(record.source.commit, commit);
         assert!(record.source.path.is_none());
         assert!(!record.source.installed_at.is_empty());
-        assert!(!record.source.zetl_version.is_empty());
+        assert!(!record.source.ztl_version.is_empty());
     }
 
     #[test]
@@ -1428,7 +1428,7 @@ zetl_version = "0.2.0"
     #[test]
     fn test_read_provenance_malformed_returns_none() {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join(".zetl-source.toml"), "not valid toml ][").unwrap();
+        std::fs::write(tmp.path().join(".ztl-source.toml"), "not valid toml ][").unwrap();
         assert!(read_provenance(tmp.path()).is_none());
     }
 }

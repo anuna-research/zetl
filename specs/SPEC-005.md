@@ -1,38 +1,38 @@
 ---
-title: "SPEC-005: zetl reason — Defeasible Logic over Markdown Vaults"
+title: "SPEC-005: ztl reason — Defeasible Logic over Markdown Vaults"
 version: 0.1.0
 status: draft
 audience: agent, human
 date: 2026-02-23
 ---
 
-# SPEC-005: zetl reason — Defeasible Logic over Markdown Vaults
+# SPEC-005: ztl reason — Defeasible Logic over Markdown Vaults
 
 ## Information Table
 
 | Field          | Value                                                        |
 | -------------- | ------------------------------------------------------------ |
 | Document ID    | SPEC-005                                                     |
-| Title          | zetl reason — Defeasible Logic over Markdown Vaults          |
+| Title          | ztl reason — Defeasible Logic over Markdown Vaults          |
 | Version        | 0.1.0                                                        |
 | Status         | Draft                                                        |
 | Author         | Agent (USDD Protocol v1.0.0)                                 |
 | Date           | 2026-02-23                                                   |
 | Audience       | Agent, Human                                                 |
 | Trace          | USDD Agent Protocol v1.0.0                                   |
-| Parent         | SPEC-001: zetl — Bi-directional Link Graph CLI               |
-| Related        | SPEC-002: zetl search, SPEC-003: Agent Ergonomics            |
+| Parent         | SPEC-001: ztl — Bi-directional Link Graph CLI               |
+| Related        | SPEC-002: ztl search, SPEC-003: Agent Ergonomics            |
 | Dependencies   | spindle-core (defeasible logic engine), spindle-parser (SPL)  |
 
 ---
 
 ## 1. Overview
 
-SPEC-001 established zetl as a tool that builds a **structural graph** from `[[wikilinks]]` in Markdown files — it tells you what documents link to each other. This specification adds a second layer: a **logical graph** built from Spindle Lisp (SPL) code blocks embedded in those same documents.
+SPEC-001 established ztl as a tool that builds a **structural graph** from `[[wikilinks]]` in Markdown files — it tells you what documents link to each other. This specification adds a second layer: a **logical graph** built from Spindle Lisp (SPL) code blocks embedded in those same documents.
 
-Documents in a Zettelkasten don't just link to each other — they make **claims**. A note on "Redis vs Memcached" doesn't just link to [[Caching Strategy]]; it **concludes** that Redis is the better choice. A later note on [[License Audit]] might **defeat** that conclusion with new evidence. Today, these claims exist only as natural language prose. Zetl's link graph cannot distinguish "this document mentions caching" from "this document argues Redis is correct."
+Documents in a Zettelkasten don't just link to each other — they make **claims**. A note on "Redis vs Memcached" doesn't just link to [[Caching Strategy]]; it **concludes** that Redis is the better choice. A later note on [[License Audit]] might **defeat** that conclusion with new evidence. Today, these claims exist only as natural language prose. ztl's link graph cannot distinguish "this document mentions caching" from "this document argues Redis is correct."
 
-By embedding SPL — a formal language for defeasible (defeatable) rules — directly in Markdown code blocks, authors (human or agent) can express claims that zetl extracts, combines into a unified logical theory, and reasons over using the spindle-core engine. The result: a knowledge base that can detect contradictions across documents, explain why a conclusion holds (or doesn't), identify what knowledge is missing, and explore hypothetical scenarios — all with full provenance tracing back to source files and line numbers.
+By embedding SPL — a formal language for defeasible (defeatable) rules — directly in Markdown code blocks, authors (human or agent) can express claims that ztl extracts, combines into a unified logical theory, and reasons over using the spindle-core engine. The result: a knowledge base that can detect contradictions across documents, explain why a conclusion holds (or doesn't), identify what knowledge is missing, and explore hypothetical scenarios — all with full provenance tracing back to source files and line numbers.
 
 ### 1.1 Core Insight
 
@@ -42,8 +42,8 @@ Luhmann's original slip-box was not just a filing system — it was a **reasonin
 
 ### 1.2 Design Philosophy
 
-1. **Documents are the source of truth.** SPL blocks are embedded in Markdown files that the user already writes. No separate `.spl` files required (though they are supported). Zetl extracts but never modifies.
-2. **Reasoning is whole-vault.** All SPL blocks across all documents are unioned into a single theory. This mirrors how zetl builds one link graph from all wikilinks — the theory is the logical analogue of the graph.
+1. **Documents are the source of truth.** SPL blocks are embedded in Markdown files that the user already writes. No separate `.spl` files required (though they are supported). ztl extracts but never modifies.
+2. **Reasoning is whole-vault.** All SPL blocks across all documents are unioned into a single theory. This mirrors how ztl builds one link graph from all wikilinks — the theory is the logical analogue of the graph.
 3. **Provenance is first-class.** Every rule, fact, and conclusion traces back to a specific file and line number. Explanation proof trees reference source documents by name. This bridges the structural graph (wikilinks) and the logical graph (SPL).
 4. **Defeasible, not monotonic.** Claims can be defeated by stronger claims in other documents. This is the correct model for evolving knowledge bases where new information overrides old. Monotonic logic (Datalog, Prolog) cannot express "this was true until that note defeated it."
 5. **Agent-first, human-friendly.** All reasoning output is structured JSON by default. Proof trees, conflict reports, and gap analyses are machine-parseable. Table and natural-language formats serve human users.
@@ -61,12 +61,12 @@ Luhmann's original slip-box was not just a filing system — it was a **reasonin
 - Query operators: `what-if`, `why-not`, `require` (abductive reasoning)
 - Conflict detection: identifying logical contradictions across documents
 - Validation: detecting ill-formed SPL blocks during vault indexing
-- CLI subcommands under `zetl reason`
+- CLI subcommands under `ztl reason`
 - Integration with the existing link graph for cross-referencing
 
 **Out of scope:**
 
-- Modifying documents (zetl remains read-only)
+- Modifying documents (ztl remains read-only)
 - Real-time collaborative reasoning (future SPEC, builds on SPEC-004 sync)
 - Embedding-based semantic similarity for SPL literals (future SPEC)
 - Trust-weighted reasoning across authors (future SPEC, builds on spindle-core trust module)
@@ -94,12 +94,12 @@ Constraints:
   - Must handle structured error responses for invalid SPL
 Daily workflow:
   1. Create a research note with [[wikilinks]] and an ```spl block
-  2. Run `zetl reason status` to see what the vault collectively concludes
-  3. Run `zetl reason explain "decided-use-redis"` to get the proof chain
-  4. Run `zetl reason require "ready-for-production"` to find missing premises
-  5. Run `zetl reason what-if "verified-load-test"` to explore consequences
-  6. Run `zetl reason conflicts` to check for unresolved contradictions
-  7. Run `zetl check` to validate both link integrity and SPL syntax
+  2. Run `ztl reason status` to see what the vault collectively concludes
+  3. Run `ztl reason explain "decided-use-redis"` to get the proof chain
+  4. Run `ztl reason require "ready-for-production"` to find missing premises
+  5. Run `ztl reason what-if "verified-load-test"` to explore consequences
+  6. Run `ztl reason conflicts` to check for unresolved contradictions
+  7. Run `ztl check` to validate both link integrity and SPL syntax
 ```
 
 ### 2.2 Human Knowledge Worker — Decision Documenter
@@ -118,10 +118,10 @@ Constraints:
   - Needs human-readable proof explanations, not raw logic
 Daily workflow:
   1. Write an architecture decision record with an ```spl block
-  2. Run `zetl reason status -f table` to see all active conclusions
-  3. Run `zetl reason explain "decided-use-redis" -f table` to see proof
+  2. Run `ztl reason status -f table` to see all active conclusions
+  3. Run `ztl reason explain "decided-use-redis" -f table` to see proof
   4. Months later, write a new note that defeats the Redis decision
-  5. Run `zetl reason explain "decided-use-redis" -f table` to see it's now defeated
+  5. Run `ztl reason explain "decided-use-redis" -f table` to see it's now defeated
   6. The system shows: "defeated by rule d1 in [[License Audit]] line 12"
 ```
 
@@ -132,7 +132,7 @@ Role: Multiple LLM agents contributing to a shared knowledge base (via hence)
 Goals:
   - Each agent writes research findings as notes with SPL claims
   - The vault's theory is the union of all agents' claims
-  - Hence coordinates which agent researches what; zetl validates the logic
+  - Hence coordinates which agent researches what; ztl validates the logic
   - Agents can check whether their findings conflict with prior research
 Constraints:
   - Agents write concurrently to the same vault (append-only, no lock contention)
@@ -141,10 +141,10 @@ Constraints:
 Daily workflow:
   1. Hence assigns "research caching options" to agent-A
   2. Agent-A creates notes with SPL claims about Redis
-  3. Agent-A runs `zetl reason status` to validate no conflicts
+  3. Agent-A runs `ztl reason status` to validate no conflicts
   4. Hence assigns "research license constraints" to agent-B
   5. Agent-B creates a note with a defeater for the Redis conclusion
-  6. Agent-B runs `zetl reason conflicts` to report the contradiction
+  6. Agent-B runs `ztl reason conflicts` to report the contradiction
   7. Hence assigns "resolve caching decision" to agent-C
   8. Agent-C reads both proofs, writes a resolution note with updated SPL
 ```
@@ -158,18 +158,18 @@ Preconditions:
   - Vault has existing notes with SPL blocks asserting various facts and rules
   - Agent has created a new note with an ```spl block containing a new claim
 Steps:
-  1. `zetl reason status -d ./vault`
+  1. `ztl reason status -d ./vault`
      → Returns all current conclusions with provenance
   2. Agent checks whether its new claim conflicts with existing conclusions
-  3. `zetl reason explain "new-claim" -d ./vault`
+  3. `ztl reason explain "new-claim" -d ./vault`
      → Returns proof tree showing which rules/facts support the claim
      → Proof tree references source documents by name and line
-  4. `zetl reason conflicts -d ./vault`
+  4. `ztl reason conflicts -d ./vault`
      → Returns empty list (no unresolved contradictions)
 Postconditions:
   - Agent is confident its new claim is consistent with the vault's theory
 Failure modes:
-  - SPL syntax error in agent's note → `zetl reason status` returns structured
+  - SPL syntax error in agent's note → `ztl reason status` returns structured
     diagnostic with file, line, column, and error message
   - New claim contradicts existing conclusion → `conflicts` reports the
     contradiction with both sides' provenance
@@ -182,14 +182,14 @@ Preconditions:
   - Vault contains "Architecture Decision: Redis" from January with SPL
   - Vault contains "License Audit Results" from February with a defeater
 Steps:
-  1. `zetl reason explain "decided-use-redis" -f table`
+  1. `ztl reason explain "decided-use-redis" -f table`
      → Shows: "-d decided-use-redis (defeasibly not provable)"
      → Proof: "Rule r-prefer-redis in [[Redis vs Memcached]]:14 would prove it"
      → Defeat: "Defeated by d-license-risk in [[License Audit]]:8"
      → Because: "discovered-license-risk is +D (fact in [[License Audit]]:7)"
   2. User understands: the January decision was valid at the time but is now
      defeated by February's audit findings
-  3. `zetl reason what-if "(not discovered-license-risk)" -f table`
+  3. `ztl reason what-if "(not discovered-license-risk)" -f table`
      → Shows: if the license risk were removed, decided-use-redis would
        become +d again
 Postconditions:
@@ -280,7 +280,7 @@ A document may contain both wikilinks and SPL. The two systems are complementary
 - **Wikilinks** express structural relationships: "this document references that document."
 - **SPL** expresses logical relationships: "this claim supports/defeats that conclusion."
 
-Zetl builds both graphs from the same scan pass. Cross-referencing enables queries like:
+ztl builds both graphs from the same scan pass. Cross-referencing enables queries like:
 
 - "Show me all documents that are both linked to [[Caching Strategy]] AND contribute facts about `decided-use-redis`" — intersection of the link graph and the theory provenance.
 - "Which documents in the backlink chain of [[Architecture Decision]] contain defeated conclusions?" — graph traversal filtered by reasoning state.
@@ -355,7 +355,7 @@ producing for each literal in the theory:
   - Provenance: the rule(s) and fact(s) that contributed to the conclusion,
     each with source file and line number
 
-The system SHALL expose these conclusions via the `zetl reason status`
+The system SHALL expose these conclusions via the `ztl reason status`
 subcommand.
 
 FOR all user roles
@@ -395,7 +395,7 @@ REQ-030: Hypothetical Reasoning (what-if)
 
 The system SHALL support hypothetical queries that temporarily add
 facts or rules to the theory and compute what changes:
-  - `zetl reason what-if "<spl-facts>" [--goal <literal>]`
+  - `ztl reason what-if "<spl-facts>" [--goal <literal>]`
   - Returns: new conclusions, changed conclusions, and newly provable/
     defeated literals compared to the base theory
 
@@ -413,7 +413,7 @@ Trace:
 REQ-031: Failure Explanation (why-not)
 
 The system SHALL explain why a literal is NOT provable:
-  - `zetl reason why-not "<literal>"`
+  - `ztl reason why-not "<literal>"`
   - Returns: which rules could prove it, what body literals are missing
     or failed, and which defeaters are blocking it
 
@@ -433,7 +433,7 @@ REQ-032: Knowledge Gap Detection (require)
 
 The system SHALL support abductive queries that identify what facts
 would need to be added to make a goal literal provable:
-  - `zetl reason require "<literal>"`
+  - `ztl reason require "<literal>"`
   - Returns: one or more sets of facts that, if added, would make
     the literal defeasibly provable
 
@@ -465,7 +465,7 @@ For each conflict, the system SHALL report:
     declaration
 
 FOR all user roles
-WITH output via `zetl reason conflicts`.
+WITH output via `ztl reason conflicts`.
 
 Trace:
 - TEST-033
@@ -475,7 +475,7 @@ Trace:
 ```
 REQ-034: SPL Validation in Check
 
-The system SHALL extend the existing `zetl check` command to include
+The system SHALL extend the existing `ztl check` command to include
 SPL syntax validation alongside dead links, orphans, and wikilink
 syntax errors.
 
@@ -510,7 +510,7 @@ This enables external tools (including hence) to consume the vault's
 theory programmatically.
 
 FOR all user roles
-WITH output via `zetl reason export`.
+WITH output via `ztl reason export`.
 
 Trace:
 - TEST-035
@@ -522,12 +522,12 @@ REQ-036: Cross-Reference — Graph and Theory
 
 The system SHALL support querying the intersection of the link graph
 and the logical theory:
-  a) `zetl reason provenance "<literal>"` — show which documents
+  a) `ztl reason provenance "<literal>"` — show which documents
      contribute to a literal's proof, cross-referenced with the
      link graph (backlinks between those documents)
-  b) `zetl links <page> --with-conclusions` — for each linked page,
+  b) `ztl links <page> --with-conclusions` — for each linked page,
      show which conclusions that page contributes to the theory
-  c) `zetl backlinks <page> --with-conclusions` — for each backlinking
+  c) `ztl backlinks <page> --with-conclusions` — for each backlinking
      page, show its logical contributions
 
 These flags are additive — they enrich existing output with reasoning
@@ -563,8 +563,8 @@ SPL extraction SHALL be incremental — only re-parsing SPL blocks from
 files whose mtime has changed since the last index, consistent with
 the existing cache strategy (SPEC-001 REQ-011).
 
-The combined theory SHALL be cached in `.zetl/theory.json` alongside
-the existing `.zetl/index.json`.
+The combined theory SHALL be cached in `.ztl/theory.json` alongside
+the existing `.ztl/index.json`.
 
 Trace:
 - TEST-037
@@ -582,7 +582,7 @@ containing 10,000 total rules/facts.
 NFR-013: Graceful Degradation
 
 If spindle-core is not available (e.g., the `reason` feature is
-compiled out), all `zetl reason` commands SHALL return a structured
+compiled out), all `ztl reason` commands SHALL return a structured
 error: {"error": "Reasoning engine not available. Build with --features reason", "code": 2}.
 
 All non-reasoning commands SHALL continue to work unchanged.
@@ -600,7 +600,7 @@ ADR-005: Embed spindle-core as a Rust Library Dependency
 Status: Proposed
 
 Context:
-  zetl needs a defeasible logic engine to reason over extracted SPL.
+  ztl needs a defeasible logic engine to reason over extracted SPL.
   Three integration approaches were evaluated:
 
   Option A — Embed spindle-core as a Rust crate dependency:
@@ -609,7 +609,7 @@ Context:
     + Direct access to Theory, Reasoner, and Explanation APIs
     + spindle-core is already a library crate designed for embedding
     - Adds ~2MB to binary size (spindle-core + spindle-parser)
-    - Couples zetl to spindle-core's API stability
+    - Couples ztl to spindle-core's API stability
 
   Option B — Shell out to spindle-cli:
     + Zero coupling, separate binary
@@ -632,7 +632,7 @@ Rationale:
   - Feature flag keeps the dependency optional: `cargo build` without
     `--features reason` produces the current binary with no spindle code
   - spindle-core's Theory, Rule, Literal, and Explanation types map
-    directly to zetl's data model
+    directly to ztl's data model
   - The ~2MB binary size increase (NFR-004 allows up to 10MB) is acceptable
 
 Consequences:
@@ -641,8 +641,8 @@ Consequences:
   + Single binary distribution (when feature is enabled)
   + Direct access to spindle-core's query operators (what-if, why-not,
     abduce, explain) without building a CLI integration layer
-  - zetl's compile time increases when the reason feature is enabled
-  - spindle-core API changes require zetl updates
+  - ztl's compile time increases when the reason feature is enabled
+  - spindle-core API changes require ztl updates
 ```
 
 ```
@@ -657,11 +657,11 @@ Context:
   3. Constructing the Theory (CPU bound, negligible for <10K rules)
   4. Running the reasoner (CPU bound, ~10-100ms for typical vaults)
 
-  For interactive use (agent calling zetl repeatedly), steps 1-3
+  For interactive use (agent calling ztl repeatedly), steps 1-3
   should be cached. Step 4 is fast enough to re-run each time.
 
   Options:
-  A. Cache the parsed Theory to .zetl/theory.json:
+  A. Cache the parsed Theory to .ztl/theory.json:
      + Skip steps 1-3 on cache hit
      + Consistent with existing index.json caching
      - Theory serialization format must be designed
@@ -761,7 +761,7 @@ Consequences:
                             │
                      ┌──────▼───────┐
                      │    Cache     │
-                     │  .zetl/      │
+                     │  .ztl/      │
                      │  index.json  │
                      │  theory.json │  NEW
                      └──────────────┘
@@ -769,9 +769,9 @@ Consequences:
 
 **Scanner (extended)** — During the existing Markdown scan pass, the scanner now also identifies `spl`-tagged code blocks and extracts their content with provenance metadata. This is the dual of wikilink extraction: wikilinks are extracted from *outside* code blocks; SPL is extracted from *inside* specifically-tagged code blocks. The scanner also identifies standalone `.spl` files via the file walk.
 
-**Reason Engine (new)** — Consumes extracted SPL fragments, parses them via spindle-parser, constructs a spindle-core `Theory` with provenance metadata, runs the reasoner, and exposes query methods. The engine is a thin integration layer between zetl's scanner output and spindle-core's API.
+**Reason Engine (new)** — Consumes extracted SPL fragments, parses them via spindle-parser, constructs a spindle-core `Theory` with provenance metadata, runs the reasoner, and exposes query methods. The engine is a thin integration layer between ztl's scanner output and spindle-core's API.
 
-**Cache (extended)** — Adds `.zetl/theory.json` alongside the existing `.zetl/index.json`. The theory cache stores the serialized Theory and its conclusions. Invalidation follows the same mtime strategy.
+**Cache (extended)** — Adds `.ztl/theory.json` alongside the existing `.ztl/index.json`. The theory cache stores the serialized Theory and its conclusions. Invalidation follows the same mtime strategy.
 
 ### 5.3 Data Model
 
@@ -908,9 +908,9 @@ SplBlock[]  (from scanner)
 All `reason` commands operate on the vault's combined SPL theory. They require a full pipeline run (scan → parse → reason) unless the theory cache is valid.
 
 ```
-CON-012: zetl reason status
+CON-012: ztl reason status
 
-zetl reason status [OPTIONS]
+ztl reason status [OPTIONS]
 
 Show all conclusions derived from the vault's SPL theory.
 
@@ -989,9 +989,9 @@ Verified by:
 ```
 
 ```
-CON-013: zetl reason explain
+CON-013: ztl reason explain
 
-zetl reason explain <LITERAL> [OPTIONS]
+ztl reason explain <LITERAL> [OPTIONS]
 
 Show the proof tree for a literal — why it is or isn't provable.
 
@@ -1085,9 +1085,9 @@ Verified by:
 ```
 
 ```
-CON-014: zetl reason what-if
+CON-014: ztl reason what-if
 
-zetl reason what-if <SPL> [OPTIONS]
+ztl reason what-if <SPL> [OPTIONS]
 
 Hypothetically add facts/rules and show what changes.
 
@@ -1125,9 +1125,9 @@ Verified by:
 ```
 
 ```
-CON-015: zetl reason why-not
+CON-015: ztl reason why-not
 
-zetl reason why-not <LITERAL>
+ztl reason why-not <LITERAL>
 
 Explain why a literal is not provable.
 
@@ -1176,9 +1176,9 @@ Verified by:
 ```
 
 ```
-CON-016: zetl reason require
+CON-016: ztl reason require
 
-zetl reason require <LITERAL> [OPTIONS]
+ztl reason require <LITERAL> [OPTIONS]
 
 Find what facts are needed to make a literal provable.
 
@@ -1231,9 +1231,9 @@ Verified by:
 ```
 
 ```
-CON-017: zetl reason conflicts
+CON-017: ztl reason conflicts
 
-zetl reason conflicts [OPTIONS]
+ztl reason conflicts [OPTIONS]
 
 Detect unresolved logical conflicts in the vault's theory.
 
@@ -1284,9 +1284,9 @@ Verified by:
 ```
 
 ```
-CON-018: zetl reason export
+CON-018: ztl reason export
 
-zetl reason export [OPTIONS]
+ztl reason export [OPTIONS]
 
 Export the combined theory.
 
@@ -1323,9 +1323,9 @@ Verified by:
 ```
 
 ```
-CON-004 (extended): zetl check --spl
+CON-004 (extended): ztl check --spl
 
-zetl check [OPTIONS]
+ztl check [OPTIONS]
 
 Additional options:
   --spl            Show only SPL diagnostics (parse errors, undefined
@@ -1461,7 +1461,7 @@ Given: Three files:
   - "Birds.md" SPL: (given bird) (given penguin)
   - "Flight.md" SPL: (normally r1 bird flies)
   - "Penguins.md" SPL: (normally r2 penguin (not flies)) (prefer r2 r1)
-When: `zetl reason status` is run
+When: `ztl reason status` is run
 Then:
   - bird is +D (fact from Birds.md)
   - penguin is +D (fact from Birds.md)
@@ -1477,7 +1477,7 @@ TEST-029: Explanation with Document Provenance
 
 Scenario: Explain a defeated conclusion
 Given: The vault from TEST-028
-When: `zetl reason explain "flies"` is run
+When: `ztl reason explain "flies"` is run
 Then:
   - conclusion: "-d"
   - explanation shows r1 in [[Flight]]:line would prove it
@@ -1485,13 +1485,13 @@ Then:
   - superiority (prefer r2 r1) referenced from [[Penguins]]
 
 Scenario: Explain a provable conclusion
-When: `zetl reason explain "bird"` is run
+When: `ztl reason explain "bird"` is run
 Then:
   - conclusion: "+D"
   - explanation shows it is a fact from [[Birds]]:line
 
 Scenario: Literal not in theory
-When: `zetl reason explain "swims"` is run
+When: `ztl reason explain "swims"` is run
 Then:
   - Exit code 1
   - Error suggests similar literals if any exist
@@ -1505,15 +1505,15 @@ TEST-030: Hypothetical Reasoning
 Scenario: Add a fact and see consequences
 Given: A vault where "ready-for-production" requires "verified-load-test"
        (via a rule), but "verified-load-test" is not a fact
-When: `zetl reason what-if "(given verified-load-test)"` is run
+When: `ztl reason what-if "(given verified-load-test)"` is run
 Then:
   - Shows "ready-for-production" changed from -d to +d
   - Shows the rule that now fires, with its source document
 
 Scenario: Hypothetical doesn't modify vault
 Given: Same vault
-When: `zetl reason what-if "(given verified-load-test)"` is run
-Then: Subsequent `zetl reason status` still shows ready-for-production as -d
+When: `ztl reason what-if "(given verified-load-test)"` is run
+Then: Subsequent `ztl reason status` still shows ready-for-production as -d
 
 Verifies: REQ-030
 ```
@@ -1524,7 +1524,7 @@ TEST-031: Why-Not Explanation
 Scenario: Explain missing preconditions
 Given: A vault where "ready-for-production" has a rule requiring
        "verified-load-test" AND "verified-security-audit", both missing
-When: `zetl reason why-not "ready-for-production"` is run
+When: `ztl reason why-not "ready-for-production"` is run
 Then:
   - Reports 2 blockers (both missing body literals)
   - Each blocker references the rule and its source document
@@ -1532,7 +1532,7 @@ Then:
 
 Scenario: Explain defeat
 Given: A literal that is defeated by a superior rule
-When: `zetl reason why-not "decided-use-redis"` is run
+When: `ztl reason why-not "decided-use-redis"` is run
 Then:
   - Reports the defeater with its source document
 
@@ -1544,7 +1544,7 @@ TEST-032: Knowledge Gap Detection
 
 Scenario: Find what's needed for a goal
 Given: A vault where "ready-for-production" requires facts that don't exist
-When: `zetl reason require "ready-for-production"` is run
+When: `ztl reason require "ready-for-production"` is run
 Then:
   - Returns at least one solution with required facts
   - Each required fact identifies the rule that needs it
@@ -1552,14 +1552,14 @@ Then:
 
 Scenario: Goal already provable
 Given: A vault where "bird" is already +D
-When: `zetl reason require "bird"` is run
+When: `ztl reason require "bird"` is run
 Then:
   - Returns empty solution (no additional facts needed)
   - Message: "bird is already provable (+D)"
 
 Scenario: Goal impossible
 Given: A literal with no rules that could prove it
-When: `zetl reason require "impossible-goal"` is run
+When: `ztl reason require "impossible-goal"` is run
 Then:
   - Exit code 1
   - Message: "No rules exist that could derive 'impossible-goal'"
@@ -1580,7 +1580,7 @@ Given: Two documents:
   - "Con.md" SPL: (normally r-no evidence-b (not use-redis))
   - Both evidence-a and evidence-b are given facts
   - No (prefer ...) relation exists
-When: `zetl reason conflicts` is run
+When: `ztl reason conflicts` is run
 Then:
   - Reports 1 conflict on literal "use-redis"
   - Shows r-yes from [[Pro]] and r-no from [[Con]]
@@ -1589,7 +1589,7 @@ Then:
 
 Scenario: No conflicts
 Given: A vault where all competing rules have superiority relations
-When: `zetl reason conflicts` is run
+When: `ztl reason conflicts` is run
 Then:
   - conflict_count: 0
 
@@ -1601,26 +1601,26 @@ TEST-034: SPL Validation in Check
 
 Scenario: SPL parse error
 Given: A file with an invalid SPL block (unclosed parenthesis)
-When: `zetl check --spl` is run
+When: `ztl check --spl` is run
 Then:
   - Reports spl_diagnostic with level=error, file, line, message
   - Exit code matches --fail-on setting
 
 Scenario: Duplicate rule label
 Given: Two files each define rule "r1"
-When: `zetl check --spl` is run
+When: `ztl check --spl` is run
 Then:
   - Reports warning: duplicate rule label with both file locations
 
 Scenario: Undefined superiority label
 Given: A file with (prefer r-exists r-phantom) where r-phantom is never defined
-When: `zetl check --spl` is run
+When: `ztl check --spl` is run
 Then:
   - Reports warning with file and line
 
 Scenario: Unreachable body literal
 Given: A rule body references "some-literal" that appears in no head or fact
-When: `zetl check --spl` is run
+When: `ztl check --spl` is run
 Then:
   - Reports warning: "Body literal 'some-literal' appears in no rule head or fact"
 
@@ -1632,7 +1632,7 @@ TEST-035: Theory Export
 
 Scenario: Export as SPL with provenance
 Given: A vault with SPL blocks in 3 files
-When: `zetl reason export --format spl` is run
+When: `ztl reason export --format spl` is run
 Then:
   - Output contains all facts, rules, defeaters, superiority
   - Each item is preceded by a comment line with source file and line
@@ -1640,7 +1640,7 @@ Then:
 
 Scenario: Export as JSON
 Given: Same vault
-When: `zetl reason export --format json --with-conclusions` is run
+When: `ztl reason export --format json --with-conclusions` is run
 Then:
   - JSON contains rules[], facts[], superiority[], conclusions[]
   - Each rule/fact has provenance fields (file, line, page)
@@ -1654,7 +1654,7 @@ TEST-036: Cross-Reference — Graph and Theory
 Scenario: Links with conclusions
 Given: Page A links to pages B and C; B has SPL contributing to
        conclusion "decided-X" (+d); C has no SPL
-When: `zetl links "A" --with-conclusions` is run
+When: `ztl links "A" --with-conclusions` is run
 Then:
   - Page B entry includes conclusions: [{literal: "decided-X", type: "+d"}]
   - Page C entry includes conclusions: [] (empty)
@@ -1662,7 +1662,7 @@ Then:
 Scenario: Provenance cross-referenced with backlinks
 Given: Conclusion "decided-X" derives from rules in pages B and D;
        B and D are linked via [[wikilinks]]
-When: `zetl reason provenance "decided-X"` is run
+When: `ztl reason provenance "decided-X"` is run
 Then:
   - Shows pages B and D as contributing documents
   - Shows whether B and D link to each other (cross-reference with graph)
@@ -1674,15 +1674,15 @@ Verifies: REQ-036
 TEST-037: Incremental Theory Cache
 
 Scenario: Theory cache speeds up repeated queries
-Given: A vault indexed once (theory cached to .zetl/theory.json)
-When: `zetl reason status` is run again with no file changes
+Given: A vault indexed once (theory cached to .ztl/theory.json)
+When: `ztl reason status` is run again with no file changes
 Then:
   - Completes in ≤ 50% of the initial reasoning time
   - Produces identical conclusions
 
 Scenario: Cache invalidation on SPL file change
 Given: A cached vault; one file with an SPL block is modified
-When: `zetl reason status` is run
+When: `ztl reason status` is run
 Then:
   - Theory is rebuilt from all SPL blocks
   - New conclusions reflect the change
@@ -1697,7 +1697,7 @@ Verifies: NFR-011
 ```
 OBS-005: Reasoning Timing
 
-When --verbose is specified, `zetl reason` commands SHALL emit to stderr:
+When --verbose is specified, `ztl reason` commands SHALL emit to stderr:
   - Number of SPL blocks extracted
   - Number of source files contributing SPL
   - Total rules, facts, defeaters, superiority relations
@@ -1710,7 +1710,7 @@ When --verbose is specified, `zetl reason` commands SHALL emit to stderr:
 ```
 OBS-006: Theory Health Metrics
 
-`zetl reason status` SHALL include a summary section reporting:
+`ztl reason status` SHALL include a summary section reporting:
   - Total conclusions by type (+D, -D, +d, -d)
   - Number of unresolved conflicts
   - Number of SPL diagnostics (errors, warnings)
@@ -1790,31 +1790,31 @@ This specification is designed to compose with hence for multi-agent knowledge m
 Hence's 4-layer context model (plan meta, agent memory, repo context, live events) can be extended with a 5th layer: **vault reasoning context**. When an agent is assigned a task, hence can invoke:
 
 ```bash
-zetl reason status -f json -d ./vault
-zetl reason explain "relevant-literal" -f json -d ./vault
+ztl reason status -f json -d ./vault
+ztl reason explain "relevant-literal" -f json -d ./vault
 ```
 
 ...and inject the conclusions and relevant proofs into the agent's prompt. This gives the agent awareness of what the knowledge base currently concludes, what's been defeated, and what gaps remain.
 
 ### 11.2 Validation as a Post-Complete Hook
 
-Hence lifecycle hooks can invoke zetl validation after an agent completes a task:
+Hence lifecycle hooks can invoke ztl validation after an agent completes a task:
 
 ```bash
 # .hence/hooks/post-complete
-zetl check --spl --fail-on warning -d ./vault
-zetl reason conflicts --fail-on-conflicts -d ./vault
+ztl check --spl --fail-on warning -d ./vault
+ztl reason conflicts --fail-on-conflicts -d ./vault
 ```
 
 If the agent introduced a logical contradiction, the hook fails and hence can reassign the task.
 
 ### 11.3 Gap-Driven Task Generation
 
-`zetl reason require` output can drive task creation:
+`ztl reason require` output can drive task creation:
 
 ```bash
 # Find what's needed for the project goal
-zetl reason require "ready-for-production" -f json -d ./vault
+ztl reason require "ready-for-production" -f json -d ./vault
 # → requires: verified-load-test, verified-security-audit
 
 # Generate hence tasks from gaps
@@ -1826,11 +1826,11 @@ hence task assert plan.spl '
 
 ### 11.4 Theory Export to SPL Plan
 
-`zetl reason export --format spl` produces valid SPL that can be imported into a hence plan:
+`ztl reason export --format spl` produces valid SPL that can be imported into a hence plan:
 
 ```lisp
 ;; hence plan.spl
-(import "./vault-theory.spl")  ;; exported from zetl
+(import "./vault-theory.spl")  ;; exported from ztl
 
 ;; Add coordination rules on top of knowledge base conclusions
 (normally r-proceed
@@ -1844,11 +1844,11 @@ hence task assert plan.spl '
 
 ### 12.1 SPL-in-Markdown as Literate Programming
 
-The design in this specification is a form of **literate programming** as conceived by Donald Knuth — programs (theories) are written primarily for human readers, with machine execution as a secondary concern. The Markdown prose explains *why* a claim is being made; the SPL block formalises *what* the claim is. Zetl's extraction of SPL from Markdown is analogous to **tangling** (producing runnable code from a literate source), and the proof-tree explanations with document provenance are analogous to **weaving** (producing documentation from the same source).
+The design in this specification is a form of **literate programming** as conceived by Donald Knuth — programs (theories) are written primarily for human readers, with machine execution as a secondary concern. The Markdown prose explains *why* a claim is being made; the SPL block formalises *what* the claim is. ztl's extraction of SPL from Markdown is analogous to **tangling** (producing runnable code from a literate source), and the proof-tree explanations with document provenance are analogous to **weaving** (producing documentation from the same source).
 
-This parallel is not accidental. Zyedidia's [Literate](https://zyedidia.github.io/literate/) tool demonstrates the core pattern: named code blocks in Markdown-like documents that reference each other via `@{block name}`, assembled into programs by tangling. The key features that map to zetl's design:
+This parallel is not accidental. Zyedidia's [Literate](https://zyedidia.github.io/literate/) tool demonstrates the core pattern: named code blocks in Markdown-like documents that reference each other via `@{block name}`, assembled into programs by tangling. The key features that map to ztl's design:
 
-| Literate Concept | Zetl Analogue |
+| Literate Concept | ztl Analogue |
 | --- | --- |
 | Named code blocks (`--- Block name`) | Named SPL blocks (` ```spl ` with optional label) |
 | Block references (`@{block name}`) | Cross-document references via shared literal names |
@@ -1891,13 +1891,13 @@ Builds on @{caching-base} with license constraints:
 
 Here, `@{caching-base}` in the second document **includes** the first document's named SPL block by reference — exactly as Literate's `@{block name}` syntax works. Tangling resolves the reference and inlines the content before parsing.
 
-This enables **modular theory composition**: a base theory defined in one document, extended or constrained by other documents that explicitly declare their dependencies. The dependency graph of `@{...}` references is itself a graph that zetl can visualize and validate (are there cycles? missing references?).
+This enables **modular theory composition**: a base theory defined in one document, extended or constrained by other documents that explicitly declare their dependencies. The dependency graph of `@{...}` references is itself a graph that ztl can visualize and validate (are there cycles? missing references?).
 
 **Why this matters for agents:** An agent creating a new analysis can declare `@{caching-base}` to inherit the baseline assumptions, then add its own findings. The explicit reference makes the logical dependency visible — not just that the documents are wikilinked, but that the *theories* depend on each other.
 
 ### 12.3 Weaving: Proof-Enriched Documentation
 
-The weaving direction — generating documentation from the theory — is equally valuable. A future `zetl weave` command could produce a rendered Markdown document (or static site) where:
+The weaving direction — generating documentation from the theory — is equally valuable. A future `ztl weave` command could produce a rendered Markdown document (or static site) where:
 
 - SPL blocks are replaced with their human-readable proof status (provable/defeated/conflicted)
 - Proof trees are rendered inline below the SPL block
@@ -1905,7 +1905,7 @@ The weaving direction — generating documentation from the theory — is equall
 - Defeated conclusions are visually marked (strikethrough, warning banner)
 - A "theory dashboard" page summarises all conclusions, conflicts, and gaps
 
-This would make the vault a **self-documenting reasoning system** — the output of `zetl weave` is a readable document that shows not just what the knowledge base contains, but what it *concludes* and why.
+This would make the vault a **self-documenting reasoning system** — the output of `ztl weave` is a readable document that shows not just what the knowledge base contains, but what it *concludes* and why.
 
 ---
 
@@ -1914,7 +1914,7 @@ This would make the vault a **self-documenting reasoning system** — the output
 | Item | Rationale |
 | --- | --- |
 | Named SPL blocks with `@{block}` references | Literate-programming-style composition across documents; see §12.2 |
-| `zetl weave` — proof-enriched documentation | Generate docs where SPL blocks show proof status; see §12.3 |
+| `ztl weave` — proof-enriched documentation | Generate docs where SPL blocks show proof status; see §12.3 |
 | Variable support (first-order grounding) | Enable `(normally r1 (parent ?x ?y) (ancestor ?x ?y))` across documents; requires cross-document fact collection |
 | Temporal reasoning | Allen interval algebra for "this fact was true during this time period"; spindle-core already supports it |
 | Trust-weighted reasoning | Attribute claims to authors/agents with credibility scores; spindle-core's trust module supports this |
@@ -1933,15 +1933,15 @@ This would make the vault a **self-documenting reasoning system** — the output
 
 1. **Should rule labels be required or auto-generated?** SPL allows unlabeled rules (the parser assigns synthetic labels). In a multi-document vault, auto-generated labels may collide. Recommendation: encourage explicit labels (convention: `r-<page-slug>-<purpose>`) but accept unlabeled rules with auto-generated labels prefixed by source filename to avoid collisions.
 
-2. **Should `zetl reason` build the link graph too, or only the theory?** Currently, `reason status` requires only SPL extraction and reasoning, not the full link graph. Cross-referencing (REQ-036) requires both. Recommendation: `reason status/explain/what-if/why-not/require/conflicts` build only the theory (fast); `reason provenance` and `--with-conclusions` flags trigger the full pipeline (link graph + theory).
+2. **Should `ztl reason` build the link graph too, or only the theory?** Currently, `reason status` requires only SPL extraction and reasoning, not the full link graph. Cross-referencing (REQ-036) requires both. Recommendation: `reason status/explain/what-if/why-not/require/conflicts` build only the theory (fast); `reason provenance` and `--with-conclusions` flags trigger the full pipeline (link graph + theory).
 
-3. **How should conflicting `(prefer ...)` declarations across documents be handled?** If document A says `(prefer r1 r2)` and document B says `(prefer r2 r1)`, this is a direct contradiction in the superiority ordering. Recommendation: report as an error in `zetl check --spl` and as a conflict in `zetl reason conflicts`. Do not attempt to auto-resolve.
+3. **How should conflicting `(prefer ...)` declarations across documents be handled?** If document A says `(prefer r1 r2)` and document B says `(prefer r2 r1)`, this is a direct contradiction in the superiority ordering. Recommendation: report as an error in `ztl check --spl` and as a conflict in `ztl reason conflicts`. Do not attempt to auto-resolve.
 
 4. **Should the theory cache store conclusions or just the parsed theory?** Storing conclusions avoids re-running the reasoner but risks cache staleness if the reasoner algorithm is updated. Recommendation: cache the parsed theory only; re-reason on each query (spindle-core reasoning is fast enough — <100ms for typical vaults per NFR-010).
 
 5. **What is the maximum theory size before reasoning performance degrades?** Spindle-core is optimized for theories up to ~100,000 rules. Typical vaults will have far fewer. Recommendation: document the 10,000 rule/fact limit (NFR-010) and add a warning when the theory exceeds 50% of that.
 
-6. **Should `zetl reason` support reading SPL from stdin?** This would allow agents to pipe SPL directly: `echo "(given new-fact)" | zetl reason what-if --stdin`. Recommendation: yes, but defer to a follow-up. The inline `<SPL>` argument to `what-if` covers the common case.
+6. **Should `ztl reason` support reading SPL from stdin?** This would allow agents to pipe SPL directly: `echo "(given new-fact)" | ztl reason what-if --stdin`. Recommendation: yes, but defer to a follow-up. The inline `<SPL>` argument to `what-if` covers the common case.
 
 ---
 

@@ -1,12 +1,12 @@
 //! CSP + SRI shell + deploy-header emission end-to-end
 //! (SPEC-034 REQ-3421 / CON-3410 / TEST-3421, BUG-006 resolution).
 //!
-//! Exercises `zetl::cap::build::run_capability_build` against a
+//! Exercises `ztl::cap::build::run_capability_build` against a
 //! minimal vault with an SRI hash threaded through `BuildConfig`
 //! and asserts:
 //!
 //! - the shared HTML shell lands at
-//!   `<out_dir>/_zetl/capability-shell.html`,
+//!   `<out_dir>/_ztl/capability-shell.html`,
 //! - the shell carries a `<meta http-equiv="Content-Security-Policy">`
 //!   with the exact CON-3410 directive,
 //! - the shell's shim `<script>` carries the passed-in SRI token,
@@ -23,18 +23,18 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use tempfile::TempDir;
 
-use zetl::cap::build::{run_capability_build, BuildConfig, PageInput, Visibility};
-use zetl::cap::deploy_headers::CAP_CSP;
-use zetl::cap::genkey::{
+use ztl::cap::build::{run_capability_build, BuildConfig, PageInput, Visibility};
+use ztl::cap::deploy_headers::CAP_CSP;
+use ztl::cap::genkey::{
     build_secret, decode_secret, encode_secret, ParsedSecret, SECRET_VERSION_V1,
 };
-use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
-use zetl::cap::html_shell::CAPABILITY_SHELL_FILENAME;
-use zetl::cap::recipients::parsing::{
+use ztl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
+use ztl::cap::html_shell::CAPABILITY_SHELL_FILENAME;
+use ztl::cap::recipients::parsing::{
     Cohort, CohortMode, RecipientsFile, VaultSection, AGE_RECIPIENT_V1_PREFIX,
 };
-use zetl::cap::scoping::access_config::AccessConfig;
-use zetl::cap::sign::VaultSigningKey;
+use ztl::cap::scoping::access_config::AccessConfig;
+use ztl::cap::sign::VaultSigningKey;
 
 const SAMPLE_SRI: &str = "sha384-Zx87eaPeqXyzAAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLL0=";
 
@@ -150,7 +150,7 @@ fn shell_carries_csp_meta_and_sri_script() {
     )
     .expect("build");
 
-    let shell = fs::read_to_string(tmp.path().join("_zetl").join(CAPABILITY_SHELL_FILENAME))
+    let shell = fs::read_to_string(tmp.path().join("_ztl").join(CAPABILITY_SHELL_FILENAME))
         .expect("shell file must exist");
 
     // CSP meta carries the pinned directive byte-for-byte. The shell
@@ -176,7 +176,7 @@ fn shell_carries_csp_meta_and_sri_script() {
 
     // Shim mount point is present so `cap/shim/render.ts::HOST_SELECTOR`
     // can find its injection sink.
-    assert!(shell.contains("<main data-zetl-capability></main>"));
+    assert!(shell.contains("<main data-ztl-capability></main>"));
 }
 
 /// TEST-3421b: deploy recipes emit the same CSP directive as an HTTP
@@ -196,7 +196,7 @@ fn deploy_recipes_emit_csp_header_matching_shell_meta() {
     )
     .expect("build");
 
-    let deploy = tmp.path().join("_zetl").join("deploy");
+    let deploy = tmp.path().join("_ztl").join("deploy");
 
     // _headers: /c/* and /enroll.html both carry Content-Security-Policy.
     let headers = fs::read_to_string(deploy.join("_headers")).unwrap();
@@ -222,10 +222,10 @@ fn deploy_recipes_emit_csp_header_matching_shell_meta() {
         "add_header Content-Security-Policy \"{CAP_CSP}\" always;"
     )));
 
-    // Caddy: CSP on the @zetl_cap matcher.
+    // Caddy: CSP on the @ztl_cap matcher.
     let caddy = fs::read_to_string(deploy.join("Caddyfile.snippet")).unwrap();
     assert!(caddy.contains(&format!(
-        "header @zetl_cap Content-Security-Policy \"{CAP_CSP}\""
+        "header @ztl_cap Content-Security-Policy \"{CAP_CSP}\""
     )));
 
     // vercel.json: CSP stacked under /c/(.*) and /enroll.html.
@@ -258,12 +258,12 @@ fn without_shim_integrity_shell_is_absent_but_csp_header_still_emitted() {
 
     assert!(
         !tmp.path()
-            .join("_zetl")
+            .join("_ztl")
             .join(CAPABILITY_SHELL_FILENAME)
             .exists(),
         "shell must not be emitted without a shim_integrity token"
     );
-    let headers = fs::read_to_string(tmp.path().join("_zetl").join("deploy").join("_headers"))
+    let headers = fs::read_to_string(tmp.path().join("_ztl").join("deploy").join("_headers"))
         .expect("_headers still emitted");
     assert!(
         headers.contains(&format!("Content-Security-Policy: {CAP_CSP}")),
@@ -290,7 +290,7 @@ fn shell_is_byte_deterministic_across_rebuilds() {
         )
         .unwrap();
     }
-    let s1 = fs::read_to_string(tmp1.path().join("_zetl").join(CAPABILITY_SHELL_FILENAME)).unwrap();
-    let s2 = fs::read_to_string(tmp2.path().join("_zetl").join(CAPABILITY_SHELL_FILENAME)).unwrap();
+    let s1 = fs::read_to_string(tmp1.path().join("_ztl").join(CAPABILITY_SHELL_FILENAME)).unwrap();
+    let s2 = fs::read_to_string(tmp2.path().join("_ztl").join(CAPABILITY_SHELL_FILENAME)).unwrap();
     assert_eq!(s1, s2);
 }

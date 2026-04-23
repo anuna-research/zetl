@@ -1,4 +1,4 @@
-# zetl
+# ztl
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org/)
@@ -6,9 +6,9 @@
 
 Bi-directional wikilink graph CLI with defeasible reasoning for knowledge management, solo or team.
 
-Source: [codeberg.org/anuna/zetl](https://codeberg.org/anuna/zetl)
+Source: [codeberg.org/anuna/ztl](https://codeberg.org/anuna/ztl)
 
-zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph, and exposes query, validation, search, and visualization commands. Optionally, it extracts [Spindle Lisp (SPL)](https://codeberg.org/anuna/spindle-rust) code blocks from your vault and performs defeasible reasoning — drawing conclusions that can be defeated by stronger evidence. Designed for both AI agents (JSON output) and humans (tables, web UI).
+ztl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph, and exposes query, validation, search, and visualization commands. Optionally, it extracts [Spindle Lisp (SPL)](https://codeberg.org/anuna/spindle-rust) code blocks from your vault and performs defeasible reasoning — drawing conclusions that can be defeated by stronger evidence. Designed for both AI agents (JSON output) and humans (tables, web UI).
 
 ## Features
 
@@ -27,7 +27,7 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 - **Page viewer** — Xanadu-inspired two-pane terminal reader with context cards, bridge connectors, and wikilink navigation
 - **Web UI** — local server with rendered pages, transclusion panels, backlink navigation, and inline editing
 - **Static site export** — deployable HTML site from your vault (same look, no server required)
-- **Custom themes** — override Minijinja templates and static assets via `.zetl/themes/`, with full access to frontmatter and vault context
+- **Custom themes** — override Minijinja templates and static assets via `.ztl/themes/`, with full access to frontmatter and vault context
 
 ### Temporal queries (`--features history`)
 
@@ -35,7 +35,7 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 - **Time-travel** — `--at "3 days ago"`, `--at "last monday"`, `--at HEAD~1` on any read-only command
 - **Graph evolution timeline** — watch link structure change across snapshots
 - **Page history** — track a single page's evolution with link trends and change events
-- **Auto-snapshot watcher** — `zetl watch` for continuous FS-event-driven snapshotting
+- **Auto-snapshot watcher** — `ztl watch` for continuous FS-event-driven snapshotting
 
 ### Defeasible reasoning (`--features reason`)
 
@@ -57,8 +57,8 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 ### Automation & extensibility
 
 - **Lifecycle hooks** — executables at `pre-build`, `post-build`, `post-index`, `post-check`, `pre-serve`, `on-save`, `on-agent`, `on-access-request`; receive vault context as JSON on stdin
-- **Render-pipeline hooks** — three-stage pipeline (`pre-parse`, `transform`, `post-render`) with a typed AST, persistent-mode JSON-lines protocol, behavioural contracts, and authoring CLI (`zetl hook new/test/fixture/watch/coverage/dry-run/capabilities`); helper libraries for Python and TypeScript
-- **Plugin ecosystems** — first-class adapters for Pandoc filters, mdBook preprocessors, and remark plugins; `zetl ecosystem check` reports per-ecosystem runtime detection and configured-hook reachability
+- **Render-pipeline hooks** — three-stage pipeline (`pre-parse`, `transform`, `post-render`) with a typed AST, persistent-mode JSON-lines protocol, behavioural contracts, and authoring CLI (`ztl hook new/test/fixture/watch/coverage/dry-run/capabilities`); helper libraries for Python and TypeScript
+- **Plugin ecosystems** — first-class adapters for Pandoc filters, mdBook preprocessors, and remark plugins; `ztl ecosystem check` reports per-ecosystem runtime detection and configured-hook reachability
 - **MCP server** (`--features mcp`) — graph, search, and reasoning as typed tools over stdio and HTTP; user-signed JWT delegation with per-tool and per-page scoping
 - **Agent-friendly CLI** — auto-detects JSON when piped, structured errors on stderr, non-zero exit codes, `--no-input` for unattended runs, shell completions, man page
 
@@ -88,46 +88,46 @@ cargo install --path . --features mcp
 
 Collaboration mode (`--collab`) is always available — no feature flag needed. SPL-based access control requires `--features reason`.
 
-Without `--features reason`, `zetl reason` prints a helpful error instead of failing silently. Without `--features history`, history-related template variables and API endpoints gracefully degrade to null.
+Without `--features reason`, `ztl reason` prints a helpful error instead of failing silently. Without `--features history`, history-related template variables and API endpoints gracefully degrade to null.
 
 Prebuilt binaries are not yet published. Users need a Rust toolchain to build from source.
 
 ### Shell completions and man page
 
-`make install` installs the binary, `man zetl`, and bash/zsh/fish completions into `$PREFIX` (default `~/.local`). After installing, run `man zetl` directly — no extra steps, provided `~/.local/share/man` is on your `MANPATH`.
+`make install` installs the binary, `man ztl`, and bash/zsh/fish completions into `$PREFIX` (default `~/.local`). After installing, run `man ztl` directly — no extra steps, provided `~/.local/share/man` is on your `MANPATH`.
 
 For manual or packaging use:
 
 ```bash
-zetl man > /usr/local/share/man/man1/zetl.1    # install the man page
-zetl man | man -l -                            # preview without installing
+ztl man > /usr/local/share/man/man1/ztl.1    # install the man page
+ztl man | man -l -                            # preview without installing
 
-zetl completions bash > /etc/bash_completion.d/zetl
-zetl completions zsh  > ~/.zfunc/_zetl
-zetl completions fish > ~/.config/fish/completions/zetl.fish
-zetl completions powershell > $PROFILE/zetl.ps1
+ztl completions bash > /etc/bash_completion.d/ztl
+ztl completions zsh  > ~/.zfunc/_ztl
+ztl completions fish > ~/.config/fish/completions/ztl.fish
+ztl completions powershell > $PROFILE/ztl.ps1
 ```
 
 ### Non-interactive / CI usage
 
-Pass `--no-input` to disable interactive prompts (e.g. the `zetl view` page picker). Commands that would otherwise prompt will exit non-zero instead.
+Pass `--no-input` to disable interactive prompts (e.g. the `ztl view` page picker). Commands that would otherwise prompt will exit non-zero instead.
 
 ## Quick start
 
-The included `demo-vault/` is a self-referential knowledge base about zetl itself, with wikilinks and SPL throughout.
+The included `demo-vault/` is a self-referential knowledge base about ztl itself, with wikilinks and SPL throughout.
 
 ```bash
 # Build the link index
-zetl -d ./demo-vault index
+ztl -d ./demo-vault index
 
 # Query links
-zetl -d ./demo-vault links "Scanner"
-zetl -d ./demo-vault backlinks "Cache" --depth 2
+ztl -d ./demo-vault links "Scanner"
+ztl -d ./demo-vault backlinks "Cache" --depth 2
 
 # Run reasoning over all SPL in the vault
-zetl -d ./demo-vault reason status
-zetl -d ./demo-vault reason explain "release-candidate" --format natural
-zetl -d ./demo-vault reason conflicts
+ztl -d ./demo-vault reason status
+ztl -d ./demo-vault reason explain "release-candidate" --format natural
+ztl -d ./demo-vault reason conflicts
 ```
 
 ## Usage
@@ -136,87 +136,87 @@ zetl -d ./demo-vault reason conflicts
 
 ```bash
 # Build or refresh the link index
-zetl -d ./my-vault index
+ztl -d ./my-vault index
 
 # Forward and back links
-zetl -d ./my-vault links "Some Page"
-zetl -d ./my-vault backlinks "Some Page"
-zetl -d ./my-vault backlinks "Some Page" --depth 2    # multi-hop
+ztl -d ./my-vault links "Some Page"
+ztl -d ./my-vault backlinks "Some Page"
+ztl -d ./my-vault backlinks "Some Page" --depth 2    # multi-hop
 
 # Find shortest path between pages
-zetl -d ./my-vault path "Page A" "Page B"
+ztl -d ./my-vault path "Page A" "Page B"
 
 # Search content
-zetl -d ./my-vault search "query"
-zetl search "pattern" --regex
+ztl -d ./my-vault search "query"
+ztl search "pattern" --regex
 
 # Validate vault
-zetl -d ./my-vault check
-zetl check --dead-links --fail-on error   # cwd is vault
-zetl check --spl                        # SPL diagnostics only
-zetl check --drift                      # detect SPL changes since last theory build
+ztl -d ./my-vault check
+ztl check --dead-links --fail-on error   # cwd is vault
+ztl check --spl                        # SPL diagnostics only
+ztl check --drift                      # detect SPL changes since last theory build
 
 # Fuzzy page name matching
-zetl -d ./my-vault similar "zettelkasen"
+ztl -d ./my-vault similar "zettelkasen"
 
 # Content-addressable blocks
-zetl -d ./my-vault blocks "Some Page"                    # all blocks
-zetl -d ./my-vault blocks "Some Page" --type heading     # headings only
-zetl -d ./my-vault blocks --resolve abc123               # resolve by hash prefix
+ztl -d ./my-vault blocks "Some Page"                    # all blocks
+ztl -d ./my-vault blocks "Some Page" --type heading     # headings only
+ztl -d ./my-vault blocks --resolve abc123               # resolve by hash prefix
 
 # Stats and export
-zetl -d ./my-vault stats
-zetl -d ./my-vault list
-zetl -d ./my-vault export    # full graph as JSON
+ztl -d ./my-vault stats
+ztl -d ./my-vault list
+ztl -d ./my-vault export    # full graph as JSON
 
 # Page viewer (two-pane reader)
-zetl -d ./my-vault view "Some Page"
-zetl -d ./my-vault view                                  # opens page picker
-zetl -d ./my-vault view "Some Page" --context-lines 10   # taller context cards
+ztl -d ./my-vault view "Some Page"
+ztl -d ./my-vault view                                  # opens page picker
+ztl -d ./my-vault view "Some Page" --context-lines 10   # taller context cards
 
 # Web UI
-zetl -d ./my-vault serve                                 # http://localhost:3000
-zetl -d ./my-vault serve --port 8080
-zetl -d ./my-vault serve --theme paper                   # custom theme
+ztl -d ./my-vault serve                                 # http://localhost:3000
+ztl -d ./my-vault serve --port 8080
+ztl -d ./my-vault serve --theme paper                   # custom theme
 
 # Multi-user collaboration
-zetl -d ./my-vault serve --collab --init-owner --owner-name Alice  # first-time setup
-zetl -d ./my-vault serve --collab                                  # start collab server
-zetl -d ./my-vault serve --collab --server-key-seed "word1 ..."    # deterministic server key
-zetl -d ./my-vault invite --as Alice --role editor                 # invite a collaborator
-zetl -d ./my-vault invite --as Alice --role reader --pages "projects/*"
-zetl derive-ssh-key --mnemonic "word1 ..." --out ~/.ssh/id_ed25519 # derive SSH key from seed
+ztl -d ./my-vault serve --collab --init-owner --owner-name Alice  # first-time setup
+ztl -d ./my-vault serve --collab                                  # start collab server
+ztl -d ./my-vault serve --collab --server-key-seed "word1 ..."    # deterministic server key
+ztl -d ./my-vault invite --as Alice --role editor                 # invite a collaborator
+ztl -d ./my-vault invite --as Alice --role reader --pages "projects/*"
+ztl derive-ssh-key --mnemonic "word1 ..." --out ~/.ssh/id_ed25519 # derive SSH key from seed
 
 # Static site export
-zetl -d ./my-vault build                                 # generates dist/
-zetl -d ./my-vault build --out-dir site                  # custom output directory
-zetl -d ./my-vault build --theme paper                   # build with custom theme
+ztl -d ./my-vault build                                 # generates dist/
+ztl -d ./my-vault build --out-dir site                  # custom output directory
+ztl -d ./my-vault build --theme paper                   # build with custom theme
 ```
 
 ### History commands
 
-Requires `--features history` at build time. History uses jj-lib for automatic, silent VCS snapshots stored in `.zetl/jj/`.
+Requires `--features history` at build time. History uses jj-lib for automatic, silent VCS snapshots stored in `.ztl/jj/`.
 
 ```bash
 # View graph evolution timeline
-zetl -d ./my-vault history log
-zetl history log --since "last week"
+ztl -d ./my-vault history log
+ztl history log --since "last week"
 
 # Track a page's evolution across snapshots
-zetl history page "Some Page"
+ztl history page "Some Page"
 
 # Query any command at a point in time
-zetl -d ./my-vault --at "3 days ago" links "Some Page"
-zetl --at "2024-01-15" stats
-zetl --at "last monday" check
+ztl -d ./my-vault --at "3 days ago" links "Some Page"
+ztl --at "2024-01-15" stats
+ztl --at "last monday" check
 
 # Watch vault and auto-snapshot on changes
-zetl -d ./my-vault watch
+ztl -d ./my-vault watch
 ```
 
 The `--at` flag works on all read-only subcommands (`links`, `backlinks`, `stats`, `check`, `search`, etc.), resolving the vault state to a historical snapshot. Time expressions support ISO 8601 dates, relative natural language ("3 days ago", "last monday"), and VCS refs ("HEAD~1").
 
-When the history feature is enabled, `zetl index` automatically creates a snapshot, `vault.history` and `page.history` are available in templates, `page.backlinks[].since` provides backlink timestamps, hooks receive a `history` context object, and `zetl build` writes `history-index.json`.
+When the history feature is enabled, `ztl index` automatically creates a snapshot, `vault.history` and `page.history` are available in templates, `page.backlinks[].since` provides backlink timestamps, hooks receive a `history` context object, and `ztl build` writes `history-index.json`.
 
 ### Reasoning commands
 
@@ -224,61 +224,61 @@ Requires `--features reason` at build time. All commands operate on SPL extracte
 
 ```bash
 # What does the vault's combined theory conclude?
-zetl -d ./demo-vault reason status
-zetl reason status --positive              # only +D, +d conclusions
-zetl reason status --literal "release*"    # wildcard filter
+ztl -d ./demo-vault reason status
+ztl reason status --positive              # only +D, +d conclusions
+ztl reason status --literal "release*"    # wildcard filter
 
 # Why does a conclusion hold? (proof tree with provenance)
-zetl -d ./demo-vault reason explain "release-candidate"
-zetl -d ./demo-vault reason explain "good-cli-tool" --format natural
-zetl -d ./demo-vault reason explain "scanner-complete" --format dot
+ztl -d ./demo-vault reason explain "release-candidate"
+ztl -d ./demo-vault reason explain "good-cli-tool" --format natural
+ztl -d ./demo-vault reason explain "scanner-complete" --format dot
 
 # Why can't something be proved?
-zetl -d ./demo-vault reason why-not "docs-updated"
+ztl -d ./demo-vault reason why-not "docs-updated"
 
 # What facts would make a goal provable?
-zetl -d ./demo-vault reason require "release-candidate"
-zetl -d ./demo-vault reason require "release-candidate" --assume "(given docs-updated)"
+ztl -d ./demo-vault reason require "release-candidate"
+ztl -d ./demo-vault reason require "release-candidate" --assume "(given docs-updated)"
 
 # Hypothetical: what if we add facts?
-zetl -d ./demo-vault reason what-if "(given docs-updated)" --goal "release-candidate"
-zetl -d ./demo-vault reason what-if --file extra.spl
+ztl -d ./demo-vault reason what-if "(given docs-updated)" --goal "release-candidate"
+ztl -d ./demo-vault reason what-if --file extra.spl
 
 # Find unresolved conflicts (the demo vault has a deliberate tension in Cache.md)
-zetl -d ./demo-vault reason conflicts
-zetl -d ./demo-vault reason conflicts --suggest --fail-on-conflicts
+ztl -d ./demo-vault reason conflicts
+ztl -d ./demo-vault reason conflicts --suggest --fail-on-conflicts
 
 # Export the combined theory
-zetl -d ./demo-vault reason export                         # JSON
-zetl -d ./demo-vault reason export --format spl            # reconstructed SPL with provenance
-zetl -d ./demo-vault reason export --with-conclusions
+ztl -d ./demo-vault reason export                         # JSON
+ztl -d ./demo-vault reason export --format spl            # reconstructed SPL with provenance
+ztl -d ./demo-vault reason export --with-conclusions
 
 # Trace a conclusion back to source files
-zetl -d ./demo-vault reason provenance "release-candidate"
+ztl -d ./demo-vault reason provenance "release-candidate"
 
 # Cross-reference links with reasoning
-zetl -d ./demo-vault links "Cache" --with-conclusions
-zetl -d ./demo-vault backlinks "Reasoning Engine" --with-conclusions
+ztl -d ./demo-vault links "Cache" --with-conclusions
+ztl -d ./demo-vault backlinks "Reasoning Engine" --with-conclusions
 ```
 
 Output format auto-detects: tables in an interactive terminal, JSON when piped or redirected. Force one with `--json` or `-f table` (global flags, can appear before or after the subcommand). The `reason explain` subcommand also accepts `--format natural` and `--format dot`. Errors go to stderr so piped stdout stays valid JSON.
 
 ### MCP server
 
-Requires `--features mcp` at build time. Exposes zetl's graph, search, and reasoning as typed [MCP](https://modelcontextprotocol.io) tools for AI agents.
+Requires `--features mcp` at build time. Exposes ztl's graph, search, and reasoning as typed [MCP](https://modelcontextprotocol.io) tools for AI agents.
 
 ```bash
 # Start MCP server over stdio (for Claude Desktop, Cursor, etc.)
-zetl -d ./my-vault mcp
+ztl -d ./my-vault mcp
 
 # Start over HTTP (for remote agents)
-zetl -d ./my-vault mcp --transport http --port 3100
+ztl -d ./my-vault mcp --transport http --port 3100
 
 # Issue a delegate token for your agent
-zetl delegate                                           # all tools, all pages, no expiry
-zetl delegate --tools search,get --scope "projects/**"  # scoped access
-zetl delegate --expiry 7d                               # time-limited
-zetl delegate --mnemonic "word1 word2 ..." --save-key   # first-time key setup
+ztl delegate                                           # all tools, all pages, no expiry
+ztl delegate --tools search,get --scope "projects/**"  # scoped access
+ztl delegate --expiry 7d                               # time-limited
+ztl delegate --mnemonic "word1 word2 ..." --save-key   # first-time key setup
 ```
 
 **Available tools:** `search`, `get_page`, `links`, `backlinks`, `path`, `similar`, `check`, `status`, `reason`
@@ -287,8 +287,8 @@ zetl delegate --mnemonic "word1 word2 ..." --save-key   # first-time key setup
 ```json
 {
   "mcpServers": {
-    "zetl": {
-      "command": "zetl",
+    "ztl": {
+      "command": "ztl",
       "args": ["-d", "/path/to/vault", "mcp"]
     }
   }
@@ -302,7 +302,7 @@ Embed Spindle Lisp in any Markdown file using fenced code blocks:
 ````markdown
 # Rust for CLI
 
-zetl is written in Rust for type safety and fast startup.
+ztl is written in Rust for type safety and fast startup.
 
 ```spl
 (given type-safe)
@@ -322,7 +322,7 @@ You can also place standalone `.spl` files anywhere in the vault:
   good-cli-tool)
 ```
 
-zetl merges all SPL from across the vault into a single theory, reasons over it, and traces every conclusion back to its source file and line number. The `demo-vault/` included in this repo is a working example — it documents zetl itself using both wikilinks and SPL.
+ztl merges all SPL from across the vault into a single theory, reasons over it, and traces every conclusion back to its source file and line number. The `demo-vault/` included in this repo is a working example — it documents ztl itself using both wikilinks and SPL.
 
 ### Conclusion types
 
@@ -333,14 +333,14 @@ zetl merges all SPL from across the vault into a single theory, reasons over it,
 | `+d` | Defeasibly provable (inferred, no active defeaters) |
 | `-d` | Defeasibly not provable (blocked or no derivation path) |
 
-## Page viewer (`zetl view`)
+## Page viewer (`ztl view`)
 
 Xanadu-inspired two-pane reader for focused page navigation. The left pane renders the current note with numbered `[N]` anchor glyphs at each wikilink. The right pane shows context cards — excerpts from forward-linked pages. A bridge column connects anchors to their cards with colored connectors. Falls back to single-pane layout in narrow terminals (<60 cols).
 
 ```bash
-zetl view "Page Name"                  # open a page
-zetl view                              # open page picker
-zetl view "Page Name" --context-lines 10 --main-width 60
+ztl view "Page Name"                  # open a page
+ztl view                              # open page picker
+ztl view "Page Name" --context-lines 10 --main-width 60
 ```
 
 | Key | Action |
@@ -357,16 +357,16 @@ zetl view "Page Name" --context-lines 10 --main-width 60
 
 ## Web
 
-### Live server (`zetl serve`)
+### Live server (`ztl serve`)
 
 Local web UI for browsing the vault. Renders Markdown pages with a sidebar, backlink list, transclusion panel (forward-link excerpt cards with SVG bridge connectors), and a CodeMirror 6 editor with save-and-reindex and page deletion. Pages are rendered through a Minijinja template engine with YAML frontmatter available in templates.
 
 ```bash
-zetl -d ./my-vault serve                                        # single-user
-zetl -d ./my-vault serve --collab --init-owner --owner-name Jo  # first-time collab setup
-zetl -d ./my-vault serve --collab                                # multi-user mode
-zetl -d ./my-vault serve --collab --server-key-seed "word1 ..."  # deterministic server key
-zetl -d ./my-vault serve --port 8080 --theme dark                # custom port and theme
+ztl -d ./my-vault serve                                        # single-user
+ztl -d ./my-vault serve --collab --init-owner --owner-name Jo  # first-time collab setup
+ztl -d ./my-vault serve --collab                                # multi-user mode
+ztl -d ./my-vault serve --collab --server-key-seed "word1 ..."  # deterministic server key
+ztl -d ./my-vault serve --port 8080 --theme dark                # custom port and theme
 ```
 
 ### API endpoints
@@ -388,14 +388,14 @@ The serve mode exposes JSON API endpoints (authenticated via session cookie or B
 | `/ws/edit/{slug}` | WS | Real-time collaborative editing (collab mode) |
 | `/help` | GET | Built-in help page (install + usage; override via theme `help.html`) |
 
-### Static site (`zetl build`)
+### Static site (`ztl build`)
 
-Generates a static HTML site with the same look and feel as `zetl serve`, minus the edit button and save functionality. The output can be uploaded to any static host (GitHub Pages, Netlify, S3, etc.).
+Generates a static HTML site with the same look and feel as `ztl serve`, minus the edit button and save functionality. The output can be uploaded to any static host (GitHub Pages, Netlify, S3, etc.).
 
 ```bash
-zetl -d ./my-vault build                  # generates dist/
-zetl -d ./my-vault build --out-dir site   # custom output directory
-zetl -d ./my-vault build --theme paper    # build with a custom theme
+ztl -d ./my-vault build                  # generates dist/
+ztl -d ./my-vault build --out-dir site   # custom output directory
+ztl -d ./my-vault build --theme paper    # build with a custom theme
 
 # Preview locally
 python3 -m http.server -d dist 8080
@@ -405,7 +405,7 @@ Output structure:
 ```
 dist/
   index.html              # vault overview with stats and page grid
-  _static/                # copied from .zetl/themes/<theme>/static/
+  _static/                # copied from .ztl/themes/<theme>/static/
   page/
     Some Page/index.html   # one page per note
     Another/index.html
@@ -413,7 +413,7 @@ dist/
 
 ### History UI
 
-When built with the `history` feature (on by default), zetl surfaces
+When built with the `history` feature (on by default), ztl surfaces
 temporal metadata on every rendered page and exposes a vault-wide
 recent-changes view.
 
@@ -421,7 +421,7 @@ recent-changes view.
   page title: `Last changed 2026-03-18 · stable 28d · history`. The
   `history` link opens the per-page edit timeline.
 - **Vault recent-changes page** — served at `/_history` (and emitted as
-  `_history.html` under `zetl build`). Shows snapshot count, first /
+  `_history.html` under `ztl build`). Shows snapshot count, first /
   latest snapshot dates, an inline-SVG link-count trend sparkline, and a
   reverse-chronological list (up to 50 entries) of added / modified /
   removed pages.
@@ -433,12 +433,12 @@ vault with no snapshots shows no metadata strip, no sidebar link, and
 `/_history` renders a short "No history yet" body — no errors, no empty
 elements.
 
-Static and dynamic modes reach parity: `zetl build` writes
+Static and dynamic modes reach parity: `ztl build` writes
 `pages/<slug>/_history.html` for every page with snapshots and a
 `_history.html` at the output root, mirroring the serve-mode output.
 
 To disable the UI without disabling the feature, override the affected
-templates in `.zetl/themes/<theme>/` — remove the `page-history-meta`
+templates in `.ztl/themes/<theme>/` — remove the `page-history-meta`
 block from `page.html`, delete the "Recent changes" link in `base.html`,
 or ship an empty `vault_history.html`.
 
@@ -462,13 +462,13 @@ re-layout.
   Sigma instance preserved for re-activation). Mode switching is
   instantaneous — a reducer refresh only, no layout recompute — and
   persisted across navigation in `sessionStorage` under
-  `zetl:graph:mode`.
+  `ztl:graph:mode`.
 - **`/_graph` route** — a dedicated full-screen view rendered via
-  `vault_graph.html`, served at `/_graph` under `zetl serve` and
-  emitted as `_graph.html` at the output root by `zetl build`. The
+  `vault_graph.html`, served at `/_graph` under `ztl serve` and
+  emitted as `_graph.html` at the output root by `ztl build`. The
   default theme's sidebar gets a "Graph" entry alongside "Help &
   install" and "Recent changes".
-- **Mobile** — below `--zetl-graph-widget-breakpoint` (default 900 px)
+- **Mobile** — below `--ztl-graph-widget-breakpoint` (default 900 px)
   the docked widget is `display: none` and reachable via a top-bar
   toggle that expands it to a full-screen overlay. The toggle is
   keyboard-accessible (focus ring, Enter / Space to activate, Escape
@@ -503,18 +503,18 @@ on `data-theme` / `class` mutation or `prefers-color-scheme` change.
 
 | Property                         | Purpose                                      |
 |----------------------------------|----------------------------------------------|
-| `--zetl-graph-node`              | Default node fill                            |
-| `--zetl-graph-node-dead`         | Node fill for dead-link targets              |
-| `--zetl-graph-edge`              | Default edge colour                          |
-| `--zetl-graph-edge-dead`         | Edge colour / pattern for dead-link edges    |
-| `--zetl-graph-label`             | Node label colour                            |
-| `--zetl-graph-label-font`        | Node label `font-family`                     |
-| `--zetl-graph-widget-width`      | Docked mini-map width (default 280 px)       |
-| `--zetl-graph-widget-height`     | Docked mini-map height (default 200 px)      |
-| `--zetl-graph-widget-right`      | Offset from viewport right (default 16 px)   |
-| `--zetl-graph-widget-bottom`     | Offset from viewport bottom (default 16 px)  |
-| `--zetl-graph-widget-breakpoint` | Min viewport width to show widget (900 px)   |
-| `--zetl-shell-sidebar-area`      | Grid track size for the sidebar shell region |
+| `--ztl-graph-node`              | Default node fill                            |
+| `--ztl-graph-node-dead`         | Node fill for dead-link targets              |
+| `--ztl-graph-edge`              | Default edge colour                          |
+| `--ztl-graph-edge-dead`         | Edge colour / pattern for dead-link edges    |
+| `--ztl-graph-label`             | Node label colour                            |
+| `--ztl-graph-label-font`        | Node label `font-family`                     |
+| `--ztl-graph-widget-width`      | Docked mini-map width (default 280 px)       |
+| `--ztl-graph-widget-height`     | Docked mini-map height (default 200 px)      |
+| `--ztl-graph-widget-right`      | Offset from viewport right (default 16 px)   |
+| `--ztl-graph-widget-bottom`     | Offset from viewport bottom (default 16 px)  |
+| `--ztl-graph-widget-breakpoint` | Min viewport width to show widget (900 px)   |
+| `--ztl-shell-sidebar-area`      | Grid track size for the sidebar shell region |
 
 Structural changes (node shapes, edge-thickness curves, custom dashed
 patterns) require overriding `_graph.html` and editing its Sigma
@@ -525,16 +525,16 @@ reducers directly.
 When `theme.toml` sets `[spa] enabled = true`, a small (~80 LOC)
 vanilla-JS module loaded by `base.html` intercepts same-origin `<a>`
 clicks, fetches the next document, and swaps only the `<main
-data-zetl-volatile>` element. Everything inside `{% block
+data-ztl-volatile>` element. Everything inside `{% block
 persistent_shell %}` — the sidebar and graph widget — is never
 unmounted.
 
 Two `window`-level events fire around each successful navigation:
 
-- `zetl:before-navigate` — cancelable, `detail = { fromSlug, toSlug, url }`.
+- `ztl:before-navigate` — cancelable, `detail = { fromSlug, toSlug, url }`.
   Call `preventDefault()` (e.g. when the collab editor has unsaved CRDT
   deltas) to fall back to native navigation.
-- `zetl:after-navigate` — `detail = { slug, contentRoot }`, where
+- `ztl:after-navigate` — `detail = { slug, contentRoot }`, where
   `contentRoot` is the newly-mounted volatile element. Use it to re-run
   Mermaid, KaTeX, or any other enhancement on swapped content. The
   graph partial listens for it and calls `renderer.refresh()` to update
@@ -570,19 +570,19 @@ versions (and SHA-256 checksums) live in `theme.toml` under
 
 ### Vault scanning and ignore files
 
-`zetl` walks the vault using a layered exclusion stack. From lowest to
+`ztl` walks the vault using a layered exclusion stack. From lowest to
 highest precedence (later rules override earlier ones, except level 1):
 
-1. **Hardcoded force-ignores** — `.git/`, `.zetl/`, and `node_modules/`
+1. **Hardcoded force-ignores** — `.git/`, `.ztl/`, and `node_modules/`
    are never scanned. Not overridable by any flag or ignore file.
 2. **Default dotdir exclusion** — directories whose name starts with `.`
    (e.g. `.claude/`, `.obsidian/`, `.vscode/`) are skipped. Disable with
    `--include-hidden`. Dotfiles at the vault root are not affected by
    this rule and are always scanned.
 3. **`.gitignore`** — respected if present.
-4. **`.zetlignore`** — gitignore-syntax file at the vault root. Negated
+4. **`.ztlignore`** — gitignore-syntax file at the vault root. Negated
    patterns (`!foo`) re-include paths the dotdir default would have
-   excluded. Subdirectory `.zetlignore` files are not yet honoured.
+   excluded. Subdirectory `.ztlignore` files are not yet honoured.
 5. **`--exclude PATTERN`** — repeatable CLI flag, gitignore syntax,
    evaluated relative to the vault root. Highest priority of the
    user-configurable layers.
@@ -591,18 +591,18 @@ Examples:
 
 ```bash
 # Publish .archive/ alongside the rest of the vault
-echo '!.archive/' > .zetlignore
-zetl build
+echo '!.archive/' > .ztlignore
+ztl build
 
-# One-off build that omits drafts/ without changing .zetlignore
-zetl build --exclude 'drafts/'
+# One-off build that omits drafts/ without changing .ztlignore
+ztl build --exclude 'drafts/'
 
 # Restore the pre-SPEC-026 behaviour (walks .claude/, .obsidian/, etc.)
-zetl build --include-hidden
+ztl build --include-hidden
 
 # Debug what is being skipped and why
-zetl --verbose build
-# → [zetl] scan: skipped .obsidian reason=dotdir
+ztl --verbose build
+# → [ztl] scan: skipped .obsidian reason=dotdir
 ```
 
 The same exclusion stack applies to `serve`, `index`, `search`, and
@@ -611,10 +611,10 @@ lifetime — file events under excluded paths are silently dropped.
 
 ### Themes
 
-Both `serve` and `build` support custom themes via `--theme <name>`. Themes live in `.zetl/themes/<name>/` and can override any of the built-in Minijinja templates:
+Both `serve` and `build` support custom themes via `--theme <name>`. Themes live in `.ztl/themes/<name>/` and can override any of the built-in Minijinja templates:
 
 ```
-.zetl/themes/paper/
+.ztl/themes/paper/
   base.html       # master layout (sidebar, search modal, scripts)
   index.html      # vault landing page
   page.html       # single page view
@@ -640,7 +640,7 @@ exposes `page.frontmatter.tags` and `page.frontmatter.status` in templates.
 
 ### Static assets
 
-Place static files (CSS, JS, images) in `.zetl/themes/<theme>/static/`. During `serve`, they're available at `/_static/<path>`. During `build`, they're copied to `_static/` in the output directory.
+Place static files (CSS, JS, images) in `.ztl/themes/<theme>/static/`. During `serve`, they're available at `/_static/<path>`. During `build`, they're copied to `_static/` in the output directory.
 
 ### Theme authoring reference
 
@@ -717,7 +717,7 @@ Templates use [Minijinja](https://github.com/mitsuhiko/minijinja) (Jinja2-compat
 A theme that only changes the color scheme (override just `base.html`):
 
 ```
-.zetl/themes/dark/
+.ztl/themes/dark/
   base.html
 ```
 
@@ -736,7 +736,7 @@ The default theme opts into a same-origin navigation shell that intercepts `<a>`
 | `persistent_regions` | array\<string\> | `[]` | Informational list of persistent region names; matches the block names below. |
 
 ```toml
-# .zetl/themes/<theme>/theme.toml
+# .ztl/themes/<theme>/theme.toml
 [spa]
 enabled = true
 transition = "crossfade"
@@ -749,25 +749,25 @@ Two Minijinja blocks wrap regions the SPA shell keeps mounted across navigation;
 
 | Block / marker | Role | Rule |
 |----------------|------|------|
-| `{% block persistent_shell %}` | Everything that survives navigation — sidebar, graph widget, top-bar toggles. | Never swapped. Must be outside `data-zetl-volatile`. |
+| `{% block persistent_shell %}` | Everything that survives navigation — sidebar, graph widget, top-bar toggles. | Never swapped. Must be outside `data-ztl-volatile`. |
 | `{% block graph_widget %}` | The single Sigma graph mount point (inside `persistent_shell`). | Included once per document. Sigma instance, camera state, and layout coordinates persist across navigations; only `data-mode` changes. |
-| `data-zetl-volatile` attribute | The region whose `innerHTML` is replaced per navigation (default: `<main>`). | Contains `{% block content %}` and any page-specific UI (e.g. the transclusion panel). |
+| `data-ztl-volatile` attribute | The region whose `innerHTML` is replaced per navigation (default: `<main>`). | Contains `{% block content %}` and any page-specific UI (e.g. the transclusion panel). |
 
 Minimal structural skeleton:
 
 ```jinja
 <body data-slug="{{ page.slug }}">
   {% block persistent_shell %}
-    <nav class="zetl-shell zetl-shell--sidebar">
+    <nav class="ztl-shell ztl-shell--sidebar">
       {% block sidebar %}{% include "_sidebar.html" %}{% endblock %}
     </nav>
 
-    <div class="zetl-graph-widget" data-mode="local">
+    <div class="ztl-graph-widget" data-mode="local">
       {% block graph_widget %}{% include "_graph.html" %}{% endblock %}
     </div>
   {% endblock %}
 
-  <main data-zetl-volatile>
+  <main data-ztl-volatile>
     {% block content %}{% endblock %}
   </main>
 </body>
@@ -776,7 +776,7 @@ Minimal structural skeleton:
 Rules:
 
 1. Anything inside `{% block persistent_shell %}` is **never swapped** on navigation.
-2. The element carrying `data-zetl-volatile` (or the implicit `<main>` fallback) **is swapped** — its `innerHTML` is replaced by the corresponding element from the fetched document.
+2. The element carrying `data-ztl-volatile` (or the implicit `<main>` fallback) **is swapped** — its `innerHTML` is replaced by the corresponding element from the fetched document.
 3. Themes that rewrite `base.html` from scratch MUST preserve both markers to retain the no-flash property. Omitting them is a valid opt-out: the theme still works, but the graph re-initialises per page.
 4. Browser back/forward, meta-click / Ctrl-click / middle-click, and cross-origin links always fall through to native navigation.
 
@@ -786,12 +786,12 @@ The SPA shell dispatches two `window`-level events around each successful same-o
 
 | Event | When | `detail` | Cancelable |
 |-------|------|----------|------------|
-| `zetl:before-navigate` | After content fetch, before DOM swap. | `{ fromSlug, toSlug, url }` | Yes — `preventDefault()` falls back to native navigation. |
-| `zetl:after-navigate` | Immediately after DOM swap. | `{ slug, contentRoot }` — `contentRoot` is the newly-mounted `data-zetl-volatile` element. | No. |
+| `ztl:before-navigate` | After content fetch, before DOM swap. | `{ fromSlug, toSlug, url }` | Yes — `preventDefault()` falls back to native navigation. |
+| `ztl:after-navigate` | Immediately after DOM swap. | `{ slug, contentRoot }` — `contentRoot` is the newly-mounted `data-ztl-volatile` element. | No. |
 
 ```js
-// .zetl/themes/<theme>/static/enhance.js
-window.addEventListener('zetl:before-navigate', (e) => {
+// .ztl/themes/<theme>/static/enhance.js
+window.addEventListener('ztl:before-navigate', (e) => {
   // e.detail = { fromSlug, toSlug, url }
   // Cancel to keep the current page (e.g. unsaved editor changes):
   if (window.editorHasUnsavedChanges?.()) {
@@ -799,7 +799,7 @@ window.addEventListener('zetl:before-navigate', (e) => {
   }
 });
 
-window.addEventListener('zetl:after-navigate', (e) => {
+window.addEventListener('ztl:after-navigate', (e) => {
   // e.detail = { slug, contentRoot }
   if (window.mermaid) {
     mermaid.run({ nodes: e.detail.contentRoot.querySelectorAll('.mermaid') });
@@ -810,7 +810,7 @@ window.addEventListener('zetl:after-navigate', (e) => {
 });
 ```
 
-The graph's own reducers in `_graph.html` listen for `zetl:after-navigate` and call `renderer.refresh()` with the new `active_slug` — they never re-instantiate Sigma.
+The graph's own reducers in `_graph.html` listen for `ztl:after-navigate` and call `renderer.refresh()` with the new `active_slug` — they never re-instantiate Sigma.
 
 #### Graph widget placement
 
@@ -830,52 +830,52 @@ The default theme renders the persistent graph as a fixed docked mini-map bottom
 | `stacked` | Widget sits above the transclusion panel in the right rail. |
 
 ```toml
-# .zetl/themes/<theme>/theme.toml
+# .ztl/themes/<theme>/theme.toml
 [graph]
 placement = "stacked"
 ```
 
-Below the `--zetl-graph-widget-breakpoint` width (default 900 px) the widget is `display: none` by default and reachable via a top-bar toggle that expands to a full-screen overlay. Visibility-only manipulation preserves the Sigma instance across viewport resizes.
+Below the `--ztl-graph-widget-breakpoint` width (default 900 px) the widget is `display: none` by default and reachable via a top-bar toggle that expands to a full-screen overlay. Visibility-only manipulation preserves the Sigma instance across viewport resizes.
 
 #### Graph and shell CSS custom properties
 
 The default theme exposes a stable, versioned set of CSS custom properties as its sole mechanism for graph visual styling. Sigma reducers in `_graph.html` read them at render time via `getComputedStyle` and refresh on `data-theme` / `class` mutation or `prefers-color-scheme` change. Custom themes override any subset without touching JavaScript.
 
-**`--zetl-graph-*` — colours and typography:**
+**`--ztl-graph-*` — colours and typography:**
 
 | Property | Default | Purpose |
 |----------|---------|---------|
-| `--zetl-graph-node` | theme fg | Default node fill. |
-| `--zetl-graph-node-dead` | muted | Node fill for dead-link targets. |
-| `--zetl-graph-edge` | theme fg / 0.3 | Default edge colour. |
-| `--zetl-graph-edge-dead` | muted, dashed | Edge colour / pattern for dead-link edges. |
-| `--zetl-graph-label` | theme fg | Node label colour. |
-| `--zetl-graph-label-font` | theme sans | Node label `font-family` (passed to Sigma at init). |
+| `--ztl-graph-node` | theme fg | Default node fill. |
+| `--ztl-graph-node-dead` | muted | Node fill for dead-link targets. |
+| `--ztl-graph-edge` | theme fg / 0.3 | Default edge colour. |
+| `--ztl-graph-edge-dead` | muted, dashed | Edge colour / pattern for dead-link edges. |
+| `--ztl-graph-label` | theme fg | Node label colour. |
+| `--ztl-graph-label-font` | theme sans | Node label `font-family` (passed to Sigma at init). |
 
-**`--zetl-graph-widget-*` — docked mini-map geometry:**
-
-| Property | Default | Purpose |
-|----------|---------|---------|
-| `--zetl-graph-widget-width` | `280px` | Docked mini-map width. |
-| `--zetl-graph-widget-height` | `200px` | Docked mini-map height. |
-| `--zetl-graph-widget-right` | `16px` | Offset from viewport right. |
-| `--zetl-graph-widget-bottom` | `16px` | Offset from viewport bottom. |
-| `--zetl-graph-widget-breakpoint` | `900px` | Min viewport width to show the widget; below this it collapses to a top-bar toggle. |
-
-**`--zetl-shell-*` — persistent shell layout:**
+**`--ztl-graph-widget-*` — docked mini-map geometry:**
 
 | Property | Default | Purpose |
 |----------|---------|---------|
-| `--zetl-shell-sidebar-area` | `16rem` | Grid track size for the sidebar shell region. |
+| `--ztl-graph-widget-width` | `280px` | Docked mini-map width. |
+| `--ztl-graph-widget-height` | `200px` | Docked mini-map height. |
+| `--ztl-graph-widget-right` | `16px` | Offset from viewport right. |
+| `--ztl-graph-widget-bottom` | `16px` | Offset from viewport bottom. |
+| `--ztl-graph-widget-breakpoint` | `900px` | Min viewport width to show the widget; below this it collapses to a top-bar toggle. |
+
+**`--ztl-shell-*` — persistent shell layout:**
+
+| Property | Default | Purpose |
+|----------|---------|---------|
+| `--ztl-shell-sidebar-area` | `16rem` | Grid track size for the sidebar shell region. |
 
 Example override in a custom theme's `static/theme.css`:
 
 ```css
 :root {
-  --zetl-graph-node: oklch(0.7 0.15 250);
-  --zetl-graph-edge: oklch(0.6 0.08 250 / 0.3);
-  --zetl-graph-widget-width: 360px;
-  --zetl-graph-widget-height: 260px;
+  --ztl-graph-node: oklch(0.7 0.15 250);
+  --ztl-graph-edge: oklch(0.6 0.08 250 / 0.3);
+  --ztl-graph-widget-width: 360px;
+  --ztl-graph-widget-height: 260px;
 }
 ```
 
@@ -889,63 +889,63 @@ The SPA shell, CSS custom properties, and lifecycle events form a **versioned th
 [theme]
 name = "paper"
 version = "1.0.0"
-# Which major version of the zetl theme contract this theme targets.
+# Which major version of the ztl theme contract this theme targets.
 # Unset = latest supported by the running binary.
 contract = "1"
 ```
 
 Rules:
 
-- Breaking changes to block names (`persistent_shell`, `graph_widget`), the `data-zetl-volatile` marker, event names, event `detail` shapes, or the `--zetl-graph-*` / `--zetl-shell-*` property names bump the contract major version.
+- Breaking changes to block names (`persistent_shell`, `graph_widget`), the `data-ztl-volatile` marker, event names, event `detail` shapes, or the `--ztl-graph-*` / `--ztl-shell-*` property names bump the contract major version.
 - Additive changes (new CSS vars, new event `detail` fields, new optional `theme.toml` keys) are backwards-compatible within a major.
-- The zetl binary is backwards-compatible with the contract major current at its release within a given major zetl release line.
+- The ztl binary is backwards-compatible with the contract major current at its release within a given major ztl release line.
 - Themes that omit `contract` render against the latest contract supported by the running binary.
 
 ### Hooks
 
-zetl supports git-style lifecycle hooks — executable scripts in `.zetl/hooks/` that run at defined points during vault operations. Hooks receive structured JSON context on stdin and environment variables, enabling custom automation without modifying the binary.
+ztl supports git-style lifecycle hooks — executable scripts in `.ztl/hooks/` that run at defined points during vault operations. Hooks receive structured JSON context on stdin and environment variables, enabling custom automation without modifying the binary.
 
 ```bash
 # List all active hooks for the current vault and theme
-zetl -d ./my-vault hook list
-zetl -d ./my-vault hook list --theme paper
+ztl -d ./my-vault hook list
+ztl -d ./my-vault hook list --theme paper
 
 # Manually run a hook with real vault context (useful for testing)
-zetl -d ./my-vault hook run post-build
-zetl -d ./my-vault hook run on-save -- '{"saved":{"file":"test.md","page":"Test","content_length":100}}'
+ztl -d ./my-vault hook run post-build
+ztl -d ./my-vault hook run on-save -- '{"saved":{"file":"test.md","page":"Test","content_length":100}}'
 ```
 
 #### Lifecycle points
 
 | Hook | Trigger | Can Abort? |
 |------|---------|------------|
-| `pre-build` | Before `zetl build` renders pages | Yes |
-| `post-build` | After `zetl build` completes | No (warn only) |
-| `post-index` | After `zetl index` completes | No |
-| `post-check` | After `zetl check` collects diagnostics | No |
-| `pre-serve` | Before `zetl serve` starts the server | Yes |
-| `on-save` | After a page is saved in `zetl serve` | No |
+| `pre-build` | Before `ztl build` renders pages | Yes |
+| `post-build` | After `ztl build` completes | No (warn only) |
+| `post-index` | After `ztl index` completes | No |
+| `post-check` | After `ztl check` collects diagnostics | No |
+| `pre-serve` | Before `ztl serve` starts the server | Yes |
+| `on-save` | After a page is saved in `ztl serve` | No |
 | `on-agent` | When an agent API request is received | No |
 | `on-access-request` | When a user requests access to a page (collab mode) | No |
 
 #### Writing a hook
 
-Create an executable file in `.zetl/hooks/` named after the lifecycle point:
+Create an executable file in `.ztl/hooks/` named after the lifecycle point:
 
 ```bash
-# .zetl/hooks/post-build
+# .ztl/hooks/post-build
 #!/bin/bash
 # Generate an RSS feed from pages with "date" frontmatter
-jq -r '.pages[] | select(.frontmatter.date) | ...' < /dev/stdin > "$ZETL_OUT_DIR/feed.xml"
+jq -r '.pages[] | select(.frontmatter.date) | ...' < /dev/stdin > "$ztl_OUT_DIR/feed.xml"
 ```
 
 ```bash
-chmod +x .zetl/hooks/post-build
+chmod +x .ztl/hooks/post-build
 ```
 
 Every hook receives:
 - **stdin**: JSON context with vault metadata, page list, link graph, history (when available), and hook-specific fields
-- **Environment**: `ZETL_HOOK`, `ZETL_VAULT_ROOT`, `ZETL_THEME`, `ZETL_VERSION`, plus hook-specific vars like `ZETL_OUT_DIR` and `ZETL_PORT`
+- **Environment**: `ztl_HOOK`, `ztl_VAULT_ROOT`, `ztl_THEME`, `ztl_VERSION`, plus hook-specific vars like `ztl_OUT_DIR` and `ztl_PORT`
 - **Working directory**: vault root
 
 Hooks have a 30-second timeout. Pre-hooks (`pre-build`, `pre-serve`) abort the parent operation on non-zero exit; all other hooks warn and continue.
@@ -955,7 +955,7 @@ Hooks have a 30-second timeout. Pre-hooks (`pre-build`, `pre-serve`) abort the p
 Themes can ship hooks in their `hooks/` subdirectory. When a theme is active (`--theme <name>`), its hooks run before vault hooks at each lifecycle point. Both theme and vault hooks run if both exist.
 
 ```
-.zetl/themes/fountain/
+.ztl/themes/fountain/
   hooks/
     post-build    # runs automatically with --theme fountain
   base.html
@@ -964,46 +964,46 @@ Themes can ship hooks in their `hooks/` subdirectory. When a theme is active (`-
 
 ### Render-pipeline hooks
 
-Separate from the lifecycle hooks above, zetl ships a **three-stage render pipeline** that lets you transform a page mid-build by mutating a typed AST rather than its serialised form. Pipeline hooks live under `.zetl/hooks/<stage>.d/` (or the active theme's `hooks/<stage>.d/`) and stay resident for the duration of a build via a JSON-lines protocol over stdin/stdout — there's no per-page subprocess spawn.
+Separate from the lifecycle hooks above, ztl ships a **three-stage render pipeline** that lets you transform a page mid-build by mutating a typed AST rather than its serialised form. Pipeline hooks live under `.ztl/hooks/<stage>.d/` (or the active theme's `hooks/<stage>.d/`) and stay resident for the duration of a build via a JSON-lines protocol over stdin/stdout — there's no per-page subprocess spawn.
 
 The three stages run in fixed order:
 
 | Stage | Payload at the boundary | Use cases |
 |-------|------------------------|-----------|
 | `pre-parse` | raw markdown string | Frontmatter rewrites, include/import expansion, prelude injection |
-| `transform` | typed AST (`zetl-ast` schema v1.0) | Custom blocks, callouts, link-graph mutations, ecosystem-plugin wiring |
+| `transform` | typed AST (`ztl-ast` schema v1.0) | Custom blocks, callouts, link-graph mutations, ecosystem-plugin wiring |
 | `post-render` | HTML fragment string | Banner injection, post-processing, accessibility fixes |
 
 Each hook ships a sidecar TOML manifest declaring its selectors (glob + frontmatter predicate + content regex), behavioural contracts (`preserves`, `idempotent`, `may_restructure`, `expansion_bound`), per-stage timeouts, and the AST shape it expects.
 
 ```bash
 # Scaffold a transform-stage hook in Python (also: --lang js | sh)
-zetl hook new transform callouts
+ztl hook new transform callouts
 
 # Run it against its starter fixture
-zetl hook test callouts
+ztl hook test callouts
 
 # Watch the source file and restart the persistent process on edit
-zetl hook watch callouts
+ztl hook watch callouts
 
 # Probe every composed hook for supported stages / AST schema version
-zetl hook capabilities
+ztl hook capabilities
 
 # Check selector reachability without invoking the hook
-zetl hook dry-run transform/callouts
+ztl hook dry-run transform/callouts
 
 # Per-hook coverage from the most-recent build
-zetl hook coverage --stage transform
+ztl hook coverage --stage transform
 
 # Inspect or diff the AST directly
-zetl ast sample notes/foo.md --stage transform
-zetl ast diff before.json after.json
+ztl ast sample notes/foo.md --stage transform
+ztl ast diff before.json after.json
 ```
 
 The scaffolder writes:
 
 ```
-.zetl/hooks/transform.d/
+.ztl/hooks/transform.d/
   callouts.py            # persistent-mode skeleton (chmod +x set)
   callouts.py.toml       # sidecar manifest (composition reads <name>.<ext>.toml)
 tests/hook-fixtures/callouts/
@@ -1019,23 +1019,23 @@ When a hook errors mid-pipeline, the page reverts to the previous stage's output
 
 Companion AST + protocol-client libraries live alongside the runtime, so hooks don't have to hand-roll JSON wire framing:
 
-- **TypeScript / npm** — `tools/zetl-ast-js/` ships typed AST classes, `walk()`/`map_nodes()` traversal, an `onNode()` dispatch table, and a persistent-mode protocol client.
-- **Python** — `tools/zetl-ast-py/` (src-layout, py3.9+) ships the same surface, plus an `@on_node` decorator.
+- **TypeScript / npm** — `tools/ztl-ast-js/` ships typed AST classes, `walk()`/`map_nodes()` traversal, an `onNode()` dispatch table, and a persistent-mode protocol client.
+- **Python** — `tools/ztl-ast-py/` (src-layout, py3.9+) ships the same surface, plus an `@on_node` decorator.
 
 A cross-implementation conformance gate (`make helper-contracts`) drives the rust, py, and js libraries through 10 shared JSON fixtures in CI, so type-translations stay aligned.
 
 #### Safe mode and security
 
-`zetl build --safe-mode` and `zetl serve --safe-mode` skip every vault hook and only run theme hooks declared in the theme manifest's `[[theme.hooks]]` table — handy for previewing untrusted vaults. Persistent hooks always spawn under a `SecurityPolicy` that redacts the host environment to a small allowlist (`PATH`, `HOME`, `USER`, `LANG`, `TERM`, `SHELL`), caps stderr at 1 MiB with a truncation marker, and rejects messages over 10 MiB in either direction. Full details: [`docs/hook-security.md`](docs/hook-security.md).
+`ztl build --safe-mode` and `ztl serve --safe-mode` skip every vault hook and only run theme hooks declared in the theme manifest's `[[theme.hooks]]` table — handy for previewing untrusted vaults. Persistent hooks always spawn under a `SecurityPolicy` that redacts the host environment to a small allowlist (`PATH`, `HOME`, `USER`, `LANG`, `TERM`, `SHELL`), caps stderr at 1 MiB with a truncation marker, and rejects messages over 10 MiB in either direction. Full details: [`docs/hook-security.md`](docs/hook-security.md).
 
-The schema, protocol shape, and full manifest reference are documented at [`docs/zetl-ast-reference.md`](docs/zetl-ast-reference.md) (auto-generated and CI-gated against `tools/zetl-ast-schema-v1.json`).
+The schema, protocol shape, and full manifest reference are documented at [`docs/ztl-ast-reference.md`](docs/ztl-ast-reference.md) (auto-generated and CI-gated against `tools/ztl-ast-schema-v1.json`).
 
 ### Plugin ecosystems
 
 Render-pipeline hooks can target a **plugin-ecosystem adapter** to delegate the actual transformation to an existing tool — Pandoc filters, mdBook preprocessors, or remark plugins — instead of writing the transform from scratch. The adapter handles AST translation in both directions; the hook manifest just names the plugin.
 
 ```toml
-# .zetl/hooks/transform.d/smallcaps.py.toml
+# .ztl/hooks/transform.d/smallcaps.py.toml
 ecosystem = "pandoc"
 lua_filter = "filters/smallcaps.lua"   # OR: exec = "pandoc-smallcaps"
 
@@ -1055,7 +1055,7 @@ Each ecosystem has its own manifest fields:
 Scaffold against an ecosystem with `--ecosystem`:
 
 ```bash
-zetl hook new transform smallcaps --ecosystem pandoc
+ztl hook new transform smallcaps --ecosystem pandoc
 # Writes the manifest with the SPEC-033 required fields populated
 # and (for pandoc) drops a starter identity Lua filter on disk.
 ```
@@ -1063,7 +1063,7 @@ zetl hook new transform smallcaps --ecosystem pandoc
 Probe every registered ecosystem for runtime detection, version, and configured-hook reachability:
 
 ```bash
-$ zetl ecosystem check
+$ ztl ecosystem check
 {
   "entries": [
     { "id": "pandoc", "status": "detected", "version": "pandoc 3.7.0.2",
@@ -1078,7 +1078,7 @@ $ zetl ecosystem check
 
 Exit is 0 when every *configured* ecosystem is available; the zero-configured state always exits 0. Missing-runtime hints point at the install path for the relevant tool.
 
-If a page parsed by CommonMark gets routed through a hook expecting Pandoc AST (or vice versa), you'll see a five-part **mixed-parser diagnostic** with three concrete remediations (set `parser:` in frontmatter, narrow the selector, or disable the hook for that page); `zetl build --strict-parsers` upgrades the warning to a fatal error.
+If a page parsed by CommonMark gets routed through a hook expecting Pandoc AST (or vice versa), you'll see a five-part **mixed-parser diagnostic** with three concrete remediations (set `parser:` in frontmatter, narrow the selector, or disable the hook for that page); `ztl build --strict-parsers` upgrades the warning to a fatal error.
 
 The cargo features `ecosystem-pandoc`, `ecosystem-mdbook`, and `ecosystem-remark` gate each adapter independently. All three are compiled in by default for release builds; build minimally with `cargo build --no-default-features` if you want none of them.
 
@@ -1090,17 +1090,17 @@ Per-ecosystem authoring guides:
 
 ## Collaboration
 
-zetl supports multi-user collaborative editing with `--collab` mode. Authentication uses WebAuthn passkeys (Touch ID, security keys), with BIP39 mnemonic recovery phrases as a fallback.
+ztl supports multi-user collaborative editing with `--collab` mode. Authentication uses WebAuthn passkeys (Touch ID, security keys), with BIP39 mnemonic recovery phrases as a fallback.
 
 ### Setup
 
 ```bash
 # First-time: bootstrap the vault owner
-zetl -d ./my-vault serve --collab --init-owner --owner-name Alice
+ztl -d ./my-vault serve --collab --init-owner --owner-name Alice
 # Save the 12-word recovery phrase printed to the terminal!
 
 # Subsequent starts (owner already exists)
-zetl -d ./my-vault serve --collab
+ztl -d ./my-vault serve --collab
 ```
 
 On first start, register a passkey at `http://localhost:3000` when prompted.
@@ -1109,13 +1109,13 @@ On first start, register a passkey at `http://localhost:3000` when prompted.
 
 ```bash
 # Generate an invitation link (copies to clipboard)
-zetl -d ./my-vault invite --as Alice --role editor
+ztl -d ./my-vault invite --as Alice --role editor
 
 # Scoped to specific pages
-zetl -d ./my-vault invite --as Alice --role reader --pages "projects/*"
+ztl -d ./my-vault invite --as Alice --role reader --pages "projects/*"
 
 # Custom expiry (default 72h)
-zetl -d ./my-vault invite --as Alice --role editor --expires 24h
+ztl -d ./my-vault invite --as Alice --role editor --expires 24h
 ```
 
 Or use the web UI at `/_admin/invite` to create and manage invitations.
@@ -1132,7 +1132,7 @@ If you lose access to your passkey, recover your account at `/auth/recovery` usi
 
 ### Deterministic keys from a seed phrase
 
-For containerised or ephemeral deployments, a single BIP39 mnemonic can deterministically derive all keys zetl needs. This avoids managing key files across redeploys.
+For containerised or ephemeral deployments, a single BIP39 mnemonic can deterministically derive all keys ztl needs. This avoids managing key files across redeploys.
 
 The seed derives three keys at distinct SLIP-0010 paths:
 
@@ -1140,29 +1140,29 @@ The seed derives three keys at distinct SLIP-0010 paths:
 |------|---------|----------------|
 | `m/44'/0'/0'` | User account recovery | (generated at `--init-owner`) |
 | `m/44'/1'/0'` | Collab server signing key | `--server-key-seed` |
-| `m/44'/2'/0'` | SSH ed25519 key for git | `zetl derive-ssh-key` |
+| `m/44'/2'/0'` | SSH ed25519 key for git | `ztl derive-ssh-key` |
 
 ```bash
 # Start the collab server with a deterministic server key
-zetl -d ./my-vault serve --collab --server-key-seed "word1 word2 ... word12"
+ztl -d ./my-vault serve --collab --server-key-seed "word1 word2 ... word12"
 
 # Or set via environment variable
-export ZETL_SERVER_KEY_SEED="word1 word2 ... word12"
-zetl -d ./my-vault serve --collab
+export ztl_SERVER_KEY_SEED="word1 word2 ... word12"
+ztl -d ./my-vault serve --collab
 
 # Derive an SSH key (for git push) from the same seed
-zetl derive-ssh-key --mnemonic "word1 word2 ... word12" --out ~/.ssh/id_ed25519
+ztl derive-ssh-key --mnemonic "word1 word2 ... word12" --out ~/.ssh/id_ed25519
 # Prints the public key for adding to your git remote (GitLab/GitHub)
 ```
 
-When `--server-key-seed` is provided, the derived key is written to `.zetl/collab/server.key` so that all code paths use a consistent key. Destroy the volume, redeploy with the same seed — same server identity, same SSH key.
+When `--server-key-seed` is provided, the derived key is written to `.ztl/collab/server.key` so that all code paths use a consistent key. Destroy the volume, redeploy with the same seed — same server identity, same SSH key.
 
 ### Agent tokens
 
 For headless API access (CI, scripts, bots):
 
 ```bash
-zetl -d ./my-vault agent-token --mnemonic "word1 word2 ... word12"
+ztl -d ./my-vault agent-token --mnemonic "word1 word2 ... word12"
 ```
 
 Use the token as a Bearer token: `Authorization: Bearer <token>`.
@@ -1189,7 +1189,7 @@ Works with any Markdown vault using `[[wikilink]]` syntax:
 - Foam
 - Dendron
 
-SPL embedding is optional — vaults work fine with just wikilinks. zetl never modifies your files. The index and theory cache are disposable and stored in `.zetl/`.
+SPL embedding is optional — vaults work fine with just wikilinks. ztl never modifies your files. The index and theory cache are disposable and stored in `.ztl/`.
 
 ## Development
 

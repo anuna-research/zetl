@@ -13,7 +13,7 @@
 //! - `{"type":"presence","user_id":<s>,"cursor":{"index":<u>,"head":<u>},"name":<s>}` — cursor broadcast
 //! - `{"type":"error","message":<s>}` — protocol error
 //!
-//! **Auth:** session cookie (`zetl_session`) or one-time ticket (`?ticket=<token>`).
+//! **Auth:** session cookie (`ztl_session`) or one-time ticket (`?ticket=<token>`).
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -99,7 +99,7 @@ pub enum ServerMsg {
         text: String,
         at: String,
     },
-    /// External edit detected — files changed outside of zetl's pipeline (REQ-020-039).
+    /// External edit detected — files changed outside of ztl's pipeline (REQ-020-039).
     ExternalEdit {
         files: Vec<String>,
     },
@@ -805,7 +805,7 @@ impl CrdtDocStore {
     /// - **Case 1 (clean):** Discard in-memory CRDT, reload from disk.
     /// - **Case 2 (dirty):** Parse external file into CRDT, merge with live CRDT.
     /// - **Case 3 (deleted):** If file no longer exists and CRDT was dirty, write
-    ///   recovery file to `.zetl/recovery/<slug>.md`, then evict.
+    ///   recovery file to `.ztl/recovery/<slug>.md`, then evict.
     ///
     /// Returns a list of `ServerMsg` to broadcast per slug.
     pub fn reconcile_crdt(&self, slug: &str, file_exists: bool) -> Vec<ServerMsg> {
@@ -822,7 +822,7 @@ impl CrdtDocStore {
             if entry.dirty {
                 // Write recovery file with unflushed edits.
                 if let Ok(md) = entry.doc.to_markdown() {
-                    let recovery_dir = self.vault_root.join(".zetl").join("recovery");
+                    let recovery_dir = self.vault_root.join(".ztl").join("recovery");
                     if let Err(e) = std::fs::create_dir_all(&recovery_dir) {
                         eprintln!("crdt-reconcile: failed to create recovery dir: {e}");
                     } else {

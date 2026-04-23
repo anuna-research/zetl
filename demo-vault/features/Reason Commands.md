@@ -4,7 +4,7 @@ title: Reason Commands
 
 # Reason Commands
 
-`zetl reason` exposes the [[Reasoning Engine]] through eight subcommands. All require `--features reason` at build time — see [[Feature Gates]].
+`ztl reason` exposes the [[Reasoning Engine]] through eight subcommands. All require `--features reason` at build time — see [[Feature Gates]].
 
 ```spl
 (given reason-status-done)
@@ -54,11 +54,11 @@ Traces a conclusion back to source files, cross-referenced with the [[Link Graph
 ## Try it on this vault
 
 ```bash
-zetl -d . reason status
-zetl -d . reason explain "release-candidate" --format natural
-zetl -d . reason conflicts
-zetl -d . reason require "release-candidate"
-zetl -d . reason what-if "(given docs-updated)" --goal "release-candidate"
+ztl -d . reason status
+ztl -d . reason explain "release-candidate" --format natural
+ztl -d . reason conflicts
+ztl -d . reason require "release-candidate"
+ztl -d . reason what-if "(given docs-updated)" --goal "release-candidate"
 ```
 
 See also: [[Reasoning Engine]], [[Defeasible Reasoning]], [[Provenance]], [[Spindle Lisp]]

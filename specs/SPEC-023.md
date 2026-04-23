@@ -1,5 +1,5 @@
 ---
-title: "SPEC-023: zetl bench — Search Quality Benchmarking Harness"
+title: "SPEC-023: ztl bench — Search Quality Benchmarking Harness"
 version: 0.1.0
 status: draft
 date: 2026-04-07
@@ -13,21 +13,21 @@ dependencies:
   - ort (existing, for semantic)
 ---
 
-# SPEC-023: zetl bench — Search Quality Benchmarking Harness
+# SPEC-023: ztl bench — Search Quality Benchmarking Harness
 
 ## Information Table
 
 | Field        | Value                                                           |
 | ------------ | --------------------------------------------------------------- |
 | Document ID  | SPEC-023                                                        |
-| Title        | zetl bench — Search Quality Benchmarking Harness                |
+| Title        | ztl bench — Search Quality Benchmarking Harness                |
 | Version      | 0.1.0                                                           |
 | Status       | Draft                                                           |
 | Author       | Agent (USDD Protocol v1.3.0)                                    |
 | Date         | 2026-04-07                                                      |
 | Audience     | Agent, Human                                                    |
 | Trace        | USDD §2 (Vision -> Specification)                               |
-| Parent       | SPEC-002: zetl search — Full-Text Content Search                |
+| Parent       | SPEC-002: ztl search — Full-Text Content Search                |
 | Related      | SPEC-013: Tantivy Full-Text Search; SPEC-018: Semantic Search   |
 | Dependencies | tantivy (existing), ort (existing, for semantic)                |
 
@@ -37,7 +37,7 @@ dependencies:
 
 ### 1.1 Problem
 
-zetl has three search backends — BM25 full-text via Tantivy (SPEC-013), semantic vector search via ONNX embeddings (SPEC-018), and hybrid BM25+vector via reciprocal rank fusion (SPEC-018) — plus graph-scoped search with `--near` (SPEC-013). There is currently no way to measure search quality, compare backends against each other, or detect quality regressions when the codebase changes. A developer who modifies tokenisation, adjusts BM25 parameters, retrains the embedding model, or changes the chunking strategy has no feedback signal beyond manual spot-checking.
+ztl has three search backends — BM25 full-text via Tantivy (SPEC-013), semantic vector search via ONNX embeddings (SPEC-018), and hybrid BM25+vector via reciprocal rank fusion (SPEC-018) — plus graph-scoped search with `--near` (SPEC-013). There is currently no way to measure search quality, compare backends against each other, or detect quality regressions when the codebase changes. A developer who modifies tokenisation, adjusts BM25 parameters, retrains the embedding model, or changes the chunking strategy has no feedback signal beyond manual spot-checking.
 
 ### 1.2 Core Insight
 
@@ -46,7 +46,7 @@ Search quality is measurable. Information retrieval has well-established metrics
 ### 1.3 Design Philosophy
 
 - **Fixtures are data, not code.** Benchmark suites are JSON or TOML files that any user can author without writing Rust. An agent can generate them from a vault's contents.
-- **All backends, one command.** `zetl bench` runs every available search backend against every query in the fixture and reports metrics side by side. No need to invoke each backend separately.
+- **All backends, one command.** `ztl bench` runs every available search backend against every query in the fixture and reports metrics side by side. No need to invoke each backend separately.
 - **Graded relevance.** Real search quality requires distinguishing "highly relevant" from "marginally relevant." Fixtures support relevance grades (0-3), enabling nDCG alongside binary metrics.
 - **Regression detection is first-class.** The harness can compare two runs and exit non-zero when metrics drop, making it suitable for CI gating.
 - **Output is dual-audience.** Human-readable table output for interactive use; JSON output for agent consumption and downstream tooling.
@@ -55,7 +55,7 @@ Search quality is measurable. Information retrieval has well-established metrics
 
 **In scope:**
 
-- `zetl bench <fixture>` command that runs benchmark suites
+- `ztl bench <fixture>` command that runs benchmark suites
 - Fixture file format (JSON and TOML) with queries, relevance judgments, and search mode overrides
 - Metrics computation: precision@k, recall@k, MRR, nDCG, MAP
 - Graded relevance support for nDCG (relevance grades 0-3)
@@ -63,13 +63,13 @@ Search quality is measurable. Information retrieval has well-established metrics
 - Table output (CLI) and JSON output (agent-friendly)
 - Delta comparison between two benchmark runs (`--baseline`)
 - CI integration: `--threshold` flag with non-zero exit on regression
-- Example fixture for the demo vault shipped with zetl
+- Example fixture for the demo vault shipped with ztl
 - Graph-scoped benchmarks via `--near` overrides in fixtures
 
 **Out of scope:**
 
 - Automatic relevance judgment generation (user/agent authors fixtures manually)
-- Latency benchmarking (use `zetl search` with `ZETL_DEBUG_RENDER=1` or external tools like `hyperfine`)
+- Latency benchmarking (use `ztl search` with `ztl_DEBUG_RENDER=1` or external tools like `hyperfine`)
 - A/B testing across different index configurations in a single run
 - Fixture generation from click logs or query logs
 - Web UI for benchmark results
@@ -82,13 +82,13 @@ Search quality is measurable. Information retrieval has well-established metrics
 
 ```
 Name:        Priya
-Role:        Contributor to zetl; modifying search internals
+Role:        Contributor to ztl; modifying search internals
 Goals:       Validate that changes to tokenisation, BM25 parameters,
              or chunking strategy do not degrade search quality;
              compare backends objectively
 Constraints: Works locally; wants fast feedback; does not want to
              manually re-test dozens of queries after each change
-Workflow:    Edits search code, runs `zetl bench fixtures/search.json`,
+Workflow:    Edits search code, runs `ztl bench fixtures/search.json`,
              checks that metrics have not regressed
 Pain point:  "I changed the tokeniser and I have no idea if search
              got better or worse. I need numbers."
@@ -98,14 +98,14 @@ Pain point:  "I changed the tokeniser and I have no idea if search
 
 ```
 Name:        Jorge
-Role:        Maintains a 3,000-note research vault; uses zetl for
+Role:        Maintains a 3,000-note research vault; uses ztl for
              discovery and navigation
 Goals:       Determine which search backend works best for his vault;
              build a regression suite for queries he cares about
 Constraints: Not a Rust developer; comfortable with CLI and JSON;
              wants to author fixtures without touching code
 Workflow:    Writes a fixture file with his most important queries
-             and the pages he expects to find; runs `zetl bench`
+             and the pages he expects to find; runs `ztl bench`
              to see which backend serves him best
 Pain point:  "Hybrid search sometimes finds things BM25 misses, but
              I don't know if it's consistently better or just lucky
@@ -121,7 +121,7 @@ Goals:       Detect search quality regressions before merge;
              gate PRs on minimum quality thresholds
 Constraints: Non-interactive; needs JSON output and exit codes;
              must complete within CI time budget
-Workflow:    `zetl index && zetl bench fixtures/regression.json
+Workflow:    `ztl index && ztl bench fixtures/regression.json
              --format json --threshold mrr=0.7,ndcg=0.6`
              Exit 0 if all thresholds met; exit 1 otherwise.
 Pain point:  "We merged a change that broke hybrid search ranking
@@ -132,14 +132,14 @@ Pain point:  "We merged a change that broke hybrid search ranking
 
 ```
 Name:        (LLM agent)
-Role:        Automated agent that queries zetl search as part of
+Role:        Automated agent that queries ztl search as part of
              a retrieval-augmented pipeline
 Goals:       Generate and maintain benchmark fixtures from vault
              content; evaluate search quality programmatically;
              select the best backend per query type
 Constraints: Consumes JSON; needs structured metric output;
              may generate fixtures from known-good query/result pairs
-Workflow:    Agent authors a fixture, runs `zetl bench --format json`,
+Workflow:    Agent authors a fixture, runs `ztl bench --format json`,
              parses metrics, decides whether to use bm25, semantic,
              or hybrid for downstream queries
 Pain point:  "I need to know which search mode to use for different
@@ -155,13 +155,13 @@ Pain point:  "I need to know which search mode to use for different
 ```
 REQ-127: Benchmark Command
 
-The system SHALL provide a `zetl bench <fixture>` command that
+The system SHALL provide a `ztl bench <fixture>` command that
 reads a benchmark fixture file and executes all queries against
 the vault's search backends,
 FOR all user roles
 WITH the fixture file path as a required positional argument
-AND the vault resolved using the same rules as `zetl search`
-  (current directory, --vault flag, ZETL_VAULT env var)
+AND the vault resolved using the same rules as `ztl search`
+  (current directory, --vault flag, ztl_VAULT env var)
 AND the search index built lazily if absent (same as SPEC-013
   REQ-013-004).
 
@@ -376,7 +376,7 @@ Context:
 
   Option B — External fixture files: Benchmarks are data files
   (JSON or TOML) that declare queries and relevance judgments.
-  A single `zetl bench` command reads the fixture and runs all
+  A single `ztl bench` command reads the fixture and runs all
   queries. Adding a new benchmark means editing a JSON file.
 
 Decision:
@@ -386,7 +386,7 @@ Rationale:
   - Fixtures are authorable by non-developers, including agents
     and vault curators who understand their queries but not Rust.
   - Fixtures are portable: the same file works across machines,
-    CI environments, and zetl versions.
+    CI environments, and ztl versions.
   - Fixtures separate the "what to measure" concern from the
     "how to measure" concern. The harness code changes rarely;
     the fixtures change frequently as the vault evolves.
@@ -450,7 +450,7 @@ Consequences:
 
 ```
                      ┌────────────────┐
-                     │   zetl bench   │
+                     │   ztl bench   │
                      │   (command)    │
                      └───────┬────────┘
                              │
@@ -486,7 +486,7 @@ Consequences:
 
 1. **Fixture Loader -> Search Runner.** The loader parses the fixture file, validates its schema, and produces a `Vec<BenchQuery>`. The search runner iterates over each query and dispatches to the appropriate backends.
 
-2. **Search Runner -> Existing Search Infrastructure.** The search runner calls the same search functions used by `zetl search` — Tantivy BM25 queries (SPEC-013), semantic vector queries (SPEC-018), and hybrid reciprocal rank fusion (SPEC-018). No new search code is written; the harness is a consumer of existing search APIs.
+2. **Search Runner -> Existing Search Infrastructure.** The search runner calls the same search functions used by `ztl search` — Tantivy BM25 queries (SPEC-013), semantic vector queries (SPEC-018), and hybrid reciprocal rank fusion (SPEC-018). No new search code is written; the harness is a consumer of existing search APIs.
 
 3. **Search Runner -> Metric Engine.** For each (query, backend) pair, the search runner passes the result list and the relevance judgments to the metric engine, which computes all metrics.
 
@@ -502,7 +502,7 @@ struct BenchQuery {
     /// The search query text.
     query: String,
     /// Expected relevant documents with relevance grades.
-    /// Key: page name (same resolution as zetl search).
+    /// Key: page name (same resolution as ztl search).
     /// Value: relevance grade (0-3).
     relevant: HashMap<String, u8>,
     /// Number of results to evaluate (default: 10).
@@ -638,7 +638,7 @@ Where `rel_k` is 1 if the document at rank k is relevant, 0 otherwise. MAP is th
 ### 4.6 Table Output Format
 
 ```
-zetl bench fixtures/demo-bench.json
+ztl bench fixtures/demo-bench.json
 
 Fixture: demo-vault-search (5 queries)
 Vault:   /home/user/demo-vault
@@ -682,7 +682,7 @@ Aggregates (vs baseline 2026-04-06):
 ```
 CON-037: bench (search quality benchmarking)
 
-zetl bench <FIXTURE> [OPTIONS]
+ztl bench <FIXTURE> [OPTIONS]
 
 Arguments:
   <FIXTURE>            Path to a benchmark fixture file (.json or .toml)
@@ -757,7 +757,7 @@ CON-038: Benchmark Fixture Format
 JSON fixture schema:
 {
   "name": "demo-vault-search",
-  "description": "Benchmark suite for the zetl demo vault",
+  "description": "Benchmark suite for the ztl demo vault",
   "default_k": 10,
   "queries": [
     {
@@ -791,7 +791,7 @@ JSON fixture schema:
 
 TOML fixture equivalent:
   name = "demo-vault-search"
-  description = "Benchmark suite for the zetl demo vault"
+  description = "Benchmark suite for the ztl demo vault"
   default_k = 10
 
   [[queries]]
@@ -901,7 +901,7 @@ TEST-150: Benchmark Command Execution
 Scenario: Basic benchmark run
 Given: A vault with 10 indexed Markdown files
 And: A fixture file with 3 queries and relevance judgments
-When: `zetl bench fixture.json` is run
+When: `ztl bench fixture.json` is run
 Then:
   - Exit code 0
   - Stdout contains a table with per-query metrics
@@ -909,17 +909,17 @@ Then:
   - All metric values are in [0.0, 1.0]
 
 Scenario: Fixture file not found
-When: `zetl bench nonexistent.json` is run
+When: `ztl bench nonexistent.json` is run
 Then: Exit code 2, stderr reports file not found
 
 Scenario: Invalid fixture format
 Given: A file with invalid JSON
-When: `zetl bench invalid.json` is run
+When: `ztl bench invalid.json` is run
 Then: Exit code 2, stderr reports parse error
 
 Scenario: Example fixture runs against demo vault
 Given: The demo vault is indexed
-When: `zetl bench fixtures/demo-bench.json` is run
+When: `ztl bench fixtures/demo-bench.json` is run
 Then: Exit code 0, metrics are computed for all queries
 
 Verifies: REQ-127, REQ-136
@@ -931,18 +931,18 @@ TEST-151: Multi-Backend Execution
 Scenario: All backends executed
 Given: A vault indexed with both tantivy and semantic features
 And: A fixture with a query that has no modes restriction
-When: `zetl bench fixture.json` is run
+When: `ztl bench fixture.json` is run
 Then: Results include metrics for bm25, semantic, and hybrid
 
 Scenario: Modes override restricts backends
 Given: A fixture with a query that has modes: ["bm25"]
-When: `zetl bench fixture.json` is run
+When: `ztl bench fixture.json` is run
 Then: Results for that query include only bm25 metrics
 
 Scenario: Unavailable backend silently skipped
 Given: Compiled without --features semantic
 And: A fixture with modes: ["bm25", "semantic"]
-When: `zetl bench fixture.json` is run
+When: `ztl bench fixture.json` is run
 Then: Results include only bm25 metrics, no error
 
 Verifies: REQ-128
@@ -1010,21 +1010,21 @@ Verifies: REQ-131
 TEST-154: Output Formats
 
 Scenario: Table output
-When: `zetl bench fixture.json --format table` is run
+When: `ztl bench fixture.json --format table` is run
 Then:
   - Stdout contains aligned columns with headers
   - Per-query rows are present
   - Aggregate summary rows are present
 
 Scenario: JSON output
-When: `zetl bench fixture.json --format json` is run
+When: `ztl bench fixture.json --format json` is run
 Then:
   - Stdout is valid JSON
   - JSON contains "fixture_name", "per_query", "aggregates"
   - All metric values are numbers
 
 Scenario: JSON output is parseable by agents
-When: `zetl bench fixture.json --format json` output is parsed
+When: `ztl bench fixture.json --format json` output is parsed
 Then:
   - per_query is an array of objects with query_id, backend, and metrics
   - aggregates is an array of objects with backend and metrics
@@ -1038,7 +1038,7 @@ TEST-155: Baseline Comparison
 Scenario: Delta computation
 Given: A baseline JSON from a previous run with bm25 MRR = 0.700
 And: Current run produces bm25 MRR = 0.733
-When: `zetl bench fixture.json --baseline baseline.json` is run
+When: `ztl bench fixture.json --baseline baseline.json` is run
 Then:
   - Output shows MRR delta of +0.033
   - Table format shows "+0.033" next to the metric
@@ -1061,26 +1061,26 @@ TEST-156: CI Threshold Gating
 
 Scenario: All thresholds met
 Given: Benchmark produces bm25 MRR = 0.733, nDCG = 0.612
-When: `zetl bench fixture.json --threshold mrr=0.7,ndcg=0.6`
+When: `ztl bench fixture.json --threshold mrr=0.7,ndcg=0.6`
 Then: Exit code 0
 
 Scenario: Threshold not met
 Given: Benchmark produces bm25 MRR = 0.650
-When: `zetl bench fixture.json --threshold mrr=0.7`
+When: `ztl bench fixture.json --threshold mrr=0.7`
 Then:
   - Exit code 1
   - Stderr reports: "Threshold failed: bm25 mrr = 0.650 < 0.700"
 
 Scenario: Multiple thresholds, one fails
 Given: Benchmark produces MRR = 0.800, nDCG = 0.500
-When: `zetl bench fixture.json --threshold mrr=0.7,ndcg=0.6`
+When: `ztl bench fixture.json --threshold mrr=0.7,ndcg=0.6`
 Then:
   - Exit code 1
   - Stderr reports the failing nDCG threshold
 
 Scenario: Threshold checked per backend
 Given: bm25 MRR = 0.800, semantic MRR = 0.650
-When: `zetl bench fixture.json --threshold mrr=0.7`
+When: `ztl bench fixture.json --threshold mrr=0.7`
 Then:
   - Exit code 1
   - Stderr reports semantic backend failing MRR threshold
@@ -1110,7 +1110,7 @@ Then:
 
 Scenario: Depth without near is rejected
 Given: A fixture with a query that has depth: 2 but no near field
-When: `zetl bench fixture.json` is run
+When: `ztl bench fixture.json` is run
 Then: Exit code 2, validation error reported
 
 Verifies: REQ-135

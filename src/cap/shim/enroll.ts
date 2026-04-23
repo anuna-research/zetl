@@ -11,7 +11,7 @@
 //
 //   1. Read `?cohort=<cohort-id>` from `window.location.search`.
 //   2. Compute the per-cohort PRF salt
-//          prf_salt = SHA-256("zetl/webauthn-prf/v1/" || origin
+//          prf_salt = SHA-256("ztl/webauthn-prf/v1/" || origin
 //                             || "/" || cohort_id)
 //      (REQ-3414). The Rust half of this derivation lives in
 //      `cap::enrolment::compute_prf_salt` for TEST-3414 cross-check.
@@ -25,7 +25,7 @@
 //      `age-recipient-v1:<b64url>` (REQ-3409) with copy-to-
 //      clipboard + QR-code affordances.
 //
-// No network traffic to zetl endpoints is performed at runtime —
+// No network traffic to ztl endpoints is performed at runtime —
 // the enrol bundle does all its work client-side. CSP still allows
 // same-origin fetches (`connect-src 'self'`) to share one policy
 // shape with `/c/*`; the bundle voluntarily makes none.
@@ -48,7 +48,7 @@ export const AGE_PRF_INFO = "age-encryption.org/fido2prf";
 export const AGE_RECIPIENT_V1_PREFIX = "age-recipient-v1:";
 
 /// DOM mount id pinned by `cap::enrolment::ENROLL_MOUNT_ID`.
-export const ENROLL_MOUNT_ID = "zetl-enroll";
+export const ENROLL_MOUNT_ID = "ztl-enroll";
 
 export type EnrolState =
   | { kind: "idle"; cohortId: string }
@@ -155,8 +155,8 @@ export async function createPasskeyAndEvalPrf(
     rp: { id: rpId, name: origin },
     user: {
       id: userId,
-      name: `zetl:${cohortId}`,
-      displayName: `zetl enrolment (${cohortId})`,
+      name: `ztl:${cohortId}`,
+      displayName: `ztl enrolment (${cohortId})`,
     },
     challenge,
     pubKeyCredParams: [
@@ -508,7 +508,7 @@ export interface MountOptions {
   createFn?: WebAuthnCreateFn;
 }
 
-/// Mount the enrolment UI into `#zetl-enroll`. Called from the
+/// Mount the enrolment UI into `#ztl-enroll`. Called from the
 /// default bundle entry point; tests import the module and drive
 /// state transitions manually via `runEnrol`.
 export async function mount(opts: MountOptions): Promise<void> {
@@ -566,7 +566,7 @@ function clearChildren(node: Element): void {
 function renderMissingCohort(root: Element, document: Document): void {
   clearChildren(root);
   const h1 = document.createElement("h1");
-  h1.textContent = "zetl — hardened-mode enrolment";
+  h1.textContent = "ztl — hardened-mode enrolment";
   const p = document.createElement("p");
   p.textContent =
     "Missing ?cohort=<cohort-id> query parameter. Ask your wiki operator for the enrolment URL.";
@@ -582,7 +582,7 @@ function renderAwaitingUser(
 ): void {
   clearChildren(root);
   const h1 = document.createElement("h1");
-  h1.textContent = "zetl — hardened-mode enrolment";
+  h1.textContent = "ztl — hardened-mode enrolment";
   const p = document.createElement("p");
   p.textContent = `Creating a passkey for cohort "${cohortId}" — your browser will prompt for biometric / PIN confirmation.`;
   root.appendChild(h1);
@@ -599,7 +599,7 @@ function renderNoPrf(
 ): void {
   clearChildren(root);
   const h1 = document.createElement("h1");
-  h1.textContent = "zetl — PRF not supported";
+  h1.textContent = "ztl — PRF not supported";
   const p1 = document.createElement("p");
   p1.textContent = `Cohort: ${cohortId}`;
   const p2 = document.createElement("p");
@@ -627,7 +627,7 @@ function renderError(
 ): void {
   clearChildren(root);
   const h1 = document.createElement("h1");
-  h1.textContent = "zetl — enrolment failed";
+  h1.textContent = "ztl — enrolment failed";
   const p1 = document.createElement("p");
   p1.textContent = `Cohort: ${cohortId}`;
   const p2 = document.createElement("p");
@@ -652,7 +652,7 @@ function renderSuccess(
 ): void {
   clearChildren(root);
   const h1 = document.createElement("h1");
-  h1.textContent = "zetl — enrolment complete";
+  h1.textContent = "ztl — enrolment complete";
   const p1 = document.createElement("p");
   p1.textContent = `Passkey bound. Cohort: ${cohortId}`;
 
@@ -660,7 +660,7 @@ function renderSuccess(
   pubLabel.textContent = "Your cohort-scoped public key";
   const pubOutput = document.createElement("code");
   pubOutput.setAttribute("data-testid", "enroll-recipient");
-  pubOutput.className = "zetl-enroll-recipient";
+  pubOutput.className = "ztl-enroll-recipient";
   pubOutput.textContent = recipient;
 
   const copyBtn = document.createElement("button");
@@ -689,7 +689,7 @@ function renderSuccess(
     "Send this public key to your wiki operator out of band (direct message, email, in person). The operator adds it to the cohort's recipients.toml and publishes. You do not need to keep this page open after copying the key.";
 
   const age1Label = document.createElement("p");
-  age1Label.className = "zetl-enroll-age1";
+  age1Label.className = "ztl-enroll-age1";
   age1Label.textContent = `Equivalent age recipient: ${age1}`;
 
   root.appendChild(h1);
@@ -711,7 +711,7 @@ function renderSuccess(
 if (typeof document !== "undefined" && typeof window !== "undefined") {
   const start = () => {
     mount({ document, location: window.location }).catch((err) => {
-      console.error("[zetl] enroll: unexpected failure", err);
+      console.error("[ztl] enroll: unexpected failure", err);
     });
   };
   if (document.readyState === "loading") {

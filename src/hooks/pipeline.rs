@@ -7,7 +7,7 @@
 //! ```
 //!
 //! - **`pre-parse`** — raw Markdown text in, raw Markdown text out.
-//! - **`transform`** — zetl-ext AST in, zetl-ext AST out.
+//! - **`transform`** — ztl-ext AST in, ztl-ext AST out.
 //! - **`post-render`** — HTML fragment in, HTML fragment out.
 //!
 //! Each stage's registered hooks run sequentially; the output of hook *N*
@@ -20,8 +20,8 @@
 //! and observability (SPEC-032 §9).
 //!
 //! The `AstDocument` type at the `transform` stage is the typed Rust
-//! mirror of the zetl-ext schema ([`crate::hooks::ast::Document`]), landed
-//! in `task-ast-types-rust`. See `tools/zetl-ast-schema-v1.json` for the
+//! mirror of the ztl-ext schema ([`crate::hooks::ast::Document`]), landed
+//! in `task-ast-types-rust`. See `tools/ztl-ast-schema-v1.json` for the
 //! on-disk contract.
 
 use std::time::{Duration, Instant};
@@ -72,7 +72,7 @@ impl std::fmt::Display for Stage {
 /// AST type exchanged at the `transform` stage boundary.
 ///
 /// Aliases [`crate::hooks::ast::Document`] — the Rust representation of the
-/// zetl-ext schema (SPEC-032 REQ-3202). Transform hooks receive and return
+/// ztl-ext schema (SPEC-032 REQ-3202). Transform hooks receive and return
 /// a fully-typed `Document`, not raw JSON; serialisation/deserialisation
 /// across the persistent-mode protocol happens via `serde_json` at the
 /// process boundary, but the pipeline itself operates on the typed value.
@@ -122,7 +122,7 @@ pub trait PreParseHook: Send + Sync {
     fn run(&self, input: String, ctx: &BuildContext) -> Result<String, HookError>;
 }
 
-/// A `transform` hook: zetl-ext AST in, zetl-ext AST out.
+/// A `transform` hook: ztl-ext AST in, ztl-ext AST out.
 ///
 /// Receives a [`BuildContext`] (REQ-3220) so hooks can branch on the
 /// active theme, page metadata, or the frozen `build_data` snapshot.
@@ -215,7 +215,7 @@ impl HookPipeline {
 ///
 /// Surfaced by [`run_page`] and aggregated by the build command into the
 /// stats block (SPEC-032 §9 OBS-3201). `parse` and `render` time — the
-/// zetl-owned conversions between the stage boundaries — are recorded
+/// ztl-owned conversions between the stage boundaries — are recorded
 /// alongside the hook-stage times so the whole pipeline is measurable from
 /// a single struct.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -327,7 +327,7 @@ where
     if !pipeline.pre_parse.is_empty() {
         let t0 = Instant::now();
         for hook in &pipeline.pre_parse {
-            // REQ-3211: `zetl.ext.<id>: false` in page frontmatter skips
+            // REQ-3211: `ztl.ext.<id>: false` in page frontmatter skips
             // this hook entirely — no event, no duration, no failure.
             if is_disabled_by_frontmatter(&ctx.page.frontmatter, hook.id()) {
                 continue;
@@ -363,7 +363,7 @@ where
         stats.pre_parse = t0.elapsed();
     }
 
-    // Parse (zetl-owned; not a hook).
+    // Parse (ztl-owned; not a hook).
     let t0 = Instant::now();
     let mut ast = parse(&text);
     stats.parse = t0.elapsed();
@@ -372,7 +372,7 @@ where
     if !pipeline.transform.is_empty() {
         let t0 = Instant::now();
         for hook in &pipeline.transform {
-            // REQ-3211: per-page opt-out via `zetl.ext.<id>: false`.
+            // REQ-3211: per-page opt-out via `ztl.ext.<id>: false`.
             if is_disabled_by_frontmatter(&ctx.page.frontmatter, hook.id()) {
                 continue;
             }
@@ -405,7 +405,7 @@ where
         stats.transform = t0.elapsed();
     }
 
-    // Render (zetl-owned; not a hook).
+    // Render (ztl-owned; not a hook).
     let t0 = Instant::now();
     let mut html = render(&ast);
     stats.render = t0.elapsed();
@@ -414,7 +414,7 @@ where
     if !pipeline.post_render.is_empty() {
         let t0 = Instant::now();
         for hook in &pipeline.post_render {
-            // REQ-3211: per-page opt-out via `zetl.ext.<id>: false`.
+            // REQ-3211: per-page opt-out via `ztl.ext.<id>: false`.
             if is_disabled_by_frontmatter(&ctx.page.frontmatter, hook.id()) {
                 continue;
             }
@@ -1025,7 +1025,7 @@ mod tests {
 
     // ── TEST-3211: per-file frontmatter opt-out ──────────────────────────
     //
-    // `zetl.ext.<id>: false` in the page's frontmatter disables a single
+    // `ztl.ext.<id>: false` in the page's frontmatter disables a single
     // hook for that page. The pipeline skips the hook silently — no
     // invocation event, no failure record, no duration accounted — and
     // the next hook (or the parse/render stages) sees the input the
@@ -1036,7 +1036,7 @@ mod tests {
         use serde_json::{json, Value};
         let mut fm = Frontmatter::new();
         fm.insert(
-            "zetl".into(),
+            "ztl".into(),
             json!({ "ext": { extension_id: Value::Bool(false) } }),
         );
         PageMeta {
@@ -1050,7 +1050,7 @@ mod tests {
     #[test]
     fn test_3211_opt_out_skips_hook_at_each_stage() {
         // One fixture hook per stage, all with id "callouts". A page that
-        // opts out (`zetl.ext.callouts: false`) must see every callouts
+        // opts out (`ztl.ext.callouts: false`) must see every callouts
         // hook skipped while every other hook still runs.
         let trace = Arc::new(Mutex::new(Vec::new()));
         let calls = Arc::new(AtomicUsize::new(0));
@@ -1194,7 +1194,7 @@ mod tests {
             Value::String("false".into()),
         ] {
             let mut fm = Frontmatter::new();
-            fm.insert("zetl".into(), json!({ "ext": { "callouts": value } }));
+            fm.insert("ztl".into(), json!({ "ext": { "callouts": value } }));
             let page = PageMeta {
                 name: "p".into(),
                 path: "p.md".into(),

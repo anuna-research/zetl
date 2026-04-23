@@ -1,5 +1,5 @@
 ---
-title: "SPEC-026: Vault Scan Exclusions — Dotdir Defaults, .zetlignore, and --exclude"
+title: "SPEC-026: Vault Scan Exclusions — Dotdir Defaults, .ztlignore, and --exclude"
 version: 0.1.0
 status: draft
 date: 2026-04-15
@@ -11,14 +11,14 @@ related:
   - SPEC-013
 ---
 
-# SPEC-026: Vault Scan Exclusions — Dotdir Defaults, `.zetlignore`, and `--exclude`
+# SPEC-026: Vault Scan Exclusions — Dotdir Defaults, `.ztlignore`, and `--exclude`
 
 ## Information Table
 
 | Field          | Value                                                                     |
 | -------------- | ------------------------------------------------------------------------- |
 | Document ID    | SPEC-026                                                                  |
-| Title          | Vault Scan Exclusions — Dotdir Defaults, `.zetlignore`, and `--exclude`   |
+| Title          | Vault Scan Exclusions — Dotdir Defaults, `.ztlignore`, and `--exclude`   |
 | Version        | 0.1.0                                                                     |
 | Status         | Draft                                                                     |
 | Author         | Agent (USDD Protocol v1.3.0)                                              |
@@ -33,11 +33,11 @@ related:
 
 ## 1. Overview
 
-`zetl` walks the vault with the `ignore` crate via `scanner::scan_vault()` (src/scanner.rs:20). The walker currently:
+`ztl` walks the vault with the `ignore` crate via `scanner::scan_vault()` (src/scanner.rs:20). The walker currently:
 
 - Respects `.gitignore` (`git_ignore(true)`)
-- Loads `.zetlignore` at vault root if present
-- Force-ignores `.git/`, `node_modules/`, `.zetl/` via override rules
+- Loads `.ztlignore` at vault root if present
+- Force-ignores `.git/`, `node_modules/`, `.ztl/` via override rules
 - **Does not** set `hidden(true)` — comment says "user may have .files as notes"
 
 The consequence: any dotdir that is not one of the three hardcoded names is walked and its markdown is compiled into `dist/`. Real-world leak: `.claude/` (Claude Code session data), `.obsidian/`, `.vscode/`, `.cache/`, `.venv/`, `.terraform/`. Downstream builds ship them to production.
@@ -46,7 +46,7 @@ A parallel code path — `web::fs_watch::classify_external_event` (src/web/fs_wa
 
 ### 1.1 Motivation
 
-**The dist leak is self-ironic.** `zetl build` publishes a knowledge graph; publishing your AI agent's scratchpad is both a privacy leak and a correctness problem — wikilinks inside `.claude/` session logs pollute backlink counts, the search index, and the link graph.
+**The dist leak is self-ironic.** `ztl build` publishes a knowledge graph; publishing your AI agent's scratchpad is both a privacy leak and a correctness problem — wikilinks inside `.claude/` session logs pollute backlink counts, the search index, and the link graph.
 
 **Users already expect gitignore semantics.** Every comparable static-site or vault tool (Hugo, Jekyll, 11ty, Obsidian publish, Zola) skips dotdirs by default. The principle of least astonishment applies.
 
@@ -54,30 +54,30 @@ A parallel code path — `web::fs_watch::classify_external_event` (src/web/fs_wa
 
 ### 1.2 Design Principles
 
-1. **Skip dotdirs by default.** Dotdirs at any depth are excluded from scan unless explicitly allowed. Dotfiles at the vault root may still be walked (preserves `.zetlignore`, `.gitignore`, user-authored `.hidden-note.md`) — the exclusion is on **directories** whose name starts with `.`.
-2. **`.zetlignore` is the primary override.** Gitignore-syntax file at vault root, already supported — promote it to a documented, first-class feature.
+1. **Skip dotdirs by default.** Dotdirs at any depth are excluded from scan unless explicitly allowed. Dotfiles at the vault root may still be walked (preserves `.ztlignore`, `.gitignore`, user-authored `.hidden-note.md`) — the exclusion is on **directories** whose name starts with `.`.
+2. **`.ztlignore` is the primary override.** Gitignore-syntax file at vault root, already supported — promote it to a documented, first-class feature.
 3. **`--exclude` is the ephemeral override.** Per-invocation gitignore-style patterns for one-off builds.
 4. **`.gitignore` continues to be respected.** Vaults that live inside a git repo inherit `.gitignore` for free.
 5. **Scanner ≡ watcher.** Both code paths apply the same exclusion policy. No silent divergence.
-6. **Backward compatible at the CLI surface.** Users relying on default behaviour today (walking `.claude/`) get a one-line migration: add `.claude/` to `.zetlignore`… wait, that's already the required behaviour. The breaking change IS the fix. Change gated behind minor version bump + CHANGELOG note.
+6. **Backward compatible at the CLI surface.** Users relying on default behaviour today (walking `.claude/`) get a one-line migration: add `.claude/` to `.ztlignore`… wait, that's already the required behaviour. The breaking change IS the fix. Change gated behind minor version bump + CHANGELOG note.
 
 ### 1.3 Scope
 
 **In scope:**
 
 - Default exclusion of all directories whose name begins with `.` at any depth (except explicit allow list)
-- `--exclude <PATTERN>` CLI flag on `zetl build`, `zetl index`, `zetl serve`, `zetl search`, `zetl watch` (repeatable)
+- `--exclude <PATTERN>` CLI flag on `ztl build`, `ztl index`, `ztl serve`, `ztl search`, `ztl watch` (repeatable)
 - `--include-hidden` opt-out flag to restore pre-change behaviour
-- Documentation of `.zetlignore` syntax and precedence
+- Documentation of `.ztlignore` syntax and precedence
 - Alignment of `scanner::scan_vault` and `web::fs_watch::classify_external_event`
 - Traceability: all `scan_vault(root, &[])` call sites audited — exclusions must be propagated from CLI, not dropped silently
 
 **Out of scope:**
 
-- `.zetlignore` in subdirectories (only vault-root file is honoured; defer nested support to a future spec)
-- `zetl ignore` subcommand to inspect effective ignore rules (future)
-- Negated patterns in `--exclude` (gitignore supports `!foo`; we allow the syntax but document `.zetlignore` as the canonical place for complex rules)
-- Changes to `copy_static_assets` in src/web/build.rs (it only walks `.zetl/static/` — not affected)
+- `.ztlignore` in subdirectories (only vault-root file is honoured; defer nested support to a future spec)
+- `ztl ignore` subcommand to inspect effective ignore rules (future)
+- Negated patterns in `--exclude` (gitignore supports `!foo`; we allow the syntax but document `.ztlignore` as the canonical place for complex rules)
+- Changes to `copy_static_assets` in src/web/build.rs (it only walks `.ztl/static/` — not affected)
 - `--public` overlay directory (by design copies everything; user's choice)
 
 ---
@@ -90,7 +90,7 @@ Additional context for this spec: keeps vault inside a project directory alongsi
 
 ### 2.2 DevOps / Deploy Operator
 
-Runs `zetl build` in CI, copies `dist/` to a CDN. Cannot manually scrub output. Needs the tool to produce a clean `dist/` on first run. Evidence this is real: the user has a `rebuild.sh` that manually removes `.claude` and `.zetl` from `dist/` after every build. That script is the spec-gap — this SPEC closes it.
+Runs `ztl build` in CI, copies `dist/` to a CDN. Cannot manually scrub output. Needs the tool to produce a clean `dist/` on first run. Evidence this is real: the user has a `rebuild.sh` that manually removes `.claude` and `.ztl` from `dist/` after every build. That script is the spec-gap — this SPEC closes it.
 
 ---
 
@@ -98,18 +98,18 @@ Runs `zetl build` in CI, copies `dist/` to a CDN. Cannot manually scrub output. 
 
 ### 3.1 Happy Path: Default build after upgrade
 
-**Preconditions:** Vault root contains `notes/`, `.claude/`, `.zetl/`, `.git/`. No `.zetlignore` file.
+**Preconditions:** Vault root contains `notes/`, `.claude/`, `.ztl/`, `.git/`. No `.ztlignore` file.
 
 **Steps:**
 
-1. User runs `zetl build` → `dist/` contains pages from `notes/` only.
+1. User runs `ztl build` → `dist/` contains pages from `notes/` only.
 2. `dist/.claude/` does not exist.
-3. `dist/.zetl/` does not exist.
+3. `dist/.ztl/` does not exist.
 4. Build log reports `N pages` where N matches `find notes -name '*.md' | wc -l`.
 
 **Postconditions:** No tool-state dotdirs in `dist/`. User's scrub script is no-op.
 
-**Failure modes:** User has a legitimate dotdir (e.g., `.archive/`) they want published → they use `--include-hidden` OR add `!.archive/` to a `.zetlignore` (see REQ-003).
+**Failure modes:** User has a legitimate dotdir (e.g., `.archive/`) they want published → they use `--include-hidden` OR add `!.archive/` to a `.ztlignore` (see REQ-003).
 
 ### 3.2 Happy Path: Vault with intentional dotdir
 
@@ -117,8 +117,8 @@ Runs `zetl build` in CI, copies `dist/` to a CDN. Cannot manually scrub output. 
 
 **Steps:**
 
-1. User creates `.zetlignore` with content `!.archive/`.
-2. User runs `zetl build`.
+1. User creates `.ztlignore` with content `!.archive/`.
+2. User runs `ztl build`.
 3. `dist/.archive/` is populated; `dist/.claude/` still absent.
 
 **Postconditions:** Explicit inclusion overrides dotdir default.
@@ -129,9 +129,9 @@ Runs `zetl build` in CI, copies `dist/` to a CDN. Cannot manually scrub output. 
 
 **Steps:**
 
-1. User runs `zetl build --exclude 'drafts/'`.
+1. User runs `ztl build --exclude 'drafts/'`.
 2. `dist/drafts/` absent.
-3. Subsequent `zetl build` (no flag) publishes `drafts/` again.
+3. Subsequent `ztl build` (no flag) publishes `drafts/` again.
 
 **Postconditions:** `--exclude` is ephemeral; no state persists.
 
@@ -141,7 +141,7 @@ Runs `zetl build` in CI, copies `dist/` to a CDN. Cannot manually scrub output. 
 
 ### REQ-200: Default Exclusion of Dotdirs
 
-The system SHALL exclude from vault scanning any directory whose basename begins with `.` at any depth within the vault, UNLESS the directory is explicitly allowed via `.zetlignore`, `--exclude` negation, or `--include-hidden`.
+The system SHALL exclude from vault scanning any directory whose basename begins with `.` at any depth within the vault, UNLESS the directory is explicitly allowed via `.ztlignore`, `--exclude` negation, or `--include-hidden`.
 
 Trace:
 - TEST-200
@@ -156,9 +156,9 @@ Rationale: preserves the original comment's intent ("user may have .files as not
 Trace:
 - TEST-201
 
-### REQ-202: `.zetlignore` First-Class Support
+### REQ-202: `.ztlignore` First-Class Support
 
-The system SHALL read a `.zetlignore` file at the vault root if present, interpreting its contents as gitignore-syntax patterns evaluated relative to the vault root. Negated patterns (`!pattern`) SHALL override the default dotdir exclusion (REQ-200).
+The system SHALL read a `.ztlignore` file at the vault root if present, interpreting its contents as gitignore-syntax patterns evaluated relative to the vault root. Negated patterns (`!pattern`) SHALL override the default dotdir exclusion (REQ-200).
 
 Trace:
 - TEST-202
@@ -166,7 +166,7 @@ Trace:
 
 ### REQ-203: `--exclude` CLI Flag
 
-The system SHALL accept a repeatable `--exclude <PATTERN>` flag on commands that scan the vault (`build`, `index`, `serve`, `search`, `watch`). Patterns use gitignore syntax, evaluated relative to the vault root, and combine with `.zetlignore` and the default dotdir rule via the precedence in REQ-205.
+The system SHALL accept a repeatable `--exclude <PATTERN>` flag on commands that scan the vault (`build`, `index`, `serve`, `search`, `watch`). Patterns use gitignore syntax, evaluated relative to the vault root, and combine with `.ztlignore` and the default dotdir rule via the precedence in REQ-205.
 
 Trace:
 - TEST-203
@@ -174,7 +174,7 @@ Trace:
 
 ### REQ-204: `--include-hidden` Opt-Out
 
-The system SHALL accept an `--include-hidden` flag on the same commands as REQ-203. When set, the default dotdir exclusion (REQ-200) is disabled. `.zetlignore` and `--exclude` still apply.
+The system SHALL accept an `--include-hidden` flag on the same commands as REQ-203. When set, the default dotdir exclusion (REQ-200) is disabled. `.ztlignore` and `--exclude` still apply.
 
 Trace:
 - TEST-204
@@ -183,13 +183,13 @@ Trace:
 
 The system SHALL apply exclusion rules in the following precedence (later rules override earlier):
 
-1. Hardcoded force-ignores: `.git/`, `.zetl/`, `node_modules/`, nested vaults (dirs containing their own `.zetl/`)
+1. Hardcoded force-ignores: `.git/`, `.ztl/`, `node_modules/`, nested vaults (dirs containing their own `.ztl/`)
 2. Default dotdir exclusion (REQ-200) — unless `--include-hidden`
 3. `.gitignore` (via `git_ignore(true)`)
-4. `.zetlignore` (vault root)
+4. `.ztlignore` (vault root)
 5. `--exclude <PATTERN>` flags (repeatable, last wins on conflict)
 
-The hardcoded force-ignores at level 1 SHALL NOT be overridable by user configuration — `.zetl/` must never be in `dist/`.
+The hardcoded force-ignores at level 1 SHALL NOT be overridable by user configuration — `.ztl/` must never be in `dist/`.
 
 Trace:
 - TEST-205
@@ -211,7 +211,7 @@ Trace:
 
 ### REQ-208: CHANGELOG and Documentation
 
-The system SHALL document the behaviour change in `CHANGELOG.md` under a minor version bump, explicitly calling out that dotdirs are now skipped by default and the migration path (`--include-hidden` or `.zetlignore !pattern`). `README.md` SHALL gain a "Vault scanning and ignore files" section.
+The system SHALL document the behaviour change in `CHANGELOG.md` under a minor version bump, explicitly calling out that dotdirs are now skipped by default and the migration path (`--include-hidden` or `.ztlignore !pattern`). `README.md` SHALL gain a "Vault scanning and ignore files" section.
 
 Trace:
 - TEST-208
@@ -239,7 +239,7 @@ Trace:
 **Decision:** Option 2. Ship behind a minor version bump. CHANGELOG entry describes migration.
 
 **Consequences:**
-- Breaking change for vaults that intentionally publish a dotdir (assessed: rare; zero known instances in the demo-vault or zetl-vault fixtures).
+- Breaking change for vaults that intentionally publish a dotdir (assessed: rare; zero known instances in the demo-vault or ztl-vault fixtures).
 - Closes a privacy/correctness bug that required a shell scrub script to work around.
 - Eliminates the scanner/watcher divergence.
 
@@ -283,7 +283,7 @@ Verified by: TEST-200, TEST-202, TEST-203, TEST-204, TEST-205
 Flags added to `build`, `index`, `serve`, `search`, `watch`:
 
 ```
---exclude <PATTERN>       Gitignore-syntax pattern. Repeatable. Combines with .zetlignore.
+--exclude <PATTERN>       Gitignore-syntax pattern. Repeatable. Combines with .ztlignore.
 --include-hidden          Disable the default dotdir exclusion.
 ```
 
@@ -297,38 +297,38 @@ Verified by: TEST-203, TEST-204
 ### TEST-200: Dotdir Excluded by Default
 
 - **Given** a vault with `notes/a.md` and `.claude/session.md`
-- **When** `zetl build` runs with no flags
+- **When** `ztl build` runs with no flags
 - **Then** `dist/notes/a/index.html` exists AND `dist/.claude/` does not exist AND no page with slug derived from `.claude/session` appears.
 
 ### TEST-201: Dotfile at Root Still Walked
 
 - **Given** a vault root with `.hidden-note.md` (not inside a dotdir)
-- **When** `zetl build` runs
+- **When** `ztl build` runs
 - **Then** `.hidden-note.md` is scanned (or documented behaviour: only files without leading dot are published — clarify during implementation and pin here).
 
-### TEST-202: `.zetlignore` Negation Overrides Default
+### TEST-202: `.ztlignore` Negation Overrides Default
 
-- **Given** a vault with `.archive/old.md` and a `.zetlignore` containing `!.archive/`
-- **When** `zetl build` runs
+- **Given** a vault with `.archive/old.md` and a `.ztlignore` containing `!.archive/`
+- **When** `ztl build` runs
 - **Then** the `old` page appears in `dist/`.
 
 ### TEST-203: `--exclude` Pattern Honoured
 
 - **Given** a vault with `drafts/d.md`
-- **When** `zetl build --exclude 'drafts/'` runs
+- **When** `ztl build --exclude 'drafts/'` runs
 - **Then** `dist/drafts/` does not exist. A subsequent run without the flag publishes it again.
 
 ### TEST-204: `--include-hidden` Restores Walk
 
 - **Given** a vault with `.claude/x.md`
-- **When** `zetl build --include-hidden` runs
-- **Then** `.claude/x` is published. And: `.zetl/` is STILL absent (REQ-205 level 1 unaffected).
+- **When** `ztl build --include-hidden` runs
+- **Then** `.claude/x` is published. And: `.ztl/` is STILL absent (REQ-205 level 1 unaffected).
 
 ### TEST-205: Precedence End-to-End
 
-- **Given** a vault with `.foo/a.md`, `.zetlignore` containing `!.foo/`, and CLI flag `--exclude '.foo/'`
+- **Given** a vault with `.foo/a.md`, `.ztlignore` containing `!.foo/`, and CLI flag `--exclude '.foo/'`
 - **When** build runs
-- **Then** `.foo/a` is NOT published (CLI overrides `.zetlignore`).
+- **Then** `.foo/a` is NOT published (CLI overrides `.ztlignore`).
 
 ### TEST-206: Scanner / Watcher Parity (Property Test)
 
@@ -352,7 +352,7 @@ Benchmark on a 1000-page synthetic vault: mean wall-clock of `scan_vault` before
 
 ### OBS-200: Ignore-Decision Tracing
 
-When `--verbose` is set, `scan_vault` emits one line per skipped top-level path: `[zetl] scan: skipped <path> reason=<dotdir|zetlignore|gitignore|cli-exclude|hardcoded>`. Useful for debugging unexpected omissions.
+When `--verbose` is set, `scan_vault` emits one line per skipped top-level path: `[ztl] scan: skipped <path> reason=<dotdir|ztlignore|gitignore|cli-exclude|hardcoded>`. Useful for debugging unexpected omissions.
 
 Trace: NFR-200 (does not fire on hot path without `--verbose`).
 
@@ -393,8 +393,8 @@ Shell → core. The pure resolver must not read the filesystem except through an
 
 ## 11. Open Questions
 
-- **Q1.** Should `--include-hidden` disable level-1 force-ignores (`.git/`, `.zetl/`, `node_modules/`)? Proposed answer: **no** — level 1 is non-negotiable.
-- **Q2.** Should `.zetlignore` be honoured when located in subdirectories (gitignore-style nested files)? Proposed answer: **defer** to future spec.
+- **Q1.** Should `--include-hidden` disable level-1 force-ignores (`.git/`, `.ztl/`, `node_modules/`)? Proposed answer: **no** — level 1 is non-negotiable.
+- **Q2.** Should `.ztlignore` be honoured when located in subdirectories (gitignore-style nested files)? Proposed answer: **defer** to future spec.
 - **Q3.** Should we emit a one-time warning on first build when a dotdir is silently skipped (to smooth migration)? Proposed answer: **yes**, gated by a config flag, default off in CI.
 
 ---

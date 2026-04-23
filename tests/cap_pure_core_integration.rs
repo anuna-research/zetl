@@ -17,17 +17,17 @@ use std::collections::BTreeSet;
 
 use proptest::prelude::*;
 
-use zetl::cap::derivation::{
+use ztl::cap::derivation::{
     derive_hardened_identity_seed, derive_path_cap, derive_tofu_wrap_key, DerivationError,
     PATH_CAP_DEFAULT_BITS, PATH_CAP_MAX_BITS, PATH_CAP_MIN_BITS,
 };
-use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile, ValidationError};
-use zetl::cap::pad::{pad_to_tier_with_rng, tier_for, PadError, MAX_REAL_RECIPIENTS, TIERS};
-use zetl::cap::recipients::parsing::{
+use ztl::cap::grants::validation::{Grant, GrantMode, GrantsFile, ValidationError};
+use ztl::cap::pad::{pad_to_tier_with_rng, tier_for, PadError, MAX_REAL_RECIPIENTS, TIERS};
+use ztl::cap::recipients::parsing::{
     Cohort, CohortMode, RecipientsFile, VaultSection, AGE_RECIPIENT_V1_PREFIX,
 };
-use zetl::cap::scoping::cohort_index::{CohortIndex, CohortScope, PageRef};
-use zetl::cap::url_format::{CapUrl, CapUrlMode, ParseError};
+use ztl::cap::scoping::cohort_index::{CohortIndex, CohortScope, PageRef};
+use ztl::cap::url_format::{CapUrl, CapUrlMode, ParseError};
 
 const VALID_KEY: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
@@ -192,7 +192,7 @@ proptest! {
 fn canonical_url_shape_matches_con_3401() {
     // CON-3401 example (synthesised): shape must exactly match the
     // spec's ABNF so shims written against other implementations can
-    // round-trip against zetl-emitted URLs.
+    // round-trip against ztl-emitted URLs.
     let url = CapUrl::render_delegated(
         "https",
         "wiki.example",

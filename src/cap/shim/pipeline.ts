@@ -31,7 +31,7 @@ import {
 import type { IdbFactoryLike } from "./storage.ts";
 import type { TofuDeps } from "./tofu.ts";
 
-export const LOCK_NAME = "zetl-capability-shim";
+export const LOCK_NAME = "ztl-capability-shim";
 
 export const Phase = {
   Init: 0,

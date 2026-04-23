@@ -6,7 +6,7 @@
 //! cohort     = "engineering"
 //! recipient  = "age-recipient-v1:<b64url-X25519-pubkey>"
 //! mode       = "delegated-url"                 # or "webauthn-prf"
-//! bound      = false                            # flipped by `zetl cap finalise`
+//! bound      = false                            # flipped by `ztl cap finalise`
 //! name       = "Alice Jones"                   # optional
 //! created    = "2026-04-20T14:22:00Z"
 //! expires    = "2026-10-20T00:00:00Z"          # optional

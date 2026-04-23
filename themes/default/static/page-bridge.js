@@ -15,17 +15,17 @@
   });
 
   // Remove any leftover SVG overlay from a previous SPA navigation.
-  document.querySelectorAll('svg[data-zetl-bridge]').forEach(function(el){ el.remove(); });
+  document.querySelectorAll('svg[data-ztl-bridge]').forEach(function(el){ el.remove(); });
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('data-zetl-bridge', '');
+  svg.setAttribute('data-ztl-bridge', '');
   svg.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:40;';
   document.body.appendChild(svg);
 
   // Clean up on SPA navigation away from this page.
-  document.addEventListener('zetl:before-navigate', function onNav() {
+  document.addEventListener('ztl:before-navigate', function onNav() {
     svg.remove();
-    document.removeEventListener('zetl:before-navigate', onNav);
+    document.removeEventListener('ztl:before-navigate', onNav);
   });
 
   function drawBridge(fromEl, toEl, color) {

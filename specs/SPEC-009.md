@@ -1,27 +1,27 @@
 ---
-title: "SPEC-009: zetl view — Xanadu-Inspired Transclusion TUI"
+title: "SPEC-009: ztl view — Xanadu-Inspired Transclusion TUI"
 version: 0.1.0
 status: draft
 audience: agent, human
 date: 2026-02-24
 ---
 
-# SPEC-009: zetl view — Xanadu-Inspired Transclusion TUI
+# SPEC-009: ztl view — Xanadu-Inspired Transclusion TUI
 
 ## Information Table
 
 | Field        | Value                                                                    |
 | ------------ | ------------------------------------------------------------------------ |
 | Document ID  | SPEC-009                                                                 |
-| Title        | zetl view — Xanadu-Inspired Transclusion TUI                             |
+| Title        | ztl view — Xanadu-Inspired Transclusion TUI                             |
 | Version      | 0.1.0                                                                    |
 | Status       | Draft                                                                    |
 | Author       | Agent (USDD Protocol v1.0.0)                                             |
 | Date         | 2026-02-24                                                               |
 | Audience     | Agent, Human                                                             |
 | Trace        | USDD Agent Protocol v1.0.0                                               |
-| Parent       | SPEC-001: zetl — Bi-directional Link Graph CLI                           |
-| Related      | SPEC-006: index cache format, SPEC-008: zetl watch                       |
+| Parent       | SPEC-001: ztl — Bi-directional Link Graph CLI                           |
+| Related      | SPEC-006: index cache format, SPEC-008: ztl watch                       |
 | Dependencies | ratatui (TUI framework), crossterm (terminal backend), SPEC-006 (index)  |
 | Inspiration  | Project Xanadu (Ted Nelson, 1960–), OpenXanadu (2014), org-transclusion  |
 
@@ -29,19 +29,19 @@ date: 2026-02-24
 
 ## 1. Overview
 
-Every zetl command produces output and exits. Reading through a vault with `cat` or your
+Every ztl command produces output and exits. Reading through a vault with `cat` or your
 editor gives you one note at a time, with `[[wikilinks]]` as inert text. You must hold the
 connection graph in your head: open the linked file in another buffer, switch back, lose
 your place, repeat. The graph is in the index; the connection is invisible at read time.
 
-`zetl view` changes this. It is an interactive TUI that reads the vault through an
+`ztl view` changes this. It is an interactive TUI that reads the vault through an
 architecture Ted Nelson called **parallel pages with visible connections**: the note you
 are currently reading occupies the left pane; the notes it links to (or that link to it)
 appear as excerpt cards in the right pane; a narrow bridge column between the panes holds
 color-coded connectors that visibly pair each `[[wikilink]]` in the text to its
 corresponding card. You can see the connected content without navigating away.
 
-This is the Xanadu transclusion model applied to zetl's wikilink graph.
+This is the Xanadu transclusion model applied to ztl's wikilink graph.
 
 ### 1.1 The Xanadu Lineage
 
@@ -58,7 +58,7 @@ disappears into the text. Nelson considered this a failure mode. In the Xanadu m
 the connection is always visible: you see both the place of citation and the cited content
 simultaneously, connected by an explicit visual bridge.
 
-`zetl view` implements this in a terminal. Terminals cannot draw arbitrary lines across
+`ztl view` implements this in a terminal. Terminals cannot draw arbitrary lines across
 panes, but they can use color pairing and anchor glyphs to make the connection equally
 explicit. Each `[[wikilink]]` in the current note is annotated with a colored anchor
 glyph `[N]`; the corresponding context card in the right pane bears the same color and
@@ -66,9 +66,9 @@ number. The bridge column between the panes contains a horizontal connector at t
 where the anchor aligns with its card. The result is Nelson's "visible connection" in the
 constraint of an 80×24 terminal.
 
-### 1.2 Mapping Xanadu Concepts to zetl
+### 1.2 Mapping Xanadu Concepts to ztl
 
-| Xanadu concept         | zetl / SPEC-009 equivalent                                                |
+| Xanadu concept         | ztl / SPEC-009 equivalent                                                |
 | ---------------------- | ------------------------------------------------------------------------- |
 | EDL (Edit Decision List) | The current note's set of `[[wikilinks]]` — each is a "content citation" |
 | Source document        | The note referenced by a wikilink                                         |
@@ -78,8 +78,8 @@ constraint of an 80×24 terminal.
 | Navigation / follow    | `Enter` on a selected link — the linked note becomes the new current note |
 | Bidirectional link     | `b` mode — context pane shows backlinks instead of (or in addition to) forward links |
 
-The difference from Xanadu's full EDL model: zetl notes are not *composed* from spans of
-other notes (there is no `zetl include` syntax). The `[[wikilink]]` is a citation, not a
+The difference from Xanadu's full EDL model: ztl notes are not *composed* from spans of
+other notes (there is no `ztl include` syntax). The `[[wikilink]]` is a citation, not a
 content span import. The transclusion effect is achieved by the TUI making the cited
 content visible alongside the citation — the note file itself is unchanged.
 
@@ -87,9 +87,9 @@ content visible alongside the citation — the note file itself is unchanged.
 
 Following SPEC-001's philosophy:
 
-- **Files are the source of truth.** `zetl view` never modifies vault files.
+- **Files are the source of truth.** `ztl view` never modifies vault files.
 - **Agent-first, human-friendly.** This command is human-facing; it has no structured
-  output mode. Agents use `zetl index`, `zetl check`, `zetl diff`, `zetl watch`.
+  output mode. Agents use `ztl index`, `ztl check`, `ztl diff`, `ztl watch`.
 - **Fast and disposable.** The TUI is stateless: it reads the on-disk index and renders
   from it. No TUI-specific state is persisted between sessions.
 - **Terminal-native.** Bridges use Unicode box-drawing characters and ANSI color codes;
@@ -98,15 +98,15 @@ Following SPEC-001's philosophy:
 ### 1.4 Scope Boundary
 
 SPEC-001 §1.2 explicitly listed "GUI or TUI" as out of scope. SPEC-009 overrides this
-for `zetl view` only. The rationale is documented in ADR-018. All other zetl commands
-remain CLI-only and produce structured output. `zetl view` is purely a reading and
+for `ztl view` only. The rationale is documented in ADR-018. All other ztl commands
+remain CLI-only and produce structured output. `ztl view` is purely a reading and
 navigation tool; it produces no output and never modifies vault state.
 
 ### 1.5 Scope
 
 **In scope:**
 
-- `zetl view [<page>]` command
+- `ztl view [<page>]` command
 - Two-pane TUI with left (current note) and right (context cards) panes
 - Bridge column with color-paired anchor connectors
 - Dynamic scroll tracking (context pane follows main pane viewport)
@@ -120,7 +120,7 @@ navigation tool; it produces no output and never modifies vault state.
 **Out of scope:**
 
 - Inline content editing (files are read-only from the TUI's perspective)
-- Full-text search within the TUI (use `zetl index` + external grep)
+- Full-text search within the TUI (use `ztl index` + external grep)
 - Image, PDF, or attachment preview
 - Mouse input (keyboard-only; mouse support is a future enhancement)
 - Multi-vault or multi-window sessions
@@ -143,7 +143,7 @@ Goals:       Read a note and simultaneously see the content of the notes it
              status at a glance while reading
 Constraints: Comfortable with terminal; uses Vim keybindings; reads notes in
              long sessions; terminal is 120×40, true-color capable
-Workflow:    Opens zetl view on a page she is reviewing; reads through it;
+Workflow:    Opens ztl view on a page she is reviewing; reads through it;
              when a [[wikilink]] catches her attention, the context card is
              already visible in the right pane; she presses Tab to focus the
              link, reads the full card, presses Enter to navigate if she wants
@@ -163,7 +163,7 @@ Goals:       Navigate citation clusters; see which notes cite a given note
              before deciding whether to follow it
 Constraints: 80×24 terminal; 8-color only (SSH into university server);
              no-color mode acceptable; prefers anchor numbers to color coding
-Workflow:    Opens zetl view on a key paper summary; switches context pane to
+Workflow:    Opens ztl view on a key paper summary; switches context pane to
              backlinks mode to see which of his other notes cite this one;
              navigates backwards through citation clusters; uses [ to retrace
 Pane point:  "I need to see who cites this paper in my own notes, not just
@@ -178,11 +178,11 @@ Pane point:  "I need to see who cites this paper in my own notes, not just
 
 ```
 Preconditions:
-  - Vault indexed; zetl index up to date
+  - Vault indexed; ztl index up to date
   - Page "ADR-043: Reject gRPC" exists with 3 wikilinks
 
 Steps:
-  1. zetl view "ADR-043: Reject gRPC"
+  1. ztl view "ADR-043: Reject gRPC"
      → TUI opens; left pane shows note content; right pane shows 3 context
        cards: [1] Benchmark: REST vs gRPC, [2] Network Architecture Overview,
        [3] API Design Principles; bridge column shows colored connectors
@@ -213,7 +213,7 @@ Failure modes:
   - Dead link [[Nonexistent Page]]: anchor [N] shown in red; context card
     shows "dead link — page does not exist" with fuzzy suggestions
   - Page deleted between index and view: card shows "page removed since last
-    index — run zetl index to refresh"
+    index — run ztl index to refresh"
 ```
 
 ### 3.2 Happy Path: Backlink Cluster Navigation (Marco)
@@ -223,7 +223,7 @@ Preconditions:
   - Vault indexed; page "Paper: Attention Is All You Need" has 12 backlinks
 
 Steps:
-  1. zetl view "Paper: Attention Is All You Need" (80×24 terminal, 8-color)
+  1. ztl view "Paper: Attention Is All You Need" (80×24 terminal, 8-color)
      → TUI opens; anchor numbers [1]–[N] appear in text (no color; terminal
        reported no-color via TERM=xterm); context pane shows forward links
 
@@ -256,9 +256,9 @@ Failure modes:
 
 ## 4. Functional Requirements
 
-### REQ-062: `zetl view` Command Entry Point
+### REQ-062: `ztl view` Command Entry Point
 
-The system SHALL provide a `zetl view [<page>]` subcommand that launches an interactive
+The system SHALL provide a `ztl view [<page>]` subcommand that launches an interactive
 TUI for reading and navigating the vault. When `<page>` is supplied, the note matching
 that title (exact or fuzzy via SPEC-001 SimHash matching) SHALL be loaded as the initial
 current page. When `<page>` is omitted, the system SHALL display an interactive page
@@ -405,7 +405,7 @@ history SHALL record the transition (REQ-071); the system SHALL exit focused-lin
 and enter scroll mode on the new page.
 
 When the focused link is a dead link (targets a non-existent page), `Enter` SHALL have
-no effect; the system SHALL display a status-bar message: `dead link — run zetl index or
+no effect; the system SHALL display a status-bar message: `dead link — run ztl index or
 create the page`.
 
 Trace:
@@ -443,7 +443,7 @@ Trace:
 
 ### REQ-072: No-Index Graceful Fallback
 
-When `zetl view` is invoked and no zetl index exists in the vault (no `.zetl/index.json`
+When `ztl view` is invoked and no ztl index exists in the vault (no `.ztl/index.json`
 or equivalent per SPEC-006), the system SHALL display a status message ("Building index…")
 and run the SPEC-006 index pipeline in-process before opening the TUI. If indexing fails,
 the system SHALL exit non-zero with a plain-text error.
@@ -469,7 +469,7 @@ Trace:
 The system SHALL accept `--context-lines <N>` (integer 1–20, default 5) to configure the
 number of excerpt lines shown per context card in non-focused mode. The focused card
 always shows `N × 3` lines regardless of configuration. This flag is the only persistent
-configuration surface; no `~/.zetlrc` entry is introduced by this spec.
+configuration surface; no `~/.ztlrc` entry is introduced by this spec.
 
 Trace:
 - TEST-072
@@ -481,7 +481,7 @@ Trace:
 
 ### NFR-023: Startup Time
 
-`zetl view` SHALL open the TUI and render the first frame within ≤ 200ms of invocation,
+`ztl view` SHALL open the TUI and render the first frame within ≤ 200ms of invocation,
 measured from process start to first paint, UNDER the condition that a valid SPEC-006
 index already exists for a vault of ≤ 5,000 pages. This time includes loading and
 parsing the index JSON, laying out the initial panes, and rendering the first frame.
@@ -598,31 +598,31 @@ makes it faster; the number makes it correct.
 
 ### ADR-018: SPEC-001 TUI Scope Override
 
-**Decision:** Add `zetl view` as a TUI command, overriding the "GUI or TUI: out of
+**Decision:** Add `ztl view` as a TUI command, overriding the "GUI or TUI: out of
 scope" decision in SPEC-001 §1.2.
 
 **Context:** SPEC-001 was written as a foundational CLI scope document. At the time, the
-priority was establishing zetl as a solid CLI tool with agent-friendly JSON output before
+priority was establishing ztl as a solid CLI tool with agent-friendly JSON output before
 adding interactive features. Since then, SPEC-005 through SPEC-008 have established a
 mature CLI surface. The research that preceded this spec (GitHub topic crawls, February
 2026) found that the TUI knowledge graph space is almost entirely vacant, with the closest
 competitor (Synapxis) having 0 stars and no visible-connection bridge UI. The Xanadu
-two-pane model has never been implemented in a terminal. `zetl view` occupies a unique
+two-pane model has never been implemented in a terminal. `ztl view` occupies a unique
 position.
 
 **Rationale:** The TUI scope exception is narrow and bounded:
-- `zetl view` is the only interactive command
+- `ztl view` is the only interactive command
 - It produces no structured output (no `--format json` mode)
 - It does not modify vault files
 - It is additive — existing commands and their agent-facing contracts are unchanged
 - It depends entirely on the existing SPEC-006 index, introducing no new persistent state
 
 Adding it does not compromise the agent-first design principle; agents still use the
-existing CLI commands. `zetl view` serves human reading sessions, not agent pipelines.
+existing CLI commands. `ztl view` serves human reading sessions, not agent pipelines.
 The earlier exclusion was a deferral, not a permanent architectural constraint.
 
 **Trade-offs:**
-- ✅ Fills the one gap in zetl's human-facing surface
+- ✅ Fills the one gap in ztl's human-facing surface
 - ✅ Implements a novel, research-validated interaction model (Xanadu transclusion)
 - ✅ Does not break or complicate any existing command
 - ⚠️ Adds a ratatui + crossterm dependency to the binary; binary size increases ~150KB
@@ -633,9 +633,9 @@ The earlier exclusion was a deferral, not a permanent architectural constraint.
 
 ## 7. Contract Specifications
 
-### CON-023: `zetl view`
+### CON-023: `ztl view`
 
-**Interface:** `zetl view [<page>] [--context-lines <N>] [--main-width <pct>]`
+**Interface:** `ztl view [<page>] [--context-lines <N>] [--main-width <pct>]`
 
 **Argument rules:**
 - `<page>`: optional; page title (exact or fuzzy via SPEC-001 SimHash). If omitted,
@@ -647,9 +647,9 @@ The earlier exclusion was a deferral, not a permanent architectural constraint.
   go to the context pane.
 
 **Pre-conditions:**
-- A zetl vault exists (`.zetl/index.json` or equivalent per SPEC-006). If not, `zetl
+- A ztl vault exists (`.ztl/index.json` or equivalent per SPEC-006). If not, `ztl
   view` will build the index before opening (REQ-072).
-- Terminal is attached (stdin is a TTY). Running `zetl view` from a non-TTY context
+- Terminal is attached (stdin is a TTY). Running `ztl view` from a non-TTY context
   (pipe, script) SHALL exit immediately with error code `NOT_A_TTY`.
 
 **Post-conditions:**
@@ -677,12 +677,12 @@ The earlier exclusion was a deferral, not a permanent architectural constraint.
 | `Ctrl-R`     | Any                  | Toggle context pane overlay (single-pane fallback mode) |
 | `/`          | Any                  | Open page search (interactive filter over indexed pages)|
 | `?`          | Any                  | Show key bindings help overlay                          |
-| `q` / `Ctrl-C` | Any               | Quit `zetl view`                                        |
+| `q` / `Ctrl-C` | Any               | Quit `ztl view`                                        |
 
 **Status bar (bottom of terminal):**
 
 ```
-zetl view │ ADR-043: Reject gRPC  │  forward  │  [1] Benchmark: REST vs gRPC  │  3 links
+ztl view │ ADR-043: Reject gRPC  │  forward  │  [1] Benchmark: REST vs gRPC  │  3 links
 ```
 
 Fields: tool name, current page title, context mode, focused link (if any), link count.
@@ -704,7 +704,7 @@ color; the `[N]` anchor numbers on both sides carry the pairing information.
 **Error model:**
 
 ```json
-{ "error": { "code": "NOT_A_TTY", "message": "zetl view requires an interactive terminal." } }
+{ "error": { "code": "NOT_A_TTY", "message": "ztl view requires an interactive terminal." } }
 { "error": { "code": "INDEX_BUILD_FAILED", "message": "Could not build index: <reason>." } }
 { "error": { "code": "PAGE_NOT_FOUND", "message": "No page matching '<title>' found.", "suggestions": ["...", "..."] } }
 ```
@@ -722,10 +722,10 @@ color; the `[N]` anchor numbers on both sides carry the pairing information.
 **Requirement:** REQ-062, REQ-063, REQ-072
 
 **Preconditions:** Vault with 10 pages; "PageA.md" contains `[[PageB]]` and `[[PageC]]`;
-both targets exist; `zetl index` previously run
+both targets exist; `ztl index` previously run
 
 **Steps:**
-1. Invoke `zetl view "PageA"` in a virtual terminal (80×24, 256-color)
+1. Invoke `ztl view "PageA"` in a virtual terminal (80×24, 256-color)
 2. Verify first frame renders within 200ms (NFR-023)
 3. Verify main pane left shows content of PageA.md
 4. Verify context pane right shows two context cards: one for PageB, one for PageC
@@ -740,7 +740,7 @@ both targets exist; `zetl index` previously run
 **Preconditions:** "Source.md" with line: `See also [[Target One]] and [[Target Two]].`
 
 **Steps:**
-1. Open `zetl view "Source"` in 256-color virtual terminal
+1. Open `ztl view "Source"` in 256-color virtual terminal
 2. Verify main pane renders the line with `[1]` appended after `[[Target One]]` and
    `[2]` after `[[Target Two]]`, both in distinct colors
 3. Verify context pane shows card header `[1] Target One` followed by 5 excerpt lines
@@ -756,7 +756,7 @@ both targets exist; `zetl index` previously run
 **Preconditions:** "Source.md" with two wikilinks at different vertical positions
 
 **Steps:**
-1. Open `zetl view "Source"`
+1. Open `ztl view "Source"`
 2. Capture raw terminal output (including escape sequences)
 3. Verify a 3-character sequence (`───` or `===`) is present in the bridge column at
    the expected midpoint rows between anchor positions and card header positions
@@ -773,7 +773,7 @@ both targets exist; `zetl index` previously run
 80×24 viewport at a time
 
 **Steps:**
-1. Open `zetl view "Source"` (main pane shows lines 1–20 initially)
+1. Open `ztl view "Source"` (main pane shows lines 1–20 initially)
 2. Press `j` 15 times to scroll down; measure time per render event
 3. Verify context pane shows cards only for the wikilinks currently in the main pane
    viewport (not for links scrolled out of view)
@@ -788,7 +788,7 @@ both targets exist; `zetl index` previously run
 **Preconditions:** "Source.md" with two wikilinks visible simultaneously in viewport
 
 **Steps:**
-1. Open `zetl view "Source"` in scroll mode
+1. Open `ztl view "Source"` in scroll mode
 2. Press `Tab` to enter focused-link mode on link [1]
 3. Verify: anchor `[1]` in main pane renders with reverse-video / `>[1]<` marker
 4. Verify: context card for [1] is expanded (triple lines) and highlighted/bordered
@@ -804,7 +804,7 @@ both targets exist; `zetl index` previously run
 **Preconditions:** "PageA.md" links to "PageB.md"; "PageB.md" links to "PageC.md"
 
 **Steps:**
-1. Open `zetl view "PageA"`; press `Tab` to focus `[[PageB]]`; press `Enter`
+1. Open `ztl view "PageA"`; press `Tab` to focus `[[PageB]]`; press `Enter`
 2. Verify main pane now shows "PageB" content; status bar shows "PageB"
 3. Press `Tab` to focus `[[PageC]]`; press `Enter`; verify main pane shows "PageC"
 4. Press `[`: verify navigation back to "PageB" with scroll position restored
@@ -820,7 +820,7 @@ both targets exist; `zetl index` previously run
 **Preconditions:** "CentralPage.md" is referenced by "NoteX.md" and "NoteY.md"
 
 **Steps:**
-1. Open `zetl view "CentralPage"`
+1. Open `ztl view "CentralPage"`
 2. Press `b`: verify context pane header shows "back" mode
 3. Verify context pane shows two cards for NoteX and NoteY
 4. Each card excerpt SHALL show the sentence in NoteX / NoteY that contains the
@@ -838,7 +838,7 @@ both targets exist; `zetl index` previously run
 **Preconditions:** `NO_COLOR=1` set in environment; "Source.md" with two wikilinks
 
 **Steps:**
-1. Invoke `zetl view "Source"` with `NO_COLOR=1`
+1. Invoke `ztl view "Source"` with `NO_COLOR=1`
 2. Verify: no ANSI color escape sequences in output
 3. Verify: anchor glyphs rendered as `[1]`, `[2]` (no color)
 4. Verify: bridge column connectors rendered as `---` or `===` (ASCII fallback)
@@ -854,7 +854,7 @@ both targets exist; `zetl index` previously run
 **Preconditions:** Vault with 5,000 pages; SPEC-006 index built and current
 
 **Steps:**
-1. Record wall-clock time T0 immediately before `zetl view "SomePage"` is invoked
+1. Record wall-clock time T0 immediately before `ztl view "SomePage"` is invoked
 2. Record T1 when the first rendered frame is written to the terminal (detectable via
    a sentinel escape sequence in the test harness)
 3. Repeat 10 times; verify T1 − T0 ≤ 200ms at p95
@@ -865,15 +865,15 @@ both targets exist; `zetl index` previously run
 
 ### OBS-012: View Render Timing Diagnostics
 
-**Signal:** Debug output when `ZETL_DEBUG_RENDER=1` environment variable is set (not
+**Signal:** Debug output when `ztl_DEBUG_RENDER=1` environment variable is set (not
 `--verbose`; render timing is a debug concern separate from operational verbosity)
 
 ```
-[zetl view] startup  index_load_ms=18  first_frame_ms=47  page="ADR-043: Reject gRPC"
-[zetl view] render   event=scroll_j  layout_ms=2  paint_ms=4  total_ms=6
-[zetl view] render   event=tab_focus  layout_ms=3  paint_ms=5  total_ms=8
-[zetl view] navigate from="ADR-043: Reject gRPC"  to="Benchmark: REST vs gRPC"  history_depth=2
-[zetl view] quit     uptime_s=847  pages_visited=12  nav_history_depth=24
+[ztl view] startup  index_load_ms=18  first_frame_ms=47  page="ADR-043: Reject gRPC"
+[ztl view] render   event=scroll_j  layout_ms=2  paint_ms=4  total_ms=6
+[ztl view] render   event=tab_focus  layout_ms=3  paint_ms=5  total_ms=8
+[ztl view] navigate from="ADR-043: Reject gRPC"  to="Benchmark: REST vs gRPC"  history_depth=2
+[ztl view] quit     uptime_s=847  pages_visited=12  nav_history_depth=24
 ```
 
 **Purpose:** Verify NFR-023 (startup ≤ 200ms) and NFR-024 (scroll ≤ 16ms) in production
@@ -932,7 +932,7 @@ environments; diagnose slow renders on constrained hardware.
 │                                              │   │                              │
 │                                              │   │                              │
 ├──────────────────────────────────────────────┴───┴──────────────────────────────┤
-│ zetl view │ ADR-043: Reject gRPC │ forward │ 2 links │ j/k scroll  Tab focus  ? │
+│ ztl view │ ADR-043: Reject gRPC │ forward │ 2 links │ j/k scroll  Tab focus  ? │
 └───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -968,7 +968,7 @@ Key observations:
 │                                              │   │                              │
 │                                              │   │                              │
 ├──────────────────────────────────────────────┴───┴──────────────────────────────┤
-│ zetl view │ ADR-043: Reject gRPC │ forward │ [1] Benchmark: REST vs gRPC │ Enter │
+│ ztl view │ ADR-043: Reject gRPC │ forward │ [1] Benchmark: REST vs gRPC │ Enter │
 └───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -999,7 +999,7 @@ ADR-043: Reject gRPC                         |||  Context — back (3 backlinks)
                                              |||  REST is the default choice..."
                                              |||
 ---------------------------------------------------------------------------------------------
- zetl view | ADR-043: Reject gRPC | back | 3 backlinks | j/k scroll  Tab focus  ?
+ ztl view | ADR-043: Reject gRPC | back | 3 backlinks | j/k scroll  Tab focus  ?
 ```
 
 Key observations:
@@ -1024,19 +1024,19 @@ the keyboard model is stable.
 ### 12.2 Inline Edit Mode
 
 An `e` key binding could open the current note in `$EDITOR` at the cursor line, returning
-to `zetl view` after the editor exits. This would make `zetl view` a read-navigate-edit
+to `ztl view` after the editor exits. This would make `ztl view` a read-navigate-edit
 loop. It requires careful state management (re-indexing the edited file on editor exit to
-keep the context pane current) and is intentionally deferred until SPEC-008 (`zetl watch`)
+keep the context pane current) and is intentionally deferred until SPEC-008 (`ztl watch`)
 is implemented — the watch event stream provides the natural trigger for a re-render after
 an edit.
 
 ### 12.3 EDL-Based Transclusion Syntax
 
-If zetl ever introduces explicit transclusion syntax (e.g. `{{include:page#section}}`),
-`zetl view` would be the natural place to render it as a first-class Xanadu transclusion:
+If ztl ever introduces explicit transclusion syntax (e.g. `{{include:page#section}}`),
+`ztl view` would be the natural place to render it as a first-class Xanadu transclusion:
 the included content appears in the main pane at the include site, and the source
 document's context card shows the full context of the included section. This would
-complete the Xanadu EDL model within zetl. Specified separately; requires new parsing
+complete the Xanadu EDL model within ztl. Specified separately; requires new parsing
 in SPEC-006 and new syntax design.
 
 ### 12.4 Graph Navigation Mode
@@ -1049,7 +1049,7 @@ rendering library and could be a drop-in for this mode.
 
 ### 12.5 Session Persistence
 
-`zetl view` currently holds no state between sessions (intentional per §1.3). A future
-`.zetl/view-session.json` could persist the navigation history and last-open page across
+`ztl view` currently holds no state between sessions (intentional per §1.3). A future
+`.ztl/view-session.json` could persist the navigation history and last-open page across
 invocations. The design would need to address staleness (page renamed or deleted between
 sessions). Deferred until there is demonstrated demand.

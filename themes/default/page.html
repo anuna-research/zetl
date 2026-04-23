@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ page.title }} — zetl{% endblock %}
+{% block title %}{{ page.title }} — ztl{% endblock %}
 {% block description %}{% if page.description %}{{ page.description }}{% else %}{{ page.title }} — a page in the {{ vault.name }} knowledge vault.{% endif %}{% endblock %}
 
 {% block content %}
@@ -26,8 +26,8 @@
     {% if mode == "serve" %}<div id="view-mode"{% if page.is_new %} style="display:none"{% endif %}>
       {% if page.raw_escaped %}
       <div class="flex justify-end gap-2 mb-4">
-        <a href="/_graph?focus={{ page.slug | safe }}&amp;depth=2" data-zetl-spa="off" class="btn btn-sm btn-ghost" title="See this page's 2-hop neighbourhood in the graph">View in graph</a>
-        <a href="/edit/{{ page.slug | safe }}/" data-zetl-spa="off" class="btn btn-sm btn-outline">Edit</a>
+        <a href="/_graph?focus={{ page.slug | safe }}&amp;depth=2" data-ztl-spa="off" class="btn btn-sm btn-ghost" title="See this page's 2-hop neighbourhood in the graph">View in graph</a>
+        <a href="/edit/{{ page.slug | safe }}/" data-ztl-spa="off" class="btn btn-sm btn-outline">Edit</a>
       </div>
       {% endif %}
     {% endif %}
@@ -63,9 +63,9 @@
       {% if page.backlinks %}
       <div class="divider"></div>
       <h2 class="text-lg font-semibold mb-2">Backlinks</h2>
-      <ul class="list-none space-y-1 zetl-backlinks">
+      <ul class="list-none space-y-1 ztl-backlinks">
         {%- for bl in page.backlinks %}
-        <li class="zetl-backlink" data-slug="{{ bl.slug }}">
+        <li class="ztl-backlink" data-slug="{{ bl.slug }}">
           <a href="{{ root_path }}{{ bl.slug | safe }}/{{ index_file }}#line-{{ bl.line }}" class="link link-secondary">{{ bl.title }}</a>
           {%- if bl.count and bl.count > 1 %}
           <span class="text-xs opacity-60 ml-1" aria-label="{{ bl.count }} references">×{{ bl.count }}</span>
@@ -135,7 +135,7 @@ function toggleEdit() {
 }
 async function saveEdit() {
   var content = document.getElementById('editor').value;
-  var csrf = document.cookie.split(';').map(function(c){return c.trim();}).find(function(c){return c.startsWith('zetl_csrf=');});
+  var csrf = document.cookie.split(';').map(function(c){return c.trim();}).find(function(c){return c.startsWith('ztl_csrf=');});
   var headers = { 'Content-Type': 'text/plain; charset=utf-8' };
   if (csrf) headers['X-CSRF-Token'] = csrf.split('=')[1];
   var res = await fetch(window.location.pathname, {

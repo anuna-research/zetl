@@ -1,4 +1,4 @@
-//! Integration tests for `zetl cap pair` (SPEC-034 REQ-3408 CLI,
+//! Integration tests for `ztl cap pair` (SPEC-034 REQ-3408 CLI,
 //! REQ-3416 `pair` verb, TEST-3408 "pair variant").
 //!
 //! Coverage:
@@ -8,7 +8,7 @@
 //!     grantee's pubkey (TEST-3408 acceptance spine).
 //!   * Wrong phrase on the grantee side yields HMAC mismatch + exit 1
 //!     on the grantor.
-//!   * Phrase reuse within 30 days is refused (`.zetl/caps/.pair-nonces`).
+//!   * Phrase reuse within 30 days is refused (`.ztl/caps/.pair-nonces`).
 //!   * `--grantor --phrase <P>` (test hook) writes the phrase into the
 //!     nonce store so later reuse is gated even without RNG draws.
 //!   * Pubkey length validation surfaces on stderr.
@@ -31,7 +31,7 @@ fn fresh_vault(name: &str) -> tempfile::TempDir {
         .expect("tempdir")
 }
 
-/// Spawn `zetl cap pair --grantor --phrase <phrase> --json` with piped
+/// Spawn `ztl cap pair --grantor --phrase <phrase> --json` with piped
 /// stdin/stdout, read the `"phase":"prompt"` JSON line, return
 /// `(child, handshake_b64)`. Caller writes the three response lines to
 /// `child.stdin`, then waits for the child's `"phase":"verified"` /
@@ -44,7 +44,7 @@ fn spawn_grantor(
     BufReader<std::process::ChildStdout>,
     String,
 ) {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_zetl"));
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_ztl"));
     cmd.args([
         "-d",
         vault.to_str().unwrap(),
@@ -78,7 +78,7 @@ fn spawn_grantor(
     (child, reader, handshake)
 }
 
-/// Run `zetl cap pair --grantee` one-shot. Returns parsed JSON output
+/// Run `ztl cap pair --grantee` one-shot. Returns parsed JSON output
 /// or panics with stderr on failure.
 fn run_grantee(
     vault: &std::path::Path,
@@ -86,7 +86,7 @@ fn run_grantee(
     phrase: &str,
     pubkey_b64: &str,
 ) -> serde_json::Value {
-    let out = cargo_bin_cmd!("zetl")
+    let out = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             vault.to_str().unwrap(),
@@ -110,8 +110,8 @@ fn run_grantee(
 fn grantor_and_grantee_converge_and_verify_pubkey() {
     // TEST-3408 pair variant — the spine of the acceptance criterion.
     // Two separate vaults; the phrase is the only shared state.
-    let grantor_vault = fresh_vault("zetl-cap-pair-grantor");
-    let grantee_vault = fresh_vault("zetl-cap-pair-grantee");
+    let grantor_vault = fresh_vault("ztl-cap-pair-grantor");
+    let grantee_vault = fresh_vault("ztl-cap-pair-grantee");
 
     // Pin the phrase via --phrase so the test is deterministic. The
     // RNG path is covered by the pure-core test suite in
@@ -158,8 +158,8 @@ fn wrong_phrase_on_grantee_rejects_handoff() {
     // If the grantee's phrase differs, the two SPAKE2 sessions derive
     // different keys and the HMAC tag fails verification at the
     // grantor. Exit 1, with a diagnostic on stderr.
-    let grantor_vault = fresh_vault("zetl-cap-pair-wrong-g");
-    let grantee_vault = fresh_vault("zetl-cap-pair-wrong-gt");
+    let grantor_vault = fresh_vault("ztl-cap-pair-wrong-g");
+    let grantee_vault = fresh_vault("ztl-cap-pair-wrong-gt");
 
     let grantor_phrase = "abandon ability able about";
     let grantee_phrase = "abandon ability able above"; // one-word swap
@@ -195,7 +195,7 @@ fn grantor_phrase_reuse_within_ttl_is_refused() {
     // REQ-3408 nonce-store gate: the same phrase cannot be reused at
     // the grantor within 30 days. We probe by passing the same
     // pinned phrase twice in a row.
-    let vault = fresh_vault("zetl-cap-pair-reuse-grantor");
+    let vault = fresh_vault("ztl-cap-pair-reuse-grantor");
     let phrase = "abandon ability able about";
 
     // First run — it'll block on stdin after writing the prompt; we
@@ -210,7 +210,7 @@ fn grantor_phrase_reuse_within_ttl_is_refused() {
 
     // Second run with the same phrase → refused before we ever get
     // to the prompt. Exit non-zero, stderr mentions the window.
-    let out = cargo_bin_cmd!("zetl")
+    let out = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             vault.path().to_str().unwrap(),
@@ -234,7 +234,7 @@ fn grantee_phrase_reuse_within_ttl_is_refused() {
     // Parallel gate on the grantee side — the same vault cannot
     // --grantee with the same phrase twice inside the TTL. Each
     // --grantee run accepts the phrase into the local nonce store.
-    let vault = fresh_vault("zetl-cap-pair-reuse-grantee");
+    let vault = fresh_vault("ztl-cap-pair-reuse-grantee");
     let phrase = "abandon ability able about";
 
     // Fabricate a minimal valid SPAKE2 handshake for the grantee to
@@ -254,14 +254,14 @@ fn grantee_phrase_reuse_within_ttl_is_refused() {
     // SPAKE2 starts).
 
     // Use a real grantor handshake from a throwaway spawn.
-    let throwaway = fresh_vault("zetl-cap-pair-reuse-grantee-probe");
+    let throwaway = fresh_vault("ztl-cap-pair-reuse-grantee-probe");
     let (mut g, _s, hs) = spawn_grantor(throwaway.path(), "abandon ability able above");
     drop(g.stdin.take());
     let _ = g.wait();
 
     // First grantee run — persists the phrase into the grantee's
     // nonce store.
-    let _first = cargo_bin_cmd!("zetl")
+    let _first = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             vault.path().to_str().unwrap(),
@@ -278,7 +278,7 @@ fn grantee_phrase_reuse_within_ttl_is_refused() {
         .assert();
 
     // Second grantee run with SAME phrase → refused.
-    let out = cargo_bin_cmd!("zetl")
+    let out = cargo_bin_cmd!("ztl")
         .args([
             "-d",
             vault.path().to_str().unwrap(),
@@ -304,13 +304,13 @@ fn grantee_phrase_reuse_within_ttl_is_refused() {
 #[test]
 fn grantee_rejects_short_pubkey() {
     // 31-byte pubkey — short by one. Surface the length diagnostic.
-    let vault = fresh_vault("zetl-cap-pair-bad-pubkey");
+    let vault = fresh_vault("ztl-cap-pair-bad-pubkey");
     let phrase = "abandon ability able about";
     // Fake peer handshake — base64 of 33 bytes (1 side-byte + 32).
     let fake_peer = STANDARD_NO_PAD.encode(vec![0x53u8; 33]);
     let short_pubkey = STANDARD_NO_PAD.encode([0u8; 31]);
 
-    cargo_bin_cmd!("zetl")
+    cargo_bin_cmd!("ztl")
         .args([
             "-d",
             vault.path().to_str().unwrap(),
@@ -334,8 +334,8 @@ fn grantor_auto_generates_phrase_when_flag_omitted() {
     // Without `--phrase` the grantor draws a fresh phrase from OsRng
     // and prints it as part of the prompt line. Sanity-check: phrase
     // is 4 ASCII-letter tokens and the handshake survives base64.
-    let vault = fresh_vault("zetl-cap-pair-fresh-phrase");
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_zetl"));
+    let vault = fresh_vault("ztl-cap-pair-fresh-phrase");
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_ztl"));
     cmd.args([
         "-d",
         vault.path().to_str().unwrap(),
@@ -380,8 +380,8 @@ fn human_output_contains_security_warning() {
     // In non-JSON mode the grantor prints an explicit instruction to
     // share the phrase over a trusted channel. Pin the string so a
     // rewrite that drops the advisory regresses.
-    let vault = fresh_vault("zetl-cap-pair-human");
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_zetl"));
+    let vault = fresh_vault("ztl-cap-pair-human");
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_ztl"));
     cmd.args([
         "-d",
         vault.path().to_str().unwrap(),

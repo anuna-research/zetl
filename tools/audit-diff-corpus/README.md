@@ -1,4 +1,4 @@
-# `zetl cap audit-diff` corpus
+# `ztl cap audit-diff` corpus
 
 SPEC-034 REQ-3424 + ADR-3410 (BUG-016 resolution). This directory is
 the versioned regression corpus for the malicious-author PR gate.
@@ -31,7 +31,7 @@ Finding-kind tags (keep in sync with
 
 `.woodpecker/ci.yaml` runs `make audit-corpus` on every push and
 pull request. The step walks every fixture via
-`zetl cap audit-diff --corpus-root tools/audit-diff-corpus` and fails
+`ztl cap audit-diff --corpus-root tools/audit-diff-corpus` and fails
 the build if any fixture's expected markers are missed. Do not comment
 out a fixture to pass CI — add the missing detection to
 `src/cap/audit_diff.rs` instead.

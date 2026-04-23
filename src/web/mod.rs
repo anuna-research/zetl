@@ -178,7 +178,7 @@ pub struct WebState {
     /// Shared PasskeyManager for WebAuthn registration/authentication ceremonies.
     /// Must persist across /start and /finish requests to retain challenge state.
     pub passkey_mgr: Option<Arc<crate::user::passkey::PasskeyManager>>,
-    /// Tracks files zetl is currently writing, for external edit detection (REQ-020-039).
+    /// Tracks files ztl is currently writing, for external edit detection (REQ-020-039).
     pub pending_writes: fs_watch::PendingWrites,
     /// Public directory whose files override generated pages in serve mode.
     pub public_dir: Option<PathBuf>,
@@ -503,7 +503,7 @@ pub async fn run(
         .layer(tower_http::compression::CompressionLayer::new().gzip(true).br(true));
 
     let addr = format!("{bind_addr}:{port}");
-    eprintln!("zetl serve  →  http://localhost:{port}");
+    eprintln!("ztl serve  →  http://localhost:{port}");
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;
