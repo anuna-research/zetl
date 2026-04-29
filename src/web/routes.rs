@@ -1826,7 +1826,7 @@ pub async fn print_handler(State(state): State<WebState>) -> Response {
         .iter()
         .filter(|f| f.path.extension().is_some_and(|e| e == "fountain"))
         .collect();
-    fountain_files.sort_by(|a, b| a.page_name.to_lowercase().cmp(&b.page_name.to_lowercase()));
+    fountain_files.sort_by_key(|a| a.page_name.to_lowercase());
 
     let mut sections = Vec::new();
     for file in &fountain_files {
@@ -5633,8 +5633,8 @@ pub async fn api_graph_handler(
     // without feature="reason" the closure always returns Some; the filter is real when it's enabled
     let nodes: Vec<ApiGraphNode> = graph
         .node_map
-        .iter()
-        .filter_map(|(name, _idx)| {
+        .keys()
+        .filter_map(|name| {
             let slug = data.slug_for_page(name);
             let is_real = graph.resolved.contains(name);
 

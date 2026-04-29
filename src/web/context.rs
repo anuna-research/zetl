@@ -221,8 +221,8 @@ pub fn build_sidebar_tree(pages: &[PageEntry]) -> Vec<SidebarNode> {
             }
         }
 
-        folders.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-        leaves.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        folders.sort_by_key(|a| a.name.to_lowercase());
+        leaves.sort_by_key(|a| a.name.to_lowercase());
         folders.extend(leaves);
         folders
     }
@@ -256,7 +256,7 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
             }
         })
         .collect();
-    pages.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+    pages.sort_by_key(|a| a.title.to_lowercase());
 
     let sidebar_tree = build_sidebar_tree(&pages);
 
@@ -502,7 +502,7 @@ pub fn build_folder_context(
         }
     }
 
-    pages.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+    pages.sort_by_key(|a| a.title.to_lowercase());
 
     let mut subfolders: Vec<SubfolderEntry> = subfolder_counts
         .into_iter()
@@ -519,7 +519,7 @@ pub fn build_folder_context(
             }
         })
         .collect();
-    subfolders.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    subfolders.sort_by_key(|a| a.name.to_lowercase());
 
     let total_pages = pages.len();
     let breadcrumbs = build_breadcrumbs(folder_slug);
@@ -579,7 +579,7 @@ pub fn build_tag_cloud_context(data: &VaultData, vault_root: &Path) -> TagCloudC
     let mut tags: Vec<TagEntry> = tags_map
         .into_iter()
         .map(|(tag, mut pages)| {
-            pages.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+            pages.sort_by_key(|a| a.title.to_lowercase());
             pages.dedup_by(|a, b| a.slug == b.slug);
             let count = pages.len();
             TagEntry { tag, count, pages }

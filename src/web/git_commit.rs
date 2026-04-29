@@ -306,11 +306,9 @@ pub fn jj_git_import(vault_root: &Path) {
             let stderr = String::from_utf8_lossy(&output.stderr);
             eprintln!("warning: jj git import failed: {}", stderr.trim());
         }
-        Err(e) => {
-            // jj not installed or not in PATH — not fatal.
-            if e.kind() != std::io::ErrorKind::NotFound {
-                eprintln!("warning: jj git import error: {e}");
-            }
+        // jj not installed or not in PATH — not fatal.
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+            eprintln!("warning: jj git import error: {e}");
         }
         _ => {}
     }

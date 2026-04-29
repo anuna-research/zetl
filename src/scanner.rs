@@ -365,12 +365,10 @@ fn line_col_to_byte_offset(content: &str, line: u32, column: u32) -> usize {
         return content.len();
     }
     // column is 1-indexed, advance by (column-1) characters from line_start
-    let mut col = 1u32;
-    for (i, _) in content[line_start..].char_indices() {
+    for (col, (i, _)) in (1u32..).zip(content[line_start..].char_indices()) {
         if col == column {
             return line_start + i;
         }
-        col += 1;
     }
     content.len()
 }
@@ -1251,20 +1249,18 @@ pub fn body_text_ranges(content: &str) -> Vec<(usize, usize)> {
                 in_code_block = true;
                 code_block_start = range.start;
             }
-            Event::End(TagEnd::CodeBlock) => {
-                if in_code_block {
-                    // The End event's range covers the full code block (same as Start).
-                    // Use range.end which is the byte after the closing fence line.
-                    let end = range.end;
-                    // Also skip trailing newline after the closing fence if present.
-                    let actual_end = if content.as_bytes().get(end) == Some(&b'\n') {
-                        end + 1
-                    } else {
-                        end
-                    };
-                    excluded.push((code_block_start, actual_end));
-                    in_code_block = false;
-                }
+            Event::End(TagEnd::CodeBlock) if in_code_block => {
+                // The End event's range covers the full code block (same as Start).
+                // Use range.end which is the byte after the closing fence line.
+                let end = range.end;
+                // Also skip trailing newline after the closing fence if present.
+                let actual_end = if content.as_bytes().get(end) == Some(&b'\n') {
+                    end + 1
+                } else {
+                    end
+                };
+                excluded.push((code_block_start, actual_end));
+                in_code_block = false;
             }
 
             // YAML frontmatter: exclude the entire metadata block including delimiters.
@@ -1272,18 +1268,16 @@ pub fn body_text_ranges(content: &str) -> Vec<(usize, usize)> {
                 in_metadata_block = true;
                 metadata_block_start = range.start;
             }
-            Event::End(TagEnd::MetadataBlock(_)) => {
-                if in_metadata_block {
-                    let end = range.end;
-                    // Skip trailing newline after closing ---
-                    let actual_end = if content.as_bytes().get(end) == Some(&b'\n') {
-                        end + 1
-                    } else {
-                        end
-                    };
-                    excluded.push((metadata_block_start, actual_end));
-                    in_metadata_block = false;
-                }
+            Event::End(TagEnd::MetadataBlock(_)) if in_metadata_block => {
+                let end = range.end;
+                // Skip trailing newline after closing ---
+                let actual_end = if content.as_bytes().get(end) == Some(&b'\n') {
+                    end + 1
+                } else {
+                    end
+                };
+                excluded.push((metadata_block_start, actual_end));
+                in_metadata_block = false;
             }
 
             // Inline code: exclude the range (includes the backticks).
@@ -1292,17 +1286,13 @@ pub fn body_text_ranges(content: &str) -> Vec<(usize, usize)> {
             }
 
             // HTML blocks: check if they contain comment markers.
-            Event::Html(text) => {
-                if text.contains("<!--") {
-                    excluded.push((range.start, range.end));
-                }
+            Event::Html(text) if text.contains("<!--") => {
+                excluded.push((range.start, range.end));
             }
 
             // Inline HTML: check for comment markers too.
-            Event::InlineHtml(text) => {
-                if text.contains("<!--") || text.contains("-->") {
-                    excluded.push((range.start, range.end));
-                }
+            Event::InlineHtml(text) if text.contains("<!--") || text.contains("-->") => {
+                excluded.push((range.start, range.end));
             }
 
             _ => {}
