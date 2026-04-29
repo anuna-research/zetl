@@ -344,6 +344,8 @@ pub async fn run(
         })
     };
 
+    let asset_max_file_bytes = state.asset_max_file_bytes;
+
     // ── Auth routes (always public, even in --collab mode) ───────────
     let auth_routes = Router::new()
         .route("/auth/login", get(routes::login_handler))
@@ -439,7 +441,11 @@ pub async fn run(
         .route("/api/assets", get(routes::list_assets_handler))
         .route(
             "/api/assets/{*slug}",
-            post(routes::upload_asset_handler).delete(routes::delete_asset_handler),
+            post(routes::upload_asset_handler)
+                .layer(axum::extract::DefaultBodyLimit::max(
+                    asset_max_file_bytes as usize,
+                ))
+                .delete(routes::delete_asset_handler),
         )
         .route("/_admin/assets", get(routes::admin_assets_handler))
         .merge(admin_routes)

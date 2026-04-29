@@ -7307,9 +7307,14 @@ pub async fn upload_asset_handler(
     }
 
     let slug = urldecode(&slug);
+    if let Err(e) = crate::assets::validation::validate_slug(&slug) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "invalid_slug", "slug": slug, "detail": e.to_string()})),
+        )
+            .into_response();
+    }
     let slug = slug.trim_start_matches('/').trim_end_matches('/');
-
-    // Content-Type required
     let content_type = headers
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
@@ -7448,13 +7453,19 @@ pub async fn upload_asset_handler(
 
     let original_filename = slug.rsplit('/').next().unwrap_or(slug).to_string();
 
-    // Record old size for accurate counter update on replacement (BUG-001)
     let old_size = crate::assets::store::serve_asset(&state.vault_root, slug)
         .map(|meta| meta.size_bytes)
         .unwrap_or(0);
 
-    // Atomic quota reservation (prevents TOCTOU race under concurrent uploads)
-    if !state.asset_storage.try_increment(content_length, state.asset_max_total_bytes) {
+    let new_size = content_length;
+    let is_replace = old_size > 0;
+    let delta = if is_replace {
+        (new_size as i64).saturating_sub(old_size as i64)
+    } else {
+        new_size as i64
+    };
+
+    if !state.asset_storage.try_adjust(delta, state.asset_max_total_bytes) {
         eprintln!("[zetl] asset_upload_failed: reason=storage_exceeded slug={slug} user={user_id}");
         return (
             StatusCode::INSUFFICIENT_STORAGE,
@@ -7478,36 +7489,38 @@ pub async fn upload_asset_handler(
         Ok(meta) => {
             let is_replace = meta.replaced_at.is_some();
 
-            // Adjust counter for replacement: new size already reserved via try_increment
-            if old_size > 0 {
-                state.asset_storage.decrement(old_size);
-            }
-
             // Git auto-commit (REQ-3513)
             if let Some(ref lock) = state.git_commit_lock {
-                if let Ok(repo) = lock.lock() {
-                    let asset_path = crate::assets::store::asset_path(&state.vault_root, slug)
-                        .unwrap_or_else(|_| state.vault_root.join(".zetl/assets").join(slug));
-                    let sidecar_path = crate::assets::store::sidecar_path(&state.vault_root, slug);
-                    let size_human = meta.size_human();
-                    let msg = if is_replace {
-                        format!("asset: replace {slug} ({size_human}) [user: {user_id}]")
-                    } else {
-                        format!("asset: upload {slug} ({size_human}) [user: {user_id}]")
-                    };
-                    let paths: Vec<&std::path::Path> = if sidecar_path.exists() {
-                        vec![&asset_path, &sidecar_path]
-                    } else {
-                        vec![&asset_path]
-                    };
-                    let _ = crate::web::git_commit::auto_commit_multi(
-                        &repo,
-                        &paths,
-                        &user_id,
-                        &user_id,
-                        Some(&msg),
-                    );
-                    crate::web::git_commit::jj_git_import(&state.vault_root);
+                match lock.lock() {
+                    Ok(repo) => {
+                        let asset_path = crate::assets::store::asset_path(&state.vault_root, slug)
+                            .unwrap_or_else(|_| state.vault_root.join(".zetl/assets").join(slug));
+                        let sidecar_path = crate::assets::store::sidecar_path(&state.vault_root, slug);
+                        let size_human = meta.size_human();
+                        let msg = if is_replace {
+                            format!("asset: replace {slug} ({size_human}) [user: {user_id}]")
+                        } else {
+                            format!("asset: upload {slug} ({size_human}) [user: {user_id}]")
+                        };
+                        let paths: Vec<&std::path::Path> = if sidecar_path.exists() {
+                            vec![&asset_path, &sidecar_path]
+                        } else {
+                            vec![&asset_path]
+                        };
+                        let _ = crate::web::git_commit::auto_commit_multi(
+                            &repo,
+                            &paths,
+                            &user_id,
+                            &user_id,
+                            Some(&msg),
+                        );
+                        crate::web::git_commit::jj_git_import(&state.vault_root);
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "[zetl] asset_commit_skipped: reason=git_lock_poisoned slug={slug} user={user_id} err={e}"
+                        );
+                    }
                 }
             }
 
@@ -7541,7 +7554,9 @@ pub async fn upload_asset_handler(
                 .into_response()
         }
         Err(crate::assets::store::StoreError::InvalidSlug(_)) => {
-            state.asset_storage.decrement(content_length);
+            if delta > 0 {
+                state.asset_storage.decrement(delta as u64);
+            }
             eprintln!("[zetl] asset_upload_failed: reason=invalid_slug slug={slug} user={user_id}");
             (
                 StatusCode::BAD_REQUEST,
@@ -7550,7 +7565,9 @@ pub async fn upload_asset_handler(
                 .into_response()
         }
         Err(e) => {
-            state.asset_storage.decrement(content_length);
+            if delta > 0 {
+                state.asset_storage.decrement(delta as u64);
+            }
             eprintln!("[zetl] asset_upload_failed: reason=internal_error slug={slug} user={user_id}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -7627,10 +7644,11 @@ pub async fn serve_asset_handler(
         );
     }
 
-    // ETag from SHA-256
+    // ETag from SHA-256 (defensive slicing in case sidecar is corrupt)
+    let etag_hash = meta.sha256.get(..16).unwrap_or(meta.sha256.as_str());
     resp.headers_mut().insert(
         header::ETAG,
-        format!("\"{}\"", &meta.sha256[..16]).parse().unwrap(),
+        format!("\"{etag_hash}\"").parse().unwrap(),
     );
 
     let file_path = crate::assets::store::asset_path(&state.vault_root, path)
@@ -7718,6 +7736,13 @@ pub async fn delete_asset_handler(
     }
 
     let slug = urldecode(&slug);
+    if let Err(e) = crate::assets::validation::validate_slug(&slug) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "invalid_slug", "slug": slug, "detail": e.to_string()})),
+        )
+            .into_response();
+    }
     let slug = slug.trim_start_matches('/').trim_end_matches('/');
 
     let (user_id, is_agent) = match extract_auth_user(&state, &headers) {
@@ -7774,17 +7799,24 @@ pub async fn delete_asset_handler(
 
             // Git auto-commit deletion (REQ-3513)
             if let Some(ref lock) = state.git_commit_lock {
-                if let Ok(repo) = lock.lock() {
-                    let msg = format!("asset: delete {slug} [user: {user_id}]");
-                    let paths: Vec<&std::path::Path> = vec![&asset_path, &sidecar_path];
-                    let _ = crate::web::git_commit::auto_commit_removals(
-                        &repo,
-                        &paths,
-                        &user_id,
-                        &user_id,
-                        Some(&msg),
-                    );
-                    crate::web::git_commit::jj_git_import(&state.vault_root);
+                match lock.lock() {
+                    Ok(repo) => {
+                        let msg = format!("asset: delete {slug} [user: {user_id}]");
+                        let paths: Vec<&std::path::Path> = vec![&asset_path, &sidecar_path];
+                        let _ = crate::web::git_commit::auto_commit_removals(
+                            &repo,
+                            &paths,
+                            &user_id,
+                            &user_id,
+                            Some(&msg),
+                        );
+                        crate::web::git_commit::jj_git_import(&state.vault_root);
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "[zetl] asset_delete_commit_skipped: reason=git_lock_poisoned slug={slug} user={user_id} err={e}"
+                        );
+                    }
                 }
             }
 

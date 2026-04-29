@@ -429,3 +429,57 @@ async fn asset_storage_counter_under_concurrency() {
     let actual_total = zetl::assets::store::init_storage_total(tmp.path()).unwrap_or(0);
     assert_eq!(actual_total, expected_total, "storage counter should match actual size");
 }
+
+#[tokio::test]
+async fn regression_concurrent_replace_counter_no_drift() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (state, cookie, csrf) = build_collab_state(tmp.path());
+    let app = asset_router(state);
+
+    let slug = "shared/asset.txt";
+    let small = vec![b'a'; 100];
+    let big = vec![b'b'; 200];
+
+    let (status, _) = post_bytes(
+        &app,
+        &format!("/api/assets/{slug}"),
+        small.clone(),
+        "text/plain",
+        &cookie,
+        &csrf,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let mut handles = vec![];
+    for _ in 0..5 {
+        let app = app.clone();
+        let cookie = cookie.clone();
+        let csrf = csrf.clone();
+        let body = big.clone();
+        let handle = tokio::spawn(async move {
+            let req = Request::builder()
+                .method("POST")
+                .uri(format!("/api/assets/{slug}"))
+                .header(header::CONTENT_TYPE, "text/plain")
+                .header(header::COOKIE, format!("zetl_session={cookie}"))
+                .header("X-CSRF-Token", &csrf)
+                .header("X-Overwrite", "true")
+                .body(Body::from(body))
+                .unwrap();
+            let resp = app.oneshot(req).await.unwrap();
+            resp.status()
+        });
+        handles.push(handle);
+    }
+    let mut succeeded = 0;
+    for h in handles {
+        if h.await.unwrap() == StatusCode::OK {
+            succeeded += 1;
+        }
+    }
+    assert_eq!(succeeded, 5, "all replaces should succeed");
+
+    let actual_total = zetl::assets::store::init_storage_total(tmp.path()).unwrap_or(0);
+    assert_eq!(actual_total, 200, "counter should reflect single file size, not drifted");
+}

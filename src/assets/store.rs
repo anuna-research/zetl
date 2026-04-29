@@ -265,12 +265,15 @@ pub fn delete_asset(root: &Path, slug: &str) -> Result<(), StoreError> {
         return Err(StoreError::SlugNotFound);
     }
     let sidecar = sidecar_path(root, slug);
-    // Rename both to tmp, then delete
-    let tmp_base = tmp_dir(root).join(format!("del-{}", uuid::Uuid::new_v4()));
+    let tmp = tmp_dir(root);
+    fs::create_dir_all(&tmp)?;
+    let tmp_base = tmp.join(format!("del-{}", uuid::Uuid::new_v4()));
     let tmp_asset = tmp_base.with_extension("asset");
     let tmp_sidecar = tmp_base.with_extension("sidecar");
-    let _ = fs::rename(&target, &tmp_asset);
-    let _ = fs::rename(&sidecar, &tmp_sidecar);
+    fs::rename(&target, &tmp_asset)?;
+    if sidecar.exists() {
+        fs::rename(&sidecar, &tmp_sidecar)?;
+    }
     let _ = fs::remove_file(&tmp_asset);
     let _ = fs::remove_file(&tmp_sidecar);
     Ok(())
@@ -336,8 +339,12 @@ impl StorageCounterGuard {
     }
 
     pub fn decrement(&self, n: u64) -> u64 {
-        let prev = self.inner.fetch_sub(n, Ordering::SeqCst);
-        prev.saturating_sub(n)
+        self.inner
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+                Some(current.saturating_sub(n))
+            })
+            .map(|old| old.saturating_sub(n))
+            .unwrap()
     }
 
     pub fn total(&self) -> u64 {
@@ -351,6 +358,25 @@ impl StorageCounterGuard {
                     None
                 } else {
                     Some(current + n)
+                }
+            })
+            .is_ok()
+    }
+
+    pub fn try_adjust(&self, delta: i64, limit: u64) -> bool {
+        if delta <= 0 {
+            let abs = (-delta) as u64;
+            let _ = self.decrement(abs);
+            return true;
+        }
+        let n = delta as u64;
+        self.inner
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+                let next = current.saturating_add(n);
+                if next > limit {
+                    None
+                } else {
+                    Some(next)
                 }
             })
             .is_ok()
@@ -396,7 +422,7 @@ mod tests {
     fn storage_counter_saturating_decrement() {
         let guard = StorageCounterGuard::new(10);
         assert_eq!(guard.decrement(100), 0);
-        assert_eq!(guard.total(), u64::MAX - 89);
+        assert_eq!(guard.total(), 0);
     }
 
     #[test]
@@ -406,6 +432,47 @@ mod tests {
         assert_eq!(guard.total(), 150);
         assert!(!guard.try_increment(100, 200));
         assert_eq!(guard.total(), 150);
+    }
+
+    #[test]
+    fn storage_counter_try_adjust_new_upload() {
+        let guard = StorageCounterGuard::new(100);
+        assert!(guard.try_adjust(50, 200));
+        assert_eq!(guard.total(), 150);
+    }
+
+    #[test]
+    fn storage_counter_try_adjust_rejects_over_quota() {
+        let guard = StorageCounterGuard::new(100);
+        assert!(!guard.try_adjust(200, 200));
+        assert_eq!(guard.total(), 100);
+    }
+
+    #[test]
+    fn storage_counter_try_adjust_negative_delta_shrinks() {
+        let guard = StorageCounterGuard::new(100);
+        assert!(guard.try_adjust(-30, 200));
+        assert_eq!(guard.total(), 70);
+    }
+
+    #[test]
+    fn storage_counter_concurrent_replace_no_drift() {
+        let guard = StorageCounterGuard::new(100);
+        guard.increment(50);
+        assert_eq!(guard.total(), 150);
+        let _ = guard.try_adjust(30, 200);
+        assert_eq!(guard.total(), 180);
+    }
+
+    #[test]
+    fn regression_bug001_decrement_underflow() {
+        let guard = StorageCounterGuard::new(10);
+        guard.decrement(5);
+        assert_eq!(guard.total(), 5);
+        guard.decrement(100);
+        assert_eq!(guard.total(), 0);
+        guard.increment(1);
+        assert_eq!(guard.total(), 1);
     }
 
     #[test]
