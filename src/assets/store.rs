@@ -75,9 +75,18 @@ pub fn sha256_from_reader<R: Read>(reader: &mut R) -> io::Result<String> {
     Ok(hex_encode(&hasher.finalize()))
 }
 
-/// Return the `.zetl/assets/` directory under the vault root.
+/// Return the `assets/` directory under the vault root.
+///
+/// Assets are user content (uploaded images, PDFs, static HTML) and live
+/// at the vault top-level so they are visible in file browsers, included
+/// in standard `rsync`/backup workflows that skip `.zetl/`, and
+/// identified clearly when the vault is opened in another tool. The
+/// `assets/` name mirrors the `/assets/{*path}` URL namespace.
+///
+/// The vault scanner force-ignores this directory (see `src/scanner.rs`)
+/// so user-uploaded `.md` files are not indexed as pages.
 pub fn assets_dir(root: &Path) -> PathBuf {
-    root.join(".zetl").join("assets")
+    root.join("assets")
 }
 
 /// Return the temporary directory for atomic writes.
@@ -92,7 +101,7 @@ pub fn asset_meta_dir(root: &Path) -> PathBuf {
 
 /// Return the filesystem path for an asset slug.
 ///
-/// Verifies that the resolved canonical path stays within `.zetl/assets/`.
+/// Verifies that the resolved canonical path stays within `assets/`.
 pub fn asset_path(root: &Path, slug: &str) -> Result<PathBuf, StoreError> {
     validate_slug(slug).map_err(|e| StoreError::InvalidSlug(e.to_string()))?;
     let dir = assets_dir(root);
@@ -146,7 +155,7 @@ fn walk_files(dir: &Path, f: &mut dyn FnMut(&fs::DirEntry)) -> io::Result<()> {
     Ok(())
 }
 
-/// Initialise the storage counter by scanning `.zetl/assets/`.
+/// Initialise the storage counter by scanning `assets/`.
 pub fn init_storage_total(root: &Path) -> io::Result<u64> {
     let dir = assets_dir(root);
     if !dir.exists() {

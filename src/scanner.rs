@@ -78,6 +78,10 @@ pub fn scan_vault(root: &Path, opts: &ScanOptions) -> Result<Vec<ParsedFile>> {
     overrides.add("!.git/")?;
     overrides.add("!node_modules/")?;
     overrides.add("!.zetl/")?;
+    // SPEC-035: `assets/` is reserved for user-uploaded static assets
+    // (served at /assets/{*path}). User-uploaded `.md` files must not
+    // be indexed as vault pages.
+    overrides.add("!assets/")?;
     builder.overrides(overrides.build()?);
 
     // Combined filter_entry handles:

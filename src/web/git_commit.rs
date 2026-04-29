@@ -148,7 +148,7 @@ fn to_repo_relative(repo: &git2::Repository, file_path: &Path) -> std::path::Pat
 /// Force-add a file to the index, bypassing `.gitignore`.
 ///
 /// `index.add_path()` respects `.gitignore`, so files under ignored
-/// directories (e.g. `.zetl/assets/`) are silently skipped. This helper
+/// directories (e.g. `.zetl/asset-meta/`) are silently skipped. This helper
 /// reads the file, writes it as a blob, and inserts the entry directly.
 ///
 /// `git_path` is the repo-relative path used for the index entry; the

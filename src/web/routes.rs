@@ -7503,7 +7503,7 @@ pub async fn upload_asset_handler(
                 match lock.lock() {
                     Ok(repo) => {
                         let asset_path = crate::assets::store::asset_path(&state.vault_root, slug)
-                            .unwrap_or_else(|_| state.vault_root.join(".zetl/assets").join(slug));
+                            .unwrap_or_else(|_| state.vault_root.join("assets").join(slug));
                         let sidecar_path =
                             crate::assets::store::sidecar_path(&state.vault_root, slug);
                         let size_human = meta.size_human();
@@ -7676,7 +7676,7 @@ pub async fn serve_asset_handler(
         .insert(header::ETAG, format!("\"{etag_hash}\"").parse().unwrap());
 
     let file_path = crate::assets::store::asset_path(&state.vault_root, path)
-        .unwrap_or_else(|_| state.vault_root.join(".zetl/assets").join(path));
+        .unwrap_or_else(|_| state.vault_root.join("assets").join(path));
     match std::fs::read(&file_path) {
         Ok(bytes) => {
             *resp.body_mut() = axum::body::Body::from(bytes);
@@ -7801,12 +7801,12 @@ pub async fn delete_asset_handler(
         crate::assets::store::serve_asset(&state.vault_root, slug)
             .map(|meta| {
                 let ap = crate::assets::store::asset_path(&state.vault_root, slug)
-                    .unwrap_or_else(|_| state.vault_root.join(".zetl/assets").join(slug));
+                    .unwrap_or_else(|_| state.vault_root.join("assets").join(slug));
                 let sp = crate::assets::store::sidecar_path(&state.vault_root, slug);
                 (meta.size_bytes, ap, sp)
             })
             .unwrap_or_else(|_| {
-                let ap = state.vault_root.join(".zetl/assets").join(slug);
+                let ap = state.vault_root.join("assets").join(slug);
                 let sp = crate::assets::store::sidecar_path(&state.vault_root, slug);
                 (0, ap, sp)
             });

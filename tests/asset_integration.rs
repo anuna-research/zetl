@@ -506,19 +506,17 @@ async fn regression_concurrent_replace_counter_no_drift() {
 
 /// Regression test for force-add fix.
 ///
-/// When a vault is in a git repo with `.zetl/` in `.gitignore`, the asset
-/// upload's auto-commit must still stage the new file. The original
-/// implementation used `index.add_path()` which silently skipped ignored
-/// paths, so commits ran but the asset wasn't actually in the tree. The
-/// fix uses `force_add_to_index` which inserts the entry directly.
-///
-/// Symmetric: the delete-commit must also remove the entry from the tree.
+/// Assets land at `<vault>/assets/{slug}` (top-level, git-tracked). Sidecars
+/// live at `<vault>/.zetl/asset-meta/{slug}.json`, where `.zetl/` is
+/// typically gitignored. The auto-commit pipeline must therefore force-add
+/// the sidecar so it lands in the tree alongside the asset, and the
+/// delete-commit must remove both.
 #[tokio::test]
-async fn asset_commits_land_under_gitignored_zetl_dir() {
+async fn asset_commits_land_with_zetl_gitignored() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
 
-    // Init git repo with .zetl/ ignored
+    // Init git repo with .zetl/ ignored (the typical zetl vault setup)
     let repo = git2::Repository::init(root).expect("init git repo");
     fs::write(root.join(".gitignore"), ".zetl/\n").unwrap();
     {
@@ -552,7 +550,7 @@ async fn asset_commits_land_under_gitignored_zetl_dir() {
     assert_eq!(status, StatusCode::CREATED, "upload failed: {resp_body}");
 
     // HEAD's tree must now contain the asset (and its sidecar)
-    let asset_rel = format!(".zetl/assets/{slug}");
+    let asset_rel = format!("assets/{slug}");
     let sidecar_rel = format!(".zetl/asset-meta/{slug}.json");
     {
         let head_tree = repo.head().unwrap().peel_to_tree().unwrap();

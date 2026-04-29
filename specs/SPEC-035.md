@@ -50,13 +50,13 @@ dependencies:
 
 ### 1.2 Core Insight
 
-Assets are vault content. They should live in the vault's git history, be subject to the same SPL-based ACL that governs pages, and be reachable at stable, human-readable URLs. The simplest design is: assets are files stored under `.zetl/assets/` within the vault, served under the `/assets/{*path}` URL namespace, uploaded through the same authenticated HTTP surface as page saves.
+Assets are vault content. They should live in the vault's git history, be subject to the same SPL-based ACL that governs pages, and be reachable at stable, human-readable URLs. The simplest design is: assets are files stored under `assets/` within the vault, served under the `/assets/{*path}` URL namespace, uploaded through the same authenticated HTTP surface as page saves.
 
 The namespace separation (`/assets/` prefix) is the key invariant: an uploaded file never collides with a vault page slug, so the two content types compose cleanly.
 
 ### 1.3 Design Principles
 
-1. **Vault is the source of truth.** Assets live under `.zetl/assets/` and are committed to git with uploader attribution.
+1. **Vault is the source of truth.** Assets live under `assets/` and are committed to git with uploader attribution.
 2. **ACL is first-class.** A new SPL predicate `can-upload` controls who may upload. The built-in default inherits from the editor role hierarchy. Vault administrators can restrict or expand it independently.
 3. **Namespace isolation.** Assets are always served under `/assets/{*path}`. They never occupy the page slug namespace.
 4. **Allowlist, not denylist.** Accepted MIME types are explicitly enumerated. Anything not on the list is rejected with a descriptive error.
@@ -68,7 +68,7 @@ The namespace separation (`/assets/` prefix) is the key invariant: an uploaded f
 
 **In scope (v1):**
 - File upload via HTTP multipart POST and raw body stream to `/api/assets/{*slug}`
-- Asset storage under `.zetl/assets/` with JSON metadata sidecar per asset
+- Asset storage under `assets/` with JSON metadata sidecar per asset
 - Asset serving under `/assets/{*path}` (raw, no template wrapping)
 - CRUD surface: upload (create/replace), list, delete
 - SPL-based `can-upload` permission predicate with built-in default rules
@@ -172,15 +172,15 @@ The namespace separation (`/assets/` prefix) is the key invariant: an uploaded f
 | Step | User action | Expected system response |
 |------|-------------|--------------------------|
 | 1 | `POST /api/assets/diagrams/architecture.png` with `X-Create: true`, `X-CSRF-Token: …`, multipart body containing the PNG | Server validates ACL (`can-upload` ✓), MIME type (`image/png` ✓), size (< 10 MB ✓), quota (not exceeded ✓), slug (safe ✓) |
-| 2 | — | Server writes file atomically to `.zetl/assets/diagrams/architecture.png` |
-| 3 | — | Server writes metadata sidecar to `.zetl/assets/diagrams/architecture.png.meta.json` |
+| 2 | — | Server writes file atomically to `assets/diagrams/architecture.png` |
+| 3 | — | Server writes metadata sidecar to `.zetl/asset-meta/diagrams/architecture.png.json` |
 | 4 | — | Server auto-commits both files to git |
 | 5 | — | Server responds `201 Created` with JSON body: `{"slug": "diagrams/architecture.png", "url": "/assets/diagrams/architecture.png", "size_bytes": 48320, "mime_type": "image/png", "uploaded_at": "2026-04-22T11:00:00Z", "sha256": "abc…"}` |
 | 6 | Editor pastes `![Architecture](/assets/diagrams/architecture.png)` into a vault page | Page renders with the image embedded |
 | 7 | User visits `GET /assets/diagrams/architecture.png` | Server returns the PNG with `Content-Type: image/png`, `X-Content-Type-Options: nosniff`, `Cache-Control: public, max-age=31536000, immutable` |
 
 **Postconditions:**
-- Asset is at `.zetl/assets/diagrams/architecture.png` and `.zetl/assets/diagrams/architecture.png.meta.json`.
+- Asset is at `assets/diagrams/architecture.png` and `.zetl/asset-meta/diagrams/architecture.png.json`.
 - Git history contains a commit attributed to the uploader.
 - `GET /assets/diagrams/architecture.png` returns the file.
 
@@ -346,9 +346,9 @@ Trace:
 
 **REQ-3502: Asset Storage Location**
 
-Uploaded assets SHALL be stored on disk at `{vault_root}/.zetl/assets/{slug}` where `{slug}` is the URL-decoded path component from the upload request. Each asset SHALL have a corresponding metadata sidecar at `{vault_root}/.zetl/assets/{slug}.meta.json` written atomically together with the asset file.
+Uploaded assets SHALL be stored on disk at `{vault_root}/assets/{slug}` where `{slug}` is the URL-decoded path component from the upload request. Each asset SHALL have a corresponding metadata sidecar at `{vault_root}/.zetl/asset-meta/{slug}.json` written atomically together with the asset file.
 
-*Rationale:* Storing under `.zetl/assets/` keeps assets inside the git repository alongside vault pages, enabling versioning, backup, and history via the same git workflow already used for Markdown pages.
+*Rationale:* Storing under `assets/` keeps assets inside the git repository alongside vault pages, enabling versioning, backup, and history via the same git workflow already used for Markdown pages.
 
 Trace:
 - TEST-3502
@@ -491,7 +491,7 @@ The system SHALL validate the upload slug before any disk I/O. A valid slug MUST
 
 On any violation the server SHALL return `400 Bad Request` with `{"error": "invalid_slug", "detail": "…"}`.
 
-After validation, the server SHALL resolve the canonical path as `vault_root/.zetl/assets/{slug}` and verify that it lies strictly within `vault_root/.zetl/assets/` before proceeding.
+After validation, the server SHALL resolve the canonical path as `vault_root/assets/{slug}` and verify that it lies strictly within `vault_root/assets/` before proceeding.
 
 *Rationale:* Path traversal is a perennial risk in file-serving systems. Slug validation provides a high-level check; the canonical path check provides a low-level defense-in-depth.
 
@@ -505,8 +505,8 @@ Trace:
 
 The system SHALL write uploaded assets in two steps:
 
-1. Stream the body to a temporary file at `{vault_root}/.zetl/assets/.tmp/{uuid}`, computing the SHA-256 digest incrementally.
-2. If the full body is received without error: rename the temporary file to its final path (`{vault_root}/.zetl/assets/{slug}`), then write the metadata sidecar. If any error occurs: delete the temporary file and return the appropriate HTTP error.
+1. Stream the body to a temporary file at `{vault_root}/assets/.tmp/{uuid}`, computing the SHA-256 digest incrementally.
+2. If the full body is received without error: rename the temporary file to its final path (`{vault_root}/assets/{slug}`), then write the metadata sidecar. If any error occurs: delete the temporary file and return the appropriate HTTP error.
 
 The SHA-256 hex digest SHALL be stored in the metadata sidecar and returned in the upload response.
 
@@ -523,7 +523,7 @@ Trace:
 
 **REQ-3512: Asset Serving — Raw, No Template Wrapping**
 
-The system SHALL serve assets at `GET /assets/{*path}` by reading and streaming the file from `{vault_root}/.zetl/assets/{path}` directly, with no Minijinja template wrapping and no injection of zetl navigation chrome. The response SHALL use the MIME type stored in the metadata sidecar as the `Content-Type` header value.
+The system SHALL serve assets at `GET /assets/{*path}` by reading and streaming the file from `{vault_root}/assets/{path}` directly, with no Minijinja template wrapping and no injection of zetl navigation chrome. The response SHALL use the MIME type stored in the metadata sidecar as the `Content-Type` header value.
 
 *Rationale:* The primary use case (UP-035-002) requires that an uploaded HTML page renders exactly as built. Wrapping it in the zetl template would corrupt it.
 
@@ -649,7 +649,7 @@ Trace:
 
 **REQ-3519: Storage Usage Tracking**
 
-The system SHALL maintain an in-memory running total of asset storage usage, initialised at server startup by scanning `.zetl/assets/` and summed from all file sizes. Uploads increment this total; deletions decrement it. The total SHALL be consulted (with appropriate locking) before each upload to enforce REQ-3509.
+The system SHALL maintain an in-memory running total of asset storage usage, initialised at server startup by scanning `assets/` and summed from all file sizes. Uploads increment this total; deletions decrement it. The total SHALL be consulted (with appropriate locking) before each upload to enforce REQ-3509.
 
 *Rationale:* Re-scanning the directory on every upload would be O(n assets) per request. An in-memory counter updated atomically is O(1) per request.
 
@@ -721,18 +721,26 @@ Trace:
 
 ## 6. Architecture Decisions
 
-### ADR-3501: Asset Storage in Vault vs External Store
+### ADR-3501: Asset Storage Location
 
-**Decision:** Store assets under `{vault_root}/.zetl/assets/` within the vault directory tree.
+**Decision:** Store asset bytes at `{vault_root}/assets/{slug}` (top-level, git-tracked) and metadata sidecars at `{vault_root}/.zetl/asset-meta/{slug}.json` (zetl-internal). The vault scanner force-ignores `assets/` so user-uploaded `.md` files are not indexed as pages.
 
-**Context:** Assets must be durable, versionable, and accessible to both the HTTP server and the git auto-commit pipeline. Three options were considered: (1) in-vault at `.zetl/assets/`, (2) a separate configurable directory outside the vault, (3) an external object-storage backend (S3-compatible).
+**Context:** Assets must be durable, versionable, accessible to both the HTTP server and the git auto-commit pipeline, and discoverable to users browsing their vault on disk. Four options were considered:
+1. In-vault at `assets/` (top-level), sidecars in `.zetl/asset-meta/` — chosen.
+2. In-vault at `.zetl/assets/`, sidecars adjacent — initially chosen, then reversed.
+3. A separate configurable directory outside the vault.
+4. An external object-storage backend (S3-compatible).
 
 **Rationale:**
-- Option 1 (chosen): Assets are git-committed alongside pages. Backup, migration, and history use the same git workflow already in place. No additional infrastructure. No configuration required. Consistent with the vault-as-single-source-of-truth principle.
-- Option 2: Separate directory complicates backup and migration — two directories must be kept in sync. Configuration adds operator burden. Offers no benefit for the target use case (single-host collab vault).
-- Option 3: Introduces an external dependency (S3 credentials, bucket lifecycle policies) that conflicts with zetl's local-first philosophy. Appropriate for a future cloud-hosting tier, not v1.
+- Option 1 (chosen): Assets are user content and live in user-visible space. They survive `rsync --exclude='.zetl/'` (the conventional backup pattern, since most of `.zetl/` is regenerable cache). They open in Finder/file browsers without dotfile spelunking. They port cleanly when the vault is opened by another tool. Sidecars stay in `.zetl/` because they ARE tool-generated metadata. The `assets/` directory is reserved at the scanner level, mirroring the `/assets/{*path}` URL namespace reservation — the scanner-side reservation prevents page-name collisions when users upload `.md`/`.fountain`/`.spl` files (which the scanner would otherwise index).
+- Option 2 (rejected): Putting user content under `.zetl/` conflates tool-internal state with user data. Forces a `force_add_to_index` hack to commit assets despite `.gitignore`. Backups that exclude `.zetl/` silently lose user uploads. The original v1 spec chose this for "namespace isolation" but disk layout is the wrong place to enforce that — URL routing and scanner reservations do it cleanly without sacrificing visibility.
+- Option 3: Two-directory backup/migration burden, configuration complexity, no benefit for the target use case (single-host collab vault).
+- Option 4: External dependency (S3 credentials, bucket policies) conflicts with zetl's local-first philosophy. Appropriate for a future cloud-hosting tier, not v1.
 
-**Consequences:** Large media files (videos, high-res images) increase the git repository size, which slows clone times. Operators who store large assets should consider `git-lfs` for that content; this is a documented limitation rather than a v1-blocker.
+**Consequences:**
+- The `assets/` directory name is reserved at the vault root. Users cannot have a vault page or folder named `assets/` containing scannable content (`.md`/`.fountain`/`.spl`). Documented in the user guide.
+- Large media files (videos, high-res images) increase git repository size, which slows clone times. Operators who store large assets should consider `git-lfs` for that content.
+- Sidecars under `.zetl/asset-meta/` still need force-add for git commit because `.zetl/` is conventionally gitignored. The `force` parameter on `auto_commit_multi` is retained for that path.
 
 ---
 
@@ -796,7 +804,7 @@ Trace:
 
 **Decision:** Track total asset storage as an in-memory atomic counter, initialised at startup by directory scan.
 
-**Context:** Two alternatives: (a) re-scan `.zetl/assets/` on every upload, (b) maintain a persistent counter in a file or database.
+**Context:** Two alternatives: (a) re-scan `assets/` on every upload, (b) maintain a persistent counter in a file or database.
 
 **Rationale:**
 - Option (a): O(n assets) per upload. Acceptable for tens of assets; unacceptable for thousands.
@@ -825,8 +833,8 @@ Trace:
 |-------------------|-------------------------|
 | `src/assets/store.rs :: write_asset(root, slug, body_stream, meta) → Result<AssetMeta>` | Streams body to tmp, computes SHA-256, renames to final path, writes sidecar |
 | `src/assets/store.rs :: delete_asset(root, slug) → Result<()>` | Unlinks asset + sidecar atomically |
-| `src/assets/store.rs :: list_assets(root, prefix) → Result<Vec<AssetMeta>>` | Walks `.zetl/assets/`, reads all sidecars matching prefix |
-| `src/assets/store.rs :: init_storage_total(root) → Result<u64>` | Scans `.zetl/assets/` at startup to initialise the counter |
+| `src/assets/store.rs :: list_assets(root, prefix) → Result<Vec<AssetMeta>>` | Walks `assets/`, reads all sidecars matching prefix |
+| `src/assets/store.rs :: init_storage_total(root) → Result<u64>` | Scans `assets/` at startup to initialise the counter |
 | `src/assets/store.rs :: serve_asset(root, path) → Result<(AssetMeta, File)>` | Opens the file and reads its sidecar for serving |
 | `src/web/routes.rs :: upload_handler` | HTTP handler: parse request, call pure core validation, call store, call git commit, emit observability |
 | `src/web/routes.rs :: serve_asset_handler` | HTTP handler: call store, set response headers, stream file |
@@ -926,7 +934,7 @@ Shell modules (`store`, `routes`) depend on core (`validation`, `metadata`). Cor
 **Authentication:** Optional — depends on vault visibility mode and SPL (REQ-3516).
 
 **Pre-conditions:**
-- Asset at `{path}` exists in `.zetl/assets/{path}`.
+- Asset at `{path}` exists in `assets/{path}`.
 - Caller has `can-read-assets` permission OR vault is public (REQ-3516).
 
 **Success response:**
@@ -1081,7 +1089,7 @@ Vault administrators may add additional rules to `.zetl/collab/access.spl` to gr
 
 ### CON-3506: Asset Metadata Sidecar Format
 
-**File location:** `{vault_root}/.zetl/assets/{slug}.meta.json`
+**File location:** `{vault_root}/.zetl/asset-meta/{slug}.json`
 
 **Schema:**
 
@@ -1102,7 +1110,7 @@ Vault administrators may add additional rules to `.zetl/collab/access.spl` to gr
 
 **Invariants:**
 - `version` is always `1` in this specification. Future versions increment this field; readers MUST reject unknown versions.
-- `slug` matches the file's path relative to `.zetl/assets/`.
+- `slug` matches the file's path relative to `assets/`.
 - `sha256` is a lowercase hex string of exactly 64 characters.
 - `uploaded_at` and `replaced_at` (when present) are ISO-8601 timestamps in UTC.
 - `size_bytes` matches the actual file size on disk (verified at startup during `init_storage_total`).
@@ -1129,7 +1137,7 @@ Start `zetl serve` without `--collab`. Attempt `POST /api/assets/test.txt` with 
 **Type:** Integration  
 **Technique:** Example-based
 
-Upload a known file. Assert the file exists at `.zetl/assets/{slug}`. Assert the sidecar exists at `.zetl/assets/{slug}.meta.json`. Assert sidecar JSON is valid against CON-3506 schema. Assert `size_bytes` equals the actual file size.
+Upload a known file. Assert the file exists at `assets/{slug}`. Assert the sidecar exists at `.zetl/asset-meta/{slug}.json`. Assert sidecar JSON is valid against CON-3506 schema. Assert `size_bytes` equals the actual file size.
 
 ---
 
@@ -1243,7 +1251,7 @@ Attempt uploads with the following slugs (URL-encoded as appropriate):
 | `valid/slug.txt` | 201 |
 | `` (empty) | 400 |
 
-Also assert that after a successful upload to `valid/slug.txt`, the resolved path is strictly within `.zetl/assets/`.
+Also assert that after a successful upload to `valid/slug.txt`, the resolved path is strictly within `assets/`.
 
 ---
 
@@ -1365,7 +1373,7 @@ Upload N files of known sizes. Verify the in-memory counter equals the sum of si
 **Type:** Integration  
 **Technique:** Example-based
 
-Simulate a connection drop mid-upload by truncating the body. Assert that after the failed request, no file exists at `.zetl/assets/{slug}` and no file exists in `.zetl/assets/.tmp/`.
+Simulate a connection drop mid-upload by truncating the body. Assert that after the failed request, no file exists at `assets/{slug}` and no file exists in `assets/.tmp/`.
 
 ---
 
@@ -1475,14 +1483,14 @@ Assets are uploaded by authenticated, authorised collaborators. The primary thre
 2. **Disk exhaustion:** A collaborator repeatedly uploads large files to fill the vault's disk.
    - **Mitigated by:** Per-file (REQ-3508) and total (REQ-3509) storage limits. OBS-3505 emits a warning at 90% capacity.
    
-3. **Path traversal:** A crafted slug causes a write outside `.zetl/assets/`.
+3. **Path traversal:** A crafted slug causes a write outside `assets/`.
    - **Mitigated by:** Two-layer defense: high-level slug validation (REQ-3510) rejects known traversal patterns; canonical path resolution verifies the final path is within the assets root before any I/O.
 
 4. **MIME type confusion / content sniffing:** A file uploaded with a benign MIME type is re-interpreted by the browser as a dangerous type.
    - **Mitigated by:** `X-Content-Type-Options: nosniff` (REQ-3514) prevents browser content-type sniffing.
 
-5. **Symlink attack:** An attacker creates a symlink in `.zetl/assets/` pointing outside the vault.
-   - **Mitigated by:** The serve handler resolves the canonical path and checks it lies within `.zetl/assets/` before opening the file. Symlinks that escape the assets directory are rejected.
+5. **Symlink attack:** An attacker creates a symlink in `assets/` pointing outside the vault.
+   - **Mitigated by:** The serve handler resolves the canonical path and checks it lies within `assets/` before opening the file. Symlinks that escape the assets directory are rejected.
 
 6. **Storage side-channel (timing attack on slug existence):** The 404 vs 409 distinction reveals whether a slug exists to unauthenticated callers.
    - **Assessment:** Upload endpoints require authentication; unauthenticated callers cannot reach the slug-exists check. Non-issue.
