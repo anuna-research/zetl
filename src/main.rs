@@ -2999,7 +2999,7 @@ fn cmd_list(cli: &Cli) -> Result<()> {
             path: f.path.to_string_lossy().to_string(),
         })
         .collect();
-    pages.sort_by(|a, b| a.page.to_lowercase().cmp(&b.page.to_lowercase()));
+    pages.sort_by_key(|a| a.page.to_lowercase());
 
     #[derive(Serialize)]
     struct ListOutput {
@@ -3595,7 +3595,7 @@ fn cmd_export(cli: &Cli) -> Result<()> {
             path,
         });
     }
-    nodes.sort_by(|a, b| a.page.to_lowercase().cmp(&b.page.to_lowercase()));
+    nodes.sort_by_key(|a| a.page.to_lowercase());
 
     // Collect deduplicated edges
     let mut edge_set: HashSet<(String, String)> = HashSet::new();
