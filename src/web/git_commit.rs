@@ -99,22 +99,75 @@ pub fn auto_commit(
     repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &parents)
 }
 
+/// Resolve `file_path` to a repo-relative path suitable for the git index.
+///
+/// Handles three cases:
+/// 1. `file_path` already relative — used as-is.
+/// 2. `file_path` absolute and exists — canonicalized to match the
+///    canonicalized workdir (resolves macOS `/var` → `/private/var`).
+/// 3. `file_path` absolute and the file is gone (e.g. deletion already
+///    moved it to `.tmp/`) — falls back to canonicalizing the parent
+///    directory and joining the filename, so symlink resolution still
+///    works for delete-side commits.
+fn to_repo_relative(repo: &git2::Repository, file_path: &Path) -> std::path::PathBuf {
+    if !file_path.is_absolute() {
+        return file_path.to_path_buf();
+    }
+    let wd = match repo.workdir() {
+        Some(w) => w,
+        None => return file_path.to_path_buf(),
+    };
+    let canon_wd = std::fs::canonicalize(wd).unwrap_or_else(|_| wd.to_path_buf());
+
+    // Existing file path
+    if let Ok(canon_file) = std::fs::canonicalize(file_path) {
+        if let Ok(rel) = canon_file.strip_prefix(&canon_wd) {
+            return rel.to_path_buf();
+        }
+    }
+    // File gone — canonicalize the parent (which usually still exists)
+    // and reconstruct.
+    if let (Some(parent), Some(name)) = (file_path.parent(), file_path.file_name()) {
+        if let Ok(canon_parent) = std::fs::canonicalize(parent) {
+            let reconstructed = canon_parent.join(name);
+            if let Ok(rel) = reconstructed.strip_prefix(&canon_wd) {
+                return rel.to_path_buf();
+            }
+        }
+    }
+    // Best-effort: try plain strip against both canonical and raw wd
+    if let Ok(rel) = file_path.strip_prefix(&canon_wd) {
+        return rel.to_path_buf();
+    }
+    if let Ok(rel) = file_path.strip_prefix(wd) {
+        return rel.to_path_buf();
+    }
+    file_path.to_path_buf()
+}
+
 /// Force-add a file to the index, bypassing `.gitignore`.
 ///
 /// `index.add_path()` respects `.gitignore`, so files under ignored
 /// directories (e.g. `.zetl/assets/`) are silently skipped. This helper
 /// reads the file, writes it as a blob, and inserts the entry directly.
+///
+/// `git_path` is the repo-relative path used for the index entry; the
+/// file is read from `workdir.join(git_path)`.
 fn force_add_to_index(
     repo: &git2::Repository,
     index: &mut git2::Index,
     git_path: &Path,
 ) -> Result<(), git2::Error> {
-    let data = std::fs::read(git_path).map_err(|e| {
-        git2::Error::from_str(&format!("force_add: failed to read {:?}: {e}", git_path))
+    let abs_path = match repo.workdir() {
+        Some(wd) => wd.join(git_path),
+        None => git_path.to_path_buf(),
+    };
+    let data = std::fs::read(&abs_path).map_err(|e| {
+        git2::Error::from_str(&format!("force_add: failed to read {:?}: {e}", abs_path))
     })?;
     let oid = repo.blob(&data)?;
-    let meta = std::fs::metadata(git_path).map_err(|e| {
-        git2::Error::from_str(&format!("force_add: failed to stat {:?}: {e}", git_path))
+    let meta = std::fs::metadata(&abs_path).map_err(|e| {
+        git2::Error::from_str(&format!("force_add: failed to stat {:?}: {e}", abs_path))
     })?;
     let mtime = meta
         .modified()
@@ -156,26 +209,12 @@ pub fn auto_commit_multi(
 ) -> Result<git2::Oid, git2::Error> {
     let mut index = repo.index()?;
     for file_path in file_paths {
-        let git_path = if file_path.is_absolute() {
-            if let Some(wd) = repo.workdir() {
-                let canon_file =
-                    std::fs::canonicalize(file_path).unwrap_or_else(|_| file_path.to_path_buf());
-                let canon_wd = std::fs::canonicalize(wd).unwrap_or_else(|_| wd.to_path_buf());
-                if !canon_file.starts_with(&canon_wd) {
-                    return Err(git2::Error::from_str(&format!(
-                        "file path {canon_file:?} is outside the repository working directory {canon_wd:?}"
-                    )));
-                }
-                canon_file
-                    .strip_prefix(&canon_wd)
-                    .unwrap_or(file_path)
-                    .to_path_buf()
-            } else {
-                file_path.to_path_buf()
-            }
-        } else {
-            file_path.to_path_buf()
-        };
+        let git_path = to_repo_relative(repo, file_path);
+        if git_path.is_absolute() {
+            return Err(git2::Error::from_str(&format!(
+                "file path {file_path:?} could not be resolved relative to the repository working directory"
+            )));
+        }
         if force {
             force_add_to_index(repo, &mut index, &git_path)?;
         } else {
@@ -216,22 +255,19 @@ pub fn auto_commit_removals(
 ) -> Result<git2::Oid, git2::Error> {
     let mut index = repo.index()?;
     for file_path in file_paths {
-        let git_path = if file_path.is_absolute() {
-            if let Some(wd) = repo.workdir() {
-                let canon_file =
-                    std::fs::canonicalize(file_path).unwrap_or_else(|_| file_path.to_path_buf());
-                let canon_wd = std::fs::canonicalize(wd).unwrap_or_else(|_| wd.to_path_buf());
-                canon_file
-                    .strip_prefix(&canon_wd)
-                    .unwrap_or(file_path)
-                    .to_path_buf()
-            } else {
-                file_path.to_path_buf()
-            }
-        } else {
-            file_path.to_path_buf()
-        };
-        index.remove_path(&git_path)?;
+        let git_path = to_repo_relative(repo, file_path);
+        if git_path.is_absolute() {
+            return Err(git2::Error::from_str(&format!(
+                "file path {file_path:?} could not be resolved relative to the repository working directory"
+            )));
+        }
+        // Tolerate paths that are not in the index — e.g. an asset whose
+        // sidecar was never committed, or a delete called twice.
+        match index.remove_path(&git_path) {
+            Ok(()) => {}
+            Err(e) if e.code() == git2::ErrorCode::NotFound => {}
+            Err(e) => return Err(e),
+        }
     }
     index.write()?;
     let tree_oid = index.write_tree()?;

@@ -7821,13 +7821,17 @@ pub async fn delete_asset_handler(
                     Ok(repo) => {
                         let msg = format!("asset: delete {slug} [user: {user_id}]");
                         let paths: Vec<&std::path::Path> = vec![&asset_path, &sidecar_path];
-                        let _ = crate::web::git_commit::auto_commit_removals(
+                        if let Err(e) = crate::web::git_commit::auto_commit_removals(
                             &repo,
                             &paths,
                             &user_id,
                             &user_id,
                             Some(&msg),
-                        );
+                        ) {
+                            eprintln!(
+                                "[zetl] asset_delete_commit_failed: slug={slug} user={user_id} err={e}"
+                            );
+                        }
                         crate::web::git_commit::jj_git_import(&state.vault_root);
                     }
                     Err(e) => {

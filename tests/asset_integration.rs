@@ -503,3 +503,84 @@ async fn regression_concurrent_replace_counter_no_drift() {
         "counter should reflect single file size, not drifted"
     );
 }
+
+/// Regression test for force-add fix.
+///
+/// When a vault is in a git repo with `.zetl/` in `.gitignore`, the asset
+/// upload's auto-commit must still stage the new file. The original
+/// implementation used `index.add_path()` which silently skipped ignored
+/// paths, so commits ran but the asset wasn't actually in the tree. The
+/// fix uses `force_add_to_index` which inserts the entry directly.
+///
+/// Symmetric: the delete-commit must also remove the entry from the tree.
+#[tokio::test]
+async fn asset_commits_land_under_gitignored_zetl_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+
+    // Init git repo with .zetl/ ignored
+    let repo = git2::Repository::init(root).expect("init git repo");
+    fs::write(root.join(".gitignore"), ".zetl/\n").unwrap();
+    {
+        let mut idx = repo.index().unwrap();
+        idx.add_path(Path::new(".gitignore")).unwrap();
+        let tree_oid = idx.write_tree().unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        let sig = git2::Signature::now("init", "init@vault").unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
+            .unwrap();
+    }
+
+    let (mut state, cookie, csrf) = build_collab_state(root);
+    state.git_commit_lock = Some(Arc::new(std::sync::Mutex::new(
+        git2::Repository::open(root).unwrap(),
+    )));
+    let app = asset_router(state);
+
+    let slug = "diagrams/arch.png";
+    let body = vec![0x89, 0x50, 0x4E, 0x47, 0xDE, 0xAD, 0xBE, 0xEF];
+    let (status, resp_body) = post_bytes(
+        &app,
+        &format!("/api/assets/{slug}"),
+        body.clone(),
+        "image/png",
+        &cookie,
+        &csrf,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "upload failed: {resp_body}");
+
+    // HEAD's tree must now contain the asset (and its sidecar)
+    let asset_rel = format!(".zetl/assets/{slug}");
+    let sidecar_rel = format!(".zetl/asset-meta/{slug}.json");
+    {
+        let head_tree = repo.head().unwrap().peel_to_tree().unwrap();
+        let entry = head_tree
+            .get_path(Path::new(&asset_rel))
+            .expect("asset must be in HEAD tree after upload commit");
+        let blob = repo.find_blob(entry.id()).unwrap();
+        assert_eq!(
+            blob.content(),
+            body.as_slice(),
+            "committed blob must match uploaded body"
+        );
+        head_tree
+            .get_path(Path::new(&sidecar_rel))
+            .expect("sidecar must be in HEAD tree after upload commit");
+    }
+
+    // Delete and verify both entries are gone from the new HEAD tree
+    let status = delete_asset(&app, &format!("/api/assets/{slug}"), &cookie, &csrf).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let head_tree = repo.head().unwrap().peel_to_tree().unwrap();
+    assert!(
+        head_tree.get_path(Path::new(&asset_rel)).is_err(),
+        "asset must be absent from HEAD tree after delete commit"
+    );
+    assert!(
+        head_tree.get_path(Path::new(&sidecar_rel)).is_err(),
+        "sidecar must be absent from HEAD tree after delete commit"
+    );
+}
