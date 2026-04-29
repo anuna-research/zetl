@@ -1301,9 +1301,7 @@ fn evaluate_asset_predicate(
         // Inject scopes
         let scopes = extract_user_scopes_from_access_spl(vault_root, user_id);
         for scope in scopes {
-            runtime_facts.push_str(&format!(
-                "(given (scope \"{safe_user}\" \"{scope}\"))\n"
-            ));
+            runtime_facts.push_str(&format!("(given (scope \"{safe_user}\" \"{scope}\"))\n"));
         }
     }
 
@@ -1316,8 +1314,8 @@ fn evaluate_asset_predicate(
     });
 
     // 4. Build theory and reason
-    let result = build_theory(&spl_blocks)
-        .context("ACL pipeline: failed to build asset access theory")?;
+    let result =
+        build_theory(&spl_blocks).context("ACL pipeline: failed to build asset access theory")?;
 
     // 5. Check conclusion
     for conclusion in &result.conclusions {

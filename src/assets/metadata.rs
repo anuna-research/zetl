@@ -77,7 +77,10 @@ mod tests {
             replaced_at: None,
             version: 1,
         };
-        assert_eq!(cache_control_for(&meta), "public, max-age=31536000, immutable");
+        assert_eq!(
+            cache_control_for(&meta),
+            "public, max-age=31536000, immutable"
+        );
     }
 
     #[test]

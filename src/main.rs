@@ -6229,10 +6229,10 @@ fn cmd_serve(
     let vault_root = std::sync::Arc::new(pipeline.vault_root);
 
     // Initialise asset storage counter (REQ-3519)
-    let asset_storage_total = zetl::assets::store::init_storage_total(&vault_root)
-        .unwrap_or(0);
+    let asset_storage_total = zetl::assets::store::init_storage_total(&vault_root).unwrap_or(0);
     let asset_count = zetl::assets::store::list_assets(&vault_root, None)
-        .map(|v| v.len()).unwrap_or(0);
+        .map(|v| v.len())
+        .unwrap_or(0);
     eprintln!("[zetl] assets: storage_bytes={asset_storage_total} max_bytes={asset_max_total_bytes} count={asset_count}");
 
     let state = zetl::web::WebState {

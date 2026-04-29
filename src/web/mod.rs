@@ -495,8 +495,7 @@ pub async fn run(
         .route("/api/ws/ticket", post(routes::ws_ticket_handler));
 
     // ── Public asset routes (not gated by collab_gate — ACL checked inside handler)
-    let asset_routes = Router::new()
-        .route("/assets/{*path}", get(routes::serve_asset_handler));
+    let asset_routes = Router::new().route("/assets/{*path}", get(routes::serve_asset_handler));
 
     let app = Router::new()
         .merge(auth_routes)

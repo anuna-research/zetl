@@ -7310,7 +7310,9 @@ pub async fn upload_asset_handler(
     if let Err(e) = crate::assets::validation::validate_slug(&slug) {
         return (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "invalid_slug", "slug": slug, "detail": e.to_string()})),
+            Json(
+                serde_json::json!({"error": "invalid_slug", "slug": slug, "detail": e.to_string()}),
+            ),
         )
             .into_response();
     }
@@ -7320,7 +7322,9 @@ pub async fn upload_asset_handler(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     if content_type.is_empty() {
-        eprintln!("[zetl] asset_upload_failed: reason=missing_content_type slug={slug} user=anonymous");
+        eprintln!(
+            "[zetl] asset_upload_failed: reason=missing_content_type slug={slug} user=anonymous"
+        );
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "missing_content_type"})),
@@ -7328,7 +7332,11 @@ pub async fn upload_asset_handler(
             .into_response();
     }
 
-    let base_mime = content_type.split(';').next().unwrap_or(content_type).trim();
+    let base_mime = content_type
+        .split(';')
+        .next()
+        .unwrap_or(content_type)
+        .trim();
     if !crate::assets::validation::check_mime_allowlist(base_mime) {
         eprintln!("[zetl] asset_upload_failed: reason=mime_rejected slug={slug} user=anonymous");
         return (
@@ -7390,7 +7398,9 @@ pub async fn upload_asset_handler(
         match crate::acl::check_can_upload(&state.vault_root, &user_id, is_agent) {
             Ok(true) => {}
             Ok(false) => {
-                eprintln!("[zetl] asset_upload_failed: reason=acl_denied slug={slug} user={user_id}");
+                eprintln!(
+                    "[zetl] asset_upload_failed: reason=acl_denied slug={slug} user={user_id}"
+                );
                 return (
                     StatusCode::FORBIDDEN,
                     Json(serde_json::json!({"error": "forbidden"})),
@@ -7399,11 +7409,7 @@ pub async fn upload_asset_handler(
             }
             Err(e) => {
                 eprintln!("ACL check error: {e}");
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "ACL error",
-                )
-                    .into_response();
+                return (StatusCode::INTERNAL_SERVER_ERROR, "ACL error").into_response();
             }
         }
     }
@@ -7465,7 +7471,10 @@ pub async fn upload_asset_handler(
         new_size as i64
     };
 
-    if !state.asset_storage.try_adjust(delta, state.asset_max_total_bytes) {
+    if !state
+        .asset_storage
+        .try_adjust(delta, state.asset_max_total_bytes)
+    {
         eprintln!("[zetl] asset_upload_failed: reason=storage_exceeded slug={slug} user={user_id}");
         return (
             StatusCode::INSUFFICIENT_STORAGE,
@@ -7495,7 +7504,8 @@ pub async fn upload_asset_handler(
                     Ok(repo) => {
                         let asset_path = crate::assets::store::asset_path(&state.vault_root, slug)
                             .unwrap_or_else(|_| state.vault_root.join(".zetl/assets").join(slug));
-                        let sidecar_path = crate::assets::store::sidecar_path(&state.vault_root, slug);
+                        let sidecar_path =
+                            crate::assets::store::sidecar_path(&state.vault_root, slug);
                         let size_human = meta.size_human();
                         let msg = if is_replace {
                             format!("asset: replace {slug} ({size_human}) [user: {user_id}]")
@@ -7525,12 +7535,18 @@ pub async fn upload_asset_handler(
             }
 
             // Observability (OBS-3501)
-            eprintln!("[zetl] asset_upload: slug={slug} size={} mime={} user={user_id}", meta.size_bytes, meta.mime_type);
+            eprintln!(
+                "[zetl] asset_upload: slug={slug} size={} mime={} user={user_id}",
+                meta.size_bytes, meta.mime_type
+            );
 
             // 90% capacity warning (OBS-3505)
             let new_total = state.asset_storage.total();
             if new_total as f64 > state.asset_max_total_bytes as f64 * 0.9 {
-                eprintln!("[zetl] assets: storage_warning: used={new_total} max={} (90%)", state.asset_max_total_bytes);
+                eprintln!(
+                    "[zetl] assets: storage_warning: used={new_total} max={} (90%)",
+                    state.asset_max_total_bytes
+                );
             }
 
             let status = if is_replace {
@@ -7568,7 +7584,9 @@ pub async fn upload_asset_handler(
             if delta > 0 {
                 state.asset_storage.decrement(delta as u64);
             }
-            eprintln!("[zetl] asset_upload_failed: reason=internal_error slug={slug} user={user_id}");
+            eprintln!(
+                "[zetl] asset_upload_failed: reason=internal_error slug={slug} user={user_id}"
+            );
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"error": "upload_failed"})),
@@ -7595,7 +7613,12 @@ pub async fn serve_asset_handler(
         let (user_id, is_agent) = extract_auth_user(&state, &headers)
             .map(|(id, agent)| (Some(id), agent))
             .unwrap_or((None, false));
-        match crate::acl::check_can_read_assets(&state.vault_root, user_id.as_deref(), vis_mode, is_agent) {
+        match crate::acl::check_can_read_assets(
+            &state.vault_root,
+            user_id.as_deref(),
+            vis_mode,
+            is_agent,
+        ) {
             Ok(true) => {}
             Ok(false) => {
                 // Return 404 for all denials to prevent existence oracle
@@ -7616,8 +7639,10 @@ pub async fn serve_asset_handler(
 
     let cache_control = crate::assets::metadata::cache_control_for(&meta);
     let mut resp = Response::new(axum::body::Body::empty());
-    resp.headers_mut().insert(header::CONTENT_TYPE, meta.mime_type.parse().unwrap());
-    resp.headers_mut().insert(header::CACHE_CONTROL, cache_control.parse().unwrap());
+    resp.headers_mut()
+        .insert(header::CONTENT_TYPE, meta.mime_type.parse().unwrap());
+    resp.headers_mut()
+        .insert(header::CACHE_CONTROL, cache_control.parse().unwrap());
     resp.headers_mut().insert(
         axum::http::HeaderName::from_static("x-content-type-options"),
         "nosniff".parse().unwrap(),
@@ -7646,10 +7671,8 @@ pub async fn serve_asset_handler(
 
     // ETag from SHA-256 (defensive slicing in case sidecar is corrupt)
     let etag_hash = meta.sha256.get(..16).unwrap_or(meta.sha256.as_str());
-    resp.headers_mut().insert(
-        header::ETAG,
-        format!("\"{etag_hash}\"").parse().unwrap(),
-    );
+    resp.headers_mut()
+        .insert(header::ETAG, format!("\"{etag_hash}\"").parse().unwrap());
 
     let file_path = crate::assets::store::asset_path(&state.vault_root, path)
         .unwrap_or_else(|_| state.vault_root.join(".zetl/assets").join(path));
@@ -7697,11 +7720,7 @@ pub async fn list_assets_handler(
             }
             Err(e) => {
                 eprintln!("ACL check error: {e}");
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "ACL error",
-                )
-                    .into_response();
+                return (StatusCode::INTERNAL_SERVER_ERROR, "ACL error").into_response();
             }
         }
     }
@@ -7739,7 +7758,9 @@ pub async fn delete_asset_handler(
     if let Err(e) = crate::assets::validation::validate_slug(&slug) {
         return (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "invalid_slug", "slug": slug, "detail": e.to_string()})),
+            Json(
+                serde_json::json!({"error": "invalid_slug", "slug": slug, "detail": e.to_string()}),
+            ),
         )
             .into_response();
     }
@@ -7769,11 +7790,7 @@ pub async fn delete_asset_handler(
             }
             Err(e) => {
                 eprintln!("ACL check error: {e}");
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "ACL error",
-                )
-                    .into_response();
+                return (StatusCode::INTERNAL_SERVER_ERROR, "ACL error").into_response();
             }
         }
     }
@@ -7823,7 +7840,9 @@ pub async fn delete_asset_handler(
             eprintln!("[zetl] asset_delete: slug={slug} user={user_id}");
             StatusCode::NO_CONTENT.into_response()
         }
-        Err(crate::assets::store::StoreError::SlugNotFound) => StatusCode::NOT_FOUND.into_response(),
+        Err(crate::assets::store::StoreError::SlugNotFound) => {
+            StatusCode::NOT_FOUND.into_response()
+        }
         Err(e) => {
             eprintln!("asset delete error: {e}");
             (
@@ -7869,10 +7888,7 @@ pub async fn admin_assets_handler(
         .and_then(|t| state.sessions.csrf_token(&t))
         .unwrap_or_default();
 
-    let assets = match crate::assets::store::list_assets(&state.vault_root, None) {
-        Ok(a) => a,
-        Err(_) => vec![],
-    };
+    let assets = crate::assets::store::list_assets(&state.vault_root, None).unwrap_or_default();
 
     let used = state.asset_storage.total();
     let max = state.asset_max_total_bytes;

@@ -81,7 +81,7 @@ fn build_collab_state(vault_root: &Path) -> (WebState, String, String) {
         #[cfg(feature = "semantic")]
         vector_index: None,
         asset_storage: zetl::assets::store::StorageCounterGuard::new(0),
-        asset_max_file_bytes: 1024 * 1024, // 1 MiB for tests
+        asset_max_file_bytes: 1024 * 1024,      // 1 MiB for tests
         asset_max_total_bytes: 5 * 1024 * 1024, // 5 MiB for tests
     };
 
@@ -134,12 +134,7 @@ async fn post_bytes(
     (status, String::from_utf8_lossy(&body).to_string())
 }
 
-async fn delete_asset(
-    app: &Router,
-    uri: &str,
-    cookie: &str,
-    csrf: &str,
-) -> StatusCode {
+async fn delete_asset(app: &Router, uri: &str, cookie: &str, csrf: &str) -> StatusCode {
     let req = Request::builder()
         .method("DELETE")
         .uri(uri)
@@ -266,7 +261,11 @@ async fn asset_upload_rejects_oversized_file() {
         &csrf,
     )
     .await;
-    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE, "should reject oversized: {body}");
+    assert_eq!(
+        status,
+        StatusCode::PAYLOAD_TOO_LARGE,
+        "should reject oversized: {body}"
+    );
     assert!(body.contains("file_too_large"), "error should mention size");
 }
 
@@ -285,8 +284,15 @@ async fn asset_upload_rejects_disallowed_mime() {
         &csrf,
     )
     .await;
-    assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE, "should reject bad mime: {body}");
-    assert!(body.contains("mime_type_not_allowed"), "error should mention mime");
+    assert_eq!(
+        status,
+        StatusCode::UNSUPPORTED_MEDIA_TYPE,
+        "should reject bad mime: {body}"
+    );
+    assert!(
+        body.contains("mime_type_not_allowed"),
+        "error should mention mime"
+    );
 }
 
 #[tokio::test]
@@ -305,7 +311,11 @@ async fn asset_upload_rejects_bad_slug() {
     )
     .await;
     // Bad slug is rejected with 400 Bad Request (REQ-3510)
-    assert_eq!(status, StatusCode::BAD_REQUEST, "bad slug should return 400: got {status}");
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "bad slug should return 400: got {status}"
+    );
 }
 
 #[tokio::test]
@@ -323,7 +333,11 @@ async fn asset_upload_requires_create_or_overwrite_header() {
         .body(Body::from(vec![0x89, 0x50, 0x4E, 0x47]))
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "should require X-Create or X-Overwrite");
+    assert_eq!(
+        resp.status(),
+        StatusCode::BAD_REQUEST,
+        "should require X-Create or X-Overwrite"
+    );
 }
 
 #[tokio::test]
@@ -427,7 +441,10 @@ async fn asset_storage_counter_under_concurrency() {
     // Verify counter matches actual on-disk size
     let expected_total: u64 = (0..20).map(|_| 100u64).sum();
     let actual_total = zetl::assets::store::init_storage_total(tmp.path()).unwrap_or(0);
-    assert_eq!(actual_total, expected_total, "storage counter should match actual size");
+    assert_eq!(
+        actual_total, expected_total,
+        "storage counter should match actual size"
+    );
 }
 
 #[tokio::test]
@@ -481,5 +498,8 @@ async fn regression_concurrent_replace_counter_no_drift() {
     assert_eq!(succeeded, 5, "all replaces should succeed");
 
     let actual_total = zetl::assets::store::init_storage_total(tmp.path()).unwrap_or(0);
-    assert_eq!(actual_total, 200, "counter should reflect single file size, not drifted");
+    assert_eq!(
+        actual_total, 200,
+        "counter should reflect single file size, not drifted"
+    );
 }
