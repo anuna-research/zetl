@@ -80,6 +80,9 @@ fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
         scan_options: zetl::scanner::ScanOptions::default(),
         #[cfg(feature = "semantic")]
         vector_index: None,
+        asset_storage: zetl::assets::store::StorageCounterGuard::new(0),
+        asset_max_file_bytes: 10 * 1024 * 1024,
+        asset_max_total_bytes: 100 * 1024 * 1024,
     }
 }
 

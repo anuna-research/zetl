@@ -523,6 +523,12 @@ pub fn parse_envelope(bytes: &[u8]) -> Result<ParsedEnvelope, EnvelopeParseError
 mod tests {
     use super::*;
 
+    /// Shared lock for tests that mutate `ZETL_CAP_SIGNING_KEY_ENV`.
+    /// Must be module-scoped so all such tests serialize against the
+    /// same mutex; a `static LOCK` inside each fn is per-function and
+    /// does NOT serialize between tests.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     fn sample_key() -> VaultSigningKey {
         // Deterministic 32-byte seed; any bytes are a valid Ed25519
         // seed so we don't need a genkey round-trip here.
@@ -848,8 +854,7 @@ mod tests {
     fn load_from_env_reads_zetl_cap_signing_key() {
         // The effectful shell path. Uses an in-process env mutation
         // guarded by a serialisation to avoid cross-test interleaving.
-        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _guard = LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
 
         let raw = [3u8; SIGNING_KEY_LEN];
         let encoded = STANDARD.encode(raw);
@@ -869,8 +874,7 @@ mod tests {
 
     #[test]
     fn load_from_env_reports_missing_env_with_remediation() {
-        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _guard = LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
 
         let prev = env::var(ZETL_CAP_SIGNING_KEY_ENV).ok();
         unsafe { env::remove_var(ZETL_CAP_SIGNING_KEY_ENV) };

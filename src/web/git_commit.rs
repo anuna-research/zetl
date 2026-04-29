@@ -99,6 +99,197 @@ pub fn auto_commit(
     repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &parents)
 }
 
+/// Resolve `file_path` to a repo-relative path suitable for the git index.
+///
+/// Handles three cases:
+/// 1. `file_path` already relative — used as-is.
+/// 2. `file_path` absolute and exists — canonicalized to match the
+///    canonicalized workdir (resolves macOS `/var` → `/private/var`).
+/// 3. `file_path` absolute and the file is gone (e.g. deletion already
+///    moved it to `.tmp/`) — falls back to canonicalizing the parent
+///    directory and joining the filename, so symlink resolution still
+///    works for delete-side commits.
+fn to_repo_relative(repo: &git2::Repository, file_path: &Path) -> std::path::PathBuf {
+    if !file_path.is_absolute() {
+        return file_path.to_path_buf();
+    }
+    let wd = match repo.workdir() {
+        Some(w) => w,
+        None => return file_path.to_path_buf(),
+    };
+    let canon_wd = std::fs::canonicalize(wd).unwrap_or_else(|_| wd.to_path_buf());
+
+    // Existing file path
+    if let Ok(canon_file) = std::fs::canonicalize(file_path) {
+        if let Ok(rel) = canon_file.strip_prefix(&canon_wd) {
+            return rel.to_path_buf();
+        }
+    }
+    // File gone — canonicalize the parent (which usually still exists)
+    // and reconstruct.
+    if let (Some(parent), Some(name)) = (file_path.parent(), file_path.file_name()) {
+        if let Ok(canon_parent) = std::fs::canonicalize(parent) {
+            let reconstructed = canon_parent.join(name);
+            if let Ok(rel) = reconstructed.strip_prefix(&canon_wd) {
+                return rel.to_path_buf();
+            }
+        }
+    }
+    // Best-effort: try plain strip against both canonical and raw wd
+    if let Ok(rel) = file_path.strip_prefix(&canon_wd) {
+        return rel.to_path_buf();
+    }
+    if let Ok(rel) = file_path.strip_prefix(wd) {
+        return rel.to_path_buf();
+    }
+    file_path.to_path_buf()
+}
+
+/// Force-add a file to the index, bypassing `.gitignore`.
+///
+/// `index.add_path()` respects `.gitignore`, so files under ignored
+/// directories (e.g. `.zetl/asset-meta/`) are silently skipped. This helper
+/// reads the file, writes it as a blob, and inserts the entry directly.
+///
+/// `git_path` is the repo-relative path used for the index entry; the
+/// file is read from `workdir.join(git_path)`.
+fn force_add_to_index(
+    repo: &git2::Repository,
+    index: &mut git2::Index,
+    git_path: &Path,
+) -> Result<(), git2::Error> {
+    let abs_path = match repo.workdir() {
+        Some(wd) => wd.join(git_path),
+        None => git_path.to_path_buf(),
+    };
+    let data = std::fs::read(&abs_path).map_err(|e| {
+        git2::Error::from_str(&format!("force_add: failed to read {:?}: {e}", abs_path))
+    })?;
+    let oid = repo.blob(&data)?;
+    let meta = std::fs::metadata(&abs_path).map_err(|e| {
+        git2::Error::from_str(&format!("force_add: failed to stat {:?}: {e}", abs_path))
+    })?;
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok());
+    let (mtime_s, mtime_ns) = match mtime {
+        Some(d) => (d.as_secs() as i32, d.subsec_nanos()),
+        None => (0, 0),
+    };
+    let entry = git2::IndexEntry {
+        ctime: git2::IndexTime::new(0, 0),
+        mtime: git2::IndexTime::new(mtime_s, mtime_ns),
+        dev: 0,
+        ino: 0,
+        mode: 0o100644,
+        uid: 0,
+        gid: 0,
+        file_size: meta.len() as u32,
+        id: oid,
+        flags: 0,
+        flags_extended: 0,
+        path: git_path.to_path_buf().into_os_string().into_encoded_bytes(),
+    };
+    index.add(&entry)
+}
+
+/// Commit multiple file changes to the vault's git repository.
+///
+/// Like [`auto_commit`], but stages multiple files in a single commit.
+/// When `force` is `true`, files are force-added (bypassing `.gitignore`),
+/// which is needed for assets stored under the ignored `.zetl/` directory.
+pub fn auto_commit_multi(
+    repo: &git2::Repository,
+    file_paths: &[&Path],
+    user_name: &str,
+    user_id: &str,
+    message: Option<&str>,
+    force: bool,
+) -> Result<git2::Oid, git2::Error> {
+    let mut index = repo.index()?;
+    for file_path in file_paths {
+        let git_path = to_repo_relative(repo, file_path);
+        if git_path.is_absolute() {
+            return Err(git2::Error::from_str(&format!(
+                "file path {file_path:?} could not be resolved relative to the repository working directory"
+            )));
+        }
+        if force {
+            force_add_to_index(repo, &mut index, &git_path)?;
+        } else {
+            index.add_path(&git_path)?;
+        }
+    }
+    index.write()?;
+    let tree_oid = index.write_tree()?;
+    let tree = repo.find_tree(tree_oid)?;
+
+    let email = format!("{user_id}@vault");
+    let sig = git2::Signature::now(user_name, &email)?;
+    let msg = message.unwrap_or("edit: multi");
+
+    let parent = match repo.head() {
+        Ok(head_ref) => {
+            let commit = head_ref.peel_to_commit()?;
+            Some(commit)
+        }
+        Err(e) if e.code() == git2::ErrorCode::UnbornBranch => None,
+        Err(e) => return Err(e),
+    };
+    let parents: Vec<&git2::Commit> = parent.iter().collect();
+
+    repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &parents)
+}
+
+/// Commit file removals to the vault's git repository.
+///
+/// Like [`auto_commit`], but stages removals via `index.remove_path()`
+/// instead of additions.
+pub fn auto_commit_removals(
+    repo: &git2::Repository,
+    file_paths: &[&Path],
+    user_name: &str,
+    user_id: &str,
+    message: Option<&str>,
+) -> Result<git2::Oid, git2::Error> {
+    let mut index = repo.index()?;
+    for file_path in file_paths {
+        let git_path = to_repo_relative(repo, file_path);
+        if git_path.is_absolute() {
+            return Err(git2::Error::from_str(&format!(
+                "file path {file_path:?} could not be resolved relative to the repository working directory"
+            )));
+        }
+        // Tolerate paths that are not in the index — e.g. an asset whose
+        // sidecar was never committed, or a delete called twice.
+        match index.remove_path(&git_path) {
+            Ok(()) => {}
+            Err(e) if e.code() == git2::ErrorCode::NotFound => {}
+            Err(e) => return Err(e),
+        }
+    }
+    index.write()?;
+    let tree_oid = index.write_tree()?;
+    let tree = repo.find_tree(tree_oid)?;
+
+    let email = format!("{user_id}@vault");
+    let sig = git2::Signature::now(user_name, &email)?;
+    let msg = message.unwrap_or("edit: removal");
+
+    let parent = match repo.head() {
+        Ok(head_ref) => {
+            let commit = head_ref.peel_to_commit()?;
+            Some(commit)
+        }
+        Err(e) if e.code() == git2::ErrorCode::UnbornBranch => None,
+        Err(e) => return Err(e),
+    };
+    let parents: Vec<&git2::Commit> = parent.iter().collect();
+
+    repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &parents)
+}
+
 /// Run `jj git import` to synchronize jj's view after a git2 commit.
 ///
 /// This is necessary because jj in colocated mode needs to see git commits
@@ -115,11 +306,9 @@ pub fn jj_git_import(vault_root: &Path) {
             let stderr = String::from_utf8_lossy(&output.stderr);
             eprintln!("warning: jj git import failed: {}", stderr.trim());
         }
-        Err(e) => {
-            // jj not installed or not in PATH — not fatal.
-            if e.kind() != std::io::ErrorKind::NotFound {
-                eprintln!("warning: jj git import error: {e}");
-            }
+        // jj not installed or not in PATH — not fatal.
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+            eprintln!("warning: jj git import error: {e}");
         }
         _ => {}
     }

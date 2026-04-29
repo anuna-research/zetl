@@ -318,6 +318,12 @@ pub enum Command {
         /// audit / hostile-theme-inspection surface.
         #[arg(long)]
         safe_mode: bool,
+        /// Maximum size of a single uploaded asset in bytes (default: 10 MiB)
+        #[arg(long, default_value_t = 10 * 1024 * 1024, requires = "collab")]
+        asset_max_file_bytes: u64,
+        /// Maximum total asset storage in bytes (default: 100 MiB)
+        #[arg(long, default_value_t = 100 * 1024 * 1024, requires = "collab")]
+        asset_max_total_bytes: u64,
         #[command(flatten)]
         scan: ScanArgs,
     },

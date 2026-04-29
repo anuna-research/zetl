@@ -1,0 +1,6 @@
+[toolchain]
+# Track latest stable to match CI's `rust:1-bookworm` floating tag, so
+# new clippy lints surface locally before they fail CI. Override locally
+# with `RUSTUP_TOOLCHAIN=...` if you need a specific version.
+channel = "stable"
+components = ["rustfmt", "clippy"]

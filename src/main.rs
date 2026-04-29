@@ -2999,7 +2999,7 @@ fn cmd_list(cli: &Cli) -> Result<()> {
             path: f.path.to_string_lossy().to_string(),
         })
         .collect();
-    pages.sort_by(|a, b| a.page.to_lowercase().cmp(&b.page.to_lowercase()));
+    pages.sort_by_key(|a| a.page.to_lowercase());
 
     #[derive(Serialize)]
     struct ListOutput {
@@ -3595,7 +3595,7 @@ fn cmd_export(cli: &Cli) -> Result<()> {
             path,
         });
     }
-    nodes.sort_by(|a, b| a.page.to_lowercase().cmp(&b.page.to_lowercase()));
+    nodes.sort_by_key(|a| a.page.to_lowercase());
 
     // Collect deduplicated edges
     let mut edge_set: HashSet<(String, String)> = HashSet::new();
@@ -5981,6 +5981,8 @@ fn cmd_serve(
     server_key_seed: Option<&str>,
     git_poll_interval: std::time::Duration,
     safe_mode: bool,
+    asset_max_file_bytes: u64,
+    asset_max_total_bytes: u64,
 ) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
@@ -6226,6 +6228,13 @@ fn cmd_serve(
 
     let vault_root = std::sync::Arc::new(pipeline.vault_root);
 
+    // Initialise asset storage counter (REQ-3519)
+    let asset_storage_total = zetl::assets::store::init_storage_total(&vault_root).unwrap_or(0);
+    let asset_count = zetl::assets::store::list_assets(&vault_root, None)
+        .map(|v| v.len())
+        .unwrap_or(0);
+    eprintln!("[zetl] assets: storage_bytes={asset_storage_total} max_bytes={asset_max_total_bytes} count={asset_count}");
+
     let state = zetl::web::WebState {
         data: std::sync::Arc::new(std::sync::RwLock::new(data)),
         crdt_store: zetl::web::ws::CrdtDocStore::new(vault_root.clone()),
@@ -6267,6 +6276,9 @@ fn cmd_serve(
         scan_options: cli.scan_options(),
         #[cfg(feature = "semantic")]
         vector_index,
+        asset_storage: zetl::assets::store::StorageCounterGuard::new(asset_storage_total),
+        asset_max_file_bytes,
+        asset_max_total_bytes,
     };
 
     // ── TLS enforcement (REQ-020-067) ──────────────────────────────────
@@ -11251,6 +11263,8 @@ fn main() -> anyhow::Result<()> {
             server_key_seed,
             git_poll_interval,
             safe_mode,
+            asset_max_file_bytes,
+            asset_max_total_bytes,
             scan: _,
         } => cmd_serve(
             &cli,
@@ -11264,6 +11278,8 @@ fn main() -> anyhow::Result<()> {
             server_key_seed.as_deref(),
             *git_poll_interval,
             *safe_mode,
+            *asset_max_file_bytes,
+            *asset_max_total_bytes,
         ),
         Command::Invite {
             as_user,

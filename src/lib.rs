@@ -1,5 +1,6 @@
 #[cfg(feature = "reason")]
 pub mod acl;
+pub mod assets;
 pub mod cache;
 pub mod cap;
 pub mod cli;
