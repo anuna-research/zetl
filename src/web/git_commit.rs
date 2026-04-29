@@ -99,15 +99,60 @@ pub fn auto_commit(
     repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &parents)
 }
 
+/// Force-add a file to the index, bypassing `.gitignore`.
+///
+/// `index.add_path()` respects `.gitignore`, so files under ignored
+/// directories (e.g. `.zetl/assets/`) are silently skipped. This helper
+/// reads the file, writes it as a blob, and inserts the entry directly.
+fn force_add_to_index(
+    repo: &git2::Repository,
+    index: &mut git2::Index,
+    git_path: &Path,
+) -> Result<(), git2::Error> {
+    let data = std::fs::read(git_path).map_err(|e| {
+        git2::Error::from_str(&format!("force_add: failed to read {:?}: {e}", git_path))
+    })?;
+    let oid = repo.blob(&data)?;
+    let meta = std::fs::metadata(git_path).map_err(|e| {
+        git2::Error::from_str(&format!("force_add: failed to stat {:?}: {e}", git_path))
+    })?;
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok());
+    let (mtime_s, mtime_ns) = match mtime {
+        Some(d) => (d.as_secs() as i32, d.subsec_nanos()),
+        None => (0, 0),
+    };
+    let entry = git2::IndexEntry {
+        ctime: git2::IndexTime::new(0, 0),
+        mtime: git2::IndexTime::new(mtime_s, mtime_ns),
+        dev: 0,
+        ino: 0,
+        mode: 0o100644,
+        uid: 0,
+        gid: 0,
+        file_size: meta.len() as u32,
+        id: oid,
+        flags: 0,
+        flags_extended: 0,
+        path: git_path.to_path_buf().into_os_string().into_encoded_bytes(),
+    };
+    index.add(&entry)
+}
+
 /// Commit multiple file changes to the vault's git repository.
 ///
 /// Like [`auto_commit`], but stages multiple files in a single commit.
+/// When `force` is `true`, files are force-added (bypassing `.gitignore`),
+/// which is needed for assets stored under the ignored `.zetl/` directory.
 pub fn auto_commit_multi(
     repo: &git2::Repository,
     file_paths: &[&Path],
     user_name: &str,
     user_id: &str,
     message: Option<&str>,
+    force: bool,
 ) -> Result<git2::Oid, git2::Error> {
     let mut index = repo.index()?;
     for file_path in file_paths {
@@ -131,7 +176,11 @@ pub fn auto_commit_multi(
         } else {
             file_path.to_path_buf()
         };
-        index.add_path(&git_path)?;
+        if force {
+            force_add_to_index(repo, &mut index, &git_path)?;
+        } else {
+            index.add_path(&git_path)?;
+        }
     }
     index.write()?;
     let tree_oid = index.write_tree()?;

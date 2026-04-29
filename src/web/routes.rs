@@ -7523,6 +7523,7 @@ pub async fn upload_asset_handler(
                             &user_id,
                             &user_id,
                             Some(&msg),
+                            true,
                         );
                         crate::web::git_commit::jj_git_import(&state.vault_root);
                     }
