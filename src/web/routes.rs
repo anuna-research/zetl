@@ -7351,7 +7351,7 @@ pub async fn upload_asset_handler(
             .into_response();
     }
 
-    // Storage quota
+    // Storage quota — read-only fast rejection
     let current_total = state.asset_storage.total();
     if current_total + content_length > state.asset_max_total_bytes {
         eprintln!("[zetl] asset_upload_failed: reason=storage_exceeded slug={slug} user=anonymous");
@@ -7450,8 +7450,22 @@ pub async fn upload_asset_handler(
 
     // Record old size for accurate counter update on replacement (BUG-001)
     let old_size = crate::assets::store::serve_asset(&state.vault_root, slug)
-        .map(|(meta, _)| meta.size_bytes)
+        .map(|meta| meta.size_bytes)
         .unwrap_or(0);
+
+    // Atomic quota reservation (prevents TOCTOU race under concurrent uploads)
+    if !state.asset_storage.try_increment(content_length, state.asset_max_total_bytes) {
+        eprintln!("[zetl] asset_upload_failed: reason=storage_exceeded slug={slug} user={user_id}");
+        return (
+            StatusCode::INSUFFICIENT_STORAGE,
+            Json(serde_json::json!({
+                "error": "storage_quota_exceeded",
+                "quota_bytes": state.asset_max_total_bytes,
+                "used_bytes": state.asset_storage.total(),
+            })),
+        )
+            .into_response();
+    }
 
     match crate::assets::store::write_asset(
         &state.vault_root,
@@ -7464,8 +7478,7 @@ pub async fn upload_asset_handler(
         Ok(meta) => {
             let is_replace = meta.replaced_at.is_some();
 
-            // Update storage counter: add new, subtract old (BUG-001)
-            state.asset_storage.increment(meta.size_bytes);
+            // Adjust counter for replacement: new size already reserved via try_increment
             if old_size > 0 {
                 state.asset_storage.decrement(old_size);
             }
@@ -7528,6 +7541,7 @@ pub async fn upload_asset_handler(
                 .into_response()
         }
         Err(crate::assets::store::StoreError::InvalidSlug(_)) => {
+            state.asset_storage.decrement(content_length);
             eprintln!("[zetl] asset_upload_failed: reason=invalid_slug slug={slug} user={user_id}");
             (
                 StatusCode::BAD_REQUEST,
@@ -7536,6 +7550,7 @@ pub async fn upload_asset_handler(
                 .into_response()
         }
         Err(e) => {
+            state.asset_storage.decrement(content_length);
             eprintln!("[zetl] asset_upload_failed: reason=internal_error slug={slug} user={user_id}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -7560,8 +7575,9 @@ pub async fn serve_asset_handler(
     #[cfg(feature = "reason")]
     {
         let vis_mode = crate::acl::query_visibility_mode(&state.vault_root);
-        let user_id = extract_auth_user(&state, &headers).map(|(id, _)| id);
-        let is_agent = extract_auth_user(&state, &headers).map(|(_, agent)| agent).unwrap_or(false);
+        let (user_id, is_agent) = extract_auth_user(&state, &headers)
+            .map(|(id, agent)| (Some(id), agent))
+            .unwrap_or((None, false));
         match crate::acl::check_can_read_assets(&state.vault_root, user_id.as_deref(), vis_mode, is_agent) {
             Ok(true) => {}
             Ok(false) => {
@@ -7576,7 +7592,7 @@ pub async fn serve_asset_handler(
     }
 
     // Resolve metadata and open file
-    let (meta, _file) = match crate::assets::store::serve_asset(&state.vault_root, path) {
+    let meta = match crate::assets::store::serve_asset(&state.vault_root, path) {
         Ok(v) => v,
         Err(_) => return StatusCode::NOT_FOUND.into_response(),
     };
@@ -7737,10 +7753,20 @@ pub async fn delete_asset_handler(
         }
     }
 
-    // Get size before deleting for counter adjustment
-    let size_before = crate::assets::store::serve_asset(&state.vault_root, slug)
-        .map(|(meta, _)| meta.size_bytes)
-        .unwrap_or(0);
+    // Get size and paths before deleting for counter adjustment and git commit
+    let (size_before, asset_path, sidecar_path) =
+        crate::assets::store::serve_asset(&state.vault_root, slug)
+            .map(|meta| {
+                let ap = crate::assets::store::asset_path(&state.vault_root, slug)
+                    .unwrap_or_else(|_| state.vault_root.join(".zetl/assets").join(slug));
+                let sp = crate::assets::store::sidecar_path(&state.vault_root, slug);
+                (meta.size_bytes, ap, sp)
+            })
+            .unwrap_or_else(|_| {
+                let ap = state.vault_root.join(".zetl/assets").join(slug);
+                let sp = crate::assets::store::sidecar_path(&state.vault_root, slug);
+                (0, ap, sp)
+            });
 
     match crate::assets::store::delete_asset(&state.vault_root, slug) {
         Ok(()) => {
@@ -7750,9 +7776,10 @@ pub async fn delete_asset_handler(
             if let Some(ref lock) = state.git_commit_lock {
                 if let Ok(repo) = lock.lock() {
                     let msg = format!("asset: delete {slug} [user: {user_id}]");
-                    let _ = crate::web::git_commit::auto_commit_multi(
+                    let paths: Vec<&std::path::Path> = vec![&asset_path, &sidecar_path];
+                    let _ = crate::web::git_commit::auto_commit_removals(
                         &repo,
-                        &[],
+                        &paths,
                         &user_id,
                         &user_id,
                         Some(&msg),

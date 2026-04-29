@@ -154,6 +154,57 @@ pub fn auto_commit_multi(
     repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &parents)
 }
 
+/// Commit file removals to the vault's git repository.
+///
+/// Like [`auto_commit`], but stages removals via `index.remove_path()`
+/// instead of additions.
+pub fn auto_commit_removals(
+    repo: &git2::Repository,
+    file_paths: &[&Path],
+    user_name: &str,
+    user_id: &str,
+    message: Option<&str>,
+) -> Result<git2::Oid, git2::Error> {
+    let mut index = repo.index()?;
+    for file_path in file_paths {
+        let git_path = if file_path.is_absolute() {
+            if let Some(wd) = repo.workdir() {
+                let canon_file =
+                    std::fs::canonicalize(file_path).unwrap_or_else(|_| file_path.to_path_buf());
+                let canon_wd = std::fs::canonicalize(wd).unwrap_or_else(|_| wd.to_path_buf());
+                canon_file
+                    .strip_prefix(&canon_wd)
+                    .unwrap_or(file_path)
+                    .to_path_buf()
+            } else {
+                file_path.to_path_buf()
+            }
+        } else {
+            file_path.to_path_buf()
+        };
+        index.remove_path(&git_path)?;
+    }
+    index.write()?;
+    let tree_oid = index.write_tree()?;
+    let tree = repo.find_tree(tree_oid)?;
+
+    let email = format!("{user_id}@vault");
+    let sig = git2::Signature::now(user_name, &email)?;
+    let msg = message.unwrap_or("edit: removal");
+
+    let parent = match repo.head() {
+        Ok(head_ref) => {
+            let commit = head_ref.peel_to_commit()?;
+            Some(commit)
+        }
+        Err(e) if e.code() == git2::ErrorCode::UnbornBranch => None,
+        Err(e) => return Err(e),
+    };
+    let parents: Vec<&git2::Commit> = parent.iter().collect();
+
+    repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &parents)
+}
+
 /// Run `jj git import` to synchronize jj's view after a git2 commit.
 ///
 /// This is necessary because jj in colocated mode needs to see git commits

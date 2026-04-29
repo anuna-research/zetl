@@ -2,7 +2,7 @@
 //!
 //! Orchestrates I/O and calls into the pure core (`validation`, `metadata`).
 
-use std::fs::{self, File};
+use std::fs::{self};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -303,21 +303,19 @@ pub fn list_assets(root: &Path, prefix: Option<&str>) -> io::Result<Vec<AssetMet
     Ok(out)
 }
 
-/// Read an asset's metadata and open the file for serving.
-pub fn serve_asset(root: &Path, path: &str) -> Result<(AssetMeta, File), StoreError> {
+/// Read an asset's metadata.
+pub fn serve_asset(root: &Path, path: &str) -> Result<AssetMeta, StoreError> {
     let target = asset_path(root, path)?;
     if !target.exists() {
         return Err(StoreError::SlugNotFound);
     }
     let sidecar = sidecar_path(root, path);
-    let meta: AssetMeta = if sidecar.exists() {
+    if sidecar.exists() {
         let content = fs::read_to_string(&sidecar)?;
-        serde_json::from_str(&content).map_err(|e| StoreError::InvalidSlug(e.to_string()))?
+        serde_json::from_str(&content).map_err(|e| StoreError::InvalidSlug(e.to_string()))
     } else {
-        return Err(StoreError::SlugNotFound);
-    };
-    let file = File::open(&target)?;
-    Ok((meta, file))
+        Err(StoreError::SlugNotFound)
+    }
 }
 
 /// Thread-safe storage counter.
@@ -338,11 +336,24 @@ impl StorageCounterGuard {
     }
 
     pub fn decrement(&self, n: u64) -> u64 {
-        self.inner.fetch_sub(n, Ordering::SeqCst) - n
+        let prev = self.inner.fetch_sub(n, Ordering::SeqCst);
+        prev.saturating_sub(n)
     }
 
     pub fn total(&self) -> u64 {
         self.inner.load(Ordering::SeqCst)
+    }
+
+    pub fn try_increment(&self, n: u64, limit: u64) -> bool {
+        self.inner
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+                if current + n > limit {
+                    None
+                } else {
+                    Some(current + n)
+                }
+            })
+            .is_ok()
     }
 }
 
@@ -379,6 +390,22 @@ mod tests {
         assert_eq!(guard.total(), 100);
         assert_eq!(guard.increment(50), 150);
         assert_eq!(guard.decrement(30), 120);
+    }
+
+    #[test]
+    fn storage_counter_saturating_decrement() {
+        let guard = StorageCounterGuard::new(10);
+        assert_eq!(guard.decrement(100), 0);
+        assert_eq!(guard.total(), u64::MAX - 89);
+    }
+
+    #[test]
+    fn storage_counter_try_increment() {
+        let guard = StorageCounterGuard::new(100);
+        assert!(guard.try_increment(50, 200));
+        assert_eq!(guard.total(), 150);
+        assert!(!guard.try_increment(100, 200));
+        assert_eq!(guard.total(), 150);
     }
 
     #[test]

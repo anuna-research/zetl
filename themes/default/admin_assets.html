@@ -196,7 +196,7 @@
           <td>{{ a.size_human }}</td>
           <td>{{ a.uploaded_by }}</td>
           <td>{{ a.uploaded_at }}</td>
-          <td><button type="button" class="aa-delete-btn" onclick="deleteAsset('{{ a.slug }}')">Delete</button></td>
+          <td><button type="button" class="aa-delete-btn" data-slug="{{ a.slug }}">Delete</button></td>
         </tr>
         {% endfor %}
       </tbody>
@@ -289,7 +289,7 @@
       if (!r.ok) return r.json().then(function(d){ throw d; });
       successEl.textContent = 'Deleted: ' + slug;
       successEl.style.display = 'block';
-      var row = document.querySelector('tr[data-slug="' + slug + '"]');
+      var row = document.querySelector('tr[data-slug="' + CSS.escape(slug) + '"]');
       if (row) row.remove();
     })
     .catch(function(err){
@@ -297,6 +297,11 @@
       errorEl.style.display = 'block';
     });
   };
+
+  document.getElementById('aa-asset-list').addEventListener('click', function(e){
+    var btn = e.target.closest('.aa-delete-btn');
+    if (btn) window.deleteAsset(btn.dataset.slug);
+  });
 })();
 </script>
 {% endblock %}
