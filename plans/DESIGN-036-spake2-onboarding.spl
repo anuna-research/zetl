@@ -1,0 +1,379 @@
+;; DESIGN-036-spake2-onboarding: SPAKE2 Onboarding Flow for `zetl --collab`
+;; Research and design plan producing SPEC-036-spake2-onboarding (specification)
+;; and IMPL-036-spake2-onboarding (implementation plan, scaffolded but NOT executed).
+;;
+;; Scope: USDD Phase 1 (Vision → Specification) + Phase 2 (Specification → Plan).
+;; OUT OF SCOPE: code generation. Cryptography + Authentication core sit in the
+;; USDD §AI Trust Boundaries "no-go" list and require explicit human approval
+;; before any Phase 3 work begins. This plan ends at "human-review-package
+;; delivered + IMPL-036-spake2-onboarding drafted."
+;;
+;; Review tier: Tier 1 (security-sensitive, no-go area) — mandates cross-model
+;; adversarial review + human domain expert per USDD §Multi-Model Cognitive
+;; Diversity. Constitutional principle §12 (Adversarial Review) requires the
+;; reviewer to start from a clean context.
+
+(meta plan
+  (id "DESIGN-036")
+  (title "SPAKE2 Onboarding Flow for --collab")
+  (version "0.1.0")
+  (status "draft")
+  (created "2026-04-30")
+  (author "agent:claude")
+  (spec "SPEC-036")
+  (description "Research and design a SPAKE2-based onboarding flow for zetl --collab mode. Currently --collab uses JWT-in-URL invitations (src/user/invite.rs); SPAKE2 already exists for capability pairing in src/cap/pair.rs (using magic-wormhole's spake2 crate, 4-word BIP39 phrases, nonce store, HMAC handoff). This plan determines (a) whether SPAKE2 should replace, augment, or coexist with the JWT-URL invite path; (b) the correct OOB-vs-URL split (SPAKE2 security depends on the password never being transmitted; URL-with-phrase defeats it); (c) how scope (folder/page/role) is bound to a SPAKE2-derived session; (d) how synchronous vs asynchronous onboarding ceremonies are supported. Outputs: specs/SPEC-036-spake2-onboarding.md, /users/collab-onboarding/{user,happy-paths}.md, ADR-### records, CON-### contracts, TEST-### specifications, threat model, cross-model adversarial review, human-expert review package, and plans/IMPL-036-spake2-onboarding.spl scaffolded for downstream implementation. NO CODE IS WRITTEN UNDER THIS PLAN — Phase 3 begins only after human approval."))
+
+;; ── Agents ──────────────────────────────────────────────
+(given agent-claude-available)
+
+;; ── Tasks ───────────────────────────────────────────────
+
+;; Phase 0: Survey (parallel, no deps)
+(given task-survey-existing-spake2)
+(given task-survey-collab-invite-flow)
+(given task-prior-art-research)
+
+;; Phase 1: User profiles and happy paths (USDD Phase 1)
+(given task-user-profiles)
+(given task-happy-paths)
+
+;; Phase 2: Requirements (USDD Phase 1 cont.)
+(given task-draft-requirements)
+(given task-synthetic-user-run)
+(given task-phase1-quality-gates)
+
+;; Phase 3: Architecture and contracts (USDD Phase 2)
+(given task-adr-pake-vs-bearer)
+(given task-adr-sync-vs-async)
+(given task-adr-scope-binding)
+(given task-contracts)
+(given task-purity-boundary-map)
+(given task-test-strategy)
+(given task-threat-model)
+(given task-phase2-quality-gates)
+
+;; Phase 4: Tier 1 adversarial review
+(given task-cross-model-review)
+(given task-human-expert-review-package)
+
+;; Phase 5: Implementation planning (no code)
+(given task-draft-impl-036)
+(given task-mark-spec-approved)
+
+;; ── No-deps markers ────────────────────────────────────
+(given no-deps-survey-existing-spake2)
+(given no-deps-survey-collab-invite-flow)
+(given no-deps-prior-art-research)
+
+;; ── Task Metadata ──────────────────────────────────────
+
+(meta task-survey-existing-spake2
+  (description "Audit src/cap/pair.rs end-to-end: document the SPAKE2 session driver (Spake2<Ed25519Group>::start_symmetric), the 4-word BIP39 phrase format and entropy (~44 bits), the PAIR_SPAKE2_IDENTITY domain-separation label, the HKDF-derived handoff key, the HMAC verification step, and the nonce-store contract (.zetl/caps/.pair-nonces). Map every public function in cap::pair, every error variant in PairingError, and the on-disk artefacts. Cross-reference src/cap/invite.rs and any other cap::* modules that consume pair.rs primitives. Output a single research note answering: which primitives are reusable as-is for collab onboarding? Which are pair-specific and would need generalising? What is the trust model PairingError encodes (e.g., 'phrase mismatch' vs 'replay attempted')?")
+  (acceptance "research/SPEC-036-survey-spake2.md exists and contains: (a) public-API table for cap::pair with type signatures and docstrings; (b) call-graph showing where cap::pair is consumed today; (c) list of 'reusable as-is' vs 'requires generalisation' primitives; (d) explicit identification of any cryptographic constants, identity strings, or key-derivation labels that would need new domain-separation values for the collab use case (constants must NOT be reused across protocols).")
+  (trace "SPEC-036/research"))
+
+(meta task-survey-collab-invite-flow
+  (description "Document the current --collab invitation path end-to-end. Source files: src/user/invite.rs (server key, JWT generation, nonce tracking, pending-invitation persistence, invitation_url), src/cli.rs (the cmd_invite flag wiring), src/main.rs cmd_invite handler, src/web/session.rs (how a redeemed JWT becomes a session), src/acl.rs (how scope claims are enforced). Record: the JWT claims schema (sub, exp, nonce, pages, scope shape), the server signing key lifecycle (load_or_create, load_or_derive from BIP39, file-permission requirements), nonce-store semantics (try_consume_nonce, mark_invitation_consumed), URL format (invitation_url), expiry defaults, and revocation (revoke_invitation). Identify exactly which steps a collaborator goes through today from receiving the URL to first edit, and where the JWT-URL model diverges from a SPAKE2 model. The output is a baseline reference; SPEC-036 will inherit or replace each piece deliberately.")
+  (acceptance "research/SPEC-036-current-invite-flow.md exists and contains: (a) sequence diagram or numbered narrative covering invite-generate → URL-share → click → JWT-validate → session-establish → first-edit; (b) JWT claims schema in JSON-Schema or equivalent; (c) lifecycle of every persisted artefact (.zetl/collab/server-key, pending-invites.json, nonces); (d) explicit list of properties the current model relies on for security (e.g., 'URL is bearer; channel-confidentiality of URL = auth confidentiality') so SPEC-036 can preserve, replace, or relax each one consciously.")
+  (trace "SPEC-036/research"))
+
+(meta task-prior-art-research
+  (description "Research prior art on small-team auth ceremonies that avoid SSO. Mandatory references: (1) Magic Wormhole — code format (e.g., 4-purple-sausages), single-use semantics, server-mailbox pattern, threat model, why it puts the password OOB and the URL/server is public. (2) Tailscale device pairing — invite-key + machine-key flow, pre-auth keys, ACL tag binding. (3) Signal / iMessage device-linking QR codes. (4) FIDO/WebAuthn cross-device passkey sync. (5) Git over SSH — keys-as-identity, no central IdP. (6) Cryptpad — URL fragments as capabilities (the inverse — bearer in URL; document this as the OPPOSING design point). (7) The 'urbit invite' / planet-issuance model (peer-issued identity). For each: ceremony shape (synchronous vs async), what's load-bearing in the OOB channel, revocation story, scope/ACL story, what's appropriate to borrow for zetl's PKM-graph use case, and what isn't. Use Context7 / WebFetch — do not rely on training-data summaries of specs.")
+  (acceptance "research/SPEC-036-prior-art.md exists with one labelled section per reference, each containing: ceremony narrative, threat model in 3-5 bullets, what zetl can borrow, what it must NOT borrow (and why). Includes an explicit 'URL-with-phrase ANTI-PATTERN' subsection explaining why the user's first-pass instinct ('share a link containing the phrase') reduces SPAKE2 to bearer-token semantics — citing the magic-wormhole rationale.")
+  (trace "SPEC-036/research"))
+
+(meta task-user-profiles
+  (description "Build user profiles for the four collab-onboarding archetypes: (1) Vault Owner — self-hoster who runs zetl serve --collab, generates invites, decides scope; (2) Synchronous Collaborator — joining while in the same Slack/iMessage/in-person channel as the owner, code-readable in real time; (3) Asynchronous Collaborator — receiving an invite that must sit in an inbox for hours/days before redemption; (4) Operator/Administrator — managing many vaults, rotating keys, revoking access at scale (may be the same human as 1 in solo cases). For each: role, goals, technical proficiency (CLI-fluent? Comfortable copying a 4-word phrase?), environment (terminal-only? Browser? Mobile?), constraints (trust assumptions, channel availability), daily workflow. Profiles must be specific enough that a synthetic user can be played from them without further interpretation. File location per USDD: /users/collab-onboarding/user.md (note: this directory does not yet exist — create it).")
+  (acceptance "/users/collab-onboarding/user.md exists with all four profiles in the USDD §Synthetic User Protocol template; constraints are precise (e.g., 'CLI-fluent: knows what `zetl serve` does; assumed comfortable with 4-word phrases ≤ 30s typing'); each profile names the OOB channel(s) it has access to.")
+  (trace "SPEC-036 §2"))
+
+(meta task-happy-paths
+  (description "Define happy paths for each user profile × onboarding shape. At minimum: (HP1) Vault Owner generates invite for Synchronous Collaborator over Slack DM — SPAKE2 phrase shared in DM, collaborator runs `zetl collab join`, types phrase, ceremony completes in ≤ 60s. (HP2) Vault Owner generates invite for Asynchronous Collaborator — what is the artefact that survives an inbox? (this happy path will probably surface that pure SPAKE2 cannot serve it; record that finding rather than forcing a fit.) (HP3) Operator revokes a previously-granted access. (HP4) Vault Owner narrows scope post-grant (e.g., demotes a folder write to read). For each: preconditions, numbered steps with action → expected response, postconditions, and an enumerated failure-modes list (wrong phrase, expired phrase, channel intercept, server unreachable, scope insufficient at first request). Write per USDD §Synthetic User Protocol template. Location: /users/collab-onboarding/happy-paths.md.")
+  (acceptance "/users/collab-onboarding/happy-paths.md exists with HP1-HP4 in template; HP2 explicitly notes whether SPAKE2 serves it or whether a separate async path (e.g., signed-bearer URL) is required, and the finding is logged as a candidate REQ; failure-modes lists are non-empty for every happy path.")
+  (trace "SPEC-036 §3"))
+
+(meta task-draft-requirements
+  (description "Draft the SPEC-036-spake2-onboarding.md document head-to-toe, populating REQ-### / NFR-### / ADR-### / CON-### / TEST-### / OBS-### artefacts. Inherit numbering: examine specs/SPEC-035.md to find the highest existing number per prefix, increment from there. The spec MUST address: (a) ceremony shape — sync SPAKE2, async signed-bearer, or both; (b) phrase format and entropy floor (NFR — ≥ 44 bits matches existing cap::pair; consider higher); (c) OOB channel assumption (REQ — phrase MUST NOT travel in the URL); (d) scope binding (REQ — scope claim cryptographically bound to derived key, replay-resistant); (e) revocation (REQ — owner can revoke; SLO on propagation); (f) auditability (OBS — every onboarding attempt logged with outcome); (g) failure UX (REQ — wrong-phrase error message MUST NOT distinguish 'phrase wrong' vs 'replay detected' from a user-visible perspective, to avoid oracle); (h) compatibility with existing JWT-URL flow (ADR — coexist, supersede, or deprecate). Apply USDD §Quality Attribute Checklist to every requirement. Use the SPEC-027.md / SPEC-035.md document structure as the template (information table, user profiles section reference, REQ/NFR sections, contracts, ADRs, threat model placeholder for T15).")
+  (acceptance "specs/SPEC-036-spake2-onboarding.md exists with: (1) information-table frontmatter (id SPEC-036, title, status draft, version 0.1.0, created 2026-04-30, author agent:claude); (2) Vision section; (3) reference to /users/collab-onboarding/; (4) ≥ 8 REQs covering the dimensions enumerated in description; (5) ≥ 4 NFRs (entropy floor, time-to-onboard percentile, revocation propagation SLO, failure-message indistinguishability); (6) traceability table linking each REQ to candidate TEST-### IDs; (7) USDD Quality Attribute Checklist passed for every REQ — checklist included at end of document with pass/fail per item.")
+  (trace "SPEC-036 §3 §4"))
+
+(meta task-synthetic-user-run
+  (description "Execute the four happy paths from /users/collab-onboarding/happy-paths.md as synthetic-user simulations against the draft SPEC-036. The synthetic user agent does NOT see the implementation (none exists); it works from SPEC-036 + user profile + happy path only. Per USDD §Synthetic User Protocol §3: log model/version, user profile, happy path under test, date. For each step, record (a) what the user attempted; (b) what SPEC-036 says happens; (c) whether the user's expectation matched; (d) any confusion or assumption. Categorise findings per the USDD finding taxonomy (Gap, Ambiguity, Friction, Error path gap, Accessibility barrier, Assumption, Sequencing issue). Each finding becomes a candidate REQ amendment. Re-run any HP whose findings produced REQ amendments to verify resolution.")
+  (acceptance "research/SPEC-036-synthetic-user.md exists with: (a) header metadata (model, profiles, paths, date); (b) per-step trace for each HP; (c) categorised findings table; (d) explicit list of REQ-### amendments applied to SPEC-036 as a result; (e) re-run results showing resolved findings; (f) explicit 'no further findings' statement OR escalated open questions if convergence not reached after one iteration.")
+  (trace "USDD §Synthetic User Protocol"))
+
+(meta task-phase1-quality-gates
+  (description "Apply USDD §Phase 1 Quality Gates to SPEC-036: (1) all requirements unambiguous (single interpretation); (2) all requirements verifiable (testable); (3) all requirements atomic (one obligation each); (4) no internal conflicts; (5) ambiguities resolved with measurable criteria — apply USDD §Ambiguity Resolution prohibited-terms table (replace 'fast', 'easy', 'secure', 'reliable', 'scalable' with measurable criteria). Produce a checklist appended to SPEC-036 (or in research/SPEC-036-phase1-gates.md) with pass/fail per gate and per requirement. Failures must be fixed in SPEC-036 before this task completes — do not 'pass with caveats'.")
+  (acceptance "Either SPEC-036-spake2-onboarding.md §Quality Gates or research/SPEC-036-phase1-gates.md contains a checklist with every gate marked pass; every prohibited term in SPEC-036 has been replaced or justified; if any failures were found, they were fixed and re-checked (record the fix in the same file).")
+  (trace "USDD §Phase 1 Quality Gates"))
+
+(meta task-adr-pake-vs-bearer
+  (description "Author ADR comparing three onboarding shapes: (A) SPAKE2 + OOB phrase + generic /join URL (Magic-Wormhole-shape); (B) SPAKE2 + URL-carrying-session-id + OOB phrase (split-shape); (C) Signed-bearer JWT-in-URL (current zetl model, kept as-is or evolved). Each option: cryptographic property summary (what's the password, what's the bearer, what's transmitted on which channel), threat model fit per the synchronous and async user profiles, operational cost (server-side state? mailbox?), revocation, auditability, alignment with existing cap::pair primitives. Recommend a stance with explicit justification — note that asynchronous-only collaborators may force option (C) to remain as the async path even if (A) is chosen for sync. Use the ADR template from existing IMPL plans / standard ADR format (Status, Context, Decision, Consequences).")
+  (acceptance "SPEC-036-spake2-onboarding.md contains ADR-### Pairing-Shape (number assigned by inheritance from latest spec) with: status proposed, context paragraph, three options each with property/threat/cost analysis, an explicit decision, and consequences (positive + negative + accepted risk). Decision MUST address whether (A) and (C) coexist or (A) supersedes (C).")
+  (trace "ADR-### in SPEC-036"))
+
+(meta task-adr-sync-vs-async
+  (description "Author ADR specifically on whether to support both synchronous SPAKE2 (HP1) and asynchronous (HP2) onboarding paths, OR pick one and reject the other use case, OR design the async path differently (e.g., signed-bearer with a tighter TTL + scope-narrowing, or a 'pending invite' model where the owner approves at redeem time). This ADR may follow from ADR-### in adr-pake-vs-bearer but is distinct because it scopes the user-facing surface ('zetl collab join' commands and CLI shape). Address: do we have one CLI command or two? Does the same artefact serve both modes? What does the failure UX look like when an async invitee tries to redeem after revocation?")
+  (acceptance "SPEC-036-spake2-onboarding.md contains ADR-### CLI-Shape with explicit decision on (i) command surface (one vs two), (ii) artefact-on-the-wire (single URL? phrase + URL? phrase + nothing?), (iii) post-revocation redemption error UX. Justified against synthetic-user findings from HP1 and HP2.")
+  (trace "ADR-### in SPEC-036"))
+
+(meta task-adr-scope-binding
+  (description "Author ADR on cryptographic binding of scope (which folders/pages/roles a collaborator may access) to the SPAKE2-derived session key. The naive shape — JWT carries scope claim, server enforces — has a gap: in a SPAKE2 model the phrase is the password, the derived key is the session key, but the scope claim is not necessarily bound to either. Decision points: (1) include scope in the SPAKE2 'identity' string (PAIR_SPAKE2_IDENTITY analogue) so a phrase issued for scope=foo is unusable for scope=bar; (2) include scope in HKDF info parameter so derived keys differ per scope; (3) sign scope into a separate token after pairing succeeds; (4) all three (defence in depth). For each: replay resistance, scope-narrowing-after-grant story, complexity. Recommend a stance and document residual risks.")
+  (acceptance "SPEC-036-spake2-onboarding.md contains ADR-### Scope-Binding with explicit decision on which mechanism(s) bind scope to identity/session/derived-material; threat scenarios enumerated (phrase-reuse-across-scopes, replay-with-altered-scope, compromised-server-issuing-overscoped-tokens); residual risks listed.")
+  (trace "ADR-### in SPEC-036"))
+
+(meta task-contracts
+  (description "Specify CON-### contracts for every interface introduced or changed by SPEC-036: (1) CLI surface — `zetl invite` flag changes, new `zetl collab join` command, output formats (JSON when --json, human otherwise); (2) HTTP/WebSocket endpoints exposed by the server during pairing (request/response schemas, error model); (3) on-the-wire SPAKE2 message format (likely inheriting cap::pair's base64+side-byte conventions); (4) on-disk artefacts (extensions to .zetl/collab/, naming, permissions); (5) any new server-side state (pending-pairing-sessions store, TTLs); (6) JSON schema for any structured emit. Each CON entry uses the USDD CON template (Endpoint/Interface, Pre-conditions, Post-conditions, Error model, Implements REQ-###, Verified by TEST-###).")
+  (acceptance "SPEC-036-spake2-onboarding.md §Contracts contains ≥ 5 CON-### entries (CLI, HTTP/WS, wire format, on-disk, optional events); every CON traces to ≥ 1 REQ and ≥ 1 TEST placeholder; error models enumerate failure modes (wrong phrase, expired, replay, scope-insufficient, server-unreachable, channel-error).")
+  (trace "CON-### in SPEC-036"))
+
+(meta task-purity-boundary-map
+  (description "Author the Purity Boundary Map per USDD §Phase 2. Pure core candidates: phrase generation/parsing, SPAKE2 message construction (the cap::pair primitive is already pure), HKDF derivation, scope-binding hash construction, JWT/token construction (deterministic given inputs), error classification. Effectful shell: nonce-store I/O, JSON persistence of pending pairings, HTTP/WS handlers, server-key load/derive, system clock for TTLs, file-permission setting. Boundary contracts: define every type that crosses pure↔shell (PairingPhrase, PairingMessage, DerivedSession, ScopeClaim, NonceTicket). Dependency rule: shell→core only. Enforcement: clippy::disallowed_methods on std::fs/SystemTime in the pure module; module visibility (pub(super)) where it can be tightened; the existing SPL plan tasks for IMPL-036 will assert this in tests.")
+  (acceptance "SPEC-036-spake2-onboarding.md §Purity Boundary Map exists with: pure-core list, effectful-shell list, boundary-contracts list with type names, dependency rule restated, enforcement mechanism named for each rule.")
+  (trace "USDD §Purity Boundary Map"))
+
+(meta task-test-strategy
+  (description "Specify TEST-### entries selecting techniques per USDD §Selecting a Verification Strategy. For pairing protocol code: example-based (happy path per HP1-4), property-based (SPAKE2 derive(phrase) commutativity, HKDF determinism, scope-bound key inequality across distinct scopes), fuzzing (phrase parsing, on-the-wire SPAKE2 message bytes — cap::pair uses base64; fuzz the decoder), mutation testing on the scope-binding and nonce-consumption modules (Tier 1 demands kill rate ≥ 90%), formal contracts on nonce-store invariants (single-use, monotonic, no double-spend). For each TEST: scenario, technique, success criteria, REQ traceability, owner module. Every REQ from draft-requirements MUST trace to ≥ 1 TEST. The Test-First Principle (Red Gate) MUST be encoded — TESTs are written before implementation in IMPL-036.")
+  (acceptance "SPEC-036-spake2-onboarding.md §Tests contains ≥ 12 TEST-### entries covering example-based + property-based + fuzzing + mutation + contract verification per USDD strategy table; every REQ from draft-requirements has at least one TEST listed in its trace; mutation kill-rate target documented for the scope-binding and nonce-consumption modules.")
+  (trace "TEST-### in SPEC-036; USDD §Verification"))
+
+(meta task-threat-model
+  (description "Independent threat-model document. Adversaries: (A) passive network observer; (B) active MitM on the OOB channel (Slack DM compromise, iMessage interception); (C) active MitM on the URL channel; (D) compromised invitee device (post-pairing); (E) compromised vault server (signed-bearer trust assumption); (F) malicious vault owner (over-issuing scope); (G) phrase-phishing — attacker tricks invitee into typing the phrase into attacker's `zetl collab join` instance. For each adversary: capability, attack scenario, current mitigation in SPEC-036, residual risk, detection signal (OBS-### candidate). Special attention to (G): SPAKE2 protects against passive eavesdroppers but NOT against an attacker who can socially-engineer the invitee into pairing with the wrong server — this is the analog of WebAuthn's 'attestation' problem and may motivate a server-fingerprint OOB step.")
+  (acceptance "research/SPEC-036-threat-model.md exists with one section per adversary; (G) phrase-phishing section explicitly addresses whether SPEC-036 mitigates it (and if not, documents the accepted risk + a candidate REQ for v0.2 of SPEC-036); ≥ 3 OBS-### candidates derived from detection signals; SPEC-036-spake2-onboarding.md §Security references this document.")
+  (trace "USDD §Security by Design"))
+
+(meta task-phase2-quality-gates
+  (description "Apply USDD §Phase 2 Quality Gates to the design artefacts: (1) adheres to constitutional principles; (2) all components have single responsibility; (3) all functionality exposed via well-defined interfaces (CON coverage); (4) tests derived from requirements (REQ → TEST trace audit); (5) security controls specified with verifiable criteria (every threat-model mitigation has an enforceable spec line and a TEST); (6) observability requirements captured (OBS-### present for all critical signals identified in threat-model). Failures must be fixed in SPEC-036 before this task completes.")
+  (acceptance "research/SPEC-036-phase2-gates.md (or §Quality Gates in SPEC-036) contains a checklist with every gate marked pass; traceability audit table shows REQ→TEST mapping with no orphans; any failures fixed and re-checked.")
+  (trace "USDD §Phase 2 Quality Gates"))
+
+(meta task-cross-model-review
+  (description "Per USDD §Multi-Model Cognitive Diversity §Tier 1, run cross-model adversarial review. Provide the reviewing model with: (a) full SPEC-036-spake2-onboarding.md; (b) all research/* artefacts; (c) the threat-model document; (d) explicit adversarial mandate to find defects, with NO access to this generating session's reasoning. Request categorised findings: cryptographic gaps, protocol-level attacks not covered by threat-model, requirement ambiguities, missing failure modes, scope-binding bypasses, OOB-channel assumption holes. Reviewer should consider whether the design is over-specified (gold-plating) or under-specified (gaps), and whether the URL-vs-OOB distinction is correctly applied throughout. Record reviewing model family + version. The review session itself is a separate Claude Code session (or fresh Agent invocation) with a new context.")
+  (acceptance "research/SPEC-036-adversarial-review.md exists with: (a) reviewer model + version; (b) input artefacts list; (c) adversarial prompt used; (d) categorised findings; (e) per-finding disposition (fixed in SPEC-036, accepted risk with justification, or escalated to human-expert-review); (f) signed-off by claude-the-generator that all 'fixed' findings have corresponding SPEC-036 amendments.")
+  (trace "USDD §Multi-Model Cognitive Diversity"))
+
+(meta task-human-expert-review-package
+  (description "Prepare the human-expert review package required by USDD §AI Trust Boundaries no-go rule. Cryptography + Authentication core require explicit human approval before implementation. Package contents: (1) executive summary (1 page) — the design, the chosen ceremony, the scope-binding decision, the residual risks; (2) decision points requiring human sign-off — explicit list of ADRs, with the recommendation and the alternatives rejected; (3) the threat model, with a 'questions for the reviewer' section calling out anywhere the AI's confidence is below high (per USDD §AI Detection Context); (4) the cross-model review's residual disagreements (if any); (5) the explicit asks: 'approve SPEC-036 → IMPL-036', 'approve specific cryptographic constants', 'approve any deviation from cap::pair conventions'. The package must NOT bury caveats — surface them. The reviewer is expected to be able to consider key decisions before implementation per USDD opening note.")
+  (acceptance "research/SPEC-036-human-review-ask.md exists with all five sections; the explicit asks are itemised as bullets the reviewer can tick yes/no; every cryptographic constant proposed in SPEC-036 (identity strings, HKDF labels, phrase length, TTLs) appears in the package with justification.")
+  (trace "USDD §AI Trust Boundaries §No-go areas"))
+
+(meta task-draft-impl-036
+  (description "Write plans/IMPL-036-spake2-onboarding.spl scaffolding the implementation plan that WILL execute once human approval is received. Tasks must encode the Test-First Principle: every implementation task is preceded by a corresponding test-writing task that asserts the test is observed to fail before implementation begins. Major task groups: (1) extend cap::pair into a generalised pairing primitive if ADR-scope-binding requires it; (2) add server-side pending-pairing store; (3) add `zetl collab join` CLI command; (4) wire scope-binding per ADR; (5) integrate with existing acl.rs; (6) implement OBS instrumentation; (7) test execution per TEST strategy (example, property, fuzz, mutation, contract); (8) docs (README + user docs per USDD §Documentation); (9) cross-model code review pre-merge. The plan does NOT execute under DESIGN-036 — its file is the deliverable. IMPL-036 status MUST be 'draft-pending-approval' until the human-expert task confirms approval.")
+  (acceptance "plans/IMPL-036-spake2-onboarding.spl exists, validates with `hence plan validate plans/IMPL-036-spake2-onboarding.spl --strict`, contains every task category enumerated in the description, every implementation task has a paired test-writing task ordered before it via readiness rules, and the plan status field is 'draft-pending-approval'.")
+  (trace "USDD §Phase 3 (gated)"))
+
+(meta task-mark-spec-approved
+  (description "Terminal task: pending receipt of human approval on the human-expert review package. When approval is received, update SPEC-036-spake2-onboarding.md status from 'draft' to 'approved', record the approval in research/SPEC-036-approval.md (who approved, when, any conditions attached), and update IMPL-036-spake2-onboarding.spl status from 'draft-pending-approval' to 'approved'. If approval is withheld or conditional, instead update SPEC-036 with the requested changes and re-trigger cross-model-review. This task may sit in 'claimed' state for an extended period awaiting human turnaround — that is correct, not a stall.")
+  (acceptance "Either: (a) SPEC-036-spake2-onboarding.md status='approved', research/SPEC-036-approval.md records approval, IMPL-036-spake2-onboarding.spl status='approved'; OR (b) the task is explicitly blocked with reason 'awaiting-human-approval' and the human-expert package is unread; OR (c) approval was withheld, the cycle restarted, and a new cross-model-review run is in-flight.")
+  (trace "USDD §Specification Status Lifecycle"))
+
+;; ── Readiness Rules (DAG) ──────────────────────────────
+
+;; Phase 0 — surveys are root tasks
+(normally r-ready-survey-existing-spake2
+  (and task-survey-existing-spake2 no-deps-survey-existing-spake2)
+  ready-survey-existing-spake2)
+
+(normally r-ready-survey-collab-invite-flow
+  (and task-survey-collab-invite-flow no-deps-survey-collab-invite-flow)
+  ready-survey-collab-invite-flow)
+
+(normally r-ready-prior-art-research
+  (and task-prior-art-research no-deps-prior-art-research)
+  ready-prior-art-research)
+
+;; Phase 1 — user profiles after surveys; happy paths after profiles
+(normally r-ready-user-profiles
+  (and task-user-profiles
+       completed-survey-existing-spake2
+       completed-survey-collab-invite-flow)
+  ready-user-profiles)
+
+(normally r-ready-happy-paths
+  (and task-happy-paths completed-user-profiles)
+  ready-happy-paths)
+
+;; Phase 2 — requirements after happy paths and prior art
+(normally r-ready-draft-requirements
+  (and task-draft-requirements
+       completed-happy-paths
+       completed-prior-art-research)
+  ready-draft-requirements)
+
+(normally r-ready-synthetic-user-run
+  (and task-synthetic-user-run completed-draft-requirements)
+  ready-synthetic-user-run)
+
+(normally r-ready-phase1-quality-gates
+  (and task-phase1-quality-gates completed-synthetic-user-run)
+  ready-phase1-quality-gates)
+
+;; Phase 3 — ADRs and design artefacts after Phase 1 gates pass
+(normally r-ready-adr-pake-vs-bearer
+  (and task-adr-pake-vs-bearer completed-phase1-quality-gates)
+  ready-adr-pake-vs-bearer)
+
+(normally r-ready-adr-sync-vs-async
+  (and task-adr-sync-vs-async completed-phase1-quality-gates)
+  ready-adr-sync-vs-async)
+
+(normally r-ready-adr-scope-binding
+  (and task-adr-scope-binding completed-adr-pake-vs-bearer)
+  ready-adr-scope-binding)
+
+(normally r-ready-contracts
+  (and task-contracts
+       completed-adr-pake-vs-bearer
+       completed-adr-sync-vs-async
+       completed-adr-scope-binding)
+  ready-contracts)
+
+(normally r-ready-purity-boundary-map
+  (and task-purity-boundary-map completed-contracts)
+  ready-purity-boundary-map)
+
+(normally r-ready-test-strategy
+  (and task-test-strategy completed-contracts)
+  ready-test-strategy)
+
+(normally r-ready-threat-model
+  (and task-threat-model
+       completed-adr-pake-vs-bearer
+       completed-adr-scope-binding)
+  ready-threat-model)
+
+(normally r-ready-phase2-quality-gates
+  (and task-phase2-quality-gates
+       completed-adr-pake-vs-bearer
+       completed-adr-sync-vs-async
+       completed-adr-scope-binding
+       completed-contracts
+       completed-purity-boundary-map
+       completed-test-strategy
+       completed-threat-model)
+  ready-phase2-quality-gates)
+
+;; Phase 4 — Tier 1 reviews
+(normally r-ready-cross-model-review
+  (and task-cross-model-review completed-phase2-quality-gates)
+  ready-cross-model-review)
+
+(normally r-ready-human-expert-review-package
+  (and task-human-expert-review-package completed-cross-model-review)
+  ready-human-expert-review-package)
+
+;; Phase 5 — IMPL-036 scaffolded after Phase 2 gates; approval terminal
+(normally r-ready-draft-impl-036
+  (and task-draft-impl-036 completed-phase2-quality-gates)
+  ready-draft-impl-036)
+
+(normally r-ready-mark-spec-approved
+  (and task-mark-spec-approved
+       completed-human-expert-review-package
+       completed-draft-impl-036)
+  ready-mark-spec-approved)
+
+;; ── Assignment Rules ───────────────────────────────────
+
+(normally r-assign-survey-existing-spake2 (and ready-survey-existing-spake2 agent-claude-available) assign-to-survey-existing-spake2-claude)
+(normally r-assign-survey-collab-invite-flow (and ready-survey-collab-invite-flow agent-claude-available) assign-to-survey-collab-invite-flow-claude)
+(normally r-assign-prior-art-research (and ready-prior-art-research agent-claude-available) assign-to-prior-art-research-claude)
+(normally r-assign-user-profiles (and ready-user-profiles agent-claude-available) assign-to-user-profiles-claude)
+(normally r-assign-happy-paths (and ready-happy-paths agent-claude-available) assign-to-happy-paths-claude)
+(normally r-assign-draft-requirements (and ready-draft-requirements agent-claude-available) assign-to-draft-requirements-claude)
+(normally r-assign-synthetic-user-run (and ready-synthetic-user-run agent-claude-available) assign-to-synthetic-user-run-claude)
+(normally r-assign-phase1-quality-gates (and ready-phase1-quality-gates agent-claude-available) assign-to-phase1-quality-gates-claude)
+(normally r-assign-adr-pake-vs-bearer (and ready-adr-pake-vs-bearer agent-claude-available) assign-to-adr-pake-vs-bearer-claude)
+(normally r-assign-adr-sync-vs-async (and ready-adr-sync-vs-async agent-claude-available) assign-to-adr-sync-vs-async-claude)
+(normally r-assign-adr-scope-binding (and ready-adr-scope-binding agent-claude-available) assign-to-adr-scope-binding-claude)
+(normally r-assign-contracts (and ready-contracts agent-claude-available) assign-to-contracts-claude)
+(normally r-assign-purity-boundary-map (and ready-purity-boundary-map agent-claude-available) assign-to-purity-boundary-map-claude)
+(normally r-assign-test-strategy (and ready-test-strategy agent-claude-available) assign-to-test-strategy-claude)
+(normally r-assign-threat-model (and ready-threat-model agent-claude-available) assign-to-threat-model-claude)
+(normally r-assign-phase2-quality-gates (and ready-phase2-quality-gates agent-claude-available) assign-to-phase2-quality-gates-claude)
+(normally r-assign-cross-model-review (and ready-cross-model-review agent-claude-available) assign-to-cross-model-review-claude)
+(normally r-assign-human-expert-review-package (and ready-human-expert-review-package agent-claude-available) assign-to-human-expert-review-package-claude)
+(normally r-assign-draft-impl-036 (and ready-draft-impl-036 agent-claude-available) assign-to-draft-impl-036-claude)
+(normally r-assign-mark-spec-approved (and ready-mark-spec-approved agent-claude-available) assign-to-mark-spec-approved-claude)
+
+;; ── Readiness Rule Meta ────────────────────────────────
+
+(meta r-ready-survey-existing-spake2
+  (description "Auditing cap::pair has no upstream dependencies — read-only inspection of existing code.")
+  (justification "Every later artefact references which primitives are reusable; this is the foundational map."))
+
+(meta r-ready-survey-collab-invite-flow
+  (description "Auditing the JWT-URL invite path has no upstream dependencies — read-only inspection.")
+  (justification "Establishes the baseline that SPEC-036 will extend, replace, or coexist with."))
+
+(meta r-ready-prior-art-research
+  (description "External research has no internal dependencies.")
+  (justification "Magic Wormhole / Tailscale / WebAuthn references inform requirements; can run in parallel with surveys."))
+
+(meta r-ready-user-profiles
+  (description "User profiles synthesize the existing-system surveys into archetypes.")
+  (justification "Constraints in the profiles (e.g., 'CLI-fluent') depend on what the existing system asks of users today."))
+
+(meta r-ready-happy-paths
+  (description "Happy paths are written against finalised user profiles.")
+  (justification "Steps reference profile attributes; rewriting profiles after happy paths would invalidate them."))
+
+(meta r-ready-draft-requirements
+  (description "Requirements derive from happy paths (what the user does) and prior art (what the design space contains).")
+  (justification "Without happy paths the REQs lack scenarios; without prior art the REQs may reinvent or miss known patterns."))
+
+(meta r-ready-synthetic-user-run
+  (description "Simulations require a draft SPEC to walk through.")
+  (justification "Findings amend the SPEC; simulating against an empty target is impossible."))
+
+(meta r-ready-phase1-quality-gates
+  (description "Phase 1 gates run after synthetic-user findings have been applied.")
+  (justification "Quality gates assess the SPEC after the iteration loop has converged once."))
+
+(meta r-ready-adr-pake-vs-bearer
+  (description "The pairing-shape ADR is the foundation of every other architectural decision.")
+  (justification "Sync/async, scope-binding, and contracts all branch on which shape is chosen."))
+
+(meta r-ready-adr-sync-vs-async
+  (description "CLI-shape ADR can run in parallel with the pairing-shape ADR but both must complete before contracts.")
+  (justification "Both ADRs gate the contract surface independently."))
+
+(meta r-ready-adr-scope-binding
+  (description "Scope-binding mechanism depends on the pairing shape (HKDF info parameter only exists in PAKE shapes).")
+  (justification "If we chose pure-bearer in adr-pake-vs-bearer, scope-binding mechanisms differ significantly."))
+
+(meta r-ready-contracts
+  (description "Contracts encode all three ADR decisions.")
+  (justification "Contract schemas reference the chosen pairing shape, CLI surface, and scope-binding mechanism."))
+
+(meta r-ready-purity-boundary-map
+  (description "Purity boundaries derive from the contract surface.")
+  (justification "Contracts identify the types crossing the pure/effectful boundary."))
+
+(meta r-ready-test-strategy
+  (description "Test strategy targets the contracted surface.")
+  (justification "Tests verify CONs; without contracts the verification target is ill-defined."))
+
+(meta r-ready-threat-model
+  (description "Threat model references chosen pairing shape and scope-binding mechanism.")
+  (justification "Adversaries' capabilities and mitigations differ by chosen shape."))
+
+(meta r-ready-phase2-quality-gates
+  (description "Phase 2 gates run after every Phase 2 deliverable is in place.")
+  (justification "Constitutional adherence audit must consider the complete design artefact set."))
+
+(meta r-ready-cross-model-review
+  (description "Cross-model review runs against the converged Phase 2 deliverables.")
+  (justification "Per USDD §12 the reviewer must see the deliverable, not a moving target."))
+
+(meta r-ready-human-expert-review-package
+  (description "Human review package incorporates cross-model findings.")
+  (justification "Surfacing AI-vs-AI disagreement to the human is part of the review tier."))
+
+(meta r-ready-draft-impl-036
+  (description "IMPL-036 can be drafted once the design is converged at Phase 2 gates.")
+  (justification "Implementation tasks reference specific ADRs and CONs; drafting earlier risks churn."))
+
+(meta r-ready-mark-spec-approved
+  (description "Terminal approval task requires human review package and IMPL-036 to both be in place.")
+  (justification "Human approves the design + the implementation plan together; partial approval is not the workflow."))
