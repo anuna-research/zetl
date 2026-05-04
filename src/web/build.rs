@@ -511,17 +511,20 @@ pub fn build_static(
     // ── graph-index.json (SPEC-028 REQ-102 / OBS-101) ───────────────────
     let graph_json = write_graph_index_json(data, vault_root, &vault_ctx.name, out, verbose)?;
 
-    // ── _graph.html (SPEC-028 REQ-107) ──────────────────────────────────
-    // Base.html's sidebar "Graph" link and the widget's "Expand ↗" button
-    // both href `{root_path}_graph.html` in build mode; render the vault
-    // graph template to disk so those links resolve.
+    // ── _graph/index.html (SPEC-028 REQ-107) ────────────────────────────
+    // Nested under its own slug directory so the inline `root: "../"` and
+    // `<script src="../_static/...">` references the partial emits resolve
+    // correctly (they assume one level of nesting, matching every other
+    // build-mode page). Sidebar/expand links point at `_graph/index.html`.
     let graph_html = engine
         .render_vault_graph(&vault_ctx, "build", &graph_json)
         .map_err(|e| {
             eprintln!("{}", e.stderr_line("_graph"));
             anyhow::anyhow!("{e}")
         })?;
-    std::fs::write(out.join("_graph.html"), graph_html)?;
+    let graph_dir = out.join("_graph");
+    std::fs::create_dir_all(&graph_dir)?;
+    std::fs::write(graph_dir.join("index.html"), graph_html)?;
 
     // ── history-index.json ───────────────────────────────────────────────
     #[cfg(feature = "history")]

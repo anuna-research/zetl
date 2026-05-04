@@ -442,6 +442,13 @@
     });
   })();
   </script>
+
+  {# SPEC-028: vendor loader for the vault-graph widget. Inheriting this
+     partial from the bundled default theme keeps `/_graph` working when a
+     reader picks the docs theme without the theme having to ship the
+     ~50-line lazy loader itself. #}
+  {% include "_graph_vendor.html" ignore missing %}
+
   {% block scripts %}{% endblock %}
 
 </body>

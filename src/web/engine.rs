@@ -1775,8 +1775,9 @@ mod tests {
     #[test]
     fn test_expand_link_points_at_vault_graph_route() {
         // The click-to-expand control routes to /_graph in serve mode and to
-        // _graph.html in build mode so that static exports resolve the link
-        // relative to the current page.
+        // `_graph/index.html` in build mode (BUG-GRAPH-STATIC-001 fix:
+        // nested under its own slug directory so the partial's `../`
+        // references to graph-index.json + _static/* resolve correctly).
         let engine = default_engine();
         let vault = sample_vault();
 
@@ -1789,13 +1790,25 @@ mod tests {
             has_unescaped || has_escaped,
             "serve-mode expand link should target /_graph (escaped or raw); got no match"
         );
-        // Must not accidentally carry the build-mode .html suffix in serve.
+        // Must not accidentally carry the build-mode `.html` suffix in serve.
         assert!(!serve_html.contains("_graph.html"));
+        // Must not accidentally point at the nested build path either.
+        assert!(!serve_html.contains("_graph/index.html"));
+        assert!(!serve_html.contains("_graph&#x2f;index.html"));
 
         let build_html = engine.render_index(&vault, "build", "", "", "").unwrap();
+        let build_unescaped = build_html.contains("_graph/index.html");
+        let build_escaped = build_html.contains("_graph&#x2f;index.html");
         assert!(
-            build_html.contains("_graph.html"),
-            "build-mode expand link should target _graph.html"
+            build_unescaped || build_escaped,
+            "build-mode expand link should target _graph/index.html (escaped or raw); got no match"
+        );
+        // The pre-fix path was `_graph.html` at the dist root — must not regress.
+        assert!(
+            !build_html.contains("\"_graph.html\"")
+                && !build_html.contains("/_graph.html\"")
+                && !build_html.contains("&#x2f;_graph.html\""),
+            "build-mode link must not point at the old dist-root `_graph.html` path"
         );
     }
 
@@ -1836,6 +1849,46 @@ mod tests {
         assert!(
             html.contains(r#"data-placement="stacked""#),
             "stacked-opt-in theme should emit data-placement=\"stacked\""
+        );
+    }
+
+    #[test]
+    fn test_docs_theme_inherits_graph_vendor_loader() {
+        // BUG-GRAPH-STATIC-001 / BUG-2 regression: when a non-default theme
+        // (e.g. the bundled `docs` theme) overrides base.html, the full-page
+        // /_graph route must still ship the lazy vendor loader. The fix
+        // moves __zetlEnsureGraph into a shared `_graph_vendor.html` partial
+        // that the docs base.html `{% include %}`s; the 3-tier loader
+        // resolves the partial from the bundled default theme as a
+        // fallback. Without that wiring, graphology/sigma never load and
+        // the graph stage sits blank with no error.
+        let engine = TemplateEngine::new(Path::new("."), "docs", false, false);
+        let vault = sample_vault();
+        let html = engine
+            .render_vault_graph(&vault, "build", "")
+            .expect("docs theme must render vault_graph");
+        assert!(
+            html.contains("__zetlEnsureGraph"),
+            "docs theme's /_graph render must include the lazy vendor loader\n\
+             (window.__zetlEnsureGraph) inherited from the default theme's\n\
+             _graph_vendor.html partial"
+        );
+        assert!(
+            html.contains("graphology") && html.contains("sigma"),
+            "docs theme's /_graph render must reference graphology and sigma vendor scripts"
+        );
+    }
+
+    #[test]
+    fn test_default_theme_has_graph_vendor_partial_bundled() {
+        // The vendor loader must be present in the bundled default theme so
+        // the 3-tier template loader can serve it as a fallback to any
+        // theme that doesn't ship its own copy. Without the bundled file,
+        // the `{% include "_graph_vendor.html" ignore missing %}` calls in
+        // every theme's base.html silently no-op and the graph stays blank.
+        assert!(
+            bundled_template("default", "_graph_vendor.html").is_some(),
+            "default theme must bundle _graph_vendor.html so other themes inherit it"
         );
     }
 

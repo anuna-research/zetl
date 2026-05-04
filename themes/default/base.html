@@ -71,7 +71,7 @@
             id="zetl-graph-widget-close"
             aria-label="Close graph overlay">×</button>
     <a class="zetl-graph-widget__expand"
-       href="{{ root_path }}_graph{% if mode == 'build' %}.html{% endif %}"
+       href="{{ root_path }}_graph{% if mode == 'build' %}/{{ index_file }}{% endif %}"
        data-zetl-spa="off"
        title="Open full graph">Expand ↗</a>
     {% include "_graph.html" ignore missing %}
@@ -172,7 +172,7 @@
           </a>
           {%- endif %}
           {# SPEC-028 REQ-107: vault-wide graph link. #}
-          <a href="{{ root_path }}_graph{% if mode == 'build' %}.html{% endif %}" data-zetl-spa="off" class="zetl-action">
+          <a href="{{ root_path }}_graph{% if mode == 'build' %}/{{ index_file }}{% endif %}" data-zetl-spa="off" class="zetl-action">
             <span class="zetl-action-icon" aria-hidden="true">◈</span>
             <span>Graph</span>
           </a>
@@ -657,54 +657,19 @@
      dismissal, and the launcher pill re-opens. State is written to
      localStorage under `zetl.graphWidget` so returning readers aren't
      re-prompted. #}
-  <script>
-  /* Lazy vendor loader for the graph widget. The ~150 kB graphology + FA2 +
-     sigma bundle is only injected when the reader actually reveals the
-     graph: launcher click (desktop), navbar toggle (mobile), or landing on
-     the full-page /_graph route. Resolves a singleton promise so repeat
-     callers hit the existing load. __zetlBootGraph is defined by the graph
-     partial when it is present; the loader tolerates its absence
-     (theme-override case, REQ-109). */
-  window.__zetlEnsureGraph = (function(){
-    var promise = null;
-    var ROOT = "{{ root_path | safe }}";
-    var files = [
-      '_static/vendor/sigma/graphology.min.js',
-      '_static/vendor/sigma/graphology-layout-forceatlas2.min.js',
-      '_static/vendor/sigma/sigma.min.js'
-    ];
-    function load(src){
-      return new Promise(function(res, rej){
-        var existing = document.querySelector('script[src="'+src+'"]');
-        if (existing){ res(); return; }
-        var s = document.createElement('script');
-        s.src = src; s.async = false;
-        s.onload = function(){ res(); };
-        s.onerror = function(){ rej(new Error('failed: '+src)); };
-        document.head.appendChild(s);
-      });
-    }
-    return function(){
-      if (promise) return promise;
-      promise = files.reduce(function(p, f){
-        return p.then(function(){ return load(ROOT + f); });
-      }, Promise.resolve()).then(function(){
-        if (typeof window.__zetlBootGraph === 'function') window.__zetlBootGraph();
-      });
-      return promise;
-    };
-  })();
+  {# Vendor loader (window.__zetlEnsureGraph) lives in a shared partial so
+     non-default themes inherit it via the bundled-fallback template loader.
+     The partial also auto-triggers the loader on the full-page /_graph
+     route, so the widget controller below only needs to handle the docked
+     widget's collapse/expand wiring. #}
+  {% include "_graph_vendor.html" ignore missing %}
 
+  <script>
   (function(){
     var widget=document.getElementById('zetl-graph-widget');
     var toggle=document.getElementById('zetl-graph-toggle');
     var closeBtn=document.getElementById('zetl-graph-widget-close');
     var launcher=document.getElementById('zetl-graph-widget-launcher');
-    /* Full-page /_graph route mounts the widget directly (no toggle / close /
-       launcher), so this controller has no work — but we still need to
-       trigger the lazy loader there. */
-    var fullStage = document.querySelector('.zetl-graph-widget[data-placement="fullscreen"]');
-    if (fullStage && window.__zetlEnsureGraph) window.__zetlEnsureGraph();
     if(!widget)return;
     var OPEN='zetl-graph-widget--open';
     var STORAGE_KEY='zetl.graphWidget';

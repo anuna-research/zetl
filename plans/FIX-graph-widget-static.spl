@@ -1,0 +1,135 @@
+;; Fix plan for BUG-GRAPH-STATIC-001 — `zetl build` graph widget shows no nodes
+(meta plan
+  (id "FIX-graph-widget-static")
+  (title "Fix static-build graph widget (BUG-GRAPH-STATIC-001)")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-05-04")
+  (author "agent:claude")
+  (description "Two independent bugs make the vault graph widget render blank under `zetl build`. BUG-1: dist/_graph.html sits at the dist root but its inline config + vendor <script src> tags use ../ paths, so graph-index.json + vendor JS 404. BUG-2: the docs theme's base.html ships without the __zetlEnsureGraph lazy loader, so even with paths fixed graphology/sigma never load. This plan ships the architectural fix for both: nest the full-page graph at dist/_graph/index.html (matching every other route) and extract the vendor loader into a shared _graph_vendor.html partial so non-default themes inherit it via the bundled-fallback template loader."))
+
+;; Single agent
+(given agent-claude-available)
+
+;; ============================================================
+;; BUG-2 FIX: extract vendor loader so all themes inherit it
+;; ============================================================
+
+(given task-extract-vendor-partial)
+(given no-deps-extract-vendor-partial)
+(meta task-extract-vendor-partial
+  (description "Create themes/default/_graph_vendor.html containing window.__zetlEnsureGraph + fullscreen auto-trigger. Replace the inline definition in themes/default/base.html with `{% include \"_graph_vendor.html\" ignore missing %}`. Add the same include to themes/docs/base.html before </body> so docs (and any future bundled theme) inherits the loader via the 3-tier template loader's bundled-default fallback.")
+  (acceptance "render_vault_graph under both 'default' and 'docs' themes emits a script that defines window.__zetlEnsureGraph and references graphology + sigma vendor URLs"))
+
+;; ============================================================
+;; BUG-1 FIX: move full-page graph under its own slug directory
+;; ============================================================
+
+(given task-nest-graph-html)
+(given no-deps-nest-graph-html)
+(meta task-nest-graph-html
+  (description "In src/web/build.rs, write the rendered vault graph to out/_graph/index.html (mkdir _graph first) instead of out/_graph.html. Update the two link occurrences in themes/default/base.html (sidebar 'Graph' anchor and the docked widget's 'Expand ↗' anchor) from `_graph{% if mode == 'build' %}.html{% endif %}` to `_graph{% if mode == 'build' %}/{{ index_file }}{% endif %}`. The serve-mode route `/_graph` and the `compute_root_path(mode, \"_graph\")` value (`\"../\"` in build) stay unchanged — both already correctly target the new location.")
+  (acceptance "After zetl --no-cache build, dist/_graph/index.html exists and references ../graph-index.json (which resolves to dist/graph-index.json). dist/_graph.html no longer exists."))
+
+;; ============================================================
+;; VERIFICATION: tests + cargo build
+;; ============================================================
+
+(given task-update-graph-tests)
+(meta task-update-graph-tests
+  (description "Update test_expand_link_points_at_vault_graph_route in src/web/engine.rs to expect `_graph/index.html` (escaped or raw) in build mode. Add a test that asserts the bundled docs theme's vault_graph render contains the vendor loader (matches /graphology/ and /sigma/ in the rendered HTML), proving BUG-2 is fixed via the partial-inheritance route.")
+  (acceptance "cargo test --test '*' and cargo test (lib) pass; the new docs-theme test fails before the partial is added and passes after."))
+
+(given task-verify-cargo)
+(meta task-verify-cargo
+  (description "Run `cargo build --release` and `cargo test` to confirm no regressions, then build a tiny scratch vault end-to-end and curl http://localhost:8000/_graph/ to verify the graph mounts (or at minimum that graph-index.json is fetched at the correct relative URL).")
+  (acceptance "cargo build + cargo test succeed; manual smoke shows dist/_graph/index.html, dist/_graph/index.html references ./_static/... or ../_static/... that all 200 from a static server."))
+
+;; ── Readiness rules ────────────────────────────────────────────
+(normally r-ready-vendor-partial
+  (and task-extract-vendor-partial no-deps-extract-vendor-partial)
+  ready-extract-vendor-partial)
+(normally r-ready-nest-html
+  (and task-nest-graph-html no-deps-nest-graph-html)
+  ready-nest-graph-html)
+(normally r-ready-tests
+  (and task-update-graph-tests
+       completed-extract-vendor-partial
+       completed-nest-graph-html)
+  ready-update-graph-tests)
+(normally r-ready-verify
+  (and task-verify-cargo completed-update-graph-tests)
+  ready-verify-cargo)
+
+;; ── Assignment rules ───────────────────────────────────────────
+(normally r-a1 (and ready-extract-vendor-partial agent-claude-available) assign-to-extract-vendor-partial-claude)
+(normally r-a2 (and ready-nest-graph-html agent-claude-available) assign-to-nest-graph-html-claude)
+(normally r-a3 (and ready-update-graph-tests agent-claude-available) assign-to-update-graph-tests-claude)
+(normally r-a4 (and ready-verify-cargo agent-claude-available) assign-to-verify-cargo-claude)
+
+(claims agent:claude
+  :at "2026-05-04T10:34:18Z"
+  (given claim-v1-extract-vendor-partial)
+  (normally r-cl-state-v1-extract-vendor-partial claim-v1-extract-vendor-partial state-claimed-v1-extract-vendor-partial)
+  (normally r-cl-chain-v1-extract-vendor-partial state-claimed-v1-extract-vendor-partial claimed-extract-vendor-partial)
+)
+
+;; Propagation rules: failures in 'extract-vendor-partial' block downstream tasks
+(normally r-propagate-update-graph-tests-from-extract-vendor-partial-failed failed-extract-vendor-partial upstream-blocked-update-graph-tests)
+(normally r-propagate-update-graph-tests-from-extract-vendor-partial-permanently-failed permanently-failed-extract-vendor-partial upstream-blocked-update-graph-tests)
+(normally r-propagate-update-graph-tests-from-extract-vendor-partial-stale-v1 stale-v1-extract-vendor-partial upstream-blocked-update-graph-tests)
+(normally r-propagate-update-graph-tests-from-extract-vendor-partial-timeout-v1 timeout-v1-extract-vendor-partial upstream-blocked-update-graph-tests)
+(normally r-propagate-update-graph-tests-from-extract-vendor-partial-blocked upstream-blocked-extract-vendor-partial upstream-blocked-update-graph-tests)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-verify-cargo-from-update-graph-tests-blocked upstream-blocked-update-graph-tests upstream-blocked-verify-cargo)
+
+(claims agent:claude
+  :at "2026-05-04T10:35:28Z"
+  (given completed-extract-vendor-partial))
+
+(claims agent:claude
+  :at "2026-05-04T10:35:32Z"
+  (given claim-v1-nest-graph-html)
+  (normally r-cl-state-v1-nest-graph-html claim-v1-nest-graph-html state-claimed-v1-nest-graph-html)
+  (normally r-cl-chain-v1-nest-graph-html state-claimed-v1-nest-graph-html claimed-nest-graph-html)
+)
+
+;; Propagation rules: failures in 'nest-graph-html' block downstream tasks
+(normally r-propagate-update-graph-tests-from-nest-graph-html-failed failed-nest-graph-html upstream-blocked-update-graph-tests)
+(normally r-propagate-update-graph-tests-from-nest-graph-html-permanently-failed permanently-failed-nest-graph-html upstream-blocked-update-graph-tests)
+(normally r-propagate-update-graph-tests-from-nest-graph-html-stale-v1 stale-v1-nest-graph-html upstream-blocked-update-graph-tests)
+(normally r-propagate-update-graph-tests-from-nest-graph-html-timeout-v1 timeout-v1-nest-graph-html upstream-blocked-update-graph-tests)
+(normally r-propagate-update-graph-tests-from-nest-graph-html-blocked upstream-blocked-nest-graph-html upstream-blocked-update-graph-tests)
+
+(claims agent:claude
+  :at "2026-05-04T10:36:30Z"
+  (given completed-nest-graph-html))
+
+(claims agent:claude
+  :at "2026-05-04T10:36:30Z"
+  (given claim-v1-update-graph-tests)
+  (normally r-cl-state-v1-update-graph-tests claim-v1-update-graph-tests state-claimed-v1-update-graph-tests)
+  (normally r-cl-chain-v1-update-graph-tests state-claimed-v1-update-graph-tests claimed-update-graph-tests)
+)
+
+;; Propagation rules: failures in 'update-graph-tests' block downstream tasks
+(normally r-propagate-verify-cargo-from-update-graph-tests-failed failed-update-graph-tests upstream-blocked-verify-cargo)
+(normally r-propagate-verify-cargo-from-update-graph-tests-permanently-failed permanently-failed-update-graph-tests upstream-blocked-verify-cargo)
+(normally r-propagate-verify-cargo-from-update-graph-tests-stale-v1 stale-v1-update-graph-tests upstream-blocked-verify-cargo)
+(normally r-propagate-verify-cargo-from-update-graph-tests-timeout-v1 timeout-v1-update-graph-tests upstream-blocked-verify-cargo)
+
+(claims agent:claude
+  :at "2026-05-04T10:37:46Z"
+  (given completed-update-graph-tests))
+
+(claims agent:claude
+  :at "2026-05-04T10:37:46Z"
+  (given claim-v1-verify-cargo)
+  (normally r-cl-state-v1-verify-cargo claim-v1-verify-cargo state-claimed-v1-verify-cargo)
+  (normally r-cl-chain-v1-verify-cargo state-claimed-v1-verify-cargo claimed-verify-cargo)
+)
+
+(claims agent:claude
+  :at "2026-05-04T11:01:22Z"
+  (given completed-verify-cargo))
