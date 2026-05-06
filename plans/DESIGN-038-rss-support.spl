@@ -1,0 +1,344 @@
+;; DESIGN-038-rss-support: RSS / Atom feed support for zetl
+;; Research and design plan producing SPEC-038-rss-support (specification)
+;; and IMPL-038-rss-support (implementation plan, scaffolded but NOT executed).
+;;
+;; Scope: USDD Phase 1 (Vision -> Specification) + Phase 2 (Specification -> Plan).
+;; OUT OF SCOPE: code generation. This plan ends at "human-review-package
+;; delivered + IMPL-038-rss-support drafted." Phase 3 begins only after the
+;; spec reaches status=approved and a human reviewer signs off.
+;;
+;; Review tier: Tier 2 (core feature touching public surfaces, static-build
+;; output, and -- in the inbound-feed direction -- network-fetch parsing of
+;; untrusted XML). Per USDD section Multi-Model Cognitive Diversity, Tier 2
+;; mandates cross-model review + human review. Inbound XML parsing also
+;; sits at a trust boundary, so threat-model + fuzzing-strategy artefacts
+;; are mandatory deliverables of this plan.
+
+(meta plan
+  (id "DESIGN-038")
+  (title "RSS / Atom feed support for zetl")
+  (version "0.1.0")
+  (status "draft")
+  (created "2026-05-06")
+  (author "agent:claude")
+  (spec "SPEC-038")
+  (description "Research and design RSS/Atom feed support for zetl. Two directions are in scope and the plan must decide where v1 lands: (OUTBOUND) zetl build / zetl serve emit standards-conformant RSS 2.0 and/or Atom 1.0 feed documents derived from vault pages, with selection by frontmatter, folder, tag, or SPL query, and stable item ids derived from the existing wikilink-resolved slug. (INBOUND) zetl pulls external feeds on a schedule and materialises items as vault pages under a configurable folder, with deduplication, SSRF/XXE/billion-laughs defences, and an explicit network-policy surface. Outputs: specs/SPEC-038-rss-support.md (graduated from strawman to status=approved), /users/feed-publisher/{user,happy-paths}.md, /users/feed-subscriber/{user,happy-paths}.md (only if inbound makes v1), ADR-### records, CON-### contracts, TEST-### specifications, threat model, cross-model adversarial review, human-review package, and plans/IMPL-038-rss-support.spl scaffolded for downstream implementation. NO CODE IS WRITTEN UNDER THIS PLAN."))
+
+;; -- Agents --------------------------------------------
+(given agent-claude-available)
+
+;; -- Tasks ---------------------------------------------
+
+;; Phase 0: Surveys (parallel, no deps)
+(given task-survey-publishing-surface)
+(given task-survey-frontmatter-dates)
+(given task-survey-fetch-stack)
+(given task-prior-art-outbound)
+(given task-prior-art-inbound)
+
+;; Phase 1: User profiles and happy paths (USDD Phase 1)
+(given task-user-profiles)
+(given task-happy-paths)
+
+;; Phase 2: Requirements (USDD Phase 1 cont.)
+(given task-draft-requirements)
+(given task-synthetic-user-run)
+(given task-phase1-quality-gates)
+
+;; Phase 3: Architecture and contracts (USDD Phase 2)
+(given task-adr-rss-vs-atom)
+(given task-adr-feed-selection)
+(given task-adr-inbound-scope)
+(given task-adr-inbound-storage)
+(given task-adr-scheduling)
+(given task-contracts)
+(given task-purity-boundary-map)
+(given task-test-strategy)
+(given task-threat-model)
+(given task-phase2-quality-gates)
+
+;; Phase 4: Tier 2 cross-model review
+(given task-cross-model-review)
+(given task-adversarial-tests)
+
+;; Phase 5: Implementation planning (no code)
+(given task-draft-impl-038)
+(given task-mark-spec-approved)
+
+;; -- No-deps markers -----------------------------------
+(given no-deps-survey-publishing-surface)
+(given no-deps-survey-frontmatter-dates)
+(given no-deps-survey-fetch-stack)
+(given no-deps-prior-art-outbound)
+(given no-deps-prior-art-inbound)
+
+;; -- Task Metadata -------------------------------------
+
+(meta task-survey-publishing-surface
+  (description "Audit zetl's existing publishing surfaces -- both static-build (cmd_build in src/main.rs) and live-serve (src/web/mod.rs) -- and produce a single research note enumerating every artefact that the build emits, every route the serve mode exposes, and the conventions they share. Required coverage: (a) the static build's output tree (where does graph-index.json end up? sitemap.xml? llms.txt? pages.json?); (b) which existing routes write XML or structured data (sitemap_handler is the closest analogue and the natural template for RSS/Atom); (c) the theming hook surface -- which Minijinja templates exist, which static assets are bundled, how a theme overrides them; (d) the per-page slug-resolution path (zetl: src/scanner/, src/parsers/) so that a feed item's <link> can be derived deterministically from a vault page; (e) any place build-time HTML rendering already enumerates pages in date order. Output is a baseline reference: SPEC-038 will plug into one or more of these surfaces, and the survey tells us which.")
+  (acceptance "research/SPEC-038-publishing-surface.md exists and contains: (1) bulleted list of every file zetl build writes to dist/ at the vault root level, with one-line provenance for each; (2) bulleted list of every route the serve Router exposes that emits non-HTML content; (3) named pointer to the sitemap_handler implementation as the closest existing analogue for an XML feed handler; (4) explicit statement of the theme override path for Minijinja templates and static assets, naming the directory layout under .zetl/themes/<theme>/; (5) named pointer to the function that resolves a vault page to a stable URL slug.")
+  (trace "SPEC-038/research"))
+
+(meta task-survey-frontmatter-dates
+  (description "Document zetl's current frontmatter parsing and which date-shaped fields exist or are conventionally used in vault pages. Source: src/parsers/, src/hooks/ast/Frontmatter, src/types.rs, demo-vault/. Required coverage: (a) the Frontmatter struct shape and its accessors; (b) which YAML/TOML keys are recognised today (e.g. title, status, version, date, created, last-updated, etc.) and which are merely conventional; (c) what zetl falls back on when a date field is absent (does the scanner record file mtime? git mtime? both?); (d) timezone handling; (e) the parsing tolerance for date strings (RFC 3339? naive ISO? human-readable?). The spec needs this because every RSS/Atom item REQUIRES a publication date, and the spec must define the resolution order without inventing fields the codebase does not parse.")
+  (acceptance "research/SPEC-038-frontmatter-dates.md exists and contains: (a) table of frontmatter fields zetl currently reads, with type and source file:line citations; (b) the resolution order zetl uses today when a 'when was this page produced?' question is asked elsewhere in the codebase (e.g. for sitemap lastmod, if any), or an explicit statement that no such resolution exists; (c) recommended resolution order for SPEC-038 with rationale (e.g. frontmatter.published > frontmatter.date > frontmatter.created > git mtime > file mtime); (d) explicit list of date-shape edge cases the spec must address (missing entirely, future-dated, prior to 1970, malformed, timezone-naive).")
+  (trace "SPEC-038/research"))
+
+(meta task-survey-fetch-stack
+  (description "For the inbound-feed direction only: audit what HTTP-fetch primitives zetl already depends on, and which one (if any) is appropriate to reuse for inbound feed fetches. Sources: Cargo.toml dependency list (ureq is optional under --features semantic; reqwest is not currently a dependency; tokio is full-features so async is available); existing fetch sites (semantic feature, theme installer, MCP). Required coverage: (a) which HTTP client is appropriate -- sync vs async, blocking vs tokio -- given that scheduled feed fetch is an effectful, periodic, IO-bound activity; (b) what redirect-policy, timeout, and TLS-verification controls each candidate exposes; (c) feed-parser candidates in the Rust ecosystem (feed-rs, atom_syndication, rss) -- compare API ergonomics, XXE/billion-laughs posture, maintenance status, license; (d) explicit statement of the no-go: serde_xml_rs and similar XML deserialisers without entity-expansion controls MUST NOT be used to parse untrusted feeds. The output of this task feeds the threat-model task and the inbound-scope ADR.")
+  (acceptance "research/SPEC-038-fetch-stack.md exists and contains: (1) named recommendation for the inbound HTTP client (with reason); (2) comparison table of feed-rs vs rss vs atom_syndication on API, XXE-posture, last-release date, license, transitive-dep weight; (3) explicit no-go list naming any crate that exposes raw XML entity expansion to caller; (4) a brief positioning of where in the Rust trust hierarchy these crates sit (have they had CVEs? are they fuzz-tested upstream?); (5) recommendation on whether v1 inbound parsing should be done in-process or out-of-process via a hook (deferring to existing render-pipeline hook architecture, which already has a sandboxing story).")
+  (trace "SPEC-038/research"))
+
+(meta task-prior-art-outbound
+  (description "Research prior art for outbound RSS/Atom in static-site generators and PKM tools. Mandatory references: (1) Hugo -- the {{ range first 10 (where .Pages \"Type\" \"post\") }} pattern, default RSS template, taxonomy-scoped feeds; (2) Eleventy / Jekyll -- liquid/njk feed templates, plugin model; (3) Astro -- @astrojs/rss helper, content-collection driven; (4) Zola -- per-section atom.xml / rss.xml emission; (5) Quartz -- the closest in spirit to zetl (Markdown-graph PKM publishing) -- examine its rss plugin and item-selection rules; (6) Obsidian Publish -- if any RSS surface is exposed; (7) Pelican / Nikola -- python-side examples of multi-feed (per-tag, per-author) generation. For each: how is the post set selected? How is the item id chosen (and is it stable across rebuilds)? How are dates resolved when missing? What sanitisation is applied to item content? Per-tag / per-author / per-folder feed support? Atom vs RSS choice or both?")
+  (acceptance "research/SPEC-038-prior-art-outbound.md exists with one labelled section per reference, each containing: (a) selection mechanism narrative; (b) item-id strategy with a 'stable-across-rebuilds?' verdict; (c) date-fallback rules; (d) content-sanitisation rules (HTML escaping, content vs summary); (e) explicit verdict on what zetl can borrow and what it must adapt for the wikilink-graph use case (e.g., wikilinks in feed content must be rewritten to absolute URLs).")
+  (trace "SPEC-038/research"))
+
+(meta task-prior-art-inbound
+  (description "Research prior art for inbound feed pulling in PKM tools. Mandatory references: (1) miniflux -- a self-hosted feed reader, examine its scheduler, dedup-key strategy (GUID vs link vs hash), and SSRF/XXE postures; (2) FreshRSS -- similar; (3) Obsidian RSS plugin / Logseq RSS / Joplin -- PKM-shaped storage models; (4) Bridgy / RSSHub -- aggregator-shape; (5) Liferea, NetNewsWire -- desktop-shape (lower relevance but informative on parsing). For each: scheduling model (cron vs interval vs event-driven), parsing library, dedup strategy (which identity primitive), update-handling (when an item changes upstream after first ingest, what wins?), redirect / max-size / max-fetch-frequency controls, opml import/export. Explicit anti-pattern call-out: ANY system that materialises items into local files and overwrites them on update without recording 'first seen' / 'last seen' state has a footgun (history rewriting). The output names what zetl must adopt (likely: GUID-based dedup with first-seen pinning) and what to reject.")
+  (acceptance "research/SPEC-038-prior-art-inbound.md exists with one labelled section per reference; comparison table for scheduler / dedup-key / update-handling; explicit anti-pattern subsection; recommendation on whether v1 inbound should ship at all (with reasoning that feeds the inbound-scope ADR).")
+  (trace "SPEC-038/research"))
+
+(meta task-user-profiles
+  (description "Build user profiles for the RSS/Atom user archetypes. AT MINIMUM the following two outbound-side profiles: (1) Vault Publisher -- self-hoster who runs zetl build (or zetl serve) and wants their public vault to expose a feed so readers can subscribe; (2) Feed Reader -- downstream consumer using NetNewsWire / Reeder / Feedbin / etc. who never touches zetl directly but is the end-user of the outbound feed (their requirements are 'feed validates', 'item links work', 'dates are sensible', 'content renders'). If the inbound-scope ADR concludes inbound is in v1, ALSO build: (3) PKM Subscriber -- vault owner who wants to ingest external feeds as vault pages; (4) Operator/Administrator -- managing scheduled fetches, network policy, dedup state. Per USDD: profiles must be specific enough to play synthetically without further interpretation. File location: /users/feed-publisher/user.md and /users/feed-subscriber/user.md (the latter only if inbound is in v1). Note: the /users/ directory does not yet exist at zetl's top level -- create it.")
+  (acceptance "/users/feed-publisher/user.md exists with profiles 1 and 2 in the USDD Synthetic User Protocol template. If inbound is in v1, /users/feed-subscriber/user.md exists with profiles 3 and 4. Constraints are precise (e.g. 'Feed Reader is using a standards-conformant client; expects RFC 4287 Atom or RSS 2.0; tolerates well-formed XML only'); each profile names the channels and tools it uses.")
+  (trace "SPEC-038 section 2"))
+
+(meta task-happy-paths
+  (description "Define happy paths covering each user profile x feature path. AT MINIMUM: (HP1) Vault Publisher runs zetl build, the build emits feed.xml at the site root, the publisher pastes the URL into their site footer, a Feed Reader subscribes successfully. (HP2) Vault Publisher adds a tag/folder filter and gets a per-tag feed at /tags/<tag>/feed.xml. (HP3) An item is removed from the vault between builds; the next build emits a feed without it; the Feed Reader sees the item disappear (or the item lingers per a configurable retention -- this is a finding to surface). (HP4) Vault Publisher publishes a vault page with no date frontmatter; the build resolves a date per the resolution order from task-survey-frontmatter-dates and emits a valid feed (or refuses, with a clear error -- the spec must pick). If inbound is in v1, also: (HP5) PKM Subscriber adds a feed URL to a config file; the next zetl run pulls items and writes them to a folder; the dedup state survives a rebuild. (HP6) An external feed publishes a malformed XML payload; zetl rejects it with a logged warning and does not corrupt the vault. (HP7) An external feed serves a 10MB billion-laughs payload; zetl bounds memory and rejects. For each happy path: preconditions, numbered steps with action -> expected response, postconditions, enumerated failure-modes list. Per USDD Synthetic User Protocol template. Location: /users/feed-publisher/happy-paths.md (and /users/feed-subscriber/happy-paths.md if inbound is in v1).")
+  (acceptance "happy-paths.md file(s) exist; HP1-HP4 always present; HP5-HP7 present iff inbound is in v1 per the inbound-scope ADR (note: ordering -- this task may run before that ADR; if so, draft for both options and prune later); failure-modes lists non-empty for every HP.")
+  (trace "SPEC-038 section 3"))
+
+(meta task-draft-requirements
+  (description "Draft specs/SPEC-038-rss-support.md head-to-toe, populating REQ-### / NFR-### / ADR-### / CON-### / TEST-### / OBS-### artefacts. The strawman seeded by the kickoff session already exists under specs/SPEC-038-rss-support.md; this task graduates it from strawman to a draft with grounded values. REQ numbering: continue the SPEC-035 convention (REQ-3801, REQ-3802, ...) so the spec id and the artefact id share their numeric prefix and there are no collisions with SPEC-035's REQ-35##. The spec MUST address: (a) feed format -- RSS 2.0, Atom 1.0, or both (REQ + ADR); (b) item selection -- frontmatter / folder / tag / SPL query, with explicit precedence rules; (c) item id strategy -- stable across rebuilds, derived from the slug resolver; (d) date resolution order -- per task-survey-frontmatter-dates; (e) wikilink rewriting in item content -- resolved to absolute URLs against the configured base URL (REQ + NFR for relative-link safety); (f) HTML sanitisation in feed content -- aligned with SPEC-034's existing capability-mode sanitiser if present; (g) feed self-link / atom:link rel=self correctness; (h) per-feed limits -- max items, optional truncation, NFR for feed file size; (i) inbound-feed posture per the inbound-scope ADR; (j) observability -- counter for feed builds, gauge for feed item counts, log lines for build / fetch outcomes. Apply USDD Quality Attribute Checklist to every requirement. Use SPEC-035 / SPEC-036 document structure as the template.")
+  (acceptance "specs/SPEC-038-rss-support.md status changes from 'strawman' to 'draft' with: (1) information-table frontmatter (id SPEC-038, status draft, version 0.2.0, author agent:claude); (2) >= 12 REQs covering the dimensions enumerated in description; (3) >= 5 NFRs (feed-build latency, feed file size cap, item count cap per feed, NFR on stable-id property, NFR on standards conformance under W3C Feed Validator); (4) traceability table linking each REQ to candidate TEST-### IDs; (5) USDD Quality Attribute Checklist passed for every REQ -- checklist included at end of document with pass/fail per item.")
+  (trace "SPEC-038 section 3 section 4"))
+
+(meta task-synthetic-user-run
+  (description "Execute happy paths from /users/feed-publisher/happy-paths.md (and /users/feed-subscriber/happy-paths.md if applicable) as synthetic-user simulations against the draft SPEC-038. The synthetic-user agent does NOT see the implementation (none exists); it works from SPEC-038 + user profile + happy path only. Per USDD Synthetic User Protocol section 3: log model/version, user profile, happy path under test, date. For each step record what was attempted, what SPEC-038 says happens, whether the user's expectation matched, and any confusion or assumption. Categorise findings per the USDD finding taxonomy (Gap, Ambiguity, Friction, Error path gap, Accessibility barrier, Assumption, Sequencing issue, UX heuristic violation). Each finding becomes a candidate REQ amendment. Re-run any HP whose findings produced REQ amendments to verify resolution. Particular attention to: (a) the wikilink-rewriting cases (a wikilink to a page that does not exist in the published vault must produce a deterministic, documented outcome); (b) the missing-date case across formats; (c) the per-tag feed URL pattern (does it conflict with any existing route?).")
+  (acceptance "research/SPEC-038-synthetic-user.md exists with header metadata (model, profiles, paths, date); per-step trace for each HP; categorised findings table; explicit list of REQ-### amendments applied to SPEC-038 as a result; re-run results showing resolved findings; explicit 'no further findings' statement OR escalated open questions if convergence not reached after one iteration.")
+  (trace "USDD section Synthetic User Protocol"))
+
+(meta task-phase1-quality-gates
+  (description "Apply USDD Phase 1 Quality Gates to SPEC-038: (1) all requirements unambiguous (single interpretation); (2) all requirements verifiable (testable); (3) all requirements atomic (one obligation each); (4) no internal conflicts; (5) ambiguities resolved with measurable criteria -- apply USDD Ambiguity Resolution prohibited-terms table (replace 'fast', 'easy', 'secure', 'reliable', 'scalable' with measurable criteria). Produce a checklist appended to SPEC-038 (or in research/SPEC-038-phase1-gates.md) with pass/fail per gate and per requirement. Failures must be fixed in SPEC-038 before this task completes -- do not 'pass with caveats'.")
+  (acceptance "Either SPEC-038-rss-support.md section Quality Gates or research/SPEC-038-phase1-gates.md contains a checklist with every gate marked pass; every prohibited term in SPEC-038 has been replaced or justified; if any failures were found, they were fixed and re-checked.")
+  (trace "USDD section Phase 1 Quality Gates"))
+
+(meta task-adr-rss-vs-atom
+  (description "Author ADR comparing three options: (A) RSS 2.0 only -- maximum feed-reader compatibility, well-known, somewhat under-specified for namespacing, no extension story for vault metadata; (B) Atom 1.0 only -- RFC 4287, well-specified, namespaceable, more verbose, slightly worse legacy-reader compatibility; (C) both, served at distinct URLs (/feed.xml = RSS, /atom.xml = Atom), with the spec naming one canonical and the other a courtesy. For each option: feed-reader-compatibility evidence (NetNewsWire, Feedbin, Reeder, miniflux, Liferea support), extension story (do we need to embed wikilink-graph metadata? if so, Atom wins outright), maintenance burden (two emitters means two test surfaces). Recommend a stance with explicit justification. Note the convention many static-site generators settle on: emit Atom canonically, redirect /feed.xml -> /atom.xml or emit a minimal RSS 2.0 alongside.")
+  (acceptance "SPEC-038-rss-support.md contains ADR-3801 Format-Choice with: status proposed, context paragraph, three options each with property/compatibility/cost analysis, an explicit decision, and consequences (positive + negative + accepted risk). Decision MUST address whether RSS and Atom coexist or one supersedes the other.")
+  (trace "ADR-3801 in SPEC-038"))
+
+(meta task-adr-feed-selection
+  (description "Author ADR on how vault pages are selected into a feed. Options: (A) explicit frontmatter opt-in via 'feed: true' or 'feed: <feed-name>'; (B) folder-based -- everything under /posts or /blog ships in the canonical feed; (C) tag-based -- per-tag feeds at /tags/<tag>/feed.xml; (D) SPL-query-driven -- the user writes a defeasible rule '(rule item-in-feed (and (page X) (-> (or (status X published) (folder X posts)))))' and zetl reasons over it (powerful, but requires --features reason and is opaque to feed-reader users); (E) hybrid -- frontmatter opt-in is canonical, folder + tag are conveniences, SPL is power-user. Each: discoverability, footgun-resistance, alignment with existing zetl idioms, cost. Recommend.")
+  (acceptance "SPEC-038-rss-support.md contains ADR-3802 Feed-Selection with five-option analysis and explicit decision. Decision references the existing zetl idiom (the codebase favours frontmatter-driven configuration for per-page concerns) and names the precedence order if more than one mechanism survives. Cross-references the wikilink-traversal cost: SPL-query selection adds a build-time pass over the reasoning store.")
+  (trace "ADR-3802 in SPEC-038"))
+
+(meta task-adr-inbound-scope
+  (description "Author ADR on whether to support inbound feed fetching in v1 AT ALL. Options: (Y) Yes, in v1 -- cost: scheduling surface, network-policy surface, XXE/SSRF/billion-laughs threat surface, persistence + dedup surface, four user-facing failure paths; benefit: zetl becomes a feed-aggregating PKM, first-class. (N) No, defer to v2 or out-of-tree -- cost: PKM subscribers must use a separate tool (miniflux, FreshRSS) and import via existing ecosystem hooks; benefit: ships outbound v1 quickly, defers a substantial threat surface. (D) Defer-by-design -- the spec defines the inbound surface as 'a render-pipeline hook with feed-fetcher capabilities' and ships zero new in-tree code, instead documenting a recipe for invoking miniflux's exporter into the vault. Recommend the choice that produces the smallest defensible v1.")
+  (acceptance "SPEC-038-rss-support.md contains ADR-3803 Inbound-Scope with explicit decision, justification, and a 'consequences for v1 spec scope' subsection that explicitly ENUMERATES which REQs / NFRs / CONs are dropped (or moved to a 'Deferred' appendix) if the decision is N or D. The plan tasks for inbound (storage, scheduling) are then conditionally executed -- they are scaffolded but should be skipped (marked as deferred-not-blocked) if ADR-3803 = N.")
+  (trace "ADR-3803 in SPEC-038"))
+
+(meta task-adr-inbound-storage
+  (description "Author ADR on how inbound feed items are stored as vault pages. Run only if ADR-3803 = Y or D-with-recipe; for D-with-recipe, this task documents the recipe rather than an in-tree mechanism. Options: (A) flat folder /inbox/<feed-slug>/<item-guid>.md -- simplest, dedup is filename existence; (B) date-bucketed /inbox/<feed-slug>/YYYY/MM/<item-guid>.md -- nicer for browsing, identical dedup; (C) full mirroring -- attempt to reflect the source's structure; (D) shadow store under .zetl/feeds/ that is INDEX-able by zetl but not user-editable, with a virtual page surface. Each: how does the user discover items? Does the user edit them and lose changes on next fetch? Is dedup robust against feed-side guid mutations? Recommend.")
+  (acceptance "SPEC-038-rss-support.md contains ADR-3804 Inbound-Storage with options analysis and decision OR an explicit deferral note linking back to ADR-3803. If deferred, this task completes immediately -- the deferral itself is the deliverable.")
+  (trace "ADR-3804 in SPEC-038"))
+
+(meta task-adr-scheduling
+  (description "Author ADR on how inbound feed fetches are scheduled. Run only if ADR-3803 = Y. Options: (A) explicit user invocation only (zetl feed pull) -- simplest, pushes scheduling to the user's cron; (B) in-process scheduler tied to zetl serve -- only fetches when zetl serve is running; (C) zetl watch integration -- on-index hook fires the fetcher; (D) a daemon mode (zetl feed daemon). Each: behaviour when zetl is not running, alignment with existing zetl ergonomics, complexity. zetl already favours an explicit-invocation philosophy (zetl index, zetl build are user-driven). Recommend the option most consistent with that. Cross-reference HTTP request-rate considerations -- a feed-publisher's User-Agent + If-Modified-Since support is mandatory regardless of scheduler choice.")
+  (acceptance "SPEC-038-rss-support.md contains ADR-3805 Scheduling with options analysis and decision OR an explicit deferral note linking back to ADR-3803.")
+  (trace "ADR-3805 in SPEC-038"))
+
+(meta task-contracts
+  (description "Define the public contracts for SPEC-038. AT MINIMUM: (CON-3801) CLI -- the user-facing surface for outbound feeds (likely just configuration in zetl.toml + behaviour of zetl build, but consider a 'zetl feed validate' subcommand that runs the W3C feed validator equivalent locally); (CON-3802) Build output -- exact file paths emitted under dist/ (e.g., /feed.xml at the site root, /atom.xml if both formats per ADR-3801, /tags/<tag>/feed.xml if per-tag is in v1 per ADR-3802); (CON-3803) Serve routes -- exact route patterns the live server registers (must not collide with existing routes per task-survey-publishing-surface); (CON-3804) Configuration -- the zetl.toml shape for feed configuration (feed-base-url, feed-title, feed-description, feed-author, max-items, selection rules); (CON-3805) Frontmatter -- which page-level frontmatter fields zetl reads for feed inclusion / exclusion / per-item override (e.g., feed-summary, feed-exclude); (CON-3806) Inbound CLI (only if ADR-3803=Y) -- the zetl feed pull / list / status surface; (CON-3807) Inbound config (only if ADR-3803=Y) -- where users declare subscribed feeds (zetl.toml? a separate feeds.toml?). Each contract: pre-conditions, post-conditions, error model, structured per-clause so each implemented REQ maps to a distinct clause (per USDD requirement-localised repair).")
+  (acceptance "SPEC-038-rss-support.md contains CON-3801 .. CON-3807 (or a justified subset if ADR-3803=N) each with the four required subsections (pre-conditions, post-conditions, error model, implements REQs). Each CON's implements list is non-empty -- a contract with no inbound REQ is dead code.")
+  (trace "CON-### in SPEC-038"))
+
+(meta task-purity-boundary-map
+  (description "Author the Purity Boundary Map for SPEC-038. The outbound side has a clean split: (PURE) feed serialisation -- given a deterministic list of (page-id, title, url, date, summary, content) tuples, produce a byte-identical XML document; (PURE) wikilink-to-absolute-URL rewriting -- given a wikilink and a base URL + slug-resolver function, produce an absolute URL; (PURE) item selection -- given a vault snapshot + selection rules, produce the ordered list of items. (EFFECTFUL) writing the file to dist/, registering the route, reading the vault from disk. The inbound side (if in v1) ALSO has: (PURE) feed parsing -- given XML bytes, produce a list of items or an error; (PURE) dedup -- given a new item set + existing item state, produce a diff; (EFFECTFUL) HTTP fetch, scheduler, persistence. Document the dependency rule and the enforcement mechanism (Rust module visibility + arch-lint, similar to existing zetl modules). The map is required because SPEC-038 has substantial pure logic that benefits from property-based testing (XML round-trip, rewriting idempotence, dedup convergence).")
+  (acceptance "SPEC-038-rss-support.md contains a 'Purity Boundary Map' section with the four required subsections (Pure Core, Effectful Shell, Boundary Contracts, Dependency Rule + Enforcement). The map enumerates at minimum the modules listed in the description and names the test types that target each module (property tests for pure core, integration tests for shell).")
+  (trace "USDD section Purity Boundary Map"))
+
+(meta task-test-strategy
+  (description "Define the test strategy for SPEC-038. AT MINIMUM: (1) example-based TEST-### per REQ following the requirement-targeted decomposition (positive / negative-input / negative-output); (2) property-based tests for the pure core: XML round-trip (feed -> bytes -> feed equals original modulo whitespace), wikilink-rewriting idempotence, item-id stability across rebuilds, dedup convergence; (3) standards-conformance tests -- emitted feeds MUST validate against an independent feed validator (W3C feed validator, feed-rs strict mode, or equivalent), with the test fixture asserting zero errors and zero warnings on a known-good vault; (4) for inbound (if in v1): fuzzing of the XML parser at the trust boundary, with a corpus seeded from the prior-art-inbound research (real-world malformed feeds, billion-laughs, XXE, oversize, redirect-loops); (5) mutation testing on the pure core to confirm test suite teeth. The strategy must justify per technique against the system characteristic table in USDD section Selecting a Verification Strategy.")
+  (acceptance "SPEC-038-rss-support.md contains a 'Verification Strategy' section enumerating: TEST-3801..TEST-38NN matched to REQ-3801..REQ-38NN with explicit positive/negative-input/negative-output coverage; property-based test specifications with stated invariants; standards-conformance test naming the validator; fuzzing target corpus description (if inbound in v1); mutation-testing target modules and threshold.")
+  (trace "TEST-### in SPEC-038"))
+
+(meta task-threat-model
+  (description "Author the threat model for SPEC-038. The outbound side has a small surface: (T1) malicious vault content (page authored by an attacker who has commit access -- but this is in-scope only for collab mode and is not new) injected into feed item content -- mitigation: HTML sanitisation per SPEC-034 if applicable, content-type and escaping correctness; (T2) a vault with billions of pages producing a denial-of-service feed build -- mitigation: max-items NFR, optional pagination. The inbound side (if in v1) has a much larger surface: (T3) XXE in fetched feed XML -- mitigation: parser choice with entity expansion disabled (per task-survey-fetch-stack); (T4) billion-laughs / quadratic-blowup in fetched XML -- mitigation: parser choice + size cap + timeout; (T5) SSRF via redirected feed URLs into 169.254.169.254, ::1, 10.x.x.x, file:// -- mitigation: redirect policy that blocks RFC 1918, link-local, loopback, file scheme; require explicit opt-in for non-https; (T6) compressed-bomb (gzip-encoded XML that decompresses to gigabytes) -- mitigation: bounded decompression; (T7) credential leakage via feed-reader User-Agent / Referer to a malicious feed publisher -- mitigation: minimal UA string, no Referer; (T8) cache-poisoning of dedup state by an attacker controlling a feed -- mitigation: dedup keys are content-derived not server-asserted alone. Each threat: severity, likelihood, mitigation, residual risk. Outputs include a recommended fuzzing corpus seeded from the threat list.")
+  (acceptance "SPEC-038-rss-support.md contains a 'Threat Model' section with one row per threat T1..T8 (subset if inbound is deferred) in a (severity, likelihood, mitigation, residual-risk) table. The mitigation column references the implementing REQ-### / CON-### / NFR-### -- a threat with no implementing artefact is unmitigated and must be either fixed or accepted with a recorded rationale.")
+  (trace "Threat Model in SPEC-038"))
+
+(meta task-phase2-quality-gates
+  (description "Apply USDD Phase 2 Quality Gates to SPEC-038: (1) adheres to constitutional principles (Modularity, Interface, Test-First, Simplicity, Integration-First, Security by Design, Observability, Composition-First UI -- N/A, Accessibility Baseline -- N/A for backend XML, Traceability, Anti-Slop Bias, Adversarial Review, Intent-Anchored Specifications); (2) all components have single responsibility (per Purity Boundary Map); (3) all functionality exposed via well-defined interfaces (per Contracts); (4) tests derived from requirements -- traceability table is complete; (5) security controls specified with verifiable criteria (per Threat Model); (6) observability requirements captured -- OBS-### entries enumerate the metrics, logs, and traces. Produce checklist. Failures fixed before task completion.")
+  (acceptance "SPEC-038-rss-support.md section Quality Gates has Phase 2 checklist with every gate marked pass and trace to the artefact establishing each gate.")
+  (trace "USDD section Phase 2 Quality Gates"))
+
+(meta task-cross-model-review
+  (description "Per USDD Multi-Model Cognitive Diversity (Tier 2): submit SPEC-038 to a fresh-context review by a different model family (e.g., the generating session is Claude Opus 4.7; the reviewer is GPT, Gemini, or a Sonnet 4.6 fresh context with explicit adversarial mandate). Reviewer is given: SPEC-038, the user profiles, the happy paths, and an adversarial prompt instructing them to find defects -- not to ratify. Reviewer MUST NOT see the generating session's reasoning or the prior-art research notes. Findings are recorded in research/SPEC-038-cross-model-review.md categorised per USDD finding taxonomy. Disagreements between models are treated as specification gaps and flagged for human review.")
+  (acceptance "research/SPEC-038-cross-model-review.md exists with: reviewer model and version recorded; review prompt verbatim; findings list categorised; explicit disposition for each finding (accepted -> SPEC-038 amended; rejected -> with rationale; escalated -> open question for human review). Reviewer's findings produce >= 3 SPEC-038 amendments OR a recorded explanation for why none were warranted (which is itself a finding to scrutinise per the Aesthetic-Usability Effect).")
+  (trace "USDD section Multi-Model Cognitive Diversity"))
+
+(meta task-adversarial-tests
+  (description "Per USDD section Adversarial Testing: a separate fresh-context agent generates adversarial tests aimed at breaking the SPEC-038 specification. The adversary works from atomic requirements and prioritises: boundary cases at the edge of preconditions (zero items, max items, max URL length, malformed dates, unicode in titles, leap-second dates, RTL text, BOM-prefixed content, etc.); combinations of independently-valid inputs that violate joint constraints (e.g., feed selection by tag combined with no pages bearing the tag -- empty feed valid? error?); outputs that satisfy each requirement in isolation but contradict their joint intent. Newly-discovered failures resolve into either a specification gap (write a new REQ-###) or a bug-in-the-spec (amend an existing REQ-###). Iterate until adversary exhaustion.")
+  (acceptance "research/SPEC-038-adversarial-tests.md exists with at minimum 20 adversarial test cases categorised by the boundary-/combination-/joint-intent taxonomy; per-case disposition (gap, amendment, already-covered); SPEC-038 amendments applied; final 'adversary exhaustion' statement OR escalated open questions if exhaustion not reached after one iteration.")
+  (trace "USDD section Adversarial Testing"))
+
+(meta task-draft-impl-038
+  (description "Author plans/IMPL-038-rss-support.spl scaffolded for downstream implementation. Use the IMPL-### plan structure exemplified by plans/IMPL-009.spl, plans/IMPL-026.spl, plans/IMPL-027.spl. Required sections: (meta plan ...) header, (given agent-...-available) declarations, task list per REQ/CON in SPEC-038, ready- rules (a task is ready when its declared dependencies are met), assign-to- rules (assignment to agent), task metadata (description + acceptance per task) -- exactly as the existing IMPL plans do. Do NOT execute the plan. Do NOT write any code. The plan must be runnable by 'hence plan validate' and 'hence plan board' without errors.")
+  (acceptance "plans/IMPL-038-rss-support.spl exists; 'hence plan validate plans/IMPL-038-rss-support.spl --strict' returns zero errors zero warnings; 'hence plan board plans/IMPL-038-rss-support.spl' renders the task graph; every REQ-### in SPEC-038 has at least one task in IMPL-038 that traces to it; every CON-### similarly traced.")
+  (trace "IMPL-038 plan deliverable"))
+
+(meta task-mark-spec-approved
+  (description "Final task. Update specs/SPEC-038-rss-support.md frontmatter status from 'draft' to 'approved' and version from 0.2.0 to 1.0.0. Update CHANGELOG.md with an entry recording: SPEC-038 approved on <date>, references DESIGN-038 plan, IMPL-038 implementation plan ready, no code written under DESIGN-038. Open a PR / commit per the repo's convention (see git log for the SPEC-035 / SPEC-036 introduction commits). DO NOT merge unless explicitly told to. Phase 3 begins after a human reviewer signs off.")
+  (acceptance "SPEC-038-rss-support.md status=approved version=1.0.0; CHANGELOG.md entry exists referencing SPEC-038, DESIGN-038, IMPL-038; commit (or PR) prepared but not merged without human approval.")
+  (trace "USDD Phase 1+2 closeout"))
+
+;; -- Readiness Rules (DAG) -----------------------------
+
+;; Phase 0 -- surveys + prior art are root tasks
+(normally r-ready-survey-publishing-surface
+  (and task-survey-publishing-surface no-deps-survey-publishing-surface)
+  ready-survey-publishing-surface)
+
+(normally r-ready-survey-frontmatter-dates
+  (and task-survey-frontmatter-dates no-deps-survey-frontmatter-dates)
+  ready-survey-frontmatter-dates)
+
+(normally r-ready-survey-fetch-stack
+  (and task-survey-fetch-stack no-deps-survey-fetch-stack)
+  ready-survey-fetch-stack)
+
+(normally r-ready-prior-art-outbound
+  (and task-prior-art-outbound no-deps-prior-art-outbound)
+  ready-prior-art-outbound)
+
+(normally r-ready-prior-art-inbound
+  (and task-prior-art-inbound no-deps-prior-art-inbound)
+  ready-prior-art-inbound)
+
+;; Phase 1 -- profiles + happy paths after relevant surveys
+(normally r-ready-user-profiles
+  (and task-user-profiles
+       completed-survey-publishing-surface
+       completed-prior-art-outbound)
+  ready-user-profiles)
+
+(normally r-ready-happy-paths
+  (and task-happy-paths completed-user-profiles)
+  ready-happy-paths)
+
+;; Phase 2 -- requirements + synthetic-user + phase-1 gates
+(normally r-ready-draft-requirements
+  (and task-draft-requirements
+       completed-happy-paths
+       completed-survey-frontmatter-dates
+       completed-survey-fetch-stack
+       completed-prior-art-inbound)
+  ready-draft-requirements)
+
+(normally r-ready-synthetic-user-run
+  (and task-synthetic-user-run completed-draft-requirements)
+  ready-synthetic-user-run)
+
+(normally r-ready-phase1-quality-gates
+  (and task-phase1-quality-gates completed-synthetic-user-run)
+  ready-phase1-quality-gates)
+
+;; Phase 3 -- ADRs + contracts + maps + threat-model + phase-2 gates.
+;; The inbound-scope ADR gates the inbound-storage and scheduling ADRs.
+(normally r-ready-adr-rss-vs-atom
+  (and task-adr-rss-vs-atom completed-phase1-quality-gates)
+  ready-adr-rss-vs-atom)
+
+(normally r-ready-adr-feed-selection
+  (and task-adr-feed-selection completed-phase1-quality-gates)
+  ready-adr-feed-selection)
+
+(normally r-ready-adr-inbound-scope
+  (and task-adr-inbound-scope completed-phase1-quality-gates)
+  ready-adr-inbound-scope)
+
+(normally r-ready-adr-inbound-storage
+  (and task-adr-inbound-storage completed-adr-inbound-scope)
+  ready-adr-inbound-storage)
+
+(normally r-ready-adr-scheduling
+  (and task-adr-scheduling completed-adr-inbound-scope)
+  ready-adr-scheduling)
+
+(normally r-ready-contracts
+  (and task-contracts
+       completed-adr-rss-vs-atom
+       completed-adr-feed-selection
+       completed-adr-inbound-scope)
+  ready-contracts)
+
+(normally r-ready-purity-boundary-map
+  (and task-purity-boundary-map completed-contracts)
+  ready-purity-boundary-map)
+
+(normally r-ready-test-strategy
+  (and task-test-strategy completed-purity-boundary-map)
+  ready-test-strategy)
+
+(normally r-ready-threat-model
+  (and task-threat-model
+       completed-adr-inbound-scope
+       completed-survey-fetch-stack)
+  ready-threat-model)
+
+(normally r-ready-phase2-quality-gates
+  (and task-phase2-quality-gates
+       completed-contracts
+       completed-purity-boundary-map
+       completed-test-strategy
+       completed-threat-model)
+  ready-phase2-quality-gates)
+
+;; Phase 4 -- Tier 2 review + adversarial tests
+(normally r-ready-cross-model-review
+  (and task-cross-model-review completed-phase2-quality-gates)
+  ready-cross-model-review)
+
+(normally r-ready-adversarial-tests
+  (and task-adversarial-tests completed-phase2-quality-gates)
+  ready-adversarial-tests)
+
+;; Phase 5 -- IMPL-038 scaffold + spec approval
+(normally r-ready-draft-impl-038
+  (and task-draft-impl-038
+       completed-cross-model-review
+       completed-adversarial-tests)
+  ready-draft-impl-038)
+
+(normally r-ready-mark-spec-approved
+  (and task-mark-spec-approved completed-draft-impl-038)
+  ready-mark-spec-approved)
+
+;; -- Assignment Rules ----------------------------------
+
+(normally r-assign-survey-publishing-surface (and ready-survey-publishing-surface agent-claude-available) assign-to-survey-publishing-surface-claude)
+(normally r-assign-survey-frontmatter-dates (and ready-survey-frontmatter-dates agent-claude-available) assign-to-survey-frontmatter-dates-claude)
+(normally r-assign-survey-fetch-stack (and ready-survey-fetch-stack agent-claude-available) assign-to-survey-fetch-stack-claude)
+(normally r-assign-prior-art-outbound (and ready-prior-art-outbound agent-claude-available) assign-to-prior-art-outbound-claude)
+(normally r-assign-prior-art-inbound (and ready-prior-art-inbound agent-claude-available) assign-to-prior-art-inbound-claude)
+(normally r-assign-user-profiles (and ready-user-profiles agent-claude-available) assign-to-user-profiles-claude)
+(normally r-assign-happy-paths (and ready-happy-paths agent-claude-available) assign-to-happy-paths-claude)
+(normally r-assign-draft-requirements (and ready-draft-requirements agent-claude-available) assign-to-draft-requirements-claude)
+(normally r-assign-synthetic-user-run (and ready-synthetic-user-run agent-claude-available) assign-to-synthetic-user-run-claude)
+(normally r-assign-phase1-quality-gates (and ready-phase1-quality-gates agent-claude-available) assign-to-phase1-quality-gates-claude)
+(normally r-assign-adr-rss-vs-atom (and ready-adr-rss-vs-atom agent-claude-available) assign-to-adr-rss-vs-atom-claude)
+(normally r-assign-adr-feed-selection (and ready-adr-feed-selection agent-claude-available) assign-to-adr-feed-selection-claude)
+(normally r-assign-adr-inbound-scope (and ready-adr-inbound-scope agent-claude-available) assign-to-adr-inbound-scope-claude)
+(normally r-assign-adr-inbound-storage (and ready-adr-inbound-storage agent-claude-available) assign-to-adr-inbound-storage-claude)
+(normally r-assign-adr-scheduling (and ready-adr-scheduling agent-claude-available) assign-to-adr-scheduling-claude)
+(normally r-assign-contracts (and ready-contracts agent-claude-available) assign-to-contracts-claude)
+(normally r-assign-purity-boundary-map (and ready-purity-boundary-map agent-claude-available) assign-to-purity-boundary-map-claude)
+(normally r-assign-test-strategy (and ready-test-strategy agent-claude-available) assign-to-test-strategy-claude)
+(normally r-assign-threat-model (and ready-threat-model agent-claude-available) assign-to-threat-model-claude)
+(normally r-assign-phase2-quality-gates (and ready-phase2-quality-gates agent-claude-available) assign-to-phase2-quality-gates-claude)
+(normally r-assign-cross-model-review (and ready-cross-model-review agent-claude-available) assign-to-cross-model-review-claude)
+(normally r-assign-adversarial-tests (and ready-adversarial-tests agent-claude-available) assign-to-adversarial-tests-claude)
+(normally r-assign-draft-impl-038 (and ready-draft-impl-038 agent-claude-available) assign-to-draft-impl-038-claude)
+(normally r-assign-mark-spec-approved (and ready-mark-spec-approved agent-claude-available) assign-to-mark-spec-approved-claude)
