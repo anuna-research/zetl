@@ -1,14 +1,16 @@
 ---
 title: "SPEC-038: RSS / Atom feed support for zetl"
 version: 0.1.0-strawman
-status: draft
+status: strawman
 date: 2026-05-06
 audience: agent, human
 parent: null
 related:
-  - SPEC-004  # Web UI and static export (publishing surfaces)
   - SPEC-005  # Defeasible reasoning (SPL — candidate selection mechanism)
+  - SPEC-012  # Named themes for serve/build (theme override conventions)
+  - SPEC-016  # Lifecycle hooks (current user-space RSS workaround; build timing)
   - SPEC-020  # Multi-user collaborative editing (visibility / ACL)
+  - SPEC-030  # Theme data contract (template context compatibility)
   - SPEC-034  # Capability-mode HTML sanitiser (feed-content sanitisation alignment)
   - SPEC-035  # Static asset uploads (file emission idioms; precedent for build-time outputs)
 plan: DESIGN-038-rss-support
@@ -34,13 +36,13 @@ plan: DESIGN-038-rss-support
 | Document ID    | SPEC-038                                                                    |
 | Title          | RSS / Atom feed support for zetl                                            |
 | Version        | 0.1.0-strawman                                                              |
-| Status         | Draft (strawman; pending [[DESIGN-038-rss-support]] execution)              |
+| Status         | Strawman (not implementable; pending [[DESIGN-038-rss-support]] execution)  |
 | Author         | Agent (Claude Opus 4.7, [[PROTO-001]] v1.6.0)                               |
 | Date           | 2026-05-06                                                                  |
 | Audience       | Agent, Human                                                                |
 | Trace          | [[PROTO-001]] §Phase 1, §Phase 2, §AI Trust Boundaries                      |
 | Parent         | (none — independent feature, not a child specification)                     |
-| Related        | [[SPEC-004]], [[SPEC-005]], [[SPEC-020]], [[SPEC-034]], [[SPEC-035]]        |
+| Related        | [[SPEC-005]], [[SPEC-012]], [[SPEC-016]], [[SPEC-020]], [[SPEC-030]], [[SPEC-034]], [[SPEC-035]] |
 | Plan           | `plans/DESIGN-038-rss-support.spl` ([[DESIGN-038-rss-support]])             |
 | Review tier    | Tier 2 (core feature; inbound-feed direction is at a [[Trust Boundary]])    |
 
@@ -96,10 +98,11 @@ fetch-stack survey findings.
 ### 1.2 Design Principles
 
 1. **Standards conformance is a hard gate.** Every emitted feed MUST
-   validate against an independent feed validator with zero errors and
-   zero warnings (see [[#NFR-3805]]). Standards conformance is a
-   [[Constitutional Principle]] check, not a nice-to-have — reader
-   compatibility hinges on it.
+   validate against a pinned local feed validator / strict parser in CI
+   with zero errors and zero warnings (see [[#NFR-3805]]). A manual
+   external validator check MAY be part of release evidence, but CI MUST
+   NOT depend on a mutable network service. Reader compatibility hinges
+   on this.
 2. **Deterministic and pure where possible.** Item selection, item
    ordering, item id derivation, and serialisation are pure functions
    of (vault snapshot, configuration). Re-running the same build on the
@@ -109,21 +112,28 @@ fetch-stack survey findings.
    or when the publication date is corrected. The id is derived from
    the page's stable slug, not from the title or content. See
    [[#REQ-3803]].
-4. **No new authentication or scope surface for outbound feeds.** A feed
-   is a projection of pages the reader could already access through the
-   web UI. The feed inherits whatever ACL governs the vault's HTTP
-   surface (see [[SPEC-020]]). v1 does not introduce per-feed access
-   control.
+4. **Aggregate feeds must not widen visibility.** A feed is a projection
+   of pages the reader could already access through the web UI. In
+   `zetl serve --collab`, a feed route MUST evaluate the current
+   session's per-page read ACL before including each item. In static
+   public builds, a feed MUST include only pages selected for public
+   publication. Capability-mode / encrypted static builds MUST suppress
+   aggregate feeds unless a later contract defines per-cohort feed
+   emission.
 5. **Inbound is opt-in, off by default, and gated.** If [[#ADR-3803]]
    admits inbound to v1, every fetched URL goes through an explicit
    [[Allowlist]] / [[Denylist]] for [[SSRF]] defence; XML parsing uses
    a parser that disables [[XXE]] and bounds entity expansion; the
    fetch loop is bounded in size, time, and concurrency.
 6. **Composition with existing zetl idioms.** Feed configuration lives
-   in `zetl.toml` (the same file users already edit for theme and
-   collaboration settings). Feed templates are Minijinja and overrideable
-   via `.zetl/themes/<theme>/`, in keeping with [[SPEC-004]] template
-   theming. Feeds emit to the same `dist/` tree as other build outputs.
+   in `.zetl/config.toml` under a `[feed]` table, matching the existing
+   vault-configuration pattern. The publication base URL is resolved from
+   `[feed].base_url` or the existing `zetl build --site-url` flag.
+   Feed XML serialisation is core-owned in v1; themes may add discovery
+   links in HTML templates, but MUST NOT override raw feed XML unless the
+   post-template output is validated and the build fails on any
+   validation error. Feeds emit to the same `dist/` tree as other build
+   outputs.
 7. **No mandatory new dependencies for outbound.** Outbound emission
    is implementable without a third-party RSS / Atom crate — a small
    pure-Rust serialiser with explicit XML escaping is preferred to a
@@ -147,12 +157,18 @@ fetch-stack survey findings.
 - Per-tag and per-folder feeds at deterministic URL patterns (e.g.
   `/tags/<tag>/feed.xml`, `/<folder>/feed.xml`) — pending [[#ADR-3802]].
 - Date resolution from frontmatter with a documented fallback chain
-  (`published` → `date` → `created` → git mtime → file mtime — pending
-  survey-frontmatter-dates findings).
+  (`published` → `date` → `created` → git-derived first/last commit
+  date → structured missing-date error — pending survey-frontmatter-dates
+  findings). Filesystem mtime is explicitly not part of the default
+  deterministic chain.
 - Wikilink rewriting in feed item content: every `[[target]]` resolves
-  to its absolute URL against the configured `feed-base-url`; unresolved
-  wikilinks render per a documented policy (likely: drop the link
-  syntax, preserve the literal text — pending [[#REQ-3807]]).
+  to its absolute URL against the effective publication base URL;
+  unresolved wikilinks render per a documented policy (likely: drop the
+  link syntax, preserve the literal text — pending [[#REQ-3807]]).
+- ACL / visibility filtering for aggregate feeds: `serve --collab`
+  filters every item by the current session's read ACL; static public
+  feeds contain only publicly published pages; capability-mode aggregate
+  feeds are out of scope unless explicitly admitted by a later contract.
 - HTML sanitisation of item content matching the [[SPEC-034]]
   capability-mode sanitiser allowlist (or a tighter allowlist for the
   feed surface — pending [[#ADR-3807]] if drafted).
@@ -162,21 +178,21 @@ fetch-stack survey findings.
   lines on emission and on each per-page selection-rejection reason
   (with a sampling cap, since vaults can have thousands of pages — see
   [[#OBS-3801]]).
-- Documentation: README section, theme authoring reference for
-  `_feed.xml` template, CHANGELOG entry.
+- Documentation: README section, feed-discovery theme authoring note,
+  CHANGELOG entry.
 
 **In scope (v1, inbound) — *only if [[#ADR-3803]] admits it; otherwise
 deferred to v2 and the section below moves to "Out of scope":***
 
-- An inbound feed registry in `zetl.toml` (or a dedicated `feeds.toml`
-  — pending [[#CON-3807]]).
+- An inbound feed registry in `.zetl/config.toml` (or a dedicated
+  `.zetl/feeds.toml` — pending [[#CON-3807]]).
 - A `zetl feed pull` CLI subcommand (or whatever surface
   [[#ADR-3805]] selects) that fetches each registered feed once.
 - XML parsing with [[XXE]] disabled, entity-expansion bounded, and an
   explicit no-go list for crates lacking these controls.
 - Persistence of fetched items as Markdown pages under a configured
-  folder (default `inbox/<feed-slug>/`), with [[GUID]]-based deduplication
-  pinned at first-seen time.
+  folder (default `inbox/<feed-slug>/`), with first-seen identity-record
+  deduplication over [[GUID]], canonical link, and content fingerprint.
 - Network-policy controls: redirect allowlist (no [[RFC 1918]],
   link-local, loopback, `file://`), per-fetch byte cap, per-fetch
   timeout, decompression bomb defence, connection-pool concurrency cap.
@@ -236,8 +252,8 @@ NetNewsWire / Feedbin / Reeder / FreshRSS / miniflux without manual
 intervention; control which pages ship in the feed.
 
 **Constraints (provisional):** intermediate-CLI fluency; comfortable
-editing `zetl.toml` and frontmatter; *not* assumed to know the RSS or
-Atom XML schema.
+editing `.zetl/config.toml` and frontmatter; *not* assumed to know the
+RSS or Atom XML schema.
 
 **Daily workflow:** edits Markdown files, runs `zetl build`,
 `rsync`/CI deploys `dist/` to the host, expects the feed at
@@ -313,10 +329,11 @@ findings.]`
 The system SHALL emit a feed document at `dist/feed.xml` (and/or
 `dist/atom.xml`, per [[#ADR-3801]]) on every successful run of
 `zetl build` for vaults that declare a feed configuration in
-`zetl.toml`, WITHIN the same build pass that emits other static
+`.zetl/config.toml` (or via an explicit CLI flag admitted by
+[[#CON-3804]]), WITHIN the same build pass that emits other static
 artefacts (no second invocation), FOR every Vault Publisher
-([[#UP-3801]]) WITH the emitted file validating against an independent
-feed validator with zero errors and zero warnings (see [[#NFR-3805]]).
+([[#UP-3801]]) WITH the emitted file validating against the pinned local
+validator selected by [[#NFR-3805]].
 
 Trace:
 - [[#TEST-3801]] (positive)
@@ -328,10 +345,16 @@ Trace:
 ### REQ-3802: Item selection
 
 The system SHALL include a vault page in the canonical feed if and only
-if the page satisfies the configured selection rule (frontmatter
-opt-in, folder membership, tag membership, or [[SPL]] query — precedence
-per [[#ADR-3802]]), with the selection function being a deterministic
-pure projection of (vault snapshot, configuration).
+if the page satisfies BOTH the configured selection rule (frontmatter
+opt-in, folder membership, tag membership, or [[SPL]] query —
+precedence per [[#ADR-3802]]) AND the publication-visibility predicate
+for the current output surface. For `zetl serve --collab`, the
+visibility predicate is the current authenticated user's per-page read
+ACL. For static public builds, it is membership in the publicly
+published page set. For capability-mode / encrypted builds, the default
+predicate is false until a per-cohort feed contract exists. The selection
+function remains a deterministic pure projection of (vault snapshot,
+configuration, authenticated user/cohort identity when applicable).
 
 Trace: [[#TEST-3804]], [[#TEST-3805]], [[#CON-3804]], [[#CON-3805]]
 
@@ -355,9 +378,13 @@ For every emitted feed item, the system SHALL determine the item's
 publication date (and updated date for Atom) by walking a documented
 fallback chain (provisional: `frontmatter.published` →
 `frontmatter.date` → `frontmatter.created` → git committer date →
-filesystem mtime), stopping at the first present value, FOR all
-selected pages, WITH the resulting date being timezone-aware and
+structured missing-date error), stopping at the first present value, FOR
+all selected pages, WITH the resulting date being timezone-aware and
 serialised in [[RFC 822]] (RSS) or [[RFC 3339]] (Atom) format.
+Filesystem mtime MUST NOT be used in the default build because it is not
+stable across checkout / copy / CI hosts; if a later ADR admits an
+`allow_unstable_mtime` preview mode, that mode MUST be opt-in and MUST
+mark the feed non-reproducible in diagnostics.
 
 Trace: [[#TEST-3808]] .. [[#TEST-3812]] (one per fallback step plus
 two negative cases — malformed and future-dated)
@@ -365,10 +392,12 @@ two negative cases — malformed and future-dated)
 ### REQ-3805: Wikilink rewriting
 
 In feed item content, every `[[wikilink]]` SHALL be rewritten to an
-absolute URL against the configured `feed-base-url` if and only if the
-target resolves to a vault page that is itself published; unresolved
-or unpublished targets SHALL be handled by a documented policy (per
-[[#REQ-3807]]).
+absolute URL against the effective publication base URL if and only if
+the target resolves to a vault page that is itself published and
+readable on the current feed surface; unresolved, unpublished, or
+ACL-denied targets SHALL be handled by a documented policy (per
+[[#REQ-3807]]) without leaking denied-page URLs in hidden visibility
+mode.
 
 Trace: [[#TEST-3813]] .. [[#TEST-3815]]
 
@@ -379,7 +408,9 @@ rules (CDATA for RSS content, character entities for Atom content
 type=html or XHTML for content type=xhtml) AND subject to the
 [[SPEC-034]] capability-mode sanitiser allowlist (or a tighter
 allowlist per [[#ADR-3807]] if drafted) BEFORE emission, FOR every
-item, WITH no item content bypassing sanitisation.
+item, WITH no item content bypassing sanitisation. If a theme or hook is
+ever allowed to affect feed XML, sanitisation and standards validation
+MUST run after that effect and MUST fail the build on error.
 
 Trace: [[#TEST-3816]] (XSS-attempt fixture), [[#TEST-3817]] (allowlist
 boundary)
@@ -405,9 +436,11 @@ Trace: [[#TEST-3819]]
 ### REQ-3809: Feed self-publication safety
 
 The system SHALL refuse to emit a feed for a vault whose
-`feed-base-url` is unset or contains a relative path, FAILING the build
-with a structured error referencing this REQ, FOR every Vault Publisher
-attempting to build without configuration.
+effective publication base URL (resolved from `.zetl/config.toml`
+`[feed].base_url` and/or `zetl build --site-url`, per [[#CON-3804]]) is
+unset, relative, non-HTTP(S), or contains a URL fragment, FAILING the
+build with a structured error referencing this REQ, FOR every Vault
+Publisher attempting to build without valid publication configuration.
 
 Trace: [[#TEST-3820]] (negative-input)
 
@@ -433,11 +466,15 @@ Trace: [[#TEST-3822]] .. [[#TEST-3826]] (provisional)
 
 ### REQ-3812: Inbound dedup convergence `[Provisional — contingent on ADR-3803]`
 
-If [[#ADR-3803]] = Y: the system SHALL deduplicate inbound items by
-[[GUID]] (falling back to canonicalised link, then to content hash),
-WITH the dedup state pinned at first-seen time so that a feed-side
-[[GUID]] mutation MUST NOT cause a duplicate item to enter the vault,
-FOR every fetched feed.
+If [[#ADR-3803]] = Y: the system SHALL deduplicate inbound items by a
+persisted first-seen identity record containing every stable signal
+observed at ingest time: feed URL, item [[GUID]] when present,
+canonicalised item link when present, and a normalised content hash. A
+new inbound item is a duplicate if ANY persisted signal for the same
+feed matches. A feed-side [[GUID]] mutation MUST update the persisted
+alias set for the existing item when link or content fingerprint matches;
+it MUST NOT create a second vault page. [[GUID]] is therefore an input
+signal, not the sole authority.
 
 Trace: [[#TEST-3827]] (state-machine property test)
 
@@ -457,18 +494,23 @@ Trace: [[#OBS-3802]], [[#TEST-3828]] (benchmark)
 ### NFR-3802: Feed file size cap
 
 Each emitted feed document SHALL be ≤ 1 MiB before pagination is
-required, UNDER any vault size, WITH paginated continuation feeds
-(per [[Atom Paged Feeds]] [[RFC 5005]]) emitted automatically when
-the cap is reached.
+required, UNDER any vault size. If Atom is emitted and pagination is
+enabled, continuation feeds SHALL follow [[Atom Paged Feeds]] [[RFC
+5005]]. If RSS-only output is selected, excess items SHALL be truncated
+at `max-items` by default; an RSS pagination extension MUST NOT be
+invented without a separate ADR. If a configured item/content selection
+would exceed 1 MiB even after truncation, the build SHALL fail with a
+structured remediation hint.
 
 Trace: [[#TEST-3829]]
 
 ### NFR-3803: Item count cap per feed
 
 A single feed document SHALL contain ≤ `max-items` (default 50)
-entries, with `max-items` configurable in `zetl.toml`, WITH excess
-items either truncated (newest-first) or paginated per
-[[Atom Paged Feeds]] depending on configuration.
+entries, with `max-items` configurable in `.zetl/config.toml`, WITH
+excess items truncated newest-first for RSS-only output, and either
+truncated or paginated per [[Atom Paged Feeds]] for Atom output
+depending on configuration.
 
 Trace: [[#TEST-3830]]
 
@@ -484,11 +526,12 @@ Trace: [[#TEST-3806]], [[#TEST-3807]]
 
 ### NFR-3805: Standards conformance
 
-Every emitted feed document SHALL validate against [[W3C Feed
-Validator]] (or an equivalent reference implementation chosen per
-[[#ADR-3801]]) with zero errors and zero warnings, UNDER the test
-fixture corpus described in [[#TEST-3801]] / [[#TEST-3802]], WITH
-verification automated in CI.
+Every emitted feed document SHALL validate against a pinned local
+validator / strict parser chosen per [[#ADR-3801]] with zero errors and
+zero warnings, UNDER the test fixture corpus described in
+[[#TEST-3801]] / [[#TEST-3802]], WITH verification automated in CI. A
+manual [[W3C Feed Validator]] check MAY be recorded as release evidence,
+but the public service MUST NOT be the CI gate.
 
 Trace: [[#TEST-3831]] (CI validation step)
 
@@ -579,7 +622,7 @@ to v1 or move to a "Deferred" appendix.
 
 ### CON-3803: Serve route patterns `[Provisional]`
 
-### CON-3804: Configuration surface (`zetl.toml` `[feed]` table) `[Provisional]`
+### CON-3804: Configuration surface (`.zetl/config.toml` `[feed]` table + `--site-url` precedence) `[Provisional]`
 
 ### CON-3805: Frontmatter contract for feed inclusion `[Provisional]`
 
@@ -599,12 +642,14 @@ to v1 or move to a "Deferred" appendix.
   `FeedConfig`, produce the XML byte string for RSS 2.0 and/or Atom 1.0.
 - `feed::select` — given a vault snapshot and a `SelectionRule`, produce
   the ordered list of pages that ship in a feed.
-- `feed::rewrite_links` — given Markdown content, a `feed-base-url`, and
-  a slug-resolver function, produce content with every `[[wikilink]]`
-  rewritten to an absolute URL (or handled per the unresolved-target
-  policy).
-- `feed::resolve_date` — given a page's frontmatter and filesystem
-  metadata, produce the item's date per the documented fallback chain.
+- `feed::rewrite_links` — given Markdown content, an effective
+  publication base URL, an ACL / publication-visibility predicate, and a
+  slug-resolver function, produce content with every `[[wikilink]]`
+  rewritten to an absolute URL (or handled per the unresolved/denied
+  target policy).
+- `feed::resolve_date` — given a page's frontmatter and deterministic
+  history metadata, produce the item's date per the documented fallback
+  chain.
 - `feed::item_id` — given a page's resolved slug, produce the stable
   feed-item identifier ([[#REQ-3803]]).
 - *(inbound, contingent)* `feed::parse_inbound` — given fetched XML
@@ -653,7 +698,7 @@ arch-lint rule in CI prohibiting `use` from `feed::shell` inside
 |---|---|
 | Example-based testing | every [[#REQ-3801]] .. [[#REQ-3812]], decomposed into positive / negative-input / negative-output per [[PROTO-001]] §Requirement-Targeted Test Decomposition |
 | Property-based testing | XML roundtrip (parse(serialise(items)) ≡ items modulo whitespace), wikilink-rewriting idempotence, item-id stability under content edit, dedup convergence (state-machine model) |
-| Standards-conformance testing | every emitted-feed test fixture validates against [[W3C Feed Validator]] (or chosen reference) with zero errors / zero warnings — automated in CI per [[#NFR-3805]] |
+| Standards-conformance testing | every emitted-feed test fixture validates against the pinned local validator / strict parser chosen by [[#ADR-3801]] with zero errors / zero warnings — automated in CI per [[#NFR-3805]]; external W3C validation is optional release evidence |
 | Fuzzing (inbound, contingent) | XML parser at the trust boundary; corpus seeded from prior-art-inbound research and the threat-model |
 | Mutation testing | the pure core (`feed::serialise`, `feed::select`, `feed::rewrite_links`, `feed::resolve_date`, `feed::item_id`); kill-rate threshold ≥ 80 % |
 | Adversarial testing | per [[DESIGN-038-rss-support#task-adversarial-tests]] — boundary cases at preconditions, joint-input combinations, intent contradictions |
@@ -670,6 +715,7 @@ arch-lint rule in CI prohibiting `use` from `feed::shell` inside
 |---|---|---|---|
 | T1 | Malicious vault content injected into outbound feed item content | outbound | Provisional; mitigation references [[SPEC-034]] sanitiser |
 | T2 | Vault-size DoS on feed build (millions of pages) | outbound | Provisional; mitigation [[#NFR-3803]] |
+| T9 | Aggregate feed leaks title, content, or URL for a page denied by ACL or hidden visibility mode | outbound | Provisional; mitigation [[#REQ-3802]] and [[#REQ-3805]] |
 | T3 | [[XXE]] in fetched feed XML | inbound (contingent) | Provisional; mitigation parser choice per task-survey-fetch-stack |
 | T4 | Billion-laughs / quadratic blowup in fetched XML | inbound | Provisional; mitigation parser entity-expansion bound + size cap |
 | T5 | [[SSRF]] via redirected feed URLs | inbound | Provisional; mitigation [[#REQ-3811]] |
@@ -709,7 +755,7 @@ and the inbound test-strategy section.
 | Artefact | Implements | Verified by |
 |---|---|---|
 | [[#REQ-3801]] | UP-3801 daily workflow | TEST-3801, TEST-3802, TEST-3803 |
-| [[#REQ-3802]] | ADR-3802 outcome | TEST-3804, TEST-3805 |
+| [[#REQ-3802]] | ADR-3802 outcome + [[SPEC-020]] visibility preservation | TEST-3804, TEST-3805 |
 | [[#REQ-3803]] | NFR-3804 | TEST-3806, TEST-3807 |
 | [[#REQ-3804]] | survey-frontmatter-dates resolution chain | TEST-3808..TEST-3812 |
 | [[#REQ-3805]] | UP-3801 expectation that links resolve | TEST-3813..TEST-3815 |
