@@ -502,6 +502,30 @@ pub async fn page_handler(
         .iter()
         .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(slug));
 
+    // BUG-001 hardening: a literal `\` reaching the comparator means a slug
+    // (or a vault link emitted from one) carried native Windows separators
+    // through to URL routing — the exact failure mode that caused nested
+    // pages to render with empty bodies in 0.6.1. Surface this loudly even
+    // outside verbose mode, because it indicates a regression in
+    // `page_slug_from_path` or in a link-emission site.
+    if file.is_none() && slug.contains('\\') {
+        let normalised = slug.replace('\\', "/");
+        let would_match = data
+            .files
+            .iter()
+            .any(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(&normalised));
+        eprintln!(
+            "[zetl] slug-miss: slug={slug:?} contains '\\\\' — \
+             normalised={normalised:?} would_match={would_match} \
+             (BUG-001 class: native path separators reaching the URL comparator)"
+        );
+    } else if file.is_none() && state.verbose && !slug.starts_with('_') && !slug.is_empty() {
+        eprintln!(
+            "[zetl] slug-miss: slug={slug:?} not found in vault \
+             (rendering empty-body / new-page chrome)"
+        );
+    }
+
     // Reserve the /_* URL prefix (task-reserved-underscore-routes).
     // Shell routes (/_graph, /_me, /_print, /_history, /_static/*) are matched
     // before page_handler. Real vault pages whose slug legitimately starts with

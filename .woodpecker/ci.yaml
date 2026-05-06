@@ -77,3 +77,21 @@ steps:
       # corpus via the library API; the explicit step here surfaces
       # the per-fixture PASS/MISS trace in the CI log.
       - make audit-corpus
+
+  - name: windows-cross-check
+    image: rust:1-bookworm
+    commands:
+      # BUG-001 follow-up: catch Windows-only compilation regressions at
+      # PR time without a Windows runner. We cross-compile to
+      # x86_64-pc-windows-gnu via mingw — same toolchain release.yaml
+      # uses for `build-windows`. This validates `cfg(windows)` paths
+      # and any Windows-conditional API usage compiles cleanly.
+      #
+      # Path-separator behaviour itself (the actual BUG-001 root cause)
+      # is exercised on the Linux runner via `scanner::tests::page_slug_*`,
+      # which mock Windows separators by injecting backslashes into the
+      # input `PathBuf` directly — the slug normaliser is forced to
+      # handle them deterministically regardless of host OS.
+      - apt-get update && apt-get install -y gcc-mingw-w64-x86-64
+      - rustup target add x86_64-pc-windows-gnu
+      - cargo check --features "reason,history,mcp,vendored-openssl" --target x86_64-pc-windows-gnu
