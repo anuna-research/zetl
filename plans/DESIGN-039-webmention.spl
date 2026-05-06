@@ -1,0 +1,380 @@
+;; DESIGN-039-webmention: Webmention support for zetl
+;; Research and design plan producing SPEC-039-webmention (specification)
+;; and IMPL-039-webmention (implementation plan, scaffolded but NOT executed).
+;;
+;; Scope: USDD Phase 1 (Vision -> Specification) + Phase 2 (Specification -> Plan).
+;; OUT OF SCOPE: code generation. This plan ends at "human-review-package
+;; delivered + IMPL-039-webmention drafted." Phase 3 begins only after the
+;; spec reaches status=approved and a human reviewer signs off.
+;;
+;; Sibling spec: SPEC-038-rss-support. RSS provides feed-shaped read-side
+;; federation; Webmention provides link-shaped backlink federation. Both
+;; share a trust boundary (untrusted source-fetch + verification + content
+;; sanitisation) and a defeasible-logic moderation surface. Where the two
+;; specs overlap on infrastructure (SSRF-safe fetcher, sanitiser, capability
+;; mode integration), the shared concept is extracted as a vault concept page
+;; and wikilinked from both specs rather than duplicated. The DAG below
+;; reflects that: tasks that depend on SPEC-038 outputs are marked.
+;;
+;; Review tier: Tier 2 (core feature touching public HTTP surface, untrusted
+;; HTML/Microformats parsing, identity and moderation; bidirectional federation
+;; surface). Per USDD section Multi-Model Cognitive Diversity, Tier 2 mandates
+;; cross-model review + human review. Threat model is mandatory deliverable.
+
+(meta plan
+  (id "DESIGN-039")
+  (title "Webmention support for zetl")
+  (version "0.1.0")
+  (status "draft")
+  (created "2026-05-06")
+  (author "agent:claude")
+  (spec "SPEC-039")
+  (description "Research and design Webmention (W3C REC) support for zetl. Four-quadrant scope: receive (server endpoint accepting POST source/target pairs, verify the source page contains a link to the target, moderate, store as external backlink in the link graph); send (build-time and serve-time post-publish hook that POSTs to every target's webmention endpoint); discovery (emit rel=webmention link header and HTML link tag on every published page); idempotency (sender-side persisted log keyed on (source, target, content-hash) so rebuilds do not re-send unchanged mentions; receiver-side per-spec semantics where duplicate (source, target) tuples are treated as updates). Build-mode asymmetry: send and discovery work natively under zetl build; receive requires zetl serve OR a hosted relay (webmention.io shape) -- the recipe path is an explicit ADR. Defeasible-logic moderation is the integration point where webmention meets zetl's existing SPL infrastructure: rules express accept-from-already-linked, accept-from-allowlist, queue-for-review, deny-from-blocklist, with user accept/reject decisions feeding back into the rule store. Outputs: specs/SPEC-039-webmention.md, /users/wiki-author-receiver/{user,happy-paths}.md, /users/federation-peer/{user,happy-paths}.md, /users/moderator/{user,happy-paths}.md, ADR-### records, CON-### contracts, TEST-### specifications, threat model, cross-model adversarial review, human-review package, and plans/IMPL-039-webmention.spl scaffolded for downstream implementation. NO CODE IS WRITTEN UNDER THIS PLAN."))
+
+;; -- Agents --------------------------------------------
+(given agent-claude-available)
+
+;; -- Tasks ---------------------------------------------
+
+;; Phase 0: Surveys (parallel, no deps)
+(given task-survey-backlink-storage)
+(given task-survey-webmention-spec)
+(given task-survey-microformats-stack)
+(given task-survey-defeasible-touchpoints)
+(given task-prior-art-reference-impls)
+(given task-prior-art-static-relay)
+
+;; Phase 1: User profiles and happy paths
+(given task-user-profiles)
+(given task-happy-paths)
+
+;; Phase 2: Requirements
+(given task-draft-requirements)
+(given task-synthetic-user-run)
+(given task-phase1-quality-gates)
+
+;; Phase 3: Architecture and contracts
+(given task-adr-flow-coverage)
+(given task-adr-static-build-receive)
+(given task-adr-moderation-policy)
+(given task-adr-storage-model)
+(given task-adr-identity-verification)
+(given task-adr-idempotency)
+(given task-contracts)
+(given task-purity-boundary-map)
+(given task-test-strategy)
+(given task-threat-model)
+(given task-phase2-quality-gates)
+
+;; Phase 4: Tier 2 cross-model review
+(given task-cross-model-review)
+(given task-adversarial-tests)
+
+;; Phase 5: Implementation planning (no code)
+(given task-draft-impl-039)
+(given task-mark-spec-approved)
+
+;; -- No-deps markers -----------------------------------
+(given no-deps-survey-backlink-storage)
+(given no-deps-survey-webmention-spec)
+(given no-deps-survey-microformats-stack)
+(given no-deps-survey-defeasible-touchpoints)
+(given no-deps-prior-art-reference-impls)
+(given no-deps-prior-art-static-relay)
+
+;; -- Task Metadata -------------------------------------
+
+(meta task-survey-backlink-storage
+  (description "Audit zetl's existing backlink graph storage and produce a research note on how external backlinks (received via webmention) can be added without disturbing the local-link graph contract. Sources: src/graph.rs (LinkGraph::backlinks, forward_links), src/scanner.rs (page-to-slug resolver), src/cache.rs (incremental index), src/types.rs (graph node and edge types), tests/view_tui.rs (consumers of backlinks_map). Required coverage: (a) shape of the in-memory graph (petgraph DiGraph? adjacency map?), node identity, edge attributes; (b) whether edges currently carry provenance (source-file:line citation, link text); (c) whether the cache invalidation contract assumes all edges are derivable from the vault filesystem -- if external mentions are persisted separately, how does the loader merge them at startup; (d) how the web UI's backlink panel and the TUI's bridge column consume the backlinks set today, so that adding 'external_source: Option<Url>' to edges does not require a UI rewrite; (e) whether collab-mode RBAC / scope filtering is applied to backlinks, since federated mentions might need different visibility rules. Output: a baseline reference SPEC-039 will plug into.")
+  (acceptance "research/SPEC-039-backlink-storage.md exists with: (1) graph data structure summary including types and key file:line citations; (2) explicit statement of where external-mention edges would slot in (additive to existing edges? separate index?); (3) cache-invalidation answer with a recommendation on persistence layout (e.g. .zetl/webmentions/external-edges.jsonl loaded once at index start, merged into the graph after intra-vault edges); (4) UI-impact assessment naming every render site that consumes backlinks_map and noting whether each requires changes to surface external mentions distinctly.")
+  (trace "SPEC-039/research"))
+
+(meta task-survey-webmention-spec
+  (description "Read the W3C Webmention REC end-to-end (https://www.w3.org/TR/webmention/) and the webmention.rocks test corpus (https://webmention.rocks/). Produce a normative-requirement extraction: every MUST and SHOULD in the spec, mapped to a candidate REQ-### or NFR-### in SPEC-039. Required coverage: (a) the discovery algorithm (HTTP Link header rel=webmention, HTML <link>/<a> rel=webmention, with Link-header preference); (b) the request format and Content-Type negotiation; (c) the response codes 200/201/202 semantics; (d) verification semantics (receiver MUST fetch source and confirm a link to target exists); (e) update and delete semantics (re-send treated as update; source link removal triggers removal); (f) async vs sync receiver patterns; (g) the security considerations section verbatim. Catalogue every webmention.rocks test fixture (sender tests 1-23, receiver tests 1-25 — verify current numbers); each one is a candidate TEST-### in v1.")
+  (acceptance "research/SPEC-039-webmention-spec.md exists with: (a) numbered list of MUSTs and SHOULDs from the W3C REC, each with a candidate REQ-### or NFR-### identifier; (b) full webmention.rocks test fixture catalogue (one row per fixture: id, scenario, sender or receiver, expected behaviour); (c) verbatim copy of the spec's Security Considerations section as a starting point for SPEC-039 threat model; (d) explicit list of clarifications the spec leaves to implementers (e.g. retention policy on rejected mentions, identity verification beyond URL-existence) -- each becomes a candidate ADR.")
+  (trace "SPEC-039/research"))
+
+(meta task-survey-microformats-stack
+  (description "Audit Rust crates and approaches for parsing Microformats2 (h-card, h-entry, rel-me, rel-author) from webmention source pages, since identity context (author name, photo, URL) and content context (the surrounding e-content of the link) are extracted from the source via Microformats. Candidates: microformats-rs, microformats2-parser, mfp-rs, or roll-your-own minimum-viable parser via existing scraper / html5ever dependencies. For each: API ergonomics, last-release date, license, transitive-dep weight, fuzz-tested upstream? Sanitisation posture for embedded HTML in e-content fields? Compatibility with the SPEC-034 capability-mode sanitiser. Then assess: do we need Microformats parsing in v1 at all, or can the receiver record only (source, target, link-text, decision) and defer identity extraction to v2? The recommendation feeds the identity-verification ADR.")
+  (acceptance "research/SPEC-039-microformats-stack.md exists with: (1) named recommendation for the Microformats parser (with reason); (2) comparison table on API/maintenance/license/fuzz-status; (3) explicit no-go list naming any crate without sanitisation guarantees on embedded HTML; (4) recommendation on whether v1 includes Microformats parsing or defers it (with the user-impact analysis -- if deferred, the moderation queue can only show 'a link from URL X' rather than 'a link from Author Y at URL X', which has UX consequences).")
+  (trace "SPEC-039/research"))
+
+(meta task-survey-defeasible-touchpoints
+  (description "For the moderation policy ADR: audit zetl's existing defeasible-logic infrastructure (src/reason/, spindle-core / spindle-parser deps, the SPL syntax exposed in vault Markdown code blocks per SPEC-005) and design the integration point. Required coverage: (a) how new SPL predicates are introduced -- are they registered in code (spindle-core) or pure data (rules in vault SPL blocks)? (b) sample rule shapes for moderation: (normally r-accept-mutual (and (incoming-mention ?src ?tgt) (already-linked ?vault-domain ?src-domain)) accept-mention ?src ?tgt); (c) how user-facing accept/reject in a moderation queue updates the rule store -- is it a (claims user-decision :at TIME accept ?src ?tgt) ground fact, or does it promote/demote a domain in an allowlist/denylist? (d) interaction with the existing reasoning store (.zetl/reason/) -- does adding mention-related conclusions blow up the cache? (e) export and explainability -- can the user run 'zetl reason explain accept-mention X Y' to see why a specific mention was auto-accepted? Output is the design for the ADR-3903 (moderation policy) decision.")
+  (acceptance "research/SPEC-039-defeasible-touchpoints.md exists with: (a) integration sketch showing where new predicates live and how they are introduced; (b) at least three sample SPL rules covering accept-mutual / accept-allowlist / queue-default / deny-blocklist; (c) explicit user-decision feedback loop (how accept/reject in the UI translates to facts in the SPL store); (d) explainability story tying mention decisions to existing zetl reason commands; (e) cache-invalidation answer.")
+  (trace "SPEC-039/research"))
+
+(meta task-prior-art-reference-impls
+  (description "Research reference Webmention implementations and produce a single reference-impl note. Mandatory references: (1) webmention.io (https://webmention.io) -- Aaron Parecki's hosted relay; document the relay model, the JSON API for static sites to pull received mentions, the per-recipient configuration model, abuse mitigations. (2) Bridgy (https://brid.gy) -- bridges social-network silos to webmention; document how it generates webmentions from Twitter/Mastodon replies. (3) IndieWeb wikis: indieweb.org's own Webmention wiring as a hosted-on-MediaWiki instance. (4) Aaron Parecki's Switchboard / p3k microsub. (5) static-site implementations in Hugo (Webmention.app integrations), Eleventy (eleventy-plugin-webmentions), Jekyll (jekyll-webmention_io). For each: receive vs send coverage, moderation surface, idempotency story, identity extraction from h-card, abuse / spam mitigation, license. Plus the anti-pattern subsection: any implementation that auto-publishes received mentions without verification or moderation.")
+  (acceptance "research/SPEC-039-reference-impls.md exists with one labelled section per reference, each with coverage / moderation / idempotency / identity / abuse columns, and a final 'borrow' / 'avoid' verdict. Includes the anti-pattern subsection.")
+  (trace "SPEC-039/research"))
+
+(meta task-prior-art-static-relay
+  (description "Specifically scope the static-build receive problem: how does a zetl build (no server) participate as a webmention recipient? Three options the ADR-3902 must evaluate: (A) hosted relay -- subscribe to webmention.io; the relay receives mentions on behalf of the static site; the next zetl build pulls received mentions via the relay's JSON API and bakes them into rendered pages. (B) sidecar service -- a tiny zetl-webmentiond daemon co-deployed with the static site, only handles /webmention POST + persistence; the build reads its persisted log and renders. (C) unsupported -- static builds cannot receive mentions, only send and discover. For each option: deployment complexity, trust model (giving webmention.io your inbound stream is a privacy choice), cost, what happens if the relay is down, abuse mitigations available, build-time freshness lag. Recommend the option most consistent with zetl's self-hosting ethos. Cross-reference SPEC-038's inbound-RSS deferred-by-recipe pattern -- the relay path here is structurally similar.")
+  (acceptance "research/SPEC-039-static-relay.md exists with three-option analysis, recommendation, and a deployment-recipe sketch for the recommended option.")
+  (trace "SPEC-039/research"))
+
+(meta task-user-profiles
+  (description "Build user profiles for the four Webmention archetypes: (1) Wiki Author Receiver -- self-hoster running zetl serve --collab whose published pages now receive incoming webmentions; primary goal: see who's linking to them, integrate the signal into their backlink view, control spam. (2) Wiki Author Sender -- the same person on the other side of the relationship: when they publish a page that links externally, they want the targets pinged automatically without thinking about it; ALSO covers the build-mode static publisher whose post-build sends mentions. (3) Federation Peer -- another zetl vault that exchanges mentions; this is the shape that produces the mutual-graph property. (4) Moderator -- managing the queue, allowlist/denylist, defeasible rules; may be the same human as (1) in solo cases. Per USDD: profiles must be specific enough that a synthetic user can be played from them without further interpretation. File location: /users/wiki-author-receiver/user.md, /users/federation-peer/user.md, /users/moderator/user.md (sender shares a profile with (1) since the same human plays both). Note the directories do not yet exist -- create them.")
+  (acceptance "/users/wiki-author-receiver/user.md, /users/federation-peer/user.md, /users/moderator/user.md exist with profiles in the USDD Synthetic User Protocol template; constraints are precise (e.g. 'CLI-fluent; familiar with rel-link semantics; NOT assumed to know Microformats2 vocabulary'); each profile names the deployment shape it operates in (collab vs static-build-with-relay vs static-build-send-only).")
+  (trace "SPEC-039 section 2"))
+
+(meta task-happy-paths
+  (description "Define happy paths covering each profile x flow. AT MINIMUM: (HP-3901) Wiki Author Receiver gets their first webmention from a stranger; verifies the source page contains the link; moderation rule auto-queues unknowns; user clicks accept; the backlink appears in the web UI. (HP-3902) Wiki Author Sender publishes a page with an external link; build-time sender discovers the target's webmention endpoint; POSTs; the response is 201 Created; the idempotency log records the (source, target, hash). (HP-3903) Wiki Author Sender re-publishes with no changes; idempotency log filters everything; zero POSTs sent; build is fast. (HP-3904) Wiki Author Sender re-publishes after removing the external link; idempotency log surfaces the removal; sender POSTs the same (source, target) again per spec; receiver re-fetches, sees the link is gone, removes the backlink. (HP-3905) Federation Peer (another zetl vault) sends a mention; the auto-accept rule fires because the receiving vault has previously linked to the peer's domain; backlink lands without queue. (HP-3906) Spam attempt: an attacker POSTs source=spammer.example, target=victim-vault; verification fetches spammer.example, finds no link to victim-vault; the receiver rejects with 400 Bad Request; nothing enters the graph. (HP-3907) Static build with hosted relay: vault is built statically, signs up for webmention.io, deploys; a stranger's webmention is received by webmention.io; next nightly build pulls JSON from the relay API, the build bakes the mentions into rendered pages. Per USDD Synthetic User Protocol template. Location: /users/wiki-author-receiver/happy-paths.md (and corresponding files for the other profiles, with cross-references where flows span profiles).")
+  (acceptance "happy-paths.md files exist; HP-3901..HP-3907 present; failure-modes lists non-empty for every HP; HP-3906 (spam) explicitly enumerates which steps reject the attack and which downstream observability signals fire.")
+  (trace "SPEC-039 section 3"))
+
+(meta task-draft-requirements
+  (description "Draft specs/SPEC-039-webmention.md head-to-toe, populating REQ-### / NFR-### / ADR-### / CON-### / TEST-### / OBS-### artefacts. The strawman seeded by the kickoff session already exists under specs/SPEC-039-webmention.md; this task graduates it from strawman to a draft with grounded values. Numbering: REQ-3901, REQ-3902, ... matching the SPEC-035 / SPEC-038 convention (prefix tied to spec number). The spec MUST address: (a) discovery -- rel=webmention emitted on every published page (REQ + CON); (b) receiver endpoint -- POST /webmention semantics, response codes 200/201/202, async-vs-sync (REQ + CON); (c) verification -- receiver MUST fetch source and confirm link to target before recording mention (REQ + threat-mitigation); (d) moderation -- defeasible-rule gate before any mention enters the link graph (REQ + ADR-3903); (e) sender idempotency -- persisted log keyed on (source, target, content-hash); (f) update and delete semantics -- per spec, re-send is update; missing link triggers removal; (g) static-build asymmetry -- send and discovery work in build mode; receive needs serve OR relay (REQ + ADR-3902); (h) spam mitigation -- rate limiting, allowlist/denylist, source-fetch SSRF defence; (i) privacy -- received mentions reveal who reads, MUST NOT expose private-page existence via 200/404 oracle; (j) observability -- counters per outcome, log lines per decision, queue-depth gauge. Apply USDD Quality Attribute Checklist to every requirement. Use SPEC-038 / SPEC-036 document structure as the template.")
+  (acceptance "specs/SPEC-039-webmention.md status changes from 'strawman' to 'draft' with: (1) information-table frontmatter (id SPEC-039, status draft, version 0.2.0, author agent:claude); (2) >= 14 REQs covering the dimensions enumerated in description; (3) >= 6 NFRs (mention-receive latency, queue depth cap, idempotency-log size, spec conformance under webmention.rocks, send-side rate limit, verification-fetch timeout); (4) traceability table linking each REQ to candidate TEST-### IDs including webmention.rocks fixture mappings; (5) USDD Quality Attribute Checklist passed for every REQ.")
+  (trace "SPEC-039 section 3 section 4"))
+
+(meta task-synthetic-user-run
+  (description "Execute happy paths from /users/wiki-author-receiver/happy-paths.md and the other two as synthetic-user simulations against the draft SPEC-039. The synthetic user agent does NOT see the implementation (none exists); it works from SPEC-039 + user profile + happy path only. Per USDD Synthetic User Protocol section 3. Particular attention to: (a) the moderation UI step in HP-3901 -- is it obvious what 'accept' commits to (one mention only? domain-wide?); (b) HP-3903 idempotency -- does the spec make zero-changes-zero-POSTs an observable invariant for the user (build log line)? (c) HP-3906 spam -- does the failure UX leak any side-channel? (timing, error message specificity, log line content); (d) HP-3907 relay flow -- is it clear which decisions sit on the relay vs in zetl?")
+  (acceptance "research/SPEC-039-synthetic-user.md exists with header metadata (model, profiles, paths, date); per-step trace for each HP; categorised findings table; explicit list of REQ-### amendments applied to SPEC-039; re-run results showing resolved findings; explicit 'no further findings' OR escalated open questions if convergence not reached.")
+  (trace "USDD section Synthetic User Protocol"))
+
+(meta task-phase1-quality-gates
+  (description "Apply USDD Phase 1 Quality Gates to SPEC-039. Same gate set as DESIGN-038's task-phase1-quality-gates: unambiguous, verifiable, atomic, no internal conflicts, ambiguities resolved with measurable criteria. Apply prohibited-terms table. Failures fixed in SPEC-039 before this task completes.")
+  (acceptance "Either SPEC-039-webmention.md section Quality Gates or research/SPEC-039-phase1-gates.md contains a checklist with every gate marked pass.")
+  (trace "USDD section Phase 1 Quality Gates"))
+
+(meta task-adr-flow-coverage
+  (description "Author ADR comparing four-quadrant coverage strategies: (A) all four flows in v1 (receive, send, discovery, idempotency); (B) send + discovery + idempotency only -- defer receive to v2 (much smaller v1, no server-side trust boundary, but no incoming-link visibility); (C) receive + discovery only -- defer send to v2 (incoming visibility but the federation graph is one-sided); (D) receive + send + discovery + idempotency, with the static-build receive question deferred to ADR-3902. Each option: scope, threat surface, cost, federation completeness. Recommend the option most consistent with the strawman's stated 'minimum viable federation' goal. Note that ADR-3902 (static-build receive) is conditional on ADR-3901's choice -- if (B), ADR-3902 is moot.")
+  (acceptance "SPEC-039-webmention.md contains ADR-3901 Flow-Coverage with four-option analysis, explicit decision, and consequences (positive + negative + accepted risk).")
+  (trace "ADR-3901 in SPEC-039"))
+
+(meta task-adr-static-build-receive
+  (description "Author ADR on how zetl build participates as a webmention recipient. Conditional on ADR-3901 admitting receive. Three options per task-prior-art-static-relay: (A) hosted relay (webmention.io); (B) sidecar service (zetl-webmentiond); (C) unsupported in build mode. Each: deployment complexity, trust model, cost, abuse mitigations, freshness lag. Recommend.")
+  (acceptance "SPEC-039-webmention.md contains ADR-3902 Static-Build-Receive with three-option analysis and decision OR an explicit deferral note linking back to ADR-3901.")
+  (trace "ADR-3902 in SPEC-039"))
+
+(meta task-adr-moderation-policy
+  (description "Author ADR on moderation policy. Three options: (A) auto-accept all verified mentions (low friction, high spam exposure); (B) full manual queue (max control, high friction); (C) defeasible-rule hybrid -- auto-accept from already-linked / allowlist, queue for review for unknowns, deny from blocklist; user accept/reject feeds back into the rule store (per task-survey-defeasible-touchpoints). Recommend (C) and document the default rule set bundled with zetl out-of-the-box. Cross-reference USDD section Composition-First UI -- the moderation UI surfaces sit in the same admin panel as collab-mode user management.")
+  (acceptance "SPEC-039-webmention.md contains ADR-3903 Moderation-Policy with three-option analysis, decision (likely C), and the default rule set as an explicit appendix or referenced concept page.")
+  (trace "ADR-3903 in SPEC-039"))
+
+(meta task-adr-storage-model
+  (description "Author ADR on persistence layout. Options: (A) per-page sidecar files (.zetl/webmentions/<page-slug>.json) -- nice to git-version per page, awkward for global queries; (B) central JSONL log (.zetl/webmentions/external-edges.jsonl) -- easy global queries, single file becomes large for popular vaults; (C) embedded SQLite -- best for query but adds dep weight; (D) hybrid -- central log for the source-of-truth + a per-page derived index built at zetl index time. Each: write durability, read efficiency for backlink panel, cache-invalidation contract per task-survey-backlink-storage. Recommend.")
+  (acceptance "SPEC-039-webmention.md contains ADR-3904 Storage-Model with options analysis and decision.")
+  (trace "ADR-3904 in SPEC-039"))
+
+(meta task-adr-identity-verification
+  (description "Author ADR on identity verification beyond URL-existence. Webmention spec only requires that the source URL contains a link to the target. Implementations vary on whether they ALSO extract and verify h-card author info (name, photo, URL) from the source page. Options: (A) URL-only (minimum viable; identity-blind; UI shows 'a link from <hostname>'); (B) h-card extraction (parse Microformats2; show 'A Smith from blog.example linked to you'); (C) Webfinger / rel=me cross-verification (Mastodon-style, prove the source author's identity beyond the source page itself). Each: complexity, threat surface (h-card spoofing!), UX value. Cross-reference task-survey-microformats-stack recommendation.")
+  (acceptance "SPEC-039-webmention.md contains ADR-3905 Identity-Verification with options analysis and decision; if (B) or (C) chosen, names the parsing crate per task-survey-microformats-stack and the h-card spoofing mitigation.")
+  (trace "ADR-3905 in SPEC-039"))
+
+(meta task-adr-idempotency
+  (description "Author ADR on the sender-side idempotency mechanism. Options: (A) persisted JSONL log (.zetl/webmentions/sent.jsonl) keyed on (source-url, target-url, content-hash); compute the diff vs current build and only send new/changed pairs; record on success; (B) hash-only filter (no log retention, just compute current state hash and compare to last-sent state file); (C) no idempotency tracking, rely on receiver-side dedup per spec. Each: storage cost, behavioural correctness (B and C will spam receivers on every build; (B) at least batches), retry-on-failure semantics. Recommend (A) given the build cadence and the receiver-rate-limit considerations. Define the exact log line shape and retention policy.")
+  (acceptance "SPEC-039-webmention.md contains ADR-3906 Sender-Idempotency with options analysis, decision (likely A), and the log line schema as an explicit subsection.")
+  (trace "ADR-3906 in SPEC-039"))
+
+(meta task-contracts
+  (description "Define the public contracts for SPEC-039. AT MINIMUM: (CON-3901) HTTP -- POST /webmention endpoint per W3C REC, request/response semantics, error model with no oracle leak; (CON-3902) Discovery -- rel=webmention emission contract for both Link header and HTML link tag; (CON-3903) CLI -- the user-facing surface for outbound webmention sending (likely just behaviour of zetl build / zetl serve, plus a 'zetl webmention send <page>' for manual re-send); (CON-3904) Build output -- what the build emits and where (idempotency log, sent.jsonl path, the rel=webmention discovery in rendered HTML); (CON-3905) Configuration -- zetl.toml [webmention] table shape (endpoint URL for relay, send-on-publish toggle, default moderation rules); (CON-3906) On-disk -- exact format of .zetl/webmentions/* with field documentation; (CON-3907) SPL -- the new defeasible predicates introduced for moderation rules, with type signatures and example rules; (CON-3908) Moderation queue API -- endpoints for listing pending mentions, accepting, rejecting, marking spam; integrates with the existing collab-mode admin surface. Each contract: pre-conditions, post-conditions, error model, structured per-clause so each implemented REQ maps to a distinct clause.")
+  (acceptance "SPEC-039-webmention.md contains CON-3901..CON-3908 (or a justified subset) each with the four required subsections and a non-empty implements-list.")
+  (trace "CON-### in SPEC-039"))
+
+(meta task-purity-boundary-map
+  (description "Author the Purity Boundary Map for SPEC-039. The receive side has: (PURE) verification logic (given source HTML bytes + target URL + claim, decide accept/reject deterministically); (PURE) microformats parsing (if ADR-3905 admits it); (PURE) moderation rule evaluation (defeasible reasoning over (mention, vault-state) -> decision); (PURE) idempotency-log diff (given current send-state and previous send-state, produce the set of (source, target) pairs to POST). The send side has: (PURE) link extraction (given rendered HTML, produce the list of external (source, target) pairs); (PURE) endpoint discovery from Link header / HTML (PURE given an HTTP response headers + body, even though the response itself is impure to obtain). (EFFECTFUL) the HTTP server, the source-fetch verification HTTP client, the outbound POST, the disk writes for sent.jsonl and external-edges.jsonl, the moderation queue UI. Document the dependency rule and the enforcement mechanism (Rust module visibility + arch-lint). Cross-reference SPEC-038's purity boundary map -- the SSRF-safe fetcher and the source-content sanitiser are SHARED with SPEC-038's inbound-feed direction; SPEC-039 should depend on those shared modules rather than re-implement.")
+  (acceptance "SPEC-039-webmention.md contains a 'Purity Boundary Map' section with the four required subsections; explicitly names which modules are shared with SPEC-038 (and lives where) versus newly-introduced for SPEC-039.")
+  (trace "USDD section Purity Boundary Map"))
+
+(meta task-test-strategy
+  (description "Define the test strategy for SPEC-039. AT MINIMUM: (1) example-based TEST-### per REQ following the requirement-targeted decomposition; (2) the entire webmention.rocks test corpus mapped to TEST-### -- this is the canonical conformance suite for the spec; passing all relevant fixtures is a NFR-level hard gate; (3) property-based tests for the pure core: idempotency-diff convergence (build twice, second yields zero diff), moderation-rule-determinism (same input set + same rule set = same decision), endpoint-discovery commutativity (Link header takes precedence over HTML link tag deterministically); (4) state-machine test for the moderation queue (accept / reject / requeue transitions); (5) fuzzing for the receiver: malformed POST bodies, oversize payloads, malicious source URLs (SSRF probes), microformats parser edge cases (deeply nested h-cards, unicode-bomb names, billion-laughs in HTML); (6) mutation testing on the verification logic specifically -- the 'is the link present?' check is high-stakes and any mutation that survives is a real bug.")
+  (acceptance "SPEC-039-webmention.md contains 'Verification Strategy' section with: TEST-3901..TEST-39NN matched to REQ-3901..REQ-39NN with explicit positive/negative-input/negative-output coverage; webmention.rocks fixture mappings as a separate appendix or table; property-based test specifications; fuzzing target description; mutation-testing target modules and threshold (>= 90% on verification, >= 80% on moderation).")
+  (trace "TEST-### in SPEC-039"))
+
+(meta task-threat-model
+  (description "Author the threat model for SPEC-039. The receive side has substantial threat surface: (T1) SSRF on source-fetch verification (mitigation: shared SSRF-safe fetcher with SPEC-038); (T2) Spam volume DoS on /webmention (mitigation: rate-limit per source-host, queue cap, denylist); (T3) HTML-parser exploit on source-page content (mitigation: same parser as SPEC-038's content-rewrite path, with size cap); (T4) Microformats2 parser exploit (if ADR-3905 admits h-card extraction) including unicode-bomb names, deeply nested h-cards, billion-laughs in HTML, XSS-in-author-name on render (mitigation: sanitiser allowlist on every h-card field); (T5) h-card identity spoofing -- a malicious source claims (h-card name='Aaron Parecki'); v1 mitigation: render the source URL alongside the h-card name so users see the actual origin; (T6) Retroactive edit -- after acceptance, source removes the link; per spec the receiver re-fetches and removes; document the re-verification cadence; (T7) Replay attacks -- an attacker re-POSTs an old verified (source, target) pair to bump 'last-mentioned' visibility; mitigation: (source, target) tuple is the dedup key, server records first-seen timestamp; (T8) Capability-URL leakage -- if a vault page is at a /caps/<token>/page URL (per SPEC-034), an attacker MUST NOT be able to use webmention POST to enumerate valid tokens; mitigation: 200 vs 404 oracle masking on /webmention; (T9) Private-page existence oracle -- a webmention POST to a private-page URL MUST NOT reveal whether the page exists (return 200 always or 401 always, never 404); (T10) Outgoing-mention privacy leak -- A's outgoing mention to B reveals A reads B; for capability-mode pages or private vaults, sender-side suppression is required; (T11) Idempotency-log poisoning -- attacker controls page content to cause hash collisions; not exploitable but worth documenting. Each threat: severity, likelihood, mitigation, residual risk.")
+  (acceptance "SPEC-039-webmention.md contains 'Threat Model' section with one row per T1..T11 (subset if scope reduced) in (severity, likelihood, mitigation, residual-risk) table; mitigation column references implementing REQ-### / CON-### / NFR-###.")
+  (trace "Threat Model in SPEC-039"))
+
+(meta task-phase2-quality-gates
+  (description "Apply USDD Phase 2 Quality Gates to SPEC-039. Same gate set as DESIGN-038's task-phase2-quality-gates. Failures fixed before completion.")
+  (acceptance "SPEC-039-webmention.md section Quality Gates has Phase 2 checklist with every gate marked pass and trace to the artefact establishing each gate.")
+  (trace "USDD section Phase 2 Quality Gates"))
+
+(meta task-cross-model-review
+  (description "Per USDD Multi-Model Cognitive Diversity (Tier 2): submit SPEC-039 to a fresh-context review by a different model family. Reviewer is given: SPEC-039, the user profiles, the happy paths, the threat model, and an adversarial prompt instructing them to find defects -- not to ratify. Reviewer MUST NOT see the generating session's reasoning, the prior-art research notes, or SPEC-038 (so as not to anchor on the sibling spec's choices). Findings recorded in research/SPEC-039-cross-model-review.md categorised per USDD finding taxonomy.")
+  (acceptance "research/SPEC-039-cross-model-review.md exists with reviewer model and version, review prompt, categorised findings, explicit disposition for each finding; reviewer's findings produce >= 3 SPEC-039 amendments OR a recorded explanation for why none warranted.")
+  (trace "USDD section Multi-Model Cognitive Diversity"))
+
+(meta task-adversarial-tests
+  (description "Per USDD section Adversarial Testing: a separate fresh-context agent generates adversarial tests aimed at breaking SPEC-039. Particular attention to: identity-spoofing edge cases; verification-bypass attempts (source page that contains the link in a comment, in script tags, in CSS content, in a hidden element, in a base64-encoded blob); idempotency-log corruption on partial writes (power loss between disk-write and ack); moderation-rule defeats via SPL term-injection in source URLs; capability-URL probing variants; private-page oracle variants. Iterate until adversary exhaustion.")
+  (acceptance "research/SPEC-039-adversarial-tests.md exists with at minimum 25 adversarial test cases; per-case disposition; SPEC-039 amendments applied; final 'adversary exhaustion' statement OR escalated open questions.")
+  (trace "USDD section Adversarial Testing"))
+
+(meta task-draft-impl-039
+  (description "Author plans/IMPL-039-webmention.spl scaffolded for downstream implementation. Use the IMPL-### plan structure exemplified by plans/IMPL-009.spl, IMPL-026.spl, IMPL-027.spl. Required sections: (meta plan ...), (given agent-...-available), tasks per REQ/CON, ready- rules, assign-to- rules, task metadata (description + acceptance per task). Do NOT execute. Do NOT write code. The plan must be runnable by 'hence plan validate'.")
+  (acceptance "plans/IMPL-039-webmention.spl exists; 'hence plan validate plans/IMPL-039-webmention.spl --strict' returns zero errors; every REQ-### in SPEC-039 has at least one task in IMPL-039 that traces to it; every CON-### similarly traced.")
+  (trace "IMPL-039 plan deliverable"))
+
+(meta task-mark-spec-approved
+  (description "Final task. Update specs/SPEC-039-webmention.md frontmatter status from 'draft' to 'approved' and version from 0.2.0 to 1.0.0. Update CHANGELOG.md with an entry recording: SPEC-039 approved, references DESIGN-039 plan, IMPL-039 implementation plan ready, no code written under DESIGN-039. Open a PR / commit per repo convention. DO NOT merge unless explicitly told. Phase 3 begins after a human reviewer signs off.")
+  (acceptance "SPEC-039-webmention.md status=approved version=1.0.0; CHANGELOG.md entry exists; commit (or PR) prepared but not merged without human approval.")
+  (trace "USDD Phase 1+2 closeout"))
+
+;; -- Readiness Rules (DAG) -----------------------------
+
+;; Phase 0 -- surveys + prior art are root tasks
+(normally r-ready-survey-backlink-storage
+  (and task-survey-backlink-storage no-deps-survey-backlink-storage)
+  ready-survey-backlink-storage)
+
+(normally r-ready-survey-webmention-spec
+  (and task-survey-webmention-spec no-deps-survey-webmention-spec)
+  ready-survey-webmention-spec)
+
+(normally r-ready-survey-microformats-stack
+  (and task-survey-microformats-stack no-deps-survey-microformats-stack)
+  ready-survey-microformats-stack)
+
+(normally r-ready-survey-defeasible-touchpoints
+  (and task-survey-defeasible-touchpoints no-deps-survey-defeasible-touchpoints)
+  ready-survey-defeasible-touchpoints)
+
+(normally r-ready-prior-art-reference-impls
+  (and task-prior-art-reference-impls no-deps-prior-art-reference-impls)
+  ready-prior-art-reference-impls)
+
+(normally r-ready-prior-art-static-relay
+  (and task-prior-art-static-relay no-deps-prior-art-static-relay)
+  ready-prior-art-static-relay)
+
+;; Phase 1 -- profiles + happy paths after relevant surveys
+(normally r-ready-user-profiles
+  (and task-user-profiles
+       completed-survey-backlink-storage
+       completed-prior-art-reference-impls
+       completed-prior-art-static-relay)
+  ready-user-profiles)
+
+(normally r-ready-happy-paths
+  (and task-happy-paths completed-user-profiles)
+  ready-happy-paths)
+
+;; Phase 2 -- requirements + synthetic-user + phase-1 gates
+(normally r-ready-draft-requirements
+  (and task-draft-requirements
+       completed-happy-paths
+       completed-survey-webmention-spec
+       completed-survey-microformats-stack
+       completed-survey-defeasible-touchpoints)
+  ready-draft-requirements)
+
+(normally r-ready-synthetic-user-run
+  (and task-synthetic-user-run completed-draft-requirements)
+  ready-synthetic-user-run)
+
+(normally r-ready-phase1-quality-gates
+  (and task-phase1-quality-gates completed-synthetic-user-run)
+  ready-phase1-quality-gates)
+
+;; Phase 3 -- ADRs + contracts + maps + threat-model + phase-2 gates.
+;; ADR-3902 (static-build receive) gates only if ADR-3901 admits receive.
+;; The plan does not encode that conditional in SPL; ADR-3902 simply waits
+;; on ADR-3901 and may complete trivially as 'deferred per ADR-3901'.
+(normally r-ready-adr-flow-coverage
+  (and task-adr-flow-coverage completed-phase1-quality-gates)
+  ready-adr-flow-coverage)
+
+(normally r-ready-adr-static-build-receive
+  (and task-adr-static-build-receive completed-adr-flow-coverage)
+  ready-adr-static-build-receive)
+
+(normally r-ready-adr-moderation-policy
+  (and task-adr-moderation-policy completed-phase1-quality-gates)
+  ready-adr-moderation-policy)
+
+(normally r-ready-adr-storage-model
+  (and task-adr-storage-model completed-adr-flow-coverage)
+  ready-adr-storage-model)
+
+(normally r-ready-adr-identity-verification
+  (and task-adr-identity-verification completed-survey-microformats-stack)
+  ready-adr-identity-verification)
+
+(normally r-ready-adr-idempotency
+  (and task-adr-idempotency completed-adr-flow-coverage)
+  ready-adr-idempotency)
+
+(normally r-ready-contracts
+  (and task-contracts
+       completed-adr-flow-coverage
+       completed-adr-static-build-receive
+       completed-adr-moderation-policy
+       completed-adr-storage-model
+       completed-adr-identity-verification
+       completed-adr-idempotency)
+  ready-contracts)
+
+(normally r-ready-purity-boundary-map
+  (and task-purity-boundary-map completed-contracts)
+  ready-purity-boundary-map)
+
+(normally r-ready-test-strategy
+  (and task-test-strategy completed-purity-boundary-map)
+  ready-test-strategy)
+
+(normally r-ready-threat-model
+  (and task-threat-model
+       completed-adr-flow-coverage
+       completed-adr-identity-verification)
+  ready-threat-model)
+
+(normally r-ready-phase2-quality-gates
+  (and task-phase2-quality-gates
+       completed-contracts
+       completed-purity-boundary-map
+       completed-test-strategy
+       completed-threat-model)
+  ready-phase2-quality-gates)
+
+;; Phase 4 -- Tier 2 review + adversarial tests
+(normally r-ready-cross-model-review
+  (and task-cross-model-review completed-phase2-quality-gates)
+  ready-cross-model-review)
+
+(normally r-ready-adversarial-tests
+  (and task-adversarial-tests completed-phase2-quality-gates)
+  ready-adversarial-tests)
+
+;; Phase 5 -- IMPL-039 scaffold + spec approval
+(normally r-ready-draft-impl-039
+  (and task-draft-impl-039
+       completed-cross-model-review
+       completed-adversarial-tests)
+  ready-draft-impl-039)
+
+(normally r-ready-mark-spec-approved
+  (and task-mark-spec-approved completed-draft-impl-039)
+  ready-mark-spec-approved)
+
+;; -- Assignment Rules ----------------------------------
+
+(normally r-assign-survey-backlink-storage (and ready-survey-backlink-storage agent-claude-available) assign-to-survey-backlink-storage-claude)
+(normally r-assign-survey-webmention-spec (and ready-survey-webmention-spec agent-claude-available) assign-to-survey-webmention-spec-claude)
+(normally r-assign-survey-microformats-stack (and ready-survey-microformats-stack agent-claude-available) assign-to-survey-microformats-stack-claude)
+(normally r-assign-survey-defeasible-touchpoints (and ready-survey-defeasible-touchpoints agent-claude-available) assign-to-survey-defeasible-touchpoints-claude)
+(normally r-assign-prior-art-reference-impls (and ready-prior-art-reference-impls agent-claude-available) assign-to-prior-art-reference-impls-claude)
+(normally r-assign-prior-art-static-relay (and ready-prior-art-static-relay agent-claude-available) assign-to-prior-art-static-relay-claude)
+(normally r-assign-user-profiles (and ready-user-profiles agent-claude-available) assign-to-user-profiles-claude)
+(normally r-assign-happy-paths (and ready-happy-paths agent-claude-available) assign-to-happy-paths-claude)
+(normally r-assign-draft-requirements (and ready-draft-requirements agent-claude-available) assign-to-draft-requirements-claude)
+(normally r-assign-synthetic-user-run (and ready-synthetic-user-run agent-claude-available) assign-to-synthetic-user-run-claude)
+(normally r-assign-phase1-quality-gates (and ready-phase1-quality-gates agent-claude-available) assign-to-phase1-quality-gates-claude)
+(normally r-assign-adr-flow-coverage (and ready-adr-flow-coverage agent-claude-available) assign-to-adr-flow-coverage-claude)
+(normally r-assign-adr-static-build-receive (and ready-adr-static-build-receive agent-claude-available) assign-to-adr-static-build-receive-claude)
+(normally r-assign-adr-moderation-policy (and ready-adr-moderation-policy agent-claude-available) assign-to-adr-moderation-policy-claude)
+(normally r-assign-adr-storage-model (and ready-adr-storage-model agent-claude-available) assign-to-adr-storage-model-claude)
+(normally r-assign-adr-identity-verification (and ready-adr-identity-verification agent-claude-available) assign-to-adr-identity-verification-claude)
+(normally r-assign-adr-idempotency (and ready-adr-idempotency agent-claude-available) assign-to-adr-idempotency-claude)
+(normally r-assign-contracts (and ready-contracts agent-claude-available) assign-to-contracts-claude)
+(normally r-assign-purity-boundary-map (and ready-purity-boundary-map agent-claude-available) assign-to-purity-boundary-map-claude)
+(normally r-assign-test-strategy (and ready-test-strategy agent-claude-available) assign-to-test-strategy-claude)
+(normally r-assign-threat-model (and ready-threat-model agent-claude-available) assign-to-threat-model-claude)
+(normally r-assign-phase2-quality-gates (and ready-phase2-quality-gates agent-claude-available) assign-to-phase2-quality-gates-claude)
+(normally r-assign-cross-model-review (and ready-cross-model-review agent-claude-available) assign-to-cross-model-review-claude)
+(normally r-assign-adversarial-tests (and ready-adversarial-tests agent-claude-available) assign-to-adversarial-tests-claude)
+(normally r-assign-draft-impl-039 (and ready-draft-impl-039 agent-claude-available) assign-to-draft-impl-039-claude)
+(normally r-assign-mark-spec-approved (and ready-mark-spec-approved agent-claude-available) assign-to-mark-spec-approved-claude)
