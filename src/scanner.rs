@@ -3037,7 +3037,10 @@ code here
     #[test]
     fn page_slug_strips_spl_and_fountain_extensions() {
         use std::path::PathBuf;
-        assert_eq!(page_slug_from_path(&PathBuf::from("notes/index.spl")), "notes/index");
+        assert_eq!(
+            page_slug_from_path(&PathBuf::from("notes/index.spl")),
+            "notes/index"
+        );
         assert_eq!(
             page_slug_from_path(&PathBuf::from("scripts/scene.fountain")),
             "scripts/scene"
