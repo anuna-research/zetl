@@ -305,6 +305,23 @@ deferred to v2 and the section below moves to "Out of scope":***
   permission-restricted file, never in `.zetl/config.toml`, and
   SHALL NOT cross trust boundaries on HTTP redirect (see
   [[#REQ-3825]] and [[#REQ-3826]]).
+- Capability-mode interaction — pages reachable only via
+  [[Capability URL]] ([[SPEC-034]]) are excluded from every public
+  feed by default ([[#REQ-3829]]). The operator MAY opt into
+  per-capability-cohort feeds at cohort-scoped URLs containing only
+  items the cohort can already access ([[#REQ-3830]]); these feeds
+  are themselves capability-protected, never indexed, never
+  advertised in public discovery. Capability tokens MUST NEVER
+  appear in any feed body, log line, observability metric, or
+  export archive ([[#REQ-3831]]).
+- Inbox retention and pruning — each `[[subscriptions]]` entry
+  declares a retention policy (default: `forever`); when set, items
+  beyond the policy move to an archive folder by default
+  ([[#REQ-3832]], [[#REQ-3833]]). A `zetl feed forget` command
+  supports user-requested erasure with a tombstone log preventing
+  re-import ([[#REQ-3834]]). Retention events couple back to the
+  republication path so deleted/pruned items also leave any
+  republished build ([[#REQ-3835]]).
 
 **Out of scope (v1):**
 
@@ -889,6 +906,119 @@ that could lock out the upstream credential.
 Trace: [[#TEST-3863]] (one-retry property test), [[#TEST-3864]]
 (lockout-prevention probe), [[#OBS-3808]]
 
+### REQ-3829: Capability-mode page exclusion from public feeds
+
+Pages reachable only via [[Capability URL]] ([[SPEC-034]]) — that
+is, pages whose canonical URL contains a capability token segment
+and whose ACL evaluates to "deny anonymous read" under the public
+visibility profile — SHALL NOT appear in: any public feed at the
+vault root (`/feed.xml`, `/atom.xml`); any per-tag, per-folder, or
+SPL-query feed published at a public URL; the public scoped
+subscription catalog (`/.well-known/zetl-subscriptions.json`); any
+sitemap or pages.json artefact. This rule holds REGARDLESS of any
+explicit feed-include frontmatter on the page; capability protection
+defeats inclusion.
+
+Trace: [[#TEST-3865]] (cap-page omission probe across every public
+feed surface), [[#T21]]
+
+### REQ-3830: Per-capability-cohort feed emission (opt-in)
+
+The operator MAY declare one or more capability cohorts in
+`.zetl/config.toml` (each cohort representing a set of capability
+URLs that share a recipient). For each declared cohort the system
+SHALL emit a feed at a cohort-scoped URL of the form
+`/caps/<cohort-token>/feed.xml` containing only items the cohort
+already has access to. The cohort feed:
+
+1. SHALL be reachable ONLY through the cohort-scoped URL — there is
+   no public discovery, no rel=alternate from any public page.
+2. SHALL render every item link as a cohort-scoped capability URL
+   (so the recipient can navigate from the feed reader back to the
+   cap-protected page they already hold the cap for).
+3. SHALL otherwise satisfy every NFR and conformance requirement
+   that applies to public feeds (standards conformance per
+   [[#NFR-3805]], item-id stability per [[#REQ-3803]], etc.).
+
+Trace: [[#TEST-3866]] (cohort-feed emission), [[#TEST-3867]]
+(cohort-feed isolation — items from cohort A never appear in
+cohort B's feed), [[#CON-3813]], [[#ADR-3811]]
+
+### REQ-3831: Capability-token leak prevention
+
+Capability tokens (the secret-bearing path segment of any
+[[Capability URL]]) SHALL NEVER appear in: outbound public feed
+bodies; outbound public feed item links; build logs at any level
+including `debug` and `trace`; observability metrics, gauges, or
+counter labels; vault-export archives produced by any subcommand;
+plaintext frontmatter that survives publish to a public surface;
+error messages exposed to anonymous users. Cohort tokens used as
+URL segments per [[#REQ-3830]] are the only authorised emission
+site, and even there the token MUST NOT appear in the feed BODY
+(only in the URL the recipient already holds).
+
+Trace: [[#TEST-3868]] (exhaustive grep probe across every emission
+target with synthesised tokens), [[#T21]]
+
+### REQ-3832: Per-subscription retention policy
+
+Each `[[subscriptions]]` entry MAY declare a `retention` field
+specifying when ingested items become eligible for pruning:
+
+- `forever` (DEFAULT) — no automatic pruning; items remain in the
+  inbox indefinitely.
+- A duration (e.g., `30d`, `90d`, `1y`) — items older than the
+  duration become eligible.
+- A count (e.g., `last-100`, `last-500`) — only the N most-recent
+  items remain eligible to stay.
+
+The default `forever` is deliberately conservative: silent
+deletion of inbox content is destructive and surprising. Operators
+MUST opt into pruning explicitly per subscription.
+
+Trace: [[#TEST-3869]], [[#ADR-3812]], [[#CON-3814]]
+
+### REQ-3833: Pruning execution and reversibility
+
+When an item exceeds its subscription's retention policy, the
+system SHALL by default MOVE the item from the active inbox to
+`.zetl/feeds/<subscription-id>/archived/` rather than DELETE it,
+preserving the operator's ability to recover. The operator MAY
+override this with `retention_mode = "delete"` per subscription;
+the spec MUST NOT make `delete` the default. Pruning runs in the
+build pass that detects retention violation, never silently between
+builds.
+
+Trace: [[#TEST-3870]] (archive-not-delete probe), [[#TEST-3871]]
+(opt-in delete probe), [[#OBS-3810]]
+
+### REQ-3834: User-requested erasure
+
+The system SHALL provide a `zetl feed forget <subscription-id>
+<item-pattern>` CLI surface that, when invoked: removes matching
+items from the active inbox AND from the archive directory; writes
+a tombstone record to `.zetl/feeds/<subscription-id>/tombstones.jsonl`
+naming the dedup keys (GUID, canonical link, content hash) of every
+removed item; and uses the tombstone record on every subsequent
+fetch to refuse re-import of the same item even if it reappears in
+the source feed. This is the explicit-erasure path operators rely
+on for [[GDPR]]-shape requests and for forgetting items they no
+longer want associated with their vault.
+
+Trace: [[#TEST-3872]] (re-import refusal property test), [[#T22]]
+
+### REQ-3835: Republication coupling on retention
+
+When an item is pruned per [[#REQ-3833]] OR forgotten per
+[[#REQ-3834]] AND it had previously been republished per the
+Creative-Commons-aware republication policy ([[#REQ-3815]]
+.. [[#REQ-3823]]), the next build pass SHALL also remove that
+item from the published output (analogous to source-side retraction
+per [[#REQ-3823]]). Pruning the local copy without removing the
+public copy would defeat operator intent.
+
+Trace: [[#TEST-3873]]
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -953,6 +1083,29 @@ If [[#ADR-3803]] = Y: concurrent inbound fetches SHALL be capped at
 fetches beyond the cap queued (not dropped).
 
 Trace: [[#TEST-3832]] (provisional)
+
+### NFR-3809: Capability cohort token entropy
+
+Capability cohort tokens used in the URL path of per-cohort feeds
+([[#REQ-3830]]) SHALL be drawn from a [[Cryptographically Secure
+Random]] source with at least 128 bits of entropy, ENCODED in a
+URL-safe form (e.g., base32 or base64url) that survives copy-paste
+without ambiguity. Cohort tokens SHALL NOT be derived from the
+cohort's recipient identity (which would leak), from the
+publication date (which would limit lifetime), or from a counter
+(which would make tokens guessable from one-another).
+
+Trace: [[#TEST-3874]] (entropy probe), [[#T21]]
+
+### NFR-3810: Pruning throughput
+
+Retention pruning SHALL complete within 1 s per 1,000 inbox items
+on commodity hardware in the dominant case (move-to-archive,
+filesystem-local). The `zetl feed forget` operation, including
+tombstone write and dedup state update, SHALL complete within 200
+ms for batch sizes up to 100 items.
+
+Trace: [[#TEST-3875]] (benchmark)
 
 ### NFR-3808: Excerpt length
 
@@ -1200,6 +1353,109 @@ operator to set the file mode correctly. Mitigation is the WRITE-TIME
 file-mode enforcement in [[#REQ-3825]] — zetl writes the file with
 `0600` whenever it creates or updates it, so the operator does not
 have to configure permissions manually.
+
+### ADR-3811: Capability-feed emission shape
+
+`[Provisional — refined by DESIGN-038 task-capability-feed-design]`
+
+**Status:** proposed (default-leaning toward A).
+
+**Context:** The federated-wiki use case includes vaults that share
+some content with cohort-specific capability URLs ([[SPEC-034]]),
+not just public-or-private. A "blog feed" that excludes
+capability-protected pages serves the public reader fine, but
+denies capability holders the subscription experience they'd get
+from public content. Three options:
+
+(A) **Per-cohort feed at `/caps/<cohort-token>/feed.xml`** — for
+each declared cohort, emit a feed reachable only via the cohort's
+capability URL, containing only items the cohort can already
+access. Recipients add the cap-URL'd feed to their reader; nothing
+public references it.
+
+(B) **No capability feed in v1 — defer entirely to v2.** Capability
+holders read pages directly via cap URLs but don't get a
+subscription experience. Smaller v1 surface, less leak risk, less
+spec complexity, but the federation use case is incomplete.
+
+(C) **Single private "everything-readable-by-this-cap" feed
+behind a capability gate.** Each capability automatically grants
+access to a feed of everything that capability can read. More
+mechanical, less explicit operator design.
+
+**Decision (provisional):** **(A)** — per-cohort feeds with
+explicit operator declaration in `.zetl/config.toml`. The spec
+forbids any leak of cohort tokens beyond the capability URL itself
+([[#REQ-3831]]) and requires high-entropy tokens ([[#NFR-3809]]).
+
+**Consequences (positive):**
+- Federation between cap-protected vaults works end-to-end: cohort
+  recipients subscribe like any other reader, just with a cap'd
+  URL.
+- Operator declares cohorts explicitly; no implicit broadening.
+- Composes with [[SPEC-034]] without changing capability semantics.
+
+**Consequences (negative):**
+- New surface to threat-model: any leak of `/caps/<token>/feed.xml`
+  defeats the cohort. [[#REQ-3831]] is load-bearing.
+- Operator UX more complex than public-only feeds; cohort
+  declaration becomes part of the configuration story.
+- Cohort feed validation against W3C Feed Validator requires cohort
+  authentication during testing — adds CI complexity.
+
+**Accepted risk:** the spec assumes the operator chooses cohort
+boundaries thoughtfully. Mis-scoping a cohort (including a private
+page in the wrong cohort) leaks via the cohort feed. No
+algorithmic mitigation; this is operator-mediated and the
+synthetic-user simulation MUST probe it.
+
+### ADR-3812: Retention default — `forever`
+
+`[Provisional — refined by DESIGN-038 task-retention-policy]`
+
+**Status:** proposed (default-leaning toward `forever`).
+
+**Context:** Inbox bloat is real for active subscribers. But silent
+deletion of ingested content is also surprising and destructive —
+operators may have wikilinks pointing at inbox items, may have
+annotated them, may rely on them as research references. Three
+default options:
+
+(A) **`forever` (no automatic pruning)** — the operator must
+explicitly opt into trimming per subscription. Conservative.
+Inbox grows; that is the operator's problem.
+
+(B) **`90d`** — bounded by default; novel content beyond a
+quarter is pruned. Matches the dominant feed-reader convention.
+Surprising for PKM users who treat the inbox as long-term memory.
+
+(C) **`last-500`** — bounded by item count rather than age. Less
+surprising than time-based pruning for low-volume feeds, but
+operator-confusing for high-volume ones (a chatty feed evicts a
+useful one).
+
+**Decision (provisional):** **(A) `forever` as the default,**
+opt-in trimming per subscription. The operator's stated retention
+intent is explicit and visible in `.zetl/config.toml`.
+
+**Consequences (positive):**
+- No accidental data loss for new operators.
+- PKM users who treat the inbox as long-term memory work as
+  expected.
+- The `zetl feed forget` command ([[#REQ-3834]]) is the
+  per-incident escape hatch when an operator wants to remove a
+  specific item.
+
+**Consequences (negative):**
+- Inbox grows without bound for high-volume feeds; the operator
+  who never reads the docs gets a 100k-item folder.
+- Pruning policy is now a literacy item — an `OBS-3810`-style
+  warning when an inbox crosses a threshold partly mitigates this.
+
+**Accepted risk:** the spec assumes operators encountering inbox
+bloat will read the retention docs. Mitigation is a startup-time
+log line when any subscription's inbox exceeds 10,000 items
+without a retention policy set.
 
 ---
 
@@ -1454,6 +1710,102 @@ Implements:
 
 Verified by: [[#TEST-3858]]..[[#TEST-3864]]
 
+### CON-3813: Capability cohort feed contract
+
+**Cohort declaration (extends `.zetl/config.toml`):**
+
+```toml
+[[capability_cohorts]]
+id = "research-collaborators"
+# token: opaque, ≥ 128-bit entropy, generated by `zetl cap cohort new`
+token = "<base32-url-safe>"
+# selector: which pages this cohort can read
+select = ["/research/**", "/notes/private/2026-Q1.md"]
+# feed: emit a per-cohort feed at /caps/<token>/feed.xml
+feed_enabled = true
+feed_title = "Research collaborators feed"
+```
+
+**Feed URL:** `/caps/<token>/feed.xml` (and/or `atom.xml` per
+[[#ADR-3801]]).
+
+**Pre-conditions:** the cohort is declared in `.zetl/config.toml`;
+the cohort token has been generated via the documented entropy
+mechanism per [[#NFR-3809]]; `feed_enabled = true`.
+
+**Post-conditions:** the build emits a feed at the cohort URL
+containing only items whose ACL allows the cohort to read; every
+item's `<link>` and `<atom:id>` references the cohort-scoped
+capability URL form (`/caps/<token>/<page-slug>`); no public surface
+references the cohort URL or its token; the feed validates against
+[[#NFR-3805]].
+
+**Errors:** cohort token below entropy floor (hard error); cohort
+selector references a page that does not exist (warn);
+`feed_enabled = true` set without `feed_title` (warn, falls back to
+cohort `id`); cohort feed emission attempted in capability-mode-off
+build profile (hard error).
+
+Implements:
+- [[#REQ-3829]], [[#REQ-3830]], [[#REQ-3831]]
+- [[#NFR-3809]]
+
+Verified by: [[#TEST-3865]]..[[#TEST-3868]], [[#TEST-3874]]
+
+### CON-3814: Retention and erasure surface
+
+**Per-subscription retention keys (extend `[[subscriptions]]` per
+[[#CON-3811]]):**
+
+- `retention` (optional, string, default = `"forever"`) — accepts
+  `"forever"`, a duration string (`"30d"`, `"90d"`, `"1y"`), or a
+  count string (`"last-100"`, `"last-500"`).
+- `retention_mode` (optional, enum: `"archive"` | `"delete"`,
+  default = `"archive"`) — what happens when an item exceeds the
+  retention policy. Per [[#REQ-3833]], `archive` is the default.
+
+**On-disk artefacts:**
+
+- `.zetl/feeds/<subscription-id>/archived/` — directory containing
+  pruned items in their original Markdown form, preserved for
+  operator recovery. NOT emitted in any build pass.
+- `.zetl/feeds/<subscription-id>/tombstones.jsonl` — append-only
+  log of erased items. Each entry: `{guid, link, content_hash,
+  erased_at, reason}`. Used on every fetch to refuse re-import of
+  the same item.
+
+**CLI surface:**
+
+```
+zetl feed forget <subscription-id> <pattern>
+  --include-archive   # also remove from archive/
+  --reason TEXT       # recorded in tombstone entry
+  --dry-run           # show what would be removed without writing
+```
+
+The pattern accepts a glob over slugs, a GUID, or a content-hash
+prefix.
+
+**Pre-conditions:** the subscription is registered; the user
+running the command has write access to `.zetl/feeds/`.
+
+**Post-conditions:** matched items are removed from the active
+inbox AND from the archive directory; tombstones recorded; the
+next fetch of the source feed will refuse to re-import items
+matching any tombstone entry; if any matched item had been
+republished, the next build pass removes it from public output
+([[#REQ-3835]]).
+
+**Errors:** subscription id not registered (hard error); pattern
+matches nothing (warn, no-op); concurrent fetch in progress for
+the same subscription (hard error, retry guidance).
+
+Implements:
+- [[#REQ-3832]], [[#REQ-3833]], [[#REQ-3834]], [[#REQ-3835]]
+- [[#NFR-3810]]
+
+Verified by: [[#TEST-3869]]..[[#TEST-3873]], [[#TEST-3875]]
+
 ---
 
 ## 9. Purity Boundary Map
@@ -1605,6 +1957,8 @@ arch-lint rule in CI prohibiting `use` from `feed::shell` inside
 | T18 | Credentials leaked to a non-target host via HTTP redirect (auth header forwarded across origin) | inbound (auth) | Provisional; mitigation [[#REQ-3826]] (drop credentials on cross-origin redirect; record event in observability stream) |
 | T19 | Credentials leaked via logs, error messages, debug output, or stack traces | inbound (auth) | Provisional; mitigation [[#REQ-3827]] (never log credentials at any level; URL token values render as `<redacted>`) |
 | T20 | Credential lockout via unbounded retry loop (zetl repeatedly hits 401 and exhausts the publisher's lockout threshold) | inbound (auth) | Provisional; mitigation [[#REQ-3828]] (one retry max, then suspend until operator action) |
+| T21 | Capability-token leak via feed inclusion (a cap-protected page surfaces in a public feed; a cohort token appears in feed body, log, metric, or export archive) | outbound (capability) | Provisional; mitigation [[#REQ-3829]] (exclude cap-protected pages from public feeds), [[#REQ-3831]] (token leak prevention across every emission target), [[#NFR-3809]] (entropy floor for cohort tokens), [[#ADR-3811]] (cohort feeds reachable only via cohort URL, never publicly advertised) |
+| T22 | Retention-policy bypass — an attacker (or upstream feed publisher) re-publishes an item the operator forgot, expecting it to re-import and re-appear; the operator's erasure intent is undone silently | inbound (retention) | Provisional; mitigation [[#REQ-3834]] (tombstone log refuses re-import even if source republishes), [[#OBS-3810]] (counter on attempted-re-import-after-tombstone surfaces the event) |
 
 ---
 
@@ -1672,6 +2026,27 @@ bounded by the number of registered inbound feeds; a feed that
 consistently produces failures across multiple builds SHOULD trigger
 operator notification per [[#REQ-3828]].
 
+### OBS-3809: Capability cohort feed emission counter
+
+Counter `zetl_feed_capability_cohort_emit_total{cohort_id, result}`
+incremented per cohort feed emission, with `result` ∈ {`success`,
+`error_acl_eval`, `error_token_entropy`, `error_validation`}. The
+metric labels use the cohort's operator-declared `id` (not the
+secret token) so the metric stream itself is safe to ingest into
+public observability backends. A non-zero error rate for any
+cohort surfaces operator-mediated mis-scoping ([[#ADR-3811]]
+accepted-risk).
+
+### OBS-3810: Retention pruning and erasure counter
+
+Counter `zetl_feed_retention_total{subscription_id, action,
+reason}` incremented per retention event, with `action` ∈
+{`archived`, `deleted`, `forgotten`} and `reason` ∈ {`age`,
+`count`, `user_request`, `republish_coupled`}. Counter
+`zetl_feed_tombstone_block_total{subscription_id}` increments per
+attempted re-import that was refused due to a tombstone match
+(directly mitigates [[#T22]]).
+
 ---
 
 ## 13. Traceability
@@ -1711,6 +2086,19 @@ operator notification per [[#REQ-3828]].
 | [[#REQ-3828]] | T20 mitigation | TEST-3863, TEST-3864 |
 | [[#ADR-3810]] | T17, T18, T19, T20 mitigation strategy | (decision artefact, audited by [[DESIGN-038-rss-support#task-credential-stores]]) |
 | [[#CON-3812]] | [[#REQ-3824]]..[[#REQ-3828]] operator surface | TEST-3858..TEST-3864 |
+| [[#REQ-3829]] | T21 mitigation; [[SPEC-034]] composition | TEST-3865 |
+| [[#REQ-3830]] | UP-3803 cohort recipient | TEST-3866, TEST-3867 |
+| [[#REQ-3831]] | T21 mitigation | TEST-3868 |
+| [[#NFR-3809]] | T21 entropy floor | TEST-3874 |
+| [[#ADR-3811]] | T21 mitigation strategy + cohort federation | (decision artefact, audited by [[DESIGN-038-rss-support#task-capability-feed-design]]) |
+| [[#CON-3813]] | [[#REQ-3829]]..[[#REQ-3831]] operator surface | TEST-3865..TEST-3868, TEST-3874 |
+| [[#REQ-3832]] | UP-3803 inbox-bloat protection | TEST-3869 |
+| [[#REQ-3833]] | UP-3803 reversibility | TEST-3870, TEST-3871 |
+| [[#REQ-3834]] | T22 mitigation; GDPR-shape erasure | TEST-3872 |
+| [[#REQ-3835]] | retention ↔ republication consistency | TEST-3873 |
+| [[#NFR-3810]] | retention throughput baseline | TEST-3875 |
+| [[#ADR-3812]] | retention default rationale | (decision artefact, audited by [[DESIGN-038-rss-support#task-retention-policy]]) |
+| [[#CON-3814]] | [[#REQ-3832]]..[[#REQ-3835]] operator surface | TEST-3869..TEST-3873, TEST-3875 |
 
 The full traceability table — including [[CON-3801]] .. [[CON-3810]],
 [[OBS-3801]] .. [[OBS-3805]], and bug-back-links once any are filed —
@@ -1816,6 +2204,22 @@ deliberately unsettled:
     Rust-ecosystem review (keyring-rs maturity, libsecret session-bus
     behaviour on headless Linux, Windows Credential Manager
     semantics under service mode).
+15. **Capability-feed emission shape.** Strawman commits to
+    per-cohort feeds at `/caps/<token>/feed.xml` ([[#ADR-3811]]
+    option A) over deferred-to-v2 (B) or implicit-everything-readable
+    (C). Threat-model leak vectors handled by [[#REQ-3831]] and
+    [[#NFR-3809]]. Final shape defers to
+    [[DESIGN-038-rss-support#task-capability-feed-design]] for
+    [[SPEC-034]] interaction audit and synthetic-user probe of
+    operator-mediated cohort scoping.
+16. **Retention default.** Strawman commits to `forever` as the
+    default retention policy ([[#ADR-3812]] option A) over `90d` (B)
+    or `last-500` (C). Inbox bloat is a literacy concern;
+    `OBS-3810`-driven warning at 10,000-item threshold is the
+    accepted-risk mitigation. Final shape defers to
+    [[DESIGN-038-rss-support#task-retention-policy]] for user-
+    research on PKM operator expectations vs feed-reader
+    conventions.
 
 ---
 
