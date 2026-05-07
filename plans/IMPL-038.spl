@@ -1,0 +1,552 @@
+;; IMPL-038: Implementation plan for SPEC-038 — RSS / Atom / JSON Feed support
+;;
+;; Implements SPEC-038's full surface across both directions:
+;;   - OUTBOUND: zetl build / zetl serve emit standards-conformant RSS 2.0,
+;;     Atom 1.0, and (opt-in) JSON Feed v1.1 from a unified pure
+;;     FeedItem-to-serialiser pipeline. Selection by frontmatter / folder /
+;;     tag / SPL / scoped subscription catalog. Stable item ids, deterministic
+;;     date resolution, wikilink rewriting, content sanitisation, capability
+;;     cohort feeds, AST-backed changelog feeds.
+;;   - INBOUND: pull external feeds with SSRF-safe + XXE-safe + decompression-
+;;     bombs-safe defences; first-seen dedup; per-feed authentication
+;;     (Basic / Bearer / query-param); Creative-Commons-aware republication
+;;     policy with private-by-default + license-driven eligibility +
+;;     excerpt-plus-link mode + attribution preservation + retraction
+;;     propagation; per-subscription retention with archive-not-delete
+;;     default + zetl feed forget for explicit erasure.
+;;
+;; Single-agent plan for the claude agent. Spec is at status=strawman and
+;; MUST graduate to status=approved (via DESIGN-038's task-mark-spec-approved)
+;; before implementation begins. Phase 0 of this plan blocks on that gate.
+;;
+;; Architecture notes (per SPEC-038 §9 Purity Boundary Map):
+;;   - Pure core: feed::select, feed::serialise (RSS/Atom),
+;;     feed::serialise_jsonfeed, feed::rewrite_links, feed::resolve_date,
+;;     feed::item_id, feed::license_resolve, feed::republication_eligible,
+;;     feed::excerpt, feed::auth::redact, feed::auth::redirect_decision,
+;;     feed::parse_inbound, feed::dedup. NO tokio/axum/git2/std::fs writes.
+;;   - Effectful shell: feed::build, feed::serve, feed::fetch (SSRF-safe
+;;     client shared with SPEC-039), feed::persist, feed::moderation_ui.
+;;   - Configuration: .zetl/config.toml (feed config, [[subscriptions]],
+;;     [[capability_cohorts]], [wiki].self_license / is_commercial,
+;;     [feed].enable_json) plus separate .zetl/credentials.toml (mode 0600,
+;;     gitignored, per-subscription-id keyed).
+;;
+;; Conditional gates (default-leaning resolutions assumed; deferral collapses
+;; the relevant phases):
+;;   - ADR-3803 (inbound v1) = Y -> Phase 7 implements; = N/D -> Phase 7
+;;     becomes recipe documentation only.
+;;   - ADR-3811 (cap-feed shape) = A -> Phase 6 implements; = B -> Phase 6
+;;     becomes deferral note.
+;;   - ADR-3801 (JSON Feed) opt-in tertiary -> always implemented; toggle
+;;     gates emission only.
+
+(meta plan
+  (id "IMPL-038")
+  (title "RSS / Atom / JSON Feed support — implementation")
+  (version "0.1.0")
+  (status "draft")
+  (created "2026-05-07")
+  (author "agent:claude")
+  (spec "SPEC-038")
+  (description "Implementation plan for SPEC-038. Pure-core feed serialisers (RSS 2.0 + Atom 1.0 + JSON Feed v1.1) over a unified FeedItem record produced by pure projection from VaultContext + .zetl/config.toml. Outbound emission across both zetl build (dist/feed.xml, dist/atom.xml, dist/feed.json) and zetl serve routes, with discovery via rel=alternate Link headers. Hugo's scoped-subscription catalog at /.well-known/zetl-subscriptions.json with per-scope feeds and AST-backed changelog feeds (REQ-3813..REQ-3817). Capability-mode interaction: cap-protected pages excluded from public feeds, opt-in per-cohort feeds at /caps/<token>/feed.xml with token-leak prevention (REQ-3829..REQ-3831). Inbound (contingent on ADR-3803 = Y): SSRF-safe + XXE-safe fetcher and parser shared with SPEC-039; first-seen identity-record dedup; per-feed authentication via Basic / Bearer / query-param schemes with credentials persisted in mode-0600 file (REQ-3824..REQ-3828); Creative-Commons-aware republication with private-by-default + license-driven eligibility (REQ-3818..REQ-3823); per-subscription retention with archive-not-delete default + zetl feed forget for explicit erasure (REQ-3832..REQ-3835). Full test matrix: per-format conformance gates (RSS strict, Atom strict, JSON Feed schema, webmention.rocks-style inbound corpus); cross-format equivalence property; mutation testing on pure core; threat-test corpus per T1..T22; adversarial test corpus from DESIGN-038 task-adversarial-tests. Single-agent plan for the claude agent. Phase 0 blocks on SPEC-038 reaching status=approved via DESIGN-038."))
+
+;; -- Agents --------------------------------------------
+(given agent-claude-available)
+
+;; -- Tasks ---------------------------------------------
+
+;; Phase 0: gate + foundational config
+(given task-await-spec-approval)
+(given task-config-schema)
+(given task-credentials-store)
+
+;; Phase 1: pure-core types
+(given task-feed-item-types)
+
+;; Phase 2: pure-core projections (parallel after types)
+(given task-feed-select)
+(given task-feed-resolve-date)
+(given task-feed-rewrite-links)
+(given task-feed-item-id)
+(given task-feed-license-resolve)
+(given task-feed-republication-eligible)
+(given task-feed-excerpt)
+
+;; Phase 3: pure-core serialisers (parallel after types + projections)
+(given task-serialise-rss)
+(given task-serialise-atom)
+(given task-serialise-jsonfeed)
+
+;; Phase 4: outbound effectful shell
+(given task-build-outbound)
+(given task-serve-outbound)
+
+;; Phase 5: Hugo's scoped subscriptions outbound
+(given task-scoped-catalog-emit)
+(given task-scoped-feed-emit)
+(given task-changelog-feed)
+
+;; Phase 6: capability-mode (contingent on ADR-3811 = A)
+(given task-cap-feed-implementation)
+
+;; Phase 7: inbound (contingent on ADR-3803 = Y)
+(given task-inbound-fetcher)
+(given task-inbound-auth)
+(given task-inbound-cc-republication)
+
+;; Phase 8: retention + erasure
+(given task-retention-pruning)
+(given task-feed-forget-cli)
+
+;; Phase 9: CLI + observability
+(given task-cli-surface)
+(given task-observability)
+
+;; Phase 10: tests
+(given task-tests-pure-core)
+(given task-tests-conformance)
+(given task-tests-cross-format-equivalence)
+(given task-tests-trust-boundary)
+(given task-tests-mutation)
+
+;; Phase 11: closeout
+(given task-docs)
+(given task-mark-spec-implemented)
+
+;; -- No-deps markers (Phase 0 root) --------------------
+(given no-deps-await-spec-approval)
+(given no-deps-config-schema)
+(given no-deps-credentials-store)
+
+;; -- Task Metadata -------------------------------------
+
+(meta task-await-spec-approval
+  (description "Phase 0 gate. SPEC-038 starts at status=strawman. This task is satisfied when DESIGN-038's task-mark-spec-approved completes -- i.e. SPEC-038 reaches status=approved with a human-reviewer sign-off recorded. Verify by reading specs/SPEC-038-rss-support.md frontmatter; if status is anything other than 'approved', this task SHALL NOT be marked complete. Per USDD §AI Trust Boundaries, no Phase 3 implementation work begins on a feature whose spec sits at draft / strawman / superseded. The implementation tasks below all transitively depend on completed-await-spec-approval through completed-config-schema or completed-feed-item-types. Reading the research notes produced by DESIGN-038 (research/SPEC-038-publishing-surface.md, research/SPEC-038-frontmatter-dates.md, research/SPEC-038-fetch-stack.md, research/SPEC-038-prior-art-*.md, research/SPEC-038-license-policy.md, research/SPEC-038-credential-stores.md, research/SPEC-038-capability-feed.md, research/SPEC-038-retention-policy.md, research/SPEC-038-synthetic-user.md, research/SPEC-038-cross-model-review.md, research/SPEC-038-adversarial-tests.md) is part of completing this task -- the implementer needs the surveys' grounded findings to make the right choices in the implementation tasks below.")
+  (acceptance "specs/SPEC-038-rss-support.md frontmatter shows status=approved AND version=1.0.0; DESIGN-038's plan board shows task-mark-spec-approved completed; all referenced research notes exist; the implementer has read each one and noted any deviations the implementation will make from the strawman defaults (e.g., if the license-policy task surfaced a CC table amendment, that amendment is reflected in the eligibility-table implementation in task-feed-republication-eligible).")
+  (trace "USDD Phase 3 gate"))
+
+(meta task-config-schema
+  (description "Extend the .zetl/config.toml parser to recognise every key SPEC-038 introduces. Required additions: (1) [feed] table with `enabled: bool`, `base_url: String`, `enable_json: bool` (default false), `max_items: u32` (default 50), feed title/description/author; (2) [[feed.scopes]] array of tables with `id`, `title`, `path`, `select` (Hugo's scoped feeds, REQ-3813); (3) [feed.changelog] table with `enabled`, `path`, `archive_path`, `archive_size` (REQ-3816, REQ-3817); (4) [[capability_cohorts]] array of tables with `id`, `token` (≥ 128-bit entropy verified at parse time per NFR-3809), `select` glob list, `feed_enabled` bool, `feed_title` string (REQ-3830, CON-3813); (5) [[subscriptions]] array of tables with `id`, `source`, `select`, `exclude`, `target`, `mapping`, `license`, `republish`, `republish_mode`, `excerpt_words`, `credentials_ref`, `i_have_permission`, `retention`, `retention_mode` (CON-3809, CON-3811, CON-3814); (6) [wiki] table extension with `self_license: Option<String>` (SPDX-style id) and `is_commercial: bool` (default false) used by the CC-BY-SA / CC-BY-NC eligibility checks (REQ-3820); (7) [graph.placement] from SPEC-028 (already-existing key, leave alone). Every new key has a deterministic default. Refuse to start if any value is malformed (e.g., capability cohort token below entropy floor, license-string not in the known SPDX set, retention-string not parseable as forever / duration / count, republish=true on no-license-declared without i_have_permission=true). Add a JSON-Schema-like validation surface that surfaces clear errors; exit code != 0 on validation failure with a structured error message naming the offending key.")
+  (acceptance "src/cli.rs (or wherever config parsing lives) recognises every new key with the correct types and defaults; malformed values produce structured errors naming the offending key; the demo-vault's .zetl/config.toml carries a worked example for each new section; cargo test -p zetl --test config_schema passes; running zetl build / zetl serve on a vault with the new keys exits zero; running on a vault with a malformed key exits non-zero with the expected error message.")
+  (trace "CON-3804 + CON-3805 + CON-3808 + CON-3809 + CON-3810 + CON-3811 + CON-3813 + CON-3814 + CON-3815 in SPEC-038"))
+
+(meta task-credentials-store
+  (description "Implement the .zetl/credentials.toml store per CON-3812 + ADR-3810. The default storage shape is the single-file form (per-subscription tables keyed by subscription `id`); the per-subscription-file shape (.zetl/credentials/<subscription-id>.toml) is also accepted. Required behaviours: (1) on every read, verify file mode is exactly 0600 (or platform equivalent restricting read to running user); refuse to load if mode is looser, with a structured error naming the file and the expected mode (REQ-3825); (2) on every write, set mode to 0600 atomically (write-then-rename pattern) so operators don't have to chmod manually; (3) parse three auth schemes per REQ-3824: `auth_type = basic` with username + password; `auth_type = bearer` with token; `auth_type = query_param` with url_with_token OR (token_param + token_value); (4) refuse to load any credential-shaped key from .zetl/config.toml -- if a `password`, `token`, or `url_with_token` key appears in config.toml, exit with a hard error citing ADR-3810 (REQ-3825); (5) when zetl init runs, append `.zetl/credentials.toml` and `.zetl/credentials/` to the default .gitignore; (6) any subcommand producing a portable archive of vault state (zetl export, etc.) excludes these paths by default; including them requires --include-credentials AND a manifest acknowledgement field. The OS-keychain integration (ADR-3810 option B) is a separate `keychain` cargo feature flag -- gate the keyring-rs dep behind it; v1 ships with the file-only path always working. Verify task-survey-credential-stores has not surfaced amendments that change this design before implementing.")
+  (acceptance "src/feed/credentials.rs (or similar) loads .zetl/credentials.toml respecting mode 0600 + scheme parsing + permission rejection; integration test produces a credentials file with mode 0644 and asserts zetl refuses to load; integration test attempts to put a bearer token in .zetl/config.toml and asserts the hard error fires; zetl init's .gitignore includes the credential paths; cargo test --features keychain --test credential_keychain compiles and runs (skipped on platforms without a session bus).")
+  (trace "REQ-3824..REQ-3828 + CON-3812 + ADR-3810 in SPEC-038"))
+
+(meta task-feed-item-types
+  (description "Define the type lattice that the pure-core projections produce and the pure-core serialisers consume. Required types in src/feed/types.rs: (1) `FeedItem` -- id (stable per REQ-3803), title, url (absolute per the configured base_url), date_published (RFC 3339), date_modified (Option), summary, content_html (sanitised), author (Option<AuthorRef>), tags (Vec<String>), license (Option<License>), source_metadata (zetl namespace fields per REQ-3814 -- source_path, object_id, content_hash, prev_content_hash, changelog_seq); (2) `FeedConfig` -- base_url, title, description, max_items, format flags (rss/atom/jsonfeed), per-format paths, scope id (Option, for scoped feeds), capability_cohort_id (Option, for cohort feeds); (3) `License` enum -- CC0_1_0, CC_BY_4_0, CC_BY_3_0, CC_BY_SA_4_0, CC_BY_NC_4_0, CC_BY_ND_4_0, Other(SpdxId), Unknown; (4) `RepublicationDecision` enum -- Deny, ExcerptOnly, FullAllowed; with structured rationale field naming the eligibility-table clause that produced it; (5) `OutputFormat` enum -- Rss20, Atom10, JsonFeed11; (6) `SelectionRule` enum -- FrontmatterOptIn, Folder(PathBuf), Tag(String), SplQuery(SplExpr); (7) `RetentionPolicy` enum -- Forever, Duration(chrono::Duration), Count(usize); (8) boundary types: `IncomingMention` (for inbound), `VerifiedMention` (for moderation), shared with SPEC-039 if SPEC-039 is built first. All types implement Debug + Clone + PartialEq; FeedItem implements serde::Serialize for the JSON Feed serialiser. Place these in `src/feed/types.rs`; create `src/feed/mod.rs` if it doesn't exist with a `pub mod types;` declaration.")
+  (acceptance "src/feed/types.rs exists with every type listed in the description; the module compiles standalone (no shell-side imports per the SPEC-038 §9 dependency rule); cargo test -p zetl --test feed_types passes basic constructor / accessor tests; the License enum's Display impl produces the SPDX-style identifier strings used in CON-3811's `license` configuration key.")
+  (trace "SPEC-038 §9 Purity Boundary Map types + REQ-3801 FeedItem stability"))
+
+(meta task-feed-select
+  (description "Implement the pure-core selection function per ADR-3802. Signature: `pub fn select(vault: &VaultContext, rule: &SelectionRule, visibility: &VisibilityPredicate) -> Vec<FeedItem>`. Behaviour: filter pages by the selection rule (frontmatter opt-in / folder / tag / SPL / scoped catalog source-path or stable-node selector per REQ-3815) AND by the publication-visibility predicate per REQ-3802 (collab-mode read ACL OR public-build inclusion OR cohort-cap inclusion). Visibility is computed by the shell-side caller and passed in as a closure -- the pure core never reads ACL state directly. Order the result by date_published descending (newest first), break ties by stable id. Produce at most max_items entries (truncate after sort). Pure -- no I/O, deterministic. Capability-protected pages reachable only via cap URL SHALL NOT pass the public visibility predicate (REQ-3829), but SHALL pass the cohort visibility predicate when the page is in the cohort's selector set (REQ-3830).")
+  (acceptance "src/feed/select.rs exports `select` with the documented signature; property test asserts deterministic order on shuffled input; integration test on demo-vault with each SelectionRule variant produces the expected page set; cap-protected page is included only when given a cohort visibility predicate scoping the cohort's pages.")
+  (trace "REQ-3802 + REQ-3829 + REQ-3830 + ADR-3802 in SPEC-038"))
+
+(meta task-feed-resolve-date
+  (description "Implement the date-resolution pure function per REQ-3804. Signature: `pub fn resolve_date(page: &Page, vault: &VaultContext) -> Result<DateTime<Utc>, ResolveDateError>`. Walk the documented fallback chain (per task-survey-frontmatter-dates research): frontmatter.published > frontmatter.date > frontmatter.created > git-derived first/last commit date > structured missing-date error (filesystem mtime is explicitly NOT in the chain because it is non-deterministic across hosts). Stop at the first present value. Reject malformed dates, future dates beyond a reasonable bound (configurable; default = build_time + 1 year), pre-1970 dates, and timezone-naive strings without a documented tz fallback (default UTC; warn). The git-derived dates are passed in via VaultContext as already-resolved metadata -- the pure core does not invoke git itself. Return RFC 3339 formatted strings for serialisation downstream.")
+  (acceptance "src/feed/resolve_date.rs exports `resolve_date`; unit tests cover every fallback step including the missing-date case; property test asserts deterministic output for the same input across machines (no chrono::Utc::now() calls in the pure function); malformed-date negative tests exercise the future-dated, pre-1970, and timezone-naive cases.")
+  (trace "REQ-3804 in SPEC-038"))
+
+(meta task-feed-rewrite-links
+  (description "Implement the wikilink-rewriting pure function per REQ-3805 + REQ-3807. Signature: `pub fn rewrite_links(content: &str, base_url: &Url, slug_resolver: &dyn Fn(&str) -> Option<String>, unresolved_policy: UnresolvedPolicy) -> String`. Walk the rendered HTML / Markdown content; find every `[[wikilink]]` (and optionally already-rendered `<a href=\"...\">` to internal slugs); rewrite each to an absolute URL by prepending base_url; for unresolved targets (slug_resolver returns None) apply the configured policy (drop link / preserve text / preserve syntax / placeholder URL per REQ-3807's eventual decision). MUST be idempotent (rewrite(rewrite(c)) == rewrite(c)) -- property test asserts. MUST be referentially transparent. Preserve link text when rewriting. Strip wikilink syntax for unresolved targets per the chosen policy.")
+  (acceptance "src/feed/rewrite_links.rs exports `rewrite_links`; idempotence property test passes on randomised input; unit tests cover the resolved + unresolved paths; performance: ≤ 1 ms per 10 KB content on commodity hardware (informal benchmark).")
+  (trace "REQ-3805 + REQ-3807 in SPEC-038"))
+
+(meta task-feed-item-id
+  (description "Implement the stable item-id pure function per REQ-3803 + NFR-3804. Signature: `pub fn item_id(page_slug: &str, namespace: &Url) -> String`. Required properties: (1) byte-identical output for the same (slug, namespace) input across machines, build hosts, and zetl versions in the same major-version line (NFR-3804); (2) independent of page title, content, frontmatter values other than slug-determining inputs, build timestamp; (3) independent of build-output ordering; (4) collision-resistant across slugs (a vault cannot produce the same id for two distinct pages); (5) format: a tag URI (RFC 4151) of the form `tag:<host-of-namespace>,<creation-year>:zetl/<slug>` -- this is opaque, ASCII, bounded length, and Atom-conformant. The creation-year segment is the year embedded in the namespace's site, NOT the build-year (so re-runs in different years produce identical ids). Document the migration policy if the function is ever revised in a breaking way -- a major-version bump with operator-side regen step.")
+  (acceptance "src/feed/item_id.rs exports `item_id`; property test asserts byte-identical output across two invocations with the same inputs; mutation test asserts that flipping any character of the slug or namespace produces a different id.")
+  (trace "REQ-3803 + NFR-3804 in SPEC-038"))
+
+(meta task-feed-license-resolve
+  (description "Implement the license-metadata extraction + normalisation pure function per REQ-3814 + REQ-3819. Signature: `pub fn license_resolve(feed_metadata: &FeedMetadata, operator_override: Option<&str>) -> License`. FeedMetadata carries the parsed atom:rights, dc:rights, channel-level RSS <copyright>, and atom:link rel=license href values. Operator override is the `license` field on the [[subscriptions]] entry (CON-3811). Behaviour: if operator_override is Some, that value is authoritative and the extracted value is recorded only as observability metadata for OBS-3806 drift detection; else, walk the feed-metadata sources in priority order (atom:link rel=license > atom:rights > dc:rights > channel-level <copyright>); normalise CC license URLs (e.g., https://creativecommons.org/licenses/by-sa/4.0/, http://, with-trailing-slash, without) to the canonical SPDX-style identifier (CC-BY-SA-4.0); fall back to License::Unknown if no recognisable signal. Pure -- works only on the parsed metadata, no HTTP. Document every CC URL form recognised in the function-level rustdoc (this list comes from task-license-policy research).")
+  (acceptance "src/feed/license_resolve.rs exports `license_resolve`; unit tests cover every CC URL canonical-form variant; operator-override path verified by integration test against a synthetic feed declaring CC-BY-NC where the operator has set license=CC-BY-SA-4.0 -- the operator value wins and OBS-3806 records the drift.")
+  (trace "REQ-3814 + REQ-3819 + ADR-3809 + CON-3811 in SPEC-038"))
+
+(meta task-feed-republication-eligible
+  (description "Implement the republication-eligibility decision pure function per REQ-3815 + REQ-3820 + ADR-3809. Signature: `pub fn republication_eligible(license: &License, sub_config: &SubscriptionConfig, vault_self_license: Option<&License>, vault_is_commercial: bool) -> RepublicationDecision`. Walk the eligibility table from REQ-3820 verbatim: CC0/PD -> FullAllowed; CC-BY -> ExcerptOnly default + FullAllowed if sub_config.republish_mode = Full + attribution mandatory; CC-BY-SA -> ExcerptOnly default + FullAllowed only if vault_self_license is a compatible CC-BY-SA license; CC-BY-NC -> ExcerptOnly default + republication permitted only if vault_is_commercial = false; CC-BY-ND -> ExcerptOnly only (full-content forbidden because wikilink rewriting modifies the body); Unknown / no-license -> Deny unless sub_config.republish=true AND sub_config.i_have_permission=true. The RepublicationDecision carries a structured `rationale` field naming which clause of REQ-3820 fired, for debuggability and audit. Pure. Verify cross-task consistency: task-license-policy's research note may have amended specific table cells; honour the amendments.")
+  (acceptance "src/feed/republication.rs exports `republication_eligible`; unit test for every row of the REQ-3820 eligibility table; property test asserts that flipping vault_is_commercial only changes the decision for CC-BY-NC sources; flipping vault_self_license only changes the decision for CC-BY-SA sources; rationale field present on every Decision instance.")
+  (trace "REQ-3815 + REQ-3820 + ADR-3809 in SPEC-038"))
+
+(meta task-feed-excerpt
+  (description "Implement the excerpt-plus-link pure function per REQ-3816 + REQ-3821 + NFR-3808. Signature: `pub fn excerpt(content_html: &str, word_count: usize) -> String`. word_count is bounded [50, 500] per NFR-3808 (caller passes the operator-configured value or 200 default; the function asserts the bound and panics in debug / saturates in release on out-of-range). Strip HTML tags, count plain-text words, truncate at the requested count rounding DOWN to the nearest sentence or paragraph boundary (never mid-word, never mid-sentence). Preserve paragraph structure in the output (blank lines between paragraphs). Skip images, embeds, scripts, style, and audio/video elements entirely (these don't count toward word count). The local vault view shows full content; this function is only invoked when REQ-3821's excerpt-plus-link mode is selected.")
+  (acceptance "src/feed/excerpt.rs exports `excerpt`; unit tests cover sentence-boundary truncation, paragraph-boundary truncation, image-skip, multi-paragraph input, single-paragraph input shorter than word_count (returns full content); property test asserts that excerpt(c, n) length in words ≤ n.")
+  (trace "REQ-3816 + REQ-3821 + NFR-3808 in SPEC-038"))
+
+(meta task-serialise-rss
+  (description "Implement the pure RSS 2.0 serialiser per REQ-3801 + NFR-3805 (RSS strict-parser conformance). Signature: `pub fn serialise_rss(items: &[FeedItem], config: &FeedConfig) -> String`. Output is RSS 2.0 XML with the channel-level metadata (title, link, description, language, copyright when license is set, lastBuildDate per REQ-3804) and per-item entries (title, link, description = the excerpt or full content per RepublicationDecision, pubDate in RFC 822 format, guid with isPermaLink=false bound to FeedItem.id, category for tags). Apply CDATA escaping to content per REQ-3806. Include an atom:link rel=self per REQ-3811's outbound-only equivalent. Do NOT roll our own XML escaping -- use the `quick-xml` crate (or whichever survey-fetch-stack research recommended) but verify CDATA + entity escaping conformance via the strict-parser CI gate. Produce byte-identical output for byte-identical inputs (deterministic; no timestamps from outside the FeedConfig).")
+  (acceptance "src/feed/serialise_rss.rs exports `serialise_rss`; the output validates against a pinned local RSS strict parser with zero errors zero warnings; xmllint --noout passes; property test for byte-identical output on the same input twice; unit test for CDATA escaping of content with embedded `]]>` sequences.")
+  (trace "REQ-3801 + REQ-3806 + NFR-3805 in SPEC-038"))
+
+(meta task-serialise-atom
+  (description "Implement the pure Atom 1.0 serialiser per REQ-3801 + REQ-3811 (atom self-link) + NFR-3805 (Atom strict-parser conformance, RFC 4287). Signature: `pub fn serialise_atom(items: &[FeedItem], config: &FeedConfig) -> String`. Output is Atom 1.0 XML with the feed-level metadata (id matching the feed URL, title, updated per REQ-3804, link rel=alternate to the site, link rel=self to the feed URL, atom:rights when license is set), per-entry elements (id from FeedItem.id, title, link, published, updated, summary OR content type=html/xhtml depending on RepublicationDecision, category, author when present), and the namespaced `_zetl` extension carrying source_path / object_id / content_hash / prev_content_hash / changelog_seq from REQ-3814. The namespace MUST NOT collide with any IETF-registered Atom extension. Atom paged feeds via RFC 5005 when truncation is required (NFR-3802). Same escaping discipline as task-serialise-rss.")
+  (acceptance "src/feed/serialise_atom.rs exports `serialise_atom`; output validates against a pinned local Atom strict parser with zero errors zero warnings; the atom:link rel=self matches the published URL; namespaced _zetl extension parses cleanly without breaking ordinary feed readers (verified by feed-rs strict mode); paged-feed property test for max_items truncation produces a continuation feed at the next archive URL.")
+  (trace "REQ-3801 + REQ-3808 + REQ-3811 + REQ-3814 + NFR-3802 + NFR-3805 in SPEC-038"))
+
+(meta task-serialise-jsonfeed
+  (description "Implement the pure JSON Feed v1.1 serialiser per ADR-3801 + CON-3815 + NFR-3805 (JSON Feed schema conformance). Signature: `pub fn serialise_jsonfeed(items: &[FeedItem], config: &FeedConfig) -> String`. Output is JSON Feed v1.1: top-level version (fixed `https://jsonfeed.org/version/1.1`), title, home_page_url, feed_url, description, items array. Per-item: id (from FeedItem.id), url, title, content_html OR content_text per RepublicationDecision, summary, date_published, date_modified, authors, tags. Carry the zetl-namespace metadata in a `_zetl` extension key on each item (per CON-3815 -- JSON's flat extension is structurally simpler than Atom's namespace). Cross-format equivalence is the load-bearing property: the same FeedItem set produces id / url / title / dates that are byte-identical projections of the XML output's corresponding fields (TEST-3877). Pure -- byte-identical for byte-identical inputs. Use serde_json with sorted keys for determinism.")
+  (acceptance "src/feed/serialise_jsonfeed.rs exports `serialise_jsonfeed`; the output validates against the pinned JSON Feed v1.1 schema with zero errors; cross-format-equivalence property test asserts byte-identical id / url / title / dates against the Atom and RSS output for the same FeedItem set.")
+  (trace "ADR-3801 + CON-3815 + NFR-3805 in SPEC-038"))
+
+(meta task-build-outbound
+  (description "Implement the outbound build-mode emission in src/web/build.rs (mirroring the existing search_index / history_index pattern per the DESIGN-038 task-survey-publishing-surface research). For every successful zetl build, emit dist/feed.xml (RSS 2.0), dist/atom.xml (Atom 1.0), and -- when [feed].enable_json = true -- dist/feed.json (JSON Feed v1.1) all derived from the same FeedItem set produced by feed::select with the public-visibility predicate. Refuse to emit when [feed].base_url is unset (REQ-3809 self-publication safety). Add discovery `<link rel=alternate type=application/rss+xml | application/atom+xml | application/feed+json>` tags to every published page's <head> via the existing TemplateEngine context-injection path. Emit the OBS-3801 counter and the OBS-3802 build-duration histogram. Build pass MUST be deterministic: rebuilding the same vault produces byte-identical feed files (NFR-3804 + NFR-3805).")
+  (acceptance "zetl build --out-dir /tmp/zetl-out on demo-vault produces /tmp/zetl-out/feed.xml + /tmp/zetl-out/atom.xml; with enable_json=true also produces feed.json; every published page's HTML <head> contains the rel=alternate links; missing base_url produces a hard error; the build pass exits zero; rebuild produces byte-identical output (`diff` exit zero on every emitted file).")
+  (trace "REQ-3801 + REQ-3808 + REQ-3809 + OBS-3801 + OBS-3802 in SPEC-038"))
+
+(meta task-serve-outbound
+  (description "Implement the outbound serve-mode routes in src/web/routes.rs + src/web/mod.rs. Register GET /feed.xml, GET /atom.xml, and (when enable_json) GET /feed.json -- each handler invokes the same pure pipeline as build mode (feed::select + serialise) under the request's authenticated visibility predicate. For zetl serve --collab, the predicate is the current session's per-page read ACL (REQ-3802); for unauthenticated public serve, it's the public visibility predicate. Cache-Control: public, max-age=300 on the response (5-minute freshness window) for unauthenticated; no-store for authenticated collab feeds. Same content-type per format (application/rss+xml; charset=utf-8 etc.). Include the rel=alternate Link headers in every page response. Verify against task-survey-publishing-surface that no existing route collides.")
+  (acceptance "GET /feed.xml against a serve fixture returns 200 with Content-Type: application/rss+xml; charset=utf-8 and a body matching CON-3802; GET /atom.xml similarly; GET /feed.json returns 404 when enable_json=false and 200 with application/feed+json otherwise; collab-mode response uses no-store; public response uses max-age=300; integration test passes.")
+  (trace "REQ-3801 + CON-3802 + CON-3803 in SPEC-038"))
+
+(meta task-scoped-catalog-emit
+  (description "Implement Hugo's scoped subscription catalog per REQ-3813 + CON-3808. Emit /.well-known/zetl-subscriptions.json describing the source wiki id (from [wiki].id), the root feed URL, every advertised scoped feed (from [[feed.scopes]]), the selectable selector vocabulary (folder subtrees, folders, pages, stable heading anchors, explicit block ids -- but explicitly NOT anonymous AST positions per REQ-3813), available changelog archive ranges, and per-feed visibility constraints. Do NOT publish raw git remote URLs by default unless [wiki].canonical_repo is set explicitly (REQ-3814 source wiki identity). Schema: emit a versioned `zetl_subscription_catalog` field with version `1.0`. Capability cohorts (REQ-3829) are NEVER advertised in this catalog -- the catalog is public.")
+  (acceptance "zetl build emits dist/.well-known/zetl-subscriptions.json with the documented schema; zetl serve serves /.well-known/zetl-subscriptions.json with Content-Type: application/json; the catalog includes every [[feed.scopes]] entry as a discoverable feed URL; the catalog does NOT include any /caps/<token>/* URL or any cohort metadata; with [wiki].canonical_repo unset, the catalog omits the canonical_repo field rather than inferring it from git remotes.")
+  (trace "REQ-3813 + REQ-3814 + CON-3808 in SPEC-038"))
+
+(meta task-scoped-feed-emit
+  (description "Implement the per-scope feed emission per REQ-3813..REQ-3815 + CON-3808. For each [[feed.scopes]] entry in .zetl/config.toml, build a FeedConfig with that scope's path / title / select rule, run the pure feed::select pipeline filtered by the scope's selector (folder subtrees, folders, pages, stable headings, block ids), and emit RSS / Atom / JSON Feed at the scope's path under dist/ (and register the equivalent serve routes). Each scoped feed item carries the zetl-namespace metadata fields (source_path, object_id, content_hash, prev_content_hash for changelog events, changelog_seq) so a downstream zetl subscriber can recover source identity. Per REQ-3815, support the subscriber-side scoped subscription mapping (mirror / flat / dated) but on the publishing side that's just metadata correctness. Stable selector vocabulary only -- if a frontmatter heading anchor is unstable (no explicit anchor set), the build refuses to advertise it as a public selector and either falls back to the page's slug or excludes it from the scoped catalog.")
+  (acceptance "every [[feed.scopes]] in demo-vault's .zetl/config.toml produces a feed at the configured path; each item includes the zetl-namespace metadata; an unstable anchor produces a hard error during build (or graceful exclusion with a warning -- the strawman didn't pin this; choose graceful exclusion + warning for the implementation); a downstream zetl subscriber consuming the feed recovers source path and object id correctly.")
+  (trace "REQ-3813 + REQ-3814 + REQ-3815 + CON-3808 in SPEC-038"))
+
+(meta task-changelog-feed
+  (description "Implement the AST-backed changelog feed per REQ-3816 + REQ-3817 + CON-3810. On every build, compare the previous and current Markdown AST Merkle snapshots; produce change events for stable, nameable nodes (pages, heading sections with stable anchors, explicit block ids); each event carries event_id, object_id, event_type (added/updated/deleted/moved), source_path, node_kind, selector, previous content hash, current content hash, monotonic publisher-local sequence number. Persist the AST Merkle snapshot at .zetl/feed-state/<feed-id>/snapshot.merkle (or wherever survey-publishing-surface recommends) and the append-only event log at .zetl/feed-state/<feed-id>/events.jsonl. Emit the latest changelog feed at [feed.changelog].path containing at most max_items events; emit immutable archive ranges at [feed.changelog].archive_path/<NNNNNN-MMMMMM>.xml when ranges seal (every archive_size events). Per REQ-3816, publication-feed item GUIDs identify stable objects; changelog-feed item GUIDs identify stable change events -- content hashes are NEVER feed GUIDs because they change on edit. Sequence-number resumability per REQ-3817: subscribers advance their last_seen_seq only after corresponding imports succeed.")
+  (acceptance "zetl build twice on demo-vault with a page edit between produces a changelog event in dist/changelog.xml; sequence numbers monotonic across builds; archive range files seal at archive_size boundaries; previous AST Merkle snapshot persisted; the integration test simulates 250 events with archive_size=100 and asserts the build emits 2 sealed archive ranges + the latest 50 events in the live feed; corruption recovery test: delete the snapshot file and assert the next build re-bootstraps from an empty baseline (per CON-3810 errors).")
+  (trace "REQ-3816 + REQ-3817 + CON-3810 + ADR-3808 in SPEC-038"))
+
+(meta task-cap-feed-implementation
+  (description "Implement capability-mode feed handling per REQ-3829 + REQ-3830 + REQ-3831 + NFR-3809 + ADR-3811 (option A) + CON-3813. Two parallel concerns: (1) EXCLUSION -- the public visibility predicate (used by task-build-outbound and task-serve-outbound) MUST exclude any page whose canonical URL contains a capability token segment (per the SPEC-034 capability-URL pattern); the scoped catalog (task-scoped-catalog-emit) MUST exclude cap-protected pages even when they would match a scope's selector; the changelog feed (task-changelog-feed) MUST exclude cap-protected pages from public events. (2) COHORT FEED EMISSION -- for each [[capability_cohorts]] in .zetl/config.toml with feed_enabled=true, emit a feed at /caps/<cohort.token>/feed.xml (and atom.xml + feed.json per the format flags) containing only items whose ACL allows the cohort to read AND whose slug is in the cohort.select glob set. Item links use cohort-scoped capability URLs. Cohort feeds are NEVER advertised in any public discovery surface -- no rel=alternate from public pages, no entry in the scoped catalog, no sitemap entry. Token-leak prevention per REQ-3831: cohort tokens MUST NEVER appear in feed bodies, build logs at any level, observability metric labels (use cohort.id, never cohort.token), vault-export archives, or error messages exposed to anonymous users; the token URL segment is the ONLY authorised emission site. Run `cargo +nightly miri` or equivalent to assert no token bytes leak through panic paths. Verify NFR-3809 entropy at config-load time (per task-config-schema). The exhaustive grep probe (TEST-3868) is part of task-tests-trust-boundary.")
+  (acceptance "config-load-time entropy check rejects sub-128-bit cohort tokens; exclusion verified by integration test loading a cap-protected page and asserting it does NOT appear in /feed.xml, /atom.xml, /feed.json, /.well-known/zetl-subscriptions.json, /sitemap.xml, or /pages.json; cohort-feed emission test creates two cohorts with overlapping page selectors and asserts each cohort feed contains only the intersection of cohort.select and the cohort's ACL; token-leak grep (TEST-3868) finds zero occurrences of any cohort token outside the URL segment in dist/ and the build log; OBS-3809 counter labels use cohort.id never the token.")
+  (trace "REQ-3829 + REQ-3830 + REQ-3831 + NFR-3809 + ADR-3811 + CON-3813 + T21 in SPEC-038"))
+
+(meta task-inbound-fetcher
+  (description "Implement the inbound feed fetcher in src/feed/fetch.rs (effectful shell). Contingent on ADR-3803 = Y; if N or D, this task collapses to a documentation-only deliverable noting the deferral. SSRF defence per REQ-3811: redirect allowlist blocking RFC 1918, link-local, loopback, multicast, file://, data://, and configurable per-vault denylist; resolve the target hostname before connect and re-check the IP at every redirect hop (preventing DNS rebinding). XXE defence per REQ-3810: use a parser configured with entity expansion disabled and entity-resolution disabled (specifically NOT serde_xml_rs which exposes entity expansion to the caller; use quick-xml or feed-rs strict mode per the survey-fetch-stack research recommendation). Decompression bomb defence per REQ-3811: bound decompressed body to 1 MiB regardless of Content-Length. Timeout per NFR-3802: 10 s per fetch. Concurrency cap per NFR-3806: 8 concurrent fetches. Conditional requests: emit If-Modified-Since and If-None-Match (ETag) headers when state is available; honour 304 Not Modified. User-Agent: minimal `zetl/<version>` with no further metadata per REQ-3811's privacy-leak threat model. Implement first-seen identity-record dedup per REQ-3812 (GUID + canonical-link + content-fingerprint -- a new item is duplicate if ANY persisted signal matches). Persist fetched items to .zetl/feeds/<subscription-id>/inbox/ as Markdown files with frontmatter carrying license, source_url, source_feed, original_author, original_published, original_item_url, retracted_by_source. Shared SSRF-safe fetcher with SPEC-039.")
+  (acceptance "zetl feed pull <subscription-id> against a synthetic test feed succeeds; SSRF probes (target=127.0.0.1, target=169.254.169.254, redirect to 10.x.x.x) are rejected with structured errors; XXE probe (XML payload with external entity expansion) parses without retrieving the entity; billion-laughs probe rejects with bounded memory; oversized response bombs are truncated at 1 MiB; first-seen dedup test re-imports a feed twice and asserts no duplicate vault pages are created; conditional requests reduce traffic on second pull (304 honoured).")
+  (trace "REQ-3810 + REQ-3811 + REQ-3812 + NFR-3802 + NFR-3806 + ADR-3803 + T1..T8 in SPEC-038"))
+
+(meta task-inbound-auth
+  (description "Implement inbound authentication per REQ-3824..REQ-3828. Compose with task-inbound-fetcher. Read credentials from the .zetl/credentials.toml store (task-credentials-store) using the subscription's id (or credentials_ref override per CON-3811). Apply the configured auth scheme: HTTP Basic (Authorization: Basic <base64>), Bearer (Authorization: Bearer <token>), or query-param (URL-embedded token). On cross-origin HTTP redirect, drop credentials before following per REQ-3826 (both Authorization header AND any URL-embedded token must be stripped from the redirected request); record the cross-origin-redirect-dropped event in OBS-3808. Per REQ-3827 logging hygiene: any log line, error message, or observability event referencing the request URL MUST replace token query-param values with the literal string `<redacted>`; Authorization header values MUST never appear in any log target. Per REQ-3828 retry policy: on 401, retry exactly once after re-reading the credential store (handles credential rotations); on persistent 401/403, emit a warn-level structured log line and SUSPEND automatic retries for that feed until operator action.")
+  (acceptance "integration test for each auth scheme against a synthetic authed feed; cross-origin redirect probe (auth target on host A redirects to host B) produces a redirected request with no Authorization header AND no URL token; log-grep across cargo test output produces zero hits for any synthesised secret; one-retry property test asserts exactly one retry on 401; persistent-401 lockout test asserts the feed enters suspended state and zetl feed pull produces a structured error message instead of issuing more network requests.")
+  (trace "REQ-3824..REQ-3828 + OBS-3808 + T17..T20 in SPEC-038"))
+
+(meta task-inbound-cc-republication
+  (description "Implement the Creative-Commons-aware inbound republication policy per REQ-3818..REQ-3823 + ADR-3809. Compose pure-core functions: feed::license_resolve (from task-feed-license-resolve) extracts and normalises license metadata from the fetched feed; feed::republication_eligible (from task-feed-republication-eligible) produces RepublicationDecision; feed::excerpt (from task-feed-excerpt) renders excerpt-mode content. Effectful shell: per-subscription private-by-default per REQ-3818 -- ingested items are persisted to .zetl/feeds/<sub-id>/inbox/ but EXCLUDED from any public build / serve surface unless the subscription's republish setting AND the resolved license eligibility allow republication; attribution preservation per REQ-3822 -- every ingested item's frontmatter MUST carry source_feed_title, source_feed_url, original_author, original_published_date, original_item_url, license name with link; attribution rendering MUST appear in BOTH the local vault view and any republished view (stripping is a build-time error); retraction propagation per REQ-3823 -- items removed from the source feed in subsequent fetches mark the local file with retracted_by_source: <ISO 8601 timestamp> AND remove from any republished build on the next pass. Coordinate with task-retention-pruning to ensure REQ-3835 republication-coupling is honoured. Emit OBS-3806 license-decision counter (labels: license_id, decision) and OBS-3807 republication-decline summary line at build time when items are suppressed.")
+  (acceptance "ingest a synthetic CC-BY-SA feed against a vault with [wiki].self_license = CC-BY-SA-4.0 and republish=true,republish_mode=full -- assert items appear in dist/feed.xml + dist/inbox/<sub-id>/*.md; flip vault to CC-BY-NC-4.0 and re-run -- assert republish_mode silently downgrades to excerpt; ingest a no-license feed -- assert items NEVER appear in any public surface unless republish=true AND i_have_permission=true; remove an item from the source feed and re-pull -- assert the item gets retracted_by_source frontmatter and disappears from the next public build; attribution-strip test (theme override that removes the attribution block) produces a build-time error.")
+  (trace "REQ-3818..REQ-3823 + ADR-3809 + OBS-3806 + OBS-3807 + T13..T16 in SPEC-038"))
+
+(meta task-retention-pruning
+  (description "Implement retention pruning per REQ-3832 + REQ-3833 + REQ-3835 + ADR-3812 + CON-3814. For each [[subscriptions]] entry's `retention` field (default forever per ADR-3812), evaluate retention violation in every build pass; for items beyond the policy, default to MOVE (not delete) into .zetl/feeds/<sub-id>/archived/ per REQ-3833 archive-not-delete; only delete when retention_mode=delete is explicitly set. Pruning runs in the build pass that detects retention violation, never silently between builds (operators see the action in build output). REQ-3835 republication coupling: when an item is pruned (or forgotten via task-feed-forget-cli), the next build pass MUST also remove it from any republished output -- analogous to source-side retraction per REQ-3823. NFR-3810 throughput: 1 s per 1,000 inbox items on commodity hardware. Emit OBS-3810 retention counter with labels (subscription_id, action, reason) where action ∈ archived / deleted / forgotten and reason ∈ age / count / user_request / republish_coupled.")
+  (acceptance "retention=90d test: ingest 100 items spread over 6 months, run build, assert 3-month-old items are in archived/ subdirectory and removed from inbox/ AND from any republished feed; retention=last-100 test: ingest 250 items, assert only the 100 most-recent are in inbox/ after build; retention_mode=delete test: assert pruned items are gone (not archived); republication coupling: previously-republished pruned item is removed from dist/feed.xml on next build; OBS-3810 counter labels match the action and reason; pruning 1,000 items completes in ≤ 1 s (informal benchmark).")
+  (trace "REQ-3832 + REQ-3833 + REQ-3835 + NFR-3810 + ADR-3812 + OBS-3810 in SPEC-038"))
+
+(meta task-feed-forget-cli
+  (description "Implement the `zetl feed forget <subscription-id> <pattern>` CLI per REQ-3834 + CON-3814. Pattern accepts a glob over slugs, a GUID prefix, or a content-hash prefix. --include-archive flag also removes archived/ entries; --reason TEXT flag records a free-form reason in the tombstone entry; --dry-run flag prints what would be removed without writing. Behaviour: locate matching items in the active inbox AND archive; remove the files; append tombstone entries to .zetl/feeds/<sub-id>/tombstones.jsonl with {guid, link, content_hash, erased_at, reason}; on every subsequent fetch, the tombstone log is consulted to refuse re-import of items matching any tombstone entry's dedup keys. Coordinate with task-retention-pruning for REQ-3835 republication coupling -- forgotten items also leave any republished build on the next pass. T22 attack mitigation: an attacker re-publishing an item the operator forgot SHALL NOT cause re-import. NFR-3810 throughput target: forget batch ≤ 200 ms for 100 items.")
+  (acceptance "zetl feed forget test-sub `**/*.md` --dry-run prints the matched paths without modifying the vault; without --dry-run, removes the items + creates tombstones.jsonl; subsequent zetl feed pull (after re-introducing the item upstream) refuses to re-import and increments OBS-3810's tombstone-block counter; --reason flag persists the reason in the tombstone record; concurrent fetch in progress for the same subscription produces a hard error per CON-3814.")
+  (trace "REQ-3834 + CON-3814 + T22 + OBS-3810 in SPEC-038"))
+
+(meta task-cli-surface
+  (description "Implement the user-facing CLI commands per CON-3801 + CON-3806. Subcommands: `zetl feed pull [<sub-id>...]` (manual fetch; if no sub-id, pull all subscriptions); `zetl feed list` (table of subscriptions with last-success / last-error / item counts); `zetl feed status <sub-id>` (detailed status including dedup state size, retention policy, recent error log lines); `zetl feed validate [path]` (run the local feed validator on a feed path or stdin -- pinned strict parsers per NFR-3805); `zetl feed forget <sub-id> <pattern>` (per task-feed-forget-cli). Auto-detect JSON output when piped (existing zetl convention); --no-input for unattended runs; consistent exit codes with the rest of zetl. Update zetl's man page and shell completions.")
+  (acceptance "every subcommand listed runs cleanly on demo-vault; --json flag produces parseable JSON output; man zetl includes the new subcommands; zetl completions {bash,zsh,fish,powershell} produce completion data including the new subcommands; integration tests cover the success path and at least one error path per subcommand.")
+  (trace "CON-3801 + CON-3806 + CON-3814 in SPEC-038"))
+
+(meta task-observability
+  (description "Implement OBS-3801..OBS-3810 across the codebase. Counter metrics: zetl_feed_build_total{result}, zetl_feed_inbound_license_decision_total{license, decision}, zetl_feed_capability_cohort_emit_total{cohort_id, result}, zetl_feed_retention_total{subscription_id, action, reason}, zetl_feed_tombstone_block_total{subscription_id}, zetl_feed_inbound_auth_failure_total{feed_slug, code}. Histogram: zetl_feed_build_duration_seconds. Log lines: per NFR-3807 every distinct REQ failure mode SHALL emit a structured (JSON) log line at warn or error level naming the violated REQ, the offending identity (page slug or feed URL), and a remediation hint. Build-time stderr summary line per OBS-3807 when items are excluded due to license-policy default-deny. Cohort-id label uses cohort.id never cohort.token (REQ-3831 enforcement). Verify cardinality bounds: subscription_id and cohort_id labels are bounded by config size; license is from the closed License enum; the system MUST NOT introduce labels with unbounded cardinality (e.g., page_slug as a label). Reuse zetl's existing tracing infrastructure rather than inventing a new metrics path.")
+  (acceptance "every counter and histogram listed exists and increments correctly under integration tests for each surface; metric output (Prometheus exposition or whatever zetl already uses) is parseable; cardinality grep across the metric stream shows no unbounded labels; structured failure-mode log lines parse as JSON and contain the violated REQ id; OBS-3807 stderr line appears at the bottom of zetl build output when at least one item was excluded.")
+  (trace "OBS-3801..OBS-3810 + NFR-3807 in SPEC-038"))
+
+(meta task-tests-pure-core
+  (description "Property-based + example-based tests for the pure-core layer (every REQ-3801..REQ-3812 + REQ-3818..REQ-3835 with a pure-core component). Critical properties: (1) feed::serialise XML / JSON round-trips: parse(serialise(items)) ≡ items modulo whitespace; (2) feed::rewrite_links idempotence: rewrite(rewrite(c)) == rewrite(c); (3) feed::item_id stability across machines (same input on two checkouts produces byte-identical id); (4) feed::resolve_date determinism (no clock reads in the pure function); (5) feed::dedup convergence (state-machine model — applying a sequence of inbound items in any order produces the same final state as canonical order); (6) feed::republication_eligible total function (every License × SubscriptionConfig × VaultSelfLicense × VaultIsCommercial combination produces a Decision); (7) feed::license_resolve canonicalisation: every CC URL form variant produces the same SPDX id. Use proptest. Per USDD §Requirement-Targeted Test Decomposition, every REQ has positive, negative-input, and negative-output tests where applicable.")
+  (acceptance "tests/feed_pure_core.rs (or similar) covers every listed property; cargo test runs green; proptest's shrinking finds minimal counterexamples for any failure; coverage report shows ≥ 90% line coverage on src/feed/*.rs pure modules.")
+  (trace "TEST-3801..TEST-3835 + USDD §Requirement-Targeted Test Decomposition"))
+
+(meta task-tests-conformance
+  (description "Standards-conformance CI gates per NFR-3805. Three per-format pinned validators: (1) RSS 2.0 strict parser refusing under-specified date / escaping bugs (recommend the `rss` crate's strict mode or feed-rs); (2) Atom 1.0 strict parser refusing namespace / required-element omissions per RFC 4287 (recommend feed-rs strict); (3) JSON Feed v1.1 schema validator against a vendored copy of the v1.1 schema. Each gate runs against a curated fixture corpus: at minimum demo-vault's complete published feed set, plus synthetic edge cases (single-item, max-items, unicode-titles, embedded HTML in content, dates at year boundaries, leap-second dates, RTL text in titles, BOM-prefixed content where applicable). Zero errors AND zero warnings is the gate (NFR-3805); a single warning fails CI. Manual W3C Feed Validator may be recorded as release evidence but the public service MUST NOT be the CI gate. Inbound side: webmention.rocks-equivalent fixture corpus for parser conformance (this is more relevant to SPEC-039 but the inbound parser shared module is exercised here).")
+  (acceptance "tests/feed_conformance.rs runs per-format strict parsers against the fixture corpus; CI fails on a single warning; fixture corpus includes all the edge cases listed; vendored JSON Feed v1.1 schema file is present at tests/fixtures/jsonfeed-v1.1.schema.json; the manual W3C check is documented as a release-evidence step in CHANGELOG/RELEASE notes but is NOT a CI gate.")
+  (trace "NFR-3805 + TEST-3801 .. TEST-3835 in SPEC-038"))
+
+(meta task-tests-cross-format-equivalence
+  (description "Property test for TEST-3877 cross-format equivalence: for any FeedItem set produced by feed::select, the id / url / title / date_published / date_modified fields in dist/feed.xml (RSS), dist/atom.xml (Atom), and dist/feed.json (JSON Feed) are byte-identical projections of the same underlying FeedItem -- modulo serialisation envelope (XML attribute escaping vs JSON string escaping). This is the load-bearing property that justifies ADR-3801's 'JSON Feed is just another pure projection from the same vetted FeedItem set' framing. Use proptest with FeedItem set generators covering edge cases (empty content, very long titles, unicode in author names, nested tag lists). On failure, emit the divergent field name + the FeedItem id + the values from each format for debuggability.")
+  (acceptance "tests/cross_format_equivalence.rs runs the property test with at least 1000 generated FeedItem sets; assertion failure produces a diagnostic showing the divergent field; CI fails any divergence.")
+  (trace "TEST-3877 + ADR-3801 in SPEC-038"))
+
+(meta task-tests-trust-boundary
+  (description "Threat-model verification tests covering T1..T22. For each threat row in SPEC-038 §Threat Model, an explicit test exercises the documented mitigation: T1 SSRF probe (target=127.0.0.1 / 10.x.x.x / file:// / link-local IPv6); T2 vault-size DoS bound test; T3 XXE probe with external entity expansion; T4 billion-laughs probe; T5 redirect-chain SSRF probe; T6 gzip decompression bomb; T7 UA / Referer absence verification (no Referer in any outgoing request, minimal UA); T8 GUID mutation dedup verification; T10..T13 license-policy bypass attempts; T17 credentials-in-config rejection; T18 cross-origin redirect credential drop; T19 log-grep for synthesised credentials; T20 credential lockout prevention; T21 capability token leak grep across every emission target (TEST-3868 -- exhaustive); T22 tombstone re-import refusal. Plus the adversarial test corpus produced by DESIGN-038 task-adversarial-tests; that corpus is checked into tests/fixtures/adversarial/ and run as part of this task. Fuzzing targets: src/feed/parse_inbound.rs (XML and JSON Feed) under cargo-fuzz with a corpus seeded from the adversarial fixtures.")
+  (acceptance "every T-row has at least one test in tests/threat_model_*.rs; fuzz targets exist under fuzz/fuzz_targets/ and produce zero crashes after at least 5 minutes of cargo-fuzz on each target; the adversarial fixtures are checked in and produce zero new failures (per the convergence criterion in DESIGN-038 task-adversarial-tests acceptance).")
+  (trace "T1..T22 + DESIGN-038 task-adversarial-tests + USDD §Adversarial Testing"))
+
+(meta task-tests-mutation
+  (description "Mutation testing on the pure-core modules per USDD §Mutation Testing. Target modules: src/feed/serialise_*.rs, src/feed/select.rs, src/feed/rewrite_links.rs, src/feed/resolve_date.rs, src/feed/item_id.rs, src/feed/license_resolve.rs, src/feed/republication.rs, src/feed/excerpt.rs, src/feed/dedup.rs (when implemented). Tool: cargo-mutants (or whichever mutation framework zetl already uses for other modules). Kill-rate threshold: ≥ 80% on the pure-core modules; ≥ 90% on feed::license_resolve and feed::republication_eligible (legal-correctness-load-bearing). Document every surviving mutant in tests/mutation-survivors.md with explicit rationale (equivalent mutants, behaviourally identical to the original) -- a surviving mutant without rationale fails the gate.")
+  (acceptance "cargo mutants on the listed modules produces a kill-rate report meeting the thresholds; tests/mutation-survivors.md documents every surviving mutant or the file is empty; CI runs mutation testing on PR (with a tolerance for run-time flake) or on nightly; mutation kill-rate is tracked over time as a regression signal.")
+  (trace "USDD §Mutation Testing + Selecting a Verification Strategy"))
+
+(meta task-docs
+  (description "Update user-facing documentation. (1) README.md -- new 'RSS / Atom / JSON Feed' section under 'Reading & rendering' or its own subsection covering: what feeds are emitted by default; how to enable JSON Feed (enable_json = true); how to declare scoped subscriptions ([[feed.scopes]]); how to subscribe to external feeds ([[subscriptions]]); how to configure capability cohorts ([[capability_cohorts]]); how to manage retention; the zetl feed CLI subcommand surface; the on-disk layout (.zetl/feeds/<sub-id>/, .zetl/credentials.toml, .zetl/feed-state/); the Creative-Commons-aware republication policy with the eligibility table; the threat model summary (one paragraph). (2) user-guide/feeds.md (or wherever zetl's user guide lives -- find it via task-survey-pipeline if it exists from previous specs) -- the long-form how-to with worked examples for each happy path. (3) CHANGELOG.md -- entry under a new minor version recording the feature with cross-refs to SPEC-038, DESIGN-038, IMPL-038, and the merged PR. (4) The man page (zetl man) -- entries for every new CLI subcommand. Make sure the operator-side legal-review caveats for the Creative-Commons-aware default are surfaced prominently in the README's republication subsection (per ADR-3809 accepted-risk).")
+  (acceptance "README.md has the new section; user-guide/feeds.md exists with worked examples; CHANGELOG.md has the new entry referencing PR + commits; `zetl man | grep 'feed'` finds the new subcommands; the operator-legal-review caveat is in the README's republication section, not buried in the spec only.")
+  (trace "SPEC-038 §USDD Phase 3 deliverables + Documentation"))
+
+(meta task-mark-spec-implemented
+  (description "Final closeout. After all tests pass and docs are written: (1) update specs/SPEC-038-rss-support.md frontmatter status from 'approved' to 'implemented' and add an `implemented-date: <YYYY-MM-DD>` field; (2) verify the SPEC-038 §Quality Gates Phase 1 + Phase 2 checklists are fully satisfied (every REQ has at least one TEST per applicable test type per the requirement-attribution map; every CON has its implements list non-empty; every threat in the threat model has its implementing artefact checked off); (3) verify the OBS surface is wired and producing data; (4) commit and prepare a PR per repo convention (see git log for SPEC-035 / SPEC-036 implementation commits as templates). DO NOT merge without explicit operator approval. Phase 4 (Feedback / Evolution) of the USDD lifecycle begins after merge; production metrics and operator feedback drive subsequent SPEC-038-vN iterations.")
+  (acceptance "SPEC-038-rss-support.md status=implemented with implemented-date; quality-gate checklists fully ticked; PR opened with the worked example happy paths in the description; PR not merged without operator approval; Phase-4 telemetry capture plan documented in CHANGELOG.")
+  (trace "USDD Phase 3 closeout + Phase 4 entry"))
+
+;; -- Readiness Rules (DAG) -----------------------------
+
+;; Phase 0 -- root tasks (parallel)
+(normally r-ready-await-spec-approval
+  (and task-await-spec-approval no-deps-await-spec-approval)
+  ready-await-spec-approval)
+
+(normally r-ready-config-schema
+  (and task-config-schema no-deps-config-schema)
+  ready-config-schema)
+
+(normally r-ready-credentials-store
+  (and task-credentials-store no-deps-credentials-store)
+  ready-credentials-store)
+
+;; Phase 1 -- pure-core types after spec approval + config
+(normally r-ready-feed-item-types
+  (and task-feed-item-types
+       completed-await-spec-approval
+       completed-config-schema)
+  ready-feed-item-types)
+
+;; Phase 2 -- pure-core projections (parallel after types)
+(normally r-ready-feed-select
+  (and task-feed-select completed-feed-item-types)
+  ready-feed-select)
+
+(normally r-ready-feed-resolve-date
+  (and task-feed-resolve-date completed-feed-item-types)
+  ready-feed-resolve-date)
+
+(normally r-ready-feed-rewrite-links
+  (and task-feed-rewrite-links completed-feed-item-types)
+  ready-feed-rewrite-links)
+
+(normally r-ready-feed-item-id
+  (and task-feed-item-id completed-feed-item-types)
+  ready-feed-item-id)
+
+(normally r-ready-feed-license-resolve
+  (and task-feed-license-resolve completed-feed-item-types)
+  ready-feed-license-resolve)
+
+(normally r-ready-feed-republication-eligible
+  (and task-feed-republication-eligible
+       completed-feed-license-resolve)
+  ready-feed-republication-eligible)
+
+(normally r-ready-feed-excerpt
+  (and task-feed-excerpt completed-feed-item-types)
+  ready-feed-excerpt)
+
+;; Phase 3 -- pure-core serialisers (parallel after projections)
+(normally r-ready-serialise-rss
+  (and task-serialise-rss
+       completed-feed-select
+       completed-feed-resolve-date
+       completed-feed-rewrite-links
+       completed-feed-item-id)
+  ready-serialise-rss)
+
+(normally r-ready-serialise-atom
+  (and task-serialise-atom
+       completed-feed-select
+       completed-feed-resolve-date
+       completed-feed-rewrite-links
+       completed-feed-item-id)
+  ready-serialise-atom)
+
+(normally r-ready-serialise-jsonfeed
+  (and task-serialise-jsonfeed
+       completed-feed-select
+       completed-feed-resolve-date
+       completed-feed-rewrite-links
+       completed-feed-item-id)
+  ready-serialise-jsonfeed)
+
+;; Phase 4 -- outbound effectful shell after pure serialisers
+(normally r-ready-build-outbound
+  (and task-build-outbound
+       completed-serialise-rss
+       completed-serialise-atom
+       completed-serialise-jsonfeed)
+  ready-build-outbound)
+
+(normally r-ready-serve-outbound
+  (and task-serve-outbound
+       completed-serialise-rss
+       completed-serialise-atom
+       completed-serialise-jsonfeed)
+  ready-serve-outbound)
+
+;; Phase 5 -- scoped subscriptions outbound after outbound shell
+(normally r-ready-scoped-catalog-emit
+  (and task-scoped-catalog-emit completed-build-outbound)
+  ready-scoped-catalog-emit)
+
+(normally r-ready-scoped-feed-emit
+  (and task-scoped-feed-emit completed-build-outbound)
+  ready-scoped-feed-emit)
+
+(normally r-ready-changelog-feed
+  (and task-changelog-feed completed-scoped-feed-emit)
+  ready-changelog-feed)
+
+;; Phase 6 -- capability-mode after outbound + scoped
+(normally r-ready-cap-feed-implementation
+  (and task-cap-feed-implementation
+       completed-build-outbound
+       completed-serve-outbound
+       completed-scoped-catalog-emit)
+  ready-cap-feed-implementation)
+
+;; Phase 7 -- inbound (depends on credentials, dedup, license, republication)
+(normally r-ready-inbound-fetcher
+  (and task-inbound-fetcher
+       completed-config-schema
+       completed-feed-item-types)
+  ready-inbound-fetcher)
+
+(normally r-ready-inbound-auth
+  (and task-inbound-auth
+       completed-credentials-store
+       completed-inbound-fetcher)
+  ready-inbound-auth)
+
+(normally r-ready-inbound-cc-republication
+  (and task-inbound-cc-republication
+       completed-inbound-fetcher
+       completed-feed-license-resolve
+       completed-feed-republication-eligible
+       completed-feed-excerpt)
+  ready-inbound-cc-republication)
+
+;; Phase 8 -- retention after inbound + republication
+(normally r-ready-retention-pruning
+  (and task-retention-pruning
+       completed-inbound-cc-republication
+       completed-build-outbound)
+  ready-retention-pruning)
+
+(normally r-ready-feed-forget-cli
+  (and task-feed-forget-cli completed-retention-pruning)
+  ready-feed-forget-cli)
+
+;; Phase 9 -- CLI + observability after all surfaces exist
+(normally r-ready-cli-surface
+  (and task-cli-surface
+       completed-inbound-fetcher
+       completed-inbound-auth
+       completed-feed-forget-cli)
+  ready-cli-surface)
+
+(normally r-ready-observability
+  (and task-observability
+       completed-build-outbound
+       completed-inbound-fetcher
+       completed-inbound-auth
+       completed-cap-feed-implementation
+       completed-retention-pruning)
+  ready-observability)
+
+;; Phase 10 -- tests after every surface
+(normally r-ready-tests-pure-core
+  (and task-tests-pure-core
+       completed-feed-select
+       completed-feed-resolve-date
+       completed-feed-rewrite-links
+       completed-feed-item-id
+       completed-feed-license-resolve
+       completed-feed-republication-eligible
+       completed-feed-excerpt
+       completed-serialise-rss
+       completed-serialise-atom
+       completed-serialise-jsonfeed)
+  ready-tests-pure-core)
+
+(normally r-ready-tests-conformance
+  (and task-tests-conformance
+       completed-build-outbound
+       completed-serve-outbound)
+  ready-tests-conformance)
+
+(normally r-ready-tests-cross-format-equivalence
+  (and task-tests-cross-format-equivalence
+       completed-serialise-rss
+       completed-serialise-atom
+       completed-serialise-jsonfeed)
+  ready-tests-cross-format-equivalence)
+
+(normally r-ready-tests-trust-boundary
+  (and task-tests-trust-boundary
+       completed-inbound-fetcher
+       completed-inbound-auth
+       completed-cap-feed-implementation
+       completed-feed-forget-cli)
+  ready-tests-trust-boundary)
+
+(normally r-ready-tests-mutation
+  (and task-tests-mutation completed-tests-pure-core)
+  ready-tests-mutation)
+
+;; Phase 11 -- closeout after all tests
+(normally r-ready-docs
+  (and task-docs
+       completed-cli-surface
+       completed-observability
+       completed-changelog-feed
+       completed-cap-feed-implementation
+       completed-retention-pruning
+       completed-feed-forget-cli)
+  ready-docs)
+
+(normally r-ready-mark-spec-implemented
+  (and task-mark-spec-implemented
+       completed-docs
+       completed-tests-pure-core
+       completed-tests-conformance
+       completed-tests-cross-format-equivalence
+       completed-tests-trust-boundary
+       completed-tests-mutation)
+  ready-mark-spec-implemented)
+
+;; -- Assignment Rules ----------------------------------
+
+(normally r-assign-await-spec-approval (and ready-await-spec-approval agent-claude-available) assign-to-await-spec-approval-claude)
+(normally r-assign-config-schema (and ready-config-schema agent-claude-available) assign-to-config-schema-claude)
+(normally r-assign-credentials-store (and ready-credentials-store agent-claude-available) assign-to-credentials-store-claude)
+(normally r-assign-feed-item-types (and ready-feed-item-types agent-claude-available) assign-to-feed-item-types-claude)
+(normally r-assign-feed-select (and ready-feed-select agent-claude-available) assign-to-feed-select-claude)
+(normally r-assign-feed-resolve-date (and ready-feed-resolve-date agent-claude-available) assign-to-feed-resolve-date-claude)
+(normally r-assign-feed-rewrite-links (and ready-feed-rewrite-links agent-claude-available) assign-to-feed-rewrite-links-claude)
+(normally r-assign-feed-item-id (and ready-feed-item-id agent-claude-available) assign-to-feed-item-id-claude)
+(normally r-assign-feed-license-resolve (and ready-feed-license-resolve agent-claude-available) assign-to-feed-license-resolve-claude)
+(normally r-assign-feed-republication-eligible (and ready-feed-republication-eligible agent-claude-available) assign-to-feed-republication-eligible-claude)
+(normally r-assign-feed-excerpt (and ready-feed-excerpt agent-claude-available) assign-to-feed-excerpt-claude)
+(normally r-assign-serialise-rss (and ready-serialise-rss agent-claude-available) assign-to-serialise-rss-claude)
+(normally r-assign-serialise-atom (and ready-serialise-atom agent-claude-available) assign-to-serialise-atom-claude)
+(normally r-assign-serialise-jsonfeed (and ready-serialise-jsonfeed agent-claude-available) assign-to-serialise-jsonfeed-claude)
+(normally r-assign-build-outbound (and ready-build-outbound agent-claude-available) assign-to-build-outbound-claude)
+(normally r-assign-serve-outbound (and ready-serve-outbound agent-claude-available) assign-to-serve-outbound-claude)
+(normally r-assign-scoped-catalog-emit (and ready-scoped-catalog-emit agent-claude-available) assign-to-scoped-catalog-emit-claude)
+(normally r-assign-scoped-feed-emit (and ready-scoped-feed-emit agent-claude-available) assign-to-scoped-feed-emit-claude)
+(normally r-assign-changelog-feed (and ready-changelog-feed agent-claude-available) assign-to-changelog-feed-claude)
+(normally r-assign-cap-feed-implementation (and ready-cap-feed-implementation agent-claude-available) assign-to-cap-feed-implementation-claude)
+(normally r-assign-inbound-fetcher (and ready-inbound-fetcher agent-claude-available) assign-to-inbound-fetcher-claude)
+(normally r-assign-inbound-auth (and ready-inbound-auth agent-claude-available) assign-to-inbound-auth-claude)
+(normally r-assign-inbound-cc-republication (and ready-inbound-cc-republication agent-claude-available) assign-to-inbound-cc-republication-claude)
+(normally r-assign-retention-pruning (and ready-retention-pruning agent-claude-available) assign-to-retention-pruning-claude)
+(normally r-assign-feed-forget-cli (and ready-feed-forget-cli agent-claude-available) assign-to-feed-forget-cli-claude)
+(normally r-assign-cli-surface (and ready-cli-surface agent-claude-available) assign-to-cli-surface-claude)
+(normally r-assign-observability (and ready-observability agent-claude-available) assign-to-observability-claude)
+(normally r-assign-tests-pure-core (and ready-tests-pure-core agent-claude-available) assign-to-tests-pure-core-claude)
+(normally r-assign-tests-conformance (and ready-tests-conformance agent-claude-available) assign-to-tests-conformance-claude)
+(normally r-assign-tests-cross-format-equivalence (and ready-tests-cross-format-equivalence agent-claude-available) assign-to-tests-cross-format-equivalence-claude)
+(normally r-assign-tests-trust-boundary (and ready-tests-trust-boundary agent-claude-available) assign-to-tests-trust-boundary-claude)
+(normally r-assign-tests-mutation (and ready-tests-mutation agent-claude-available) assign-to-tests-mutation-claude)
+(normally r-assign-docs (and ready-docs agent-claude-available) assign-to-docs-claude)
+(normally r-assign-mark-spec-implemented (and ready-mark-spec-implemented agent-claude-available) assign-to-mark-spec-implemented-claude)
