@@ -288,7 +288,7 @@ deferred to v2 and the section below moves to "Out of scope":***
   normalised to SPDX-style identifiers and persisted as `license:`
   frontmatter on every ingested item (see [[#REQ-3819]]).
 - [[Creative Commons]]-aware republication policy (see
-  [[#ADR-3806]]): private-by-default for unlicensed content,
+  [[#ADR-3809]]): private-by-default for unlicensed content,
   default-permit-as-excerpt for CC-licensed feeds, full-content
   republication always requiring explicit operator opt-in. The exact
   per-license eligibility table is in [[#REQ-3820]]. Operator
@@ -299,6 +299,12 @@ deferred to v2 and the section below moves to "Out of scope":***
   [[#REQ-3822]]).
 - Source-side retraction propagation: items removed upstream are
   removed from the next published build (see [[#REQ-3823]]).
+- Authentication for inbound feeds — [[HTTP Basic]], [[Bearer
+  Token]] in `Authorization`, and query-param tokens (see
+  [[#REQ-3824]]). Credentials are persisted in a separate
+  permission-restricted file, never in `.zetl/config.toml`, and
+  SHALL NOT cross trust boundaries on HTTP redirect (see
+  [[#REQ-3825]] and [[#REQ-3826]]).
 
 **Out of scope (v1):**
 
@@ -311,8 +317,11 @@ deferred to v2 and the section below moves to "Out of scope":***
   interoperability, but the canonical scoped selector model is the zetl
   catalog.
 - [[ActivityPub]] or [[Fediverse]] interop (entirely separate spec).
-- Per-feed authentication for inbound (HTTP Basic, bearer tokens,
-  cookies). Feeds requiring auth fall outside v1 inbound scope.
+- Cookie-based, [[OAuth]], and SSO-flow authentication for inbound
+  feeds — out of v1 scope. v1 inbound auth covers only stateless
+  schemes ([[HTTP Basic]], [[Bearer Token]] in `Authorization`, and
+  query-param tokens) per [[#REQ-3824]]; flows requiring browser
+  interaction or rotating session cookies are deferred.
 - Inline image transclusion in feed item content (e.g., embedded base64
   images). v1 emits links to images at their absolute URLs.
 - Real-time push notifications when a vault page is added (the static
@@ -343,7 +352,7 @@ deferred to v2 and the section below moves to "Out of scope":***
 - **Republication policy under copyright (Creative Commons defaults).**
   Strawman commits provisionally to private-by-default for
   unlicensed content and default-permit-as-excerpt for CC-licensed
-  feeds (see [[#ADR-3806]]). Final posture defers to
+  feeds (see [[#ADR-3809]]). Final posture defers to
   [[DESIGN-038-rss-support#task-license-policy]] for jurisdictional
   review — the strawman's CC-aware default is not a substitute for
   legal advice for operators in regimes with neighbouring-rights or
@@ -712,7 +721,7 @@ Publishing a private inbox item is a USER decision; the default
 posture protects publishers who are not yet ready to take that
 decision.
 
-Trace: [[#TEST-3845]], [[#ADR-3806]], [[#CON-3804]]
+Trace: [[#TEST-3845]], [[#ADR-3809]], [[#CON-3804]]
 
 ### REQ-3819: License metadata extraction
 
@@ -749,7 +758,7 @@ override per-feed in `zetl.toml` (CON-3804) but never relax the
 license constraints on the right-hand column without an explicit
 acknowledgement field acknowledging the legal posture.
 
-Trace: [[#TEST-3848]] .. [[#TEST-3853]] (one per row), [[#ADR-3806]]
+Trace: [[#TEST-3848]] .. [[#TEST-3853]] (one per row), [[#ADR-3809]]
 
 ### REQ-3821: Excerpt-plus-link mode
 
@@ -792,6 +801,88 @@ the operator's reference (e.g., if the operator has annotations
 referencing it), but its public reach SHALL track the source.
 
 Trace: [[#TEST-3856]]
+
+### REQ-3824: Inbound authentication mechanisms
+
+If [[#ADR-3803]] = Y: the system SHALL support three stateless
+authentication schemes for inbound feed fetches:
+
+1. **[[HTTP Basic]]** — username and password sent in the
+   `Authorization: Basic <base64(user:pass)>` header on every
+   request.
+2. **[[Bearer Token]]** — opaque token sent in the
+   `Authorization: Bearer <token>` header on every request.
+3. **Query-parameter token** — opaque token rendered into the feed
+   URL as a query parameter (e.g., `?token=<value>`), where the
+   URL itself is the credential.
+
+OAuth, cookie-session, and any flow requiring browser interaction
+or rotating session state SHALL be out of v1 scope (refer to the
+out-of-scope section). Authentication is opt-in per feed; feeds
+without configured credentials behave as today (anonymous fetch).
+
+Trace: [[#TEST-3858]] (one fixture per scheme), [[#CON-3812]]
+
+### REQ-3825: Credential storage and on-disk protection
+
+Inbound-feed credentials SHALL be persisted in
+`.zetl/credentials.toml` (or `.zetl/credentials/<feed-slug>.toml`
+per the storage shape selected by [[#ADR-3810]]), with file mode
+`0600` (or platform equivalent restricting read access to the
+running user) enforced AT WRITE TIME. The file SHALL NOT be
+[[git]]-tracked: the strawman MUST add it to the default
+`.gitignore` if not already present. The credentials file SHALL
+NEVER be merged into `.zetl/config.toml`. Vault-export tooling
+(any subcommand that produces a portable archive of vault state)
+SHALL exclude the credentials file by default; including it
+requires an explicit `--include-credentials` flag and an
+acknowledgement field in the export manifest.
+
+Trace: [[#TEST-3859]] (file-mode probe), [[#TEST-3860]]
+(export-exclusion probe), [[#ADR-3810]]
+
+### REQ-3826: Credential transmission scope
+
+Inbound HTTP requests carrying credentials (Authorization header,
+query-param token, or any other authenticator) SHALL transmit those
+credentials ONLY to the configured feed-host origin (scheme + host
++ port tuple of the registered feed URL). On any cross-origin
+HTTP redirect (3xx response with `Location` pointing to a different
+origin), the system SHALL drop credentials from the redirected
+request before following, OR refuse to follow when the operator
+has set strict redirect policy. Cross-origin redirect events SHALL
+be recorded in the failure-mode observability stream (see
+[[#OBS-3803]]).
+
+Trace: [[#TEST-3861]] (cross-origin redirect probe), [[#T17]]
+
+### REQ-3827: Credential logging hygiene
+
+Credentials, tokens, query-string token values, decoded HTTP Basic
+secrets, and any byte-equal-or-derived-from-credential value SHALL
+NEVER appear in log lines, structured observability events, error
+messages exposed to users, stack traces, or feed-fetch debug
+output, AT ANY log level INCLUDING `debug` and `trace`. URL
+representations in logs SHALL replace query-parameter token values
+with the literal `<redacted>` string.
+
+Trace: [[#TEST-3862]] (log-grep probe with synthesised credentials
+and an exhaustive scan of every log target), [[#T19]]
+
+### REQ-3828: Authentication failure handling
+
+On a `401 Unauthorized` response, the system SHALL retry the
+request exactly once after re-reading the credential store (to
+handle credential rotations between fetches). On persistent `401`
+or `403 Forbidden`, the system SHALL emit a structured `warn`-level
+log line naming the feed slug and the response code, AND SHALL
+suspend automatic retries for that feed until either the operator
+updates the credential or invokes a manual `zetl feed pull
+<feed-slug>`. The system SHALL NOT issue an unbounded retry loop
+that could lock out the upstream credential.
+
+Trace: [[#TEST-3863]] (one-retry property test), [[#TEST-3864]]
+(lockout-prevention probe), [[#OBS-3808]]
 
 ---
 
@@ -932,7 +1023,7 @@ sync in [[#REQ-3817]] survive to v1.
 
 `[Provisional — refined by DESIGN-038 task-adr-inbound-storage]`
 
-### ADR-3806: Republication default policy — Creative-Commons-aware
+### ADR-3809: Republication default policy — Creative-Commons-aware
 
 **Status:** proposed (provisional decision pending [[DESIGN-038-rss-support#task-license-policy]] jurisdictional review).
 
@@ -1034,6 +1125,69 @@ Merkle hashes as version metadata. Changelog feeds also require
 publisher-side state and archive semantics.
 **Decision:** *(deferred)*.
 **Consequences:** *(deferred)*.
+
+### ADR-3810: Inbound credential storage
+
+`[Provisional — refined by DESIGN-038 task-credential-stores]`
+
+**Status:** proposed (default-leaning toward (A) for v1, (B) opt-in).
+
+**Context:** Inbound feed authentication ([[#REQ-3824]]) requires
+persisting credentials between fetches. Three options for where they
+live:
+
+(A) **Separate file at `.zetl/credentials.toml`** (or
+`.zetl/credentials/<feed-slug>.toml` per-feed) with file mode `0600`,
+gitignored by default, never merged into `.zetl/config.toml`.
+
+(B) **Operating-system keychain** ([[macOS Keychain]],
+[[libsecret]] / GNOME Keyring on Linux, Windows Credential Manager).
+Adds a Rust dep ([[keyring-rs]] or similar), provides
+process-isolation by the OS, but adds platform-conditional behaviour
+and complicates server deployment (headless Linux + libsecret
+requires session-bus configuration).
+
+(C) **In `.zetl/config.toml` directly.** REJECTED: secret-in-config
+file is a footgun — config files are routinely committed,
+syntax-highlighted in screenshots, and shared during debugging.
+
+**Decision (provisional):**
+
+- **Default:** (A) `.zetl/credentials.toml` (or per-feed-slug
+  variant), file mode `0600`, gitignored.
+- **Opt-in:** (B) OS keychain via a `--features keychain` build
+  flag, with the credentials file format unchanged but credential
+  *values* stored as `keychain://<service>/<account>` references
+  the runtime resolves at fetch time.
+- **Forbidden:** (C) — the strawman MUST refuse to start if it
+  reads credential-shaped keys from `.zetl/config.toml`.
+
+**Consequences (positive):**
+
+- Operators get a working default with no platform-conditional code
+  path or extra deps; the file mode + gitignore + export-exclusion
+  combination matches established secret-handling practice.
+- The keychain path is available for operators who run zetl on
+  multi-user machines or want OS-level audit of credential access,
+  without complicating the default install.
+- The strict refusal of (C) prevents the most common leak vector.
+
+**Consequences (negative):**
+
+- A separate credentials file means there are now two state files
+  to back up / restore / migrate; vault-export tooling MUST handle
+  both ([[#REQ-3825]]).
+- The keychain path's portability is uneven across Linux distros
+  (libsecret presence, session bus availability), so headless
+  deployments get more complex documentation.
+- On Windows, the keychain path requires a logged-in user session;
+  service-mode deployment still uses (A).
+
+**Accepted risk:** the strawman's default-A posture trusts the
+operator to set the file mode correctly. Mitigation is the WRITE-TIME
+file-mode enforcement in [[#REQ-3825]] — zetl writes the file with
+`0600` whenever it creates or updates it, so the operator does not
+have to configure permissions manually.
 
 ---
 
@@ -1187,6 +1341,69 @@ the following republication-related keys:
 The contract is structured so that each implemented [[#REQ-3818]]
 .. [[#REQ-3823]] maps to a distinct subset of these keys.
 
+### CON-3812: Inbound credentials surface
+
+**Storage location:** `.zetl/credentials.toml` (or
+`.zetl/credentials/<feed-slug>.toml` per [[#ADR-3810]] when the
+per-feed shape is selected).
+
+**File format (TOML):** one table per registered inbound feed,
+keyed by feed slug, with the following keys:
+
+```toml
+[<feed-slug>]
+auth_type = "basic" | "bearer" | "query_param"
+
+# auth_type = "basic":
+username = "<string>"
+password = "<string>"
+
+# auth_type = "bearer":
+token = "<string>"
+
+# auth_type = "query_param":
+url_with_token = "<full URL including the secret query string>"
+# OR:
+token_param = "<param name, e.g., \"token\">"
+token_value = "<param value>"
+```
+
+**File mode:** `0600` (or platform equivalent restricting read
+access to the running user) ENFORCED at WRITE TIME by zetl. zetl
+SHALL refuse to load the file at startup if the on-disk mode is
+looser than `0600`, emitting an error naming the file and the
+expected mode.
+
+**Gitignore:** the strawman MUST add `.zetl/credentials.toml` and
+`.zetl/credentials/` to the default `.gitignore` shipped with `zetl
+init`.
+
+**Vault export:** any subcommand producing a portable archive of
+vault state SHALL exclude these paths by default. Including them
+requires `--include-credentials` AND a manifest acknowledgement
+field.
+
+**Pre-conditions:** `.zetl/config.toml` registers the feed with a
+matching slug; the credentials file exists and is readable by the
+running user.
+
+**Post-conditions:** the inbound fetcher receives the operator's
+credentials only on requests to the registered feed-host origin
+(per [[#REQ-3826]]); credentials never appear in observability or
+log output (per [[#REQ-3827]]).
+
+**Errors:** missing file (warn-and-fall-back-to-anonymous if the
+operator did not declare auth required); permission too loose (hard
+error); unrecognised `auth_type` (hard error); missing required
+field for the chosen `auth_type` (hard error); credentials in
+`.zetl/config.toml` directly (hard error per [[#ADR-3810]]).
+
+Implements:
+- [[#REQ-3824]], [[#REQ-3825]], [[#REQ-3826]], [[#REQ-3827]],
+  [[#REQ-3828]]
+
+Verified by: [[#TEST-3858]]..[[#TEST-3864]]
+
 ---
 
 ## 9. Purity Boundary Map
@@ -1242,6 +1459,15 @@ The contract is structured so that each implemented [[#REQ-3818]]
   and the configured word count, produce the excerpt string,
   truncated on a sentence or paragraph boundary per [[#NFR-3808]].
   Pure.
+- *(inbound, contingent)* `feed::auth::redact` — given an HTTP
+  request URL and a credential record, produce the redacted
+  representation suitable for log emission ([[#REQ-3827]]). Pure;
+  produces byte-identical output for the same inputs.
+- *(inbound, contingent)* `feed::auth::redirect_decision` — given
+  a request URL, a redirect `Location` URL, and a credential
+  record, produce a `RedirectDecision` ∈ {`follow_with_credentials`,
+  `follow_without_credentials`, `refuse`} per [[#REQ-3826]]. Pure
+  function of the (origin, target, policy) tuple.
 
 ### Effectful Shell (orchestrates I/O, calls pure core)
 - `feed::build` — read vault, call pure core, write `dist/feed.xml`.
@@ -1321,10 +1547,14 @@ arch-lint rule in CI prohibiting `use` from `feed::shell` inside
 | T6 | Decompression bomb (gzip) | inbound | Provisional; mitigation bounded decompression |
 | T7 | Credential / metadata leak via UA / Referer | inbound | Provisional; mitigation minimal UA, no Referer |
 | T8 | Dedup-state poisoning via [[GUID]] mutation | inbound | Provisional; mitigation [[#REQ-3812]] (first-seen pinning) |
-| T13 | Inadvertent copyright infringement via republication of unlicensed inbound content | inbound (legal) | Provisional; mitigation [[#REQ-3818]] (private-by-default) + [[#REQ-3820]] (license-driven eligibility) + [[#ADR-3806]] (Creative Commons defaults) |
+| T13 | Inadvertent copyright infringement via republication of unlicensed inbound content | inbound (legal) | Provisional; mitigation [[#REQ-3818]] (private-by-default) + [[#REQ-3820]] (license-driven eligibility) + [[#ADR-3809]] (Creative Commons defaults) |
 | T14 | License-axis violation despite eligibility (e.g., full-content republication of CC-BY-ND with wikilink rewriting that modifies the body) | inbound (legal) | Provisional; mitigation [[#REQ-3820]] eligibility table — ND admits excerpt-only; SA admits full only when vault is operator-declared compatible; NC admits republication only when vault is operator-declared non-commercial |
 | T15 | Attribution stripping (bug or theme override removes the attribution block in the published view) | inbound (legal) | Provisional; mitigation [[#REQ-3822]] requires attribution rendering in BOTH local and published views and treats stripping as a build-time error |
 | T16 | License-metadata spoofing by feed publisher (a non-CC publisher includes a CC-license link to lure ingesting vaults into republishing) | inbound (legal) | Provisional; mitigation operator-acknowledgement field per [[#CON-3811]] for any republication beyond excerpt; license metadata is INPUT, not authority — the operator remains the responsible party |
+| T17 | Credentials persisted in repo or backed-up archive (committed `.zetl/credentials.toml`, included in vault export, leaked via screenshot of config) | inbound (auth) | Provisional; mitigation [[#REQ-3825]] (separate file, gitignored, mode 0600, export-excluded) + [[#ADR-3810]] forbids credentials in `.zetl/config.toml` |
+| T18 | Credentials leaked to a non-target host via HTTP redirect (auth header forwarded across origin) | inbound (auth) | Provisional; mitigation [[#REQ-3826]] (drop credentials on cross-origin redirect; record event in observability stream) |
+| T19 | Credentials leaked via logs, error messages, debug output, or stack traces | inbound (auth) | Provisional; mitigation [[#REQ-3827]] (never log credentials at any level; URL token values render as `<redacted>`) |
+| T20 | Credential lockout via unbounded retry loop (zetl repeatedly hits 401 and exhausts the publisher's lockout threshold) | inbound (auth) | Provisional; mitigation [[#REQ-3828]] (one retry max, then suspend until operator action) |
 
 ---
 
@@ -1374,12 +1604,23 @@ the legal claim "we republished this content under licence terms".
 
 ### OBS-3807: Republication-decline summary at build time
 
-Per [[#ADR-3806]] accepted-risk: when `zetl build` excludes any
+Per [[#ADR-3809]] accepted-risk: when `zetl build` excludes any
 inbound items due to license-policy default-deny, the build SHALL
 emit a structured summary line at `info` or `warn` level naming the
 feeds and the count of suppressed items, FOR every build pass that
 suppressed at least one item. The signal is a deliberate
 counterweight to silent default-deny.
+
+### OBS-3808: Inbound authentication failure counter
+
+Counter `zetl_feed_inbound_auth_failure_total{feed_slug, code}`
+incremented per non-2xx authentication-related response, with
+`code` ∈ {`401`, `403`, `429-with-retry-after`,
+`cross-origin-redirect-dropped`}. Surfaces credential rotation
+events, expired tokens, and SSRF-defence triggers. Cardinality is
+bounded by the number of registered inbound feeds; a feed that
+consistently produces failures across multiple builds SHOULD trigger
+operator notification per [[#REQ-3828]].
 
 ---
 
@@ -1405,14 +1646,21 @@ counterweight to silent default-deny.
 | [[#REQ-3816]] | HP-3810 AST-level changelog events | TEST-3839, TEST-3840 |
 | [[#REQ-3817]] | T11 mitigation and resumable changelog sync | TEST-3841, TEST-3842 |
 | [[#REQ-3818]] | T13 mitigation; UP-3803 protection | TEST-3845 |
-| [[#REQ-3819]] | [[#ADR-3806]] license-aware policy | TEST-3846, TEST-3847 |
-| [[#REQ-3820]] | T13, T14 mitigation; [[#ADR-3806]] | TEST-3848..TEST-3853 |
+| [[#REQ-3819]] | [[#ADR-3809]] license-aware policy | TEST-3846, TEST-3847 |
+| [[#REQ-3820]] | T13, T14 mitigation; [[#ADR-3809]] | TEST-3848..TEST-3853 |
 | [[#REQ-3821]] | [[#REQ-3820]] excerpt-only modes | TEST-3854 |
 | [[#REQ-3822]] | T15 mitigation; [[Creative Commons]] norms | TEST-3855 |
 | [[#REQ-3823]] | source-author retraction control | TEST-3856 |
 | [[#NFR-3808]] | [[#REQ-3821]] excerpt rendering | TEST-3854 |
-| [[#ADR-3806]] | T13, T14, T15, T16 mitigation strategy | (decision artefact, audited by [[DESIGN-038-rss-support#task-license-policy]]) |
+| [[#ADR-3809]] | T13, T14, T15, T16 mitigation strategy | (decision artefact, audited by [[DESIGN-038-rss-support#task-license-policy]]) |
 | [[#CON-3811]] | [[#REQ-3818]]..[[#REQ-3823]] operator surface | TEST-3857 (config validation) |
+| [[#REQ-3824]] | UP-3803 paywalled-feed access | TEST-3858 (per scheme) |
+| [[#REQ-3825]] | T17 mitigation | TEST-3859, TEST-3860 |
+| [[#REQ-3826]] | T18 mitigation | TEST-3861 |
+| [[#REQ-3827]] | T19 mitigation | TEST-3862 |
+| [[#REQ-3828]] | T20 mitigation | TEST-3863, TEST-3864 |
+| [[#ADR-3810]] | T17, T18, T19, T20 mitigation strategy | (decision artefact, audited by [[DESIGN-038-rss-support#task-credential-stores]]) |
+| [[#CON-3812]] | [[#REQ-3824]]..[[#REQ-3828]] operator surface | TEST-3858..TEST-3864 |
 
 The full traceability table — including [[CON-3801]] .. [[CON-3810]],
 [[OBS-3801]] .. [[OBS-3805]], and bug-back-links once any are filed —
@@ -1502,7 +1750,7 @@ deliberately unsettled:
     for generic feeds?
 13. **Republication policy under copyright.** Strawman provisionally
     commits to [[Creative Commons]]-aware defaults
-    ([[#ADR-3806]]): private-by-default for unlicensed content,
+    ([[#ADR-3809]]): private-by-default for unlicensed content,
     default-permit-as-excerpt for CC-licensed feeds, full-content
     republication always opt-in. Final posture defers to
     [[DESIGN-038-rss-support#task-license-policy]] for jurisdictional
@@ -1510,6 +1758,14 @@ deliberately unsettled:
     (e.g., the EU's [[DSM Directive]] Article 15) MUST review their
     own posture; the spec's defaults do not provide blanket safe
     harbour.
+14. **Credential storage shape.** Strawman commits to
+    `.zetl/credentials.toml` (file, gitignored, mode 0600) as the
+    v1 default ([[#ADR-3810]] option A), with [[OS Keychain]]
+    integration as a `--features keychain` opt-in. Final shape
+    defers to [[DESIGN-038-rss-support#task-credential-stores]] for
+    Rust-ecosystem review (keyring-rs maturity, libsecret session-bus
+    behaviour on headless Linux, Windows Credential Manager
+    semantics under service mode).
 
 ---
 
