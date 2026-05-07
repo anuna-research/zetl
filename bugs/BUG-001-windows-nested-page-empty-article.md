@@ -1,7 +1,7 @@
 ---
 id: BUG-001
 title: `zetl serve` on Windows: nested pages render with empty `<article>` body
-status: new
+status: fixed
 severity: S2
 priority: P1
 detection-method: reproduction on Windows + triage of HTML output

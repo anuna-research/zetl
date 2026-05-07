@@ -708,23 +708,34 @@ pub fn page_name_from_path(path: &Path) -> String {
 
 /// Derive a URL slug from a relative vault path.
 ///
-/// Strips the `.md`/`.spl` extension, lowercases, and replaces spaces with hyphens
-/// so URLs are clean kebab-case paths.
+/// Strips the `.md`/`.spl`/`.fountain` extension, lowercases, and replaces
+/// spaces with hyphens so URLs are clean kebab-case paths. Walks the path by
+/// components and rejoins with `/` so the slug is forward-slash separated on
+/// every platform — this is the URL-canonical key used by every downstream
+/// consumer (URL routing, link emission, search index, graph data) and must
+/// not contain native separators on Windows. See `bugs/BUG-001`.
 ///
 /// Example: `architecture/Scanner.md` → `architecture/scanner`
 /// Example: `concepts/Defeasible Reasoning.md` → `concepts/defeasible-reasoning`
 pub fn page_slug_from_path(path: &Path) -> String {
-    let s = path.to_string_lossy();
-    let stripped = if let Some(s) = s.strip_suffix(".md") {
-        s
-    } else if let Some(s) = s.strip_suffix(".spl") {
-        s
-    } else if let Some(s) = s.strip_suffix(".fountain") {
-        s
-    } else {
-        &s
-    };
-    stripped.to_lowercase().replace(' ', "-")
+    let mut parts: Vec<String> = path
+        .components()
+        .filter_map(|c| match c {
+            std::path::Component::Normal(s) => Some(s.to_string_lossy().replace('\\', "/")),
+            _ => None,
+        })
+        .collect();
+
+    if let Some(last) = parts.last_mut() {
+        for ext in [".md", ".spl", ".fountain"] {
+            if let Some(stripped) = last.strip_suffix(ext) {
+                *last = stripped.to_string();
+                break;
+            }
+        }
+    }
+
+    parts.join("/").to_lowercase().replace(' ', "-")
 }
 
 /// Extract an Obsidian block-id annotation from normalised leaf text (REQ-042b).
@@ -2989,5 +3000,50 @@ code here
         assert_ne!(with_id[0].hash, without[0].hash);
         assert_eq!(with_id[0].block_id, Some("myid".to_string()));
         assert_eq!(without[0].block_id, None);
+    }
+
+    // BUG-001 regression: page slugs must be URL-canonical (forward-slash
+    // separated) on every platform. On Windows, `Path::to_string_lossy()`
+    // returns native separators (`\`), which previously leaked into the slug
+    // and broke nested-page lookup in `page_handler`.
+    #[test]
+    fn page_slug_normalises_backslashes_to_forward_slash() {
+        use std::path::PathBuf;
+        let p = PathBuf::from(r"about\about.md");
+        assert_eq!(page_slug_from_path(&p), "about/about");
+    }
+
+    #[test]
+    fn page_slug_handles_mixed_separators() {
+        use std::path::PathBuf;
+        let p = PathBuf::from(r"a\b/c.md");
+        assert_eq!(page_slug_from_path(&p), "a/b/c");
+    }
+
+    #[test]
+    fn page_slug_lowercases_and_dehyphens_after_normalising() {
+        use std::path::PathBuf;
+        let p = PathBuf::from(r"About Us\Contact Page.md");
+        assert_eq!(page_slug_from_path(&p), "about-us/contact-page");
+    }
+
+    #[test]
+    fn page_slug_preserves_existing_unix_paths() {
+        use std::path::PathBuf;
+        let p = PathBuf::from("architecture/Scanner.md");
+        assert_eq!(page_slug_from_path(&p), "architecture/scanner");
+    }
+
+    #[test]
+    fn page_slug_strips_spl_and_fountain_extensions() {
+        use std::path::PathBuf;
+        assert_eq!(
+            page_slug_from_path(&PathBuf::from("notes/index.spl")),
+            "notes/index"
+        );
+        assert_eq!(
+            page_slug_from_path(&PathBuf::from("scripts/scene.fountain")),
+            "scripts/scene"
+        );
     }
 }
