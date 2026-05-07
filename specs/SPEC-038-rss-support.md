@@ -193,7 +193,11 @@ URLs.
 **In scope (v1, outbound):**
 
 - Emit `feed.xml` (or `atom.xml`, or both — pending [[#ADR-3801]]) at the
-  vault root from [[zetl build]].
+  vault root from [[zetl build]]. Optionally emit `feed.json`
+  ([[JSON Feed]] v1.1) when the operator opts in via
+  `[feed].enable_json = true` (see [[#CON-3815]]); JSON Feed is a
+  pure projection of the same `FeedItem` set as the XML formats,
+  not an independent source of truth.
 - Register the equivalent route(s) under [[zetl serve]] without breaking
   any existing route in `src/web/mod.rs` (see survey-publishing-surface
   task).
@@ -326,8 +330,6 @@ deferred to v2 and the section below moves to "Out of scope":***
 **Out of scope (v1):**
 
 - [[WebSub]] / [[PubSubHubbub]] hub support (push-mode subscription).
-- [[JSON Feed]] emission (RSS 2.0 + Atom 1.0 cover the field; JSON Feed
-  is recommendable but not load-bearing).
 - General-purpose [[OPML]] import / export for inbound subscriptions
   (deferred even if inbound is in v1). A read-only OPML mirror of the
   zetl subscription catalog MAY be considered separately as feed-reader
@@ -488,7 +490,13 @@ The system SHALL emit a feed document at `dist/feed.xml` (and/or
 [[#CON-3804]]), WITHIN the same build pass that emits other static
 artefacts (no second invocation), FOR every Vault Publisher
 ([[#UP-3801]]) WITH the emitted file validating against the pinned local
-validator selected by [[#NFR-3805]].
+validator selected by [[#NFR-3805]]. When the operator has opted
+into [[JSON Feed]] emission via `[feed].enable_json = true` (per
+[[#ADR-3801]] and [[#CON-3815]]), the system SHALL ALSO emit
+`dist/feed.json` in the same build pass; the [[JSON Feed]]
+document SHALL be derived from the same pure `FeedItem` set as the
+XML emissions, ensuring the three (or two) formats describe the
+identical item set with identical metadata.
 
 Trace:
 - [[#TEST-3801]] (positive)
@@ -1068,11 +1076,20 @@ Trace: [[#TEST-3806]], [[#TEST-3807]]
 ### NFR-3805: Standards conformance
 
 Every emitted feed document SHALL validate against a pinned local
-validator / strict parser chosen per [[#ADR-3801]] with zero errors and
-zero warnings, UNDER the test fixture corpus described in
-[[#TEST-3801]] / [[#TEST-3802]], WITH verification automated in CI. A
-manual [[W3C Feed Validator]] check MAY be recorded as release evidence,
-but the public service MUST NOT be the CI gate.
+validator / strict parser appropriate to its format with zero
+errors and zero warnings, UNDER the test fixture corpus described
+in [[#TEST-3801]] / [[#TEST-3802]], WITH verification automated in
+CI. Per-format validation gates:
+
+| Format | Validator (CI gate) | Reference |
+|---|---|---|
+| RSS 2.0 | strict parser refusing under-specified date / escaping bugs | RSS 2.0 specification |
+| Atom 1.0 | strict parser refusing namespace / required-element omissions | [[RFC 4287]] |
+| JSON Feed | schema validator against the [[JSON Feed]] v1.1 schema | [[jsonfeed.org]] / `_jsonfeed/v1.json` |
+
+A manual [[W3C Feed Validator]] check MAY be recorded as release
+evidence for the XML formats, but the public service MUST NOT be
+the CI gate.
 
 Trace: [[#TEST-3831]] (CI validation step)
 
@@ -1139,17 +1156,79 @@ Trace: [[#OBS-3803]]
 > scoped-subscription and AST-changelog additions add provisional ADRs
 > for the zetl namespace, catalog format, and changelog state model.
 
-### ADR-3801: Feed format — RSS 2.0, Atom 1.0, or both
+### ADR-3801: Feed format — RSS 2.0, Atom 1.0, and opt-in JSON Feed
 
 `[Provisional — refined by DESIGN-038 task-adr-rss-vs-atom]`
 
-**Status:** proposed.
-**Context:** RSS 2.0 has the widest feed-reader support but is
-under-specified in places (date formats, namespacing, content
-escaping); Atom 1.0 ([[RFC 4287]]) is precise and extensible but
-slightly less universal in legacy readers.
-**Decision:** *(deferred to plan task)*.
-**Consequences:** *(deferred)*.
+**Status:** proposed (default-leaning toward both XML formats with
+JSON Feed as opt-in tertiary).
+
+**Context:** Three candidate formats with distinct trade-offs:
+
+- **[[RSS 2.0]]** — widest feed-reader support, under-specified in
+  places (date formats, namespacing, content escaping); the dominant
+  legacy format.
+- **[[Atom 1.0]]** ([[RFC 4287]]) — precise and extensible (paged
+  feeds via [[RFC 5005]], rich namespaces), slightly less universal
+  in older readers but the dominant modern XML format.
+- **[[JSON Feed]]** ([[jsonfeed.org]]) — JSON, trivially parseable
+  without an XML parser; supported natively by [[NetNewsWire]],
+  [[Feedbin]], [[miniflux]], [[Reeder]]; the active-development
+  feed format since XML feed specs stabilised circa 2005;
+  emitted by major IndieWeb publishers (Daring Fireball, micro.blog,
+  Simon Willison's site).
+
+Once outbound is built around a pure `FeedItem`-to-serialiser
+pipeline ([[#Purity Boundary Map]]), each additional format is
+ANOTHER pure projection from the same vetted `FeedItem` set — no
+new threat surface, no new dependencies (JSON Feed has no XML
+parsing surface to gate), no new selection or item-id semantics.
+The cost is per-format CI conformance and the additional ADR
+complexity of choosing a non-empty subset.
+
+**Decision (provisional):**
+
+- **RSS 2.0 and Atom 1.0 are emitted canonically** at
+  `dist/feed.xml` and `dist/atom.xml` (or one of the two if the
+  plan task chooses one over the other) — this is the
+  default-on-everywhere posture for maximum reader compatibility.
+- **[[JSON Feed]] is opt-in** via `[feed].enable_json = true` in
+  `.zetl/config.toml` (see [[#CON-3815]]), emitted at
+  `dist/feed.json`. Default off.
+
+The plan task `task-adr-rss-vs-atom` chooses the precise pair from
+{RSS-only, Atom-only, both} for the canonical XML output;
+JSON Feed sits ALONGSIDE that decision rather than INSIDE it.
+
+**Consequences (positive):**
+- Defaults stay maximum-compatibility: any standards-conformant
+  reader pointed at the vault's site finds at least one supported
+  feed at a discoverable URL.
+- Modern operators get JSON Feed cheaply with one config flag; their
+  developer-tooling readers (NetNewsWire, microsub clients, custom
+  IndieWeb tools) work immediately.
+- The pure-projection architecture means JSON Feed's emission code
+  is a thin shim over `feed::serialise_jsonfeed` with no shell-side
+  effect changes.
+- JSON Feed extensions (e.g., `_zetl` namespace for source-path,
+  object-id, content-hash per [[#REQ-3814]]) compose more naturally
+  in JSON than in XML namespaces.
+
+**Consequences (negative):**
+- Three emitters mean three CI conformance gates ([[#NFR-3805]]),
+  three test fixture corpora, and three sets of escaping bugs to
+  defend against.
+- Operators choosing both XML formats AND JSON Feed produce three
+  feed artefacts per build pass; for vaults with hundreds of pages
+  this is a small but non-zero overhead.
+- The discoverability story (`<link rel="alternate" type="..." />`)
+  needs to enumerate all three when all three are emitted.
+
+**Accepted risk:** the strawman commits to default-off for JSON
+Feed to preserve the smallest legible v1 conformance surface.
+Operators who expect JSON Feed-by-default (the IndieWeb subset)
+must opt in. Mitigation is a documentation note in the README's
+feed section pointing at the toggle.
 
 ### ADR-3802: Item selection mechanism precedence
 
@@ -1806,6 +1885,73 @@ Implements:
 
 Verified by: [[#TEST-3869]]..[[#TEST-3873]], [[#TEST-3875]]
 
+### CON-3815: JSON Feed emission contract
+
+**Configuration (extends `[feed]` in `.zetl/config.toml`):**
+
+```toml
+[feed]
+enabled = true
+base_url = "https://wiki-b.example.com"
+enable_json = true              # opt-in JSON Feed; default false
+json_path = "/feed.json"        # optional override; default "/feed.json"
+```
+
+**Build output:** when `enable_json = true`, every public feed
+surface that emits an XML document ALSO emits a [[JSON Feed]]
+document at the analogous path:
+
+| XML output | JSON Feed output |
+|---|---|
+| `/feed.xml` | `/feed.json` |
+| `/atom.xml` | `/feed.json` (same file; one canonical JSON output per feed) |
+| `/tags/<tag>/feed.xml` | `/tags/<tag>/feed.json` |
+| `/<folder>/feed.xml` | `/<folder>/feed.json` |
+| `/feeds/<scope-id>.xml` (scoped) | `/feeds/<scope-id>.json` |
+| `/changelog.xml` | `/changelog.json` |
+| `/caps/<token>/feed.xml` ([[#CON-3813]]) | `/caps/<token>/feed.json` |
+
+The JSON Feed `version` field SHALL be `https://jsonfeed.org/version/1.1`.
+
+**Discovery:** when JSON Feed is enabled, every published HTML
+page's `<head>` SHALL emit a `<link rel="alternate"
+type="application/feed+json" href="..." />` for each emitted JSON
+Feed surface, alongside the existing `application/rss+xml` and
+`application/atom+xml` discovery links.
+
+**zetl-namespace metadata:** the existing zetl item metadata
+([[#REQ-3814]] — source path, object id, content hash, etc.)
+SHALL be carried in JSON Feed via the `_zetl` extension key on
+each item, mirroring the namespaced XML extension. The JSON
+extension is structurally simpler (a flat object) than the XML
+namespace and SHALL NOT alter the metadata semantics.
+
+**Pre-conditions:** `enable_json = true`; the same `FeedItem` set
+that produced the XML emissions has been computed.
+
+**Post-conditions:** the JSON Feed document validates against the
+JSON Feed v1.1 schema with zero errors per [[#NFR-3805]]; every
+item's `id`, `url`, `date_published`, `date_modified`, `title`, and
+content fields are byte-identical projections of the same
+`FeedItem` that produced the XML output's corresponding fields;
+the `_zetl` extension carries the same metadata as the XML
+namespace.
+
+**Errors:** invalid `json_path` (escapes site root, contains
+illegal characters); JSON Feed schema validation failure (hard
+error, fails the build); attempt to override the canonical version
+URI (rejected — `version` is fixed at `https://jsonfeed.org/version/1.1`).
+
+Implements:
+- [[#REQ-3801]] (the JSON-Feed-emission clause)
+- [[#NFR-3805]] (per-format conformance)
+- [[#ADR-3801]] (opt-in tertiary format)
+
+Verified by: [[#TEST-3876]] (positive: JSON Feed emission +
+schema-valid), [[#TEST-3877]] (cross-format equivalence — XML
+items and JSON items describe the same set), [[#TEST-3878]]
+(zetl-namespace round-trip)
+
 ---
 
 ## 9. Purity Boundary Map
@@ -1816,6 +1962,12 @@ Verified by: [[#TEST-3869]]..[[#TEST-3873]], [[#TEST-3875]]
 ### Pure Core (no I/O, no shared state, deterministic)
 - `feed::serialise` — given an ordered list of `FeedItem` records and
   `FeedConfig`, produce the XML byte string for RSS 2.0 and/or Atom 1.0.
+- `feed::serialise_jsonfeed` — given the same ordered `FeedItem` set
+  and `FeedConfig`, produce the [[JSON Feed]] v1.1 byte string,
+  including the `_zetl` extension carrying the same metadata as
+  the XML namespace ([[#CON-3815]]). Pure projection from the same
+  vetted `FeedItem` set as the XML emitters; cross-format
+  equivalence is a property test ([[#TEST-3877]]).
 - `feed::select` — given a vault snapshot and a `SelectionRule`, produce
   the ordered list of pages that ship in a feed.
 - `feed::rewrite_links` — given Markdown content, an effective
@@ -2099,6 +2251,7 @@ attempted re-import that was refused due to a tombstone match
 | [[#NFR-3810]] | retention throughput baseline | TEST-3875 |
 | [[#ADR-3812]] | retention default rationale | (decision artefact, audited by [[DESIGN-038-rss-support#task-retention-policy]]) |
 | [[#CON-3814]] | [[#REQ-3832]]..[[#REQ-3835]] operator surface | TEST-3869..TEST-3873, TEST-3875 |
+| [[#CON-3815]] | [[#REQ-3801]] JSON Feed clause; [[#ADR-3801]] opt-in tertiary | TEST-3876, TEST-3877, TEST-3878 |
 
 The full traceability table — including [[CON-3801]] .. [[CON-3810]],
 [[OBS-3801]] .. [[OBS-3805]], and bug-back-links once any are filed —
@@ -2160,7 +2313,9 @@ deliberately unsettled:
 
 1. **Inbound v1 yes / no / defer-by-recipe.** The single largest scope
    decision; resolved by [[#ADR-3803]].
-2. **Format choice.** RSS, Atom, both? Resolved by [[#ADR-3801]].
+2. **Format choice.** RSS, Atom, both — plus [[JSON Feed]] as
+   opt-in tertiary. Resolved by [[#ADR-3801]] (chooses the canonical
+   XML pair) and [[#CON-3815]] (specifies the JSON Feed surface).
 3. **Selection-mechanism precedence.** Resolved by [[#ADR-3802]].
 4. **Date fallback chain order.** Resolved by survey-frontmatter-dates
    findings consumed by [[#REQ-3804]].
