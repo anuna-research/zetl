@@ -283,6 +283,22 @@ deferred to v2 and the section below moves to "Out of scope":***
 - Observability: counter for fetch attempts, counter for fetch
   outcomes (success, parse-error, network-error, policy-rejection),
   per-feed last-success timestamp gauge.
+- License-metadata extraction from `<atom:rights>`, `<dc:rights>`,
+  channel-level `<copyright>`, and `<atom:link rel="license">`,
+  normalised to SPDX-style identifiers and persisted as `license:`
+  frontmatter on every ingested item (see [[#REQ-3819]]).
+- [[Creative Commons]]-aware republication policy (see
+  [[#ADR-3806]]): private-by-default for unlicensed content,
+  default-permit-as-excerpt for CC-licensed feeds, full-content
+  republication always requiring explicit operator opt-in. The exact
+  per-license eligibility table is in [[#REQ-3820]]. Operator
+  configuration surface is [[#CON-3811]].
+- Excerpt-plus-link rendering mode for items eligible only for
+  excerpt republication (see [[#REQ-3821]] and [[#NFR-3808]]).
+- Attribution preservation across local and republished views (see
+  [[#REQ-3822]]).
+- Source-side retraction propagation: items removed upstream are
+  removed from the next published build (see [[#REQ-3823]]).
 
 **Out of scope (v1):**
 
@@ -324,6 +340,14 @@ deferred to v2 and the section below moves to "Out of scope":***
   preserve literal `[[target]]` syntax; emit a documented placeholder
   URL. Defers to [[#REQ-3807]] (provisional).
 - **Date fallback chain in detail.** Defers to survey-frontmatter-dates.
+- **Republication policy under copyright (Creative Commons defaults).**
+  Strawman commits provisionally to private-by-default for
+  unlicensed content and default-permit-as-excerpt for CC-licensed
+  feeds (see [[#ADR-3806]]). Final posture defers to
+  [[DESIGN-038-rss-support#task-license-policy]] for jurisdictional
+  review — the strawman's CC-aware default is not a substitute for
+  legal advice for operators in regimes with neighbouring-rights or
+  press-publisher protections.
 
 ---
 
@@ -674,6 +698,101 @@ patches have been written successfully.
 
 Trace: [[#TEST-3841]], [[#TEST-3842]], [[#CON-3810]], [[#OBS-3805]]
 
+### REQ-3818: Inbox private-by-default
+
+Ingested inbound feed items SHALL be EXCLUDED from `zetl build`
+published output and from `zetl serve` public routes UNLESS one of
+the following holds: (a) the source feed declares a [[Creative
+Commons]] license that permits redistribution AND the user has not
+explicitly disabled republication for that feed; OR (b) the user has
+set `republish: true` in the feed's `zetl.toml` entry; OR (c) an
+individual item carries `republish: true` in its frontmatter. In all
+other cases, the item is reachable only in the local vault view.
+Publishing a private inbox item is a USER decision; the default
+posture protects publishers who are not yet ready to take that
+decision.
+
+Trace: [[#TEST-3845]], [[#ADR-3806]], [[#CON-3804]]
+
+### REQ-3819: License metadata extraction
+
+When ingesting an inbound feed, the system SHALL extract any present
+license metadata from `<atom:rights>`, `<dc:rights>`, channel-level
+`<copyright>` (RSS 2.0), and `<atom:link rel="license">`, normalise
+[[Creative Commons]] license URLs to their canonical SPDX-style
+identifiers (e.g., `CC-BY-4.0`, `CC-BY-SA-4.0`, `CC-BY-NC-4.0`,
+`CC-BY-ND-4.0`, `CC0-1.0`), and persist the result both as
+per-feed configuration metadata and as `license:` frontmatter on
+every item from that feed, FOR every fetch.
+
+Trace: [[#TEST-3846]], [[#TEST-3847]] (license-URL canonicalisation
+property test), [[#CON-3804]]
+
+### REQ-3820: License-driven republication policy
+
+A feed item SHALL be eligible for republication if and only if the
+item's resolved license satisfies the operator's declared
+republication policy AND the per-license constraints are honoured by
+the build:
+
+| Resolved license | Default eligibility | Mode |
+|---|---|---|
+| `CC0-1.0`, public domain | eligible | full content allowed |
+| `CC-BY-4.0`, `CC-BY-3.0` | eligible | excerpt-plus-link by default; full allowed if user opts in; attribution mandatory |
+| `CC-BY-SA-4.0` | eligible | excerpt-plus-link by default; full allowed only if the entire vault build is itself published under a compatible CC-BY-SA license (operator-declared in `zetl.toml`) |
+| `CC-BY-NC-4.0` | eligible | excerpt-plus-link by default; republication permitted only when the vault is operator-declared non-commercial |
+| `CC-BY-ND-4.0` | eligible | excerpt-plus-link only; full content with modification (including wikilink rewriting that alters the body) is forbidden |
+| no license declared, or "all rights reserved" | NOT eligible | excluded from build unless operator declares `i-have-permission: true` per feed |
+
+The default user-experience setting is the table above. Operators
+override per-feed in `zetl.toml` (CON-3804) but never relax the
+license constraints on the right-hand column without an explicit
+acknowledgement field acknowledging the legal posture.
+
+Trace: [[#TEST-3848]] .. [[#TEST-3853]] (one per row), [[#ADR-3806]]
+
+### REQ-3821: Excerpt-plus-link mode
+
+When a feed item is eligible for republication but the user has not
+opted into full-content reproduction (per [[#REQ-3820]]), the
+system SHALL emit, in the published view, an excerpt of the item
+(default ≤ 200 plain-text words, configurable per [[#NFR-3808]]),
+followed by a canonical link to the source URL with `rel="canonical"`,
+followed by the attribution block defined in [[#REQ-3822]]. The
+excerpt SHALL preserve paragraph boundaries; SHALL NOT include
+images or embeds; SHALL NOT modify the source body content beyond
+truncation. The local vault view (the user's own copy for browsing
+and annotation) is not subject to this constraint.
+
+Trace: [[#TEST-3854]]
+
+### REQ-3822: Attribution preservation
+
+Every ingested feed item SHALL preserve and surface — in BOTH the
+local vault view AND any republished view — the following
+attribution fields: source feed title, source feed URL, original
+author name (when present in the feed), original publication date,
+original item URL (the feed item's `<link>`), and a human-readable
+license name with link to the license text. Attribution SHALL be
+rendered in a documented template that satisfies the [[Creative
+Commons]] attribution norms ("Title" by Author, sourced from
+Source-Feed, available under License). Stripping or hiding
+attribution in the published view is a build-time error.
+
+Trace: [[#TEST-3855]], [[#CON-3805]]
+
+### REQ-3823: Source-side retraction propagation
+
+When a previously-ingested item is no longer present in subsequent
+fetches of the same feed (the source removed it), the system SHALL
+mark the local vault item with `retracted-by-source: <ISO-8601
+timestamp>` AND remove the item from any republished build on the
+NEXT build pass. The local vault may retain the retracted item for
+the operator's reference (e.g., if the operator has annotations
+referencing it), but its public reach SHALL track the source.
+
+Trace: [[#TEST-3856]]
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -739,6 +858,15 @@ fetches beyond the cap queued (not dropped).
 
 Trace: [[#TEST-3832]] (provisional)
 
+### NFR-3808: Excerpt length
+
+For [[#REQ-3821]] excerpt-plus-link mode, the excerpt SHALL default
+to ≤ 200 plain-text words, configurable per feed in `zetl.toml`
+within the bounds [50, 500] words, WITH truncation always falling on
+a sentence or paragraph boundary (never mid-word, never mid-sentence).
+
+Trace: [[#TEST-3854]]
+
 ### NFR-3807: Failure-mode observability
 
 For every distinct REQ failure mode, the system SHALL emit a log line
@@ -803,6 +931,66 @@ sync in [[#REQ-3817]] survive to v1.
 ### ADR-3804: Inbound storage model `[Provisional — contingent on ADR-3803]`
 
 `[Provisional — refined by DESIGN-038 task-adr-inbound-storage]`
+
+### ADR-3806: Republication default policy — Creative-Commons-aware
+
+**Status:** proposed (provisional decision pending [[DESIGN-038-rss-support#task-license-policy]] jurisdictional review).
+
+**Context:** Inbound feed ingestion creates a copy of third-party
+content on the operator's machine. Republishing that copy through
+[[zetl build]] or [[zetl serve]] public routes is a separate legal
+posture from personal consumption, varying by jurisdiction
+([[Australian Fair Dealing]], [[US Fair Use]], EU [[DSM Directive]]
+Article 17, etc.). The strawman cannot resolve the legal question for
+every jurisdiction, but it CAN choose a default user-experience
+posture that:
+
+1. Defends an inattentive operator from accidentally infringing.
+2. Makes the [[Creative Commons]] common case easy.
+3. Makes explicit the intent when the operator chooses to republish
+   non-CC content.
+
+**Decision (provisional):** **Default-deny for unlicensed content;
+default-permit-as-excerpt for [[Creative Commons]] licensed feeds**,
+with full-content republication always requiring explicit operator
+opt-in. The exact eligibility table is encoded in [[#REQ-3820]].
+
+The "Creative Commons aware" framing means the spec recognises and
+honours the four standard CC license axes (BY, SA, NC, ND) and CC0,
+applies the per-axis constraints automatically (no full-content for
+ND when wikilink rewriting alters the body; SA only when the vault
+itself is operator-declared as a compatible derivative; NC only when
+the vault is operator-declared non-commercial), and refuses to emit
+content under license terms it cannot satisfy.
+
+**Consequences (positive):**
+- New zetl operators cannot accidentally republish all-rights-reserved
+  feeds; private-by-default is the legal-safe default.
+- CC-licensed feeds — which are the dominant case in the open-web
+  PKM-aligned publisher set — work without configuration friction:
+  they show up in the local vault, they are excerpt-plus-link in the
+  published build, attribution is auto-rendered.
+- Operators who want full content under a permissive license make
+  that choice explicitly per feed; the choice is recorded in
+  `zetl.toml` and is auditable by anyone reading the build config.
+
+**Consequences (negative):**
+- The legal stance is jurisdiction-blind by design. Operators in
+  jurisdictions with stricter regimes (e.g., the EU's neighbouring
+  rights for press publishers) MUST review their own posture; the
+  spec's defaults do not provide blanket safe harbour.
+- License-metadata extraction depends on the source publishing it;
+  feeds that publish CC-licensed content but don't include license
+  metadata in the feed will fall into the "no license declared"
+  default-deny bucket. The operator can override per-feed in
+  `zetl.toml`.
+- The four-axis CC table adds CON-3804 schema complexity.
+
+**Accepted risk:** the spec assumes operators read the
+republication-policy section. A summary line MUST appear in the
+build's stderr output when any inbound items are excluded due to
+license-policy default-deny, naming the feeds, so the operator
+notices.
 
 ### ADR-3805: Inbound scheduling model `[Provisional — contingent on ADR-3803]`
 
@@ -967,6 +1155,38 @@ filters by source-path / node metadata if needed, writes imported pages
 under the mapped target path, and advances high-water marks only after
 successful persistence.
 
+### CON-3811: Republication policy contract
+
+The `[feed.inbound.<feed-slug>]` table in `zetl.toml` SHALL accept
+the following republication-related keys:
+
+- `license` (optional, string) — operator-declared license override
+  when the feed does not publish license metadata. Accepts SPDX-style
+  identifiers per [[#REQ-3819]].
+- `republish` (optional, bool, default = derived from
+  [[#REQ-3820]] table) — explicit override of the default
+  eligibility decision. Setting to `true` for a no-license-declared
+  feed REQUIRES the operator to also set
+  `i-have-permission = true` (acknowledgement field, not a magic
+  bypass — the spec records the operator's claim of permission
+  rather than verifying it).
+- `republish_mode` (optional, enum: `excerpt`, `full`, default =
+  derived from licence per [[#REQ-3820]]) — picks the rendering
+  mode within whatever republication is permitted by the licence
+  axis constraints.
+- `excerpt_words` (optional, int, default = 200, bounds [50, 500])
+  — overrides [[#NFR-3808]] for this feed.
+- `vault_self_license` (vault-level, in `[feed]` section) — the
+  operator-declared license under which the vault build itself is
+  published. Used to evaluate `CC-BY-SA` compatibility per
+  [[#REQ-3820]].
+- `vault_is_commercial` (vault-level, in `[feed]` section, bool,
+  default = false) — used to evaluate `CC-BY-NC` compatibility per
+  [[#REQ-3820]].
+
+The contract is structured so that each implemented [[#REQ-3818]]
+.. [[#REQ-3823]] maps to a distinct subset of these keys.
+
 ---
 
 ## 9. Purity Boundary Map
@@ -1006,6 +1226,22 @@ successful persistence.
   construction.
 - *(inbound, contingent)* `feed::dedup` — given a new `Vec<InboundItem>`
   and the persisted state, produce the diff to apply.
+- *(inbound, contingent)* `feed::license_resolve` — given a feed's
+  declared metadata (atom:rights / dc:rights / channel-level
+  copyright / atom:link rel=license) and operator-declared overrides,
+  produce a normalised `License` enum (`CC0`, `CC-BY-4.0`,
+  `CC-BY-SA-4.0`, `CC-BY-NC-4.0`, `CC-BY-ND-4.0`, `Other(spdx_id)`,
+  `Unknown`). Pure projection from string forms to the enum.
+- *(inbound, contingent)* `feed::republication_eligible` — given a
+  resolved `License`, the per-feed republication config, and the
+  vault-level self-license / commercial flags, produce a
+  `RepublicationDecision` ∈ {`deny`, `excerpt-only`, `full-allowed`}
+  with a structured rationale tracing back to which clause of
+  [[#REQ-3820]] applied. Pure.
+- *(inbound, contingent)* `feed::excerpt` — given the source body
+  and the configured word count, produce the excerpt string,
+  truncated on a sentence or paragraph boundary per [[#NFR-3808]].
+  Pure.
 
 ### Effectful Shell (orchestrates I/O, calls pure core)
 - `feed::build` — read vault, call pure core, write `dist/feed.xml`.
@@ -1085,6 +1321,10 @@ arch-lint rule in CI prohibiting `use` from `feed::shell` inside
 | T6 | Decompression bomb (gzip) | inbound | Provisional; mitigation bounded decompression |
 | T7 | Credential / metadata leak via UA / Referer | inbound | Provisional; mitigation minimal UA, no Referer |
 | T8 | Dedup-state poisoning via [[GUID]] mutation | inbound | Provisional; mitigation [[#REQ-3812]] (first-seen pinning) |
+| T13 | Inadvertent copyright infringement via republication of unlicensed inbound content | inbound (legal) | Provisional; mitigation [[#REQ-3818]] (private-by-default) + [[#REQ-3820]] (license-driven eligibility) + [[#ADR-3806]] (Creative Commons defaults) |
+| T14 | License-axis violation despite eligibility (e.g., full-content republication of CC-BY-ND with wikilink rewriting that modifies the body) | inbound (legal) | Provisional; mitigation [[#REQ-3820]] eligibility table — ND admits excerpt-only; SA admits full only when vault is operator-declared compatible; NC admits republication only when vault is operator-declared non-commercial |
+| T15 | Attribution stripping (bug or theme override removes the attribution block in the published view) | inbound (legal) | Provisional; mitigation [[#REQ-3822]] requires attribution rendering in BOTH local and published views and treats stripping as a build-time error |
+| T16 | License-metadata spoofing by feed publisher (a non-CC publisher includes a CC-license link to lure ingesting vaults into republishing) | inbound (legal) | Provisional; mitigation operator-acknowledgement field per [[#CON-3811]] for any republication beyond excerpt; license metadata is INPUT, not authority — the operator remains the responsible party |
 
 ---
 
@@ -1121,6 +1361,26 @@ emission attempt. Inbound subscribers record per-subscription
 `last_seen_seq` and `last_success_seq` when [[#ADR-3803]] admits
 inbound scoped subscriptions.
 
+### OBS-3806: License-decision counter
+
+Counter `zetl_feed_inbound_license_decision_total{license, decision}`
+incremented per ingested item, with `license` ∈ {`CC0-1.0`,
+`CC-BY-4.0`, `CC-BY-SA-4.0`, `CC-BY-NC-4.0`, `CC-BY-ND-4.0`,
+`other`, `unknown`} and `decision` ∈ {`deny`, `excerpt-only`,
+`full-allowed`}. Surfaces drift between expected feed posture
+(operator's mental model: "this feed is CC-BY") and observed posture
+(what the feed actually publishes), and provides an audit trail for
+the legal claim "we republished this content under licence terms".
+
+### OBS-3807: Republication-decline summary at build time
+
+Per [[#ADR-3806]] accepted-risk: when `zetl build` excludes any
+inbound items due to license-policy default-deny, the build SHALL
+emit a structured summary line at `info` or `warn` level naming the
+feeds and the count of suppressed items, FOR every build pass that
+suppressed at least one item. The signal is a deliberate
+counterweight to silent default-deny.
+
 ---
 
 ## 13. Traceability
@@ -1144,6 +1404,15 @@ inbound scoped subscriptions.
 | [[#REQ-3815]] | UP-3803 selector + mapping workflow | TEST-3837, TEST-3838 |
 | [[#REQ-3816]] | HP-3810 AST-level changelog events | TEST-3839, TEST-3840 |
 | [[#REQ-3817]] | T11 mitigation and resumable changelog sync | TEST-3841, TEST-3842 |
+| [[#REQ-3818]] | T13 mitigation; UP-3803 protection | TEST-3845 |
+| [[#REQ-3819]] | [[#ADR-3806]] license-aware policy | TEST-3846, TEST-3847 |
+| [[#REQ-3820]] | T13, T14 mitigation; [[#ADR-3806]] | TEST-3848..TEST-3853 |
+| [[#REQ-3821]] | [[#REQ-3820]] excerpt-only modes | TEST-3854 |
+| [[#REQ-3822]] | T15 mitigation; [[Creative Commons]] norms | TEST-3855 |
+| [[#REQ-3823]] | source-author retraction control | TEST-3856 |
+| [[#NFR-3808]] | [[#REQ-3821]] excerpt rendering | TEST-3854 |
+| [[#ADR-3806]] | T13, T14, T15, T16 mitigation strategy | (decision artefact, audited by [[DESIGN-038-rss-support#task-license-policy]]) |
+| [[#CON-3811]] | [[#REQ-3818]]..[[#REQ-3823]] operator surface | TEST-3857 (config validation) |
 
 The full traceability table — including [[CON-3801]] .. [[CON-3810]],
 [[OBS-3801]] .. [[OBS-3805]], and bug-back-links once any are filed —
@@ -1231,6 +1500,16 @@ deliberately unsettled:
 12. **Consumer mapping defaults.** Is `sources/<source-wiki-slug>/` the
     right default for zetl-to-zetl subscriptions, with `inbox/` reserved
     for generic feeds?
+13. **Republication policy under copyright.** Strawman provisionally
+    commits to [[Creative Commons]]-aware defaults
+    ([[#ADR-3806]]): private-by-default for unlicensed content,
+    default-permit-as-excerpt for CC-licensed feeds, full-content
+    republication always opt-in. Final posture defers to
+    [[DESIGN-038-rss-support#task-license-policy]] for jurisdictional
+    review. Operators in regimes with neighbouring rights
+    (e.g., the EU's [[DSM Directive]] Article 15) MUST review their
+    own posture; the spec's defaults do not provide blanket safe
+    harbour.
 
 ---
 

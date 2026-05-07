@@ -51,6 +51,7 @@
 (given task-adr-inbound-scope)
 (given task-adr-inbound-storage)
 (given task-adr-scheduling)
+(given task-license-policy)
 (given task-contracts)
 (given task-purity-boundary-map)
 (given task-test-strategy)
@@ -149,8 +150,13 @@
   (acceptance "SPEC-038-rss-support.md contains ADR-3805 Scheduling with options analysis and decision OR an explicit deferral note linking back to ADR-3803.")
   (trace "ADR-3805 in SPEC-038"))
 
+(meta task-license-policy
+  (description "Validate the strawman's provisional Creative-Commons-aware republication policy (SPEC-038 ADR-3806, REQ-3818..REQ-3823) against (a) the W3C / IETF spec text for atom:rights, atom:link rel=license, dc:rights, and RSS 2.0 channel-level <copyright> -- specifically how each is intended to be read for redistribution permission; (b) the canonical Creative Commons license deed text for CC0-1.0, CC-BY-4.0, CC-BY-SA-4.0, CC-BY-NC-4.0, CC-BY-ND-4.0 (and the 3.0 variants the open web still serves), confirming the per-axis constraints encoded in REQ-3820 are correct (in particular: ND admits excerpt-only with no body modification; SA requires same-license downstream; NC requires non-commercial downstream; BY requires attribution); (c) jurisdictional research on the four most-likely operator regimes -- Australia (Fair Dealing), United States (Fair Use), United Kingdom (Fair Dealing post-Brexit), European Union (DSM Directive 2019/790 Article 15 neighbouring rights for press publishers; Article 17 platform liability) -- to confirm whether the strawman's defaults give an inattentive operator a defensible posture in each. The output names jurisdictions where the default needs operator-side caveats and updates SPEC-038 accordingly. CRITICAL: this task is a legal-research aid, not legal advice. The output MUST NOT claim safe harbour for any jurisdiction; it MUST identify gaps where operator-side legal review remains required and surface them in the spec text. If jurisdictional research surfaces material issues with the per-license eligibility table in REQ-3820 (e.g., a CC license where the strawman's mapping of NC / SA / ND to excerpt-vs-full is wrong), file SPEC-038 amendments and re-run the synthetic-user simulation against the amended text.")
+  (acceptance "research/SPEC-038-license-policy.md exists with: (a) per-CC-license normative-text extraction confirming or amending the REQ-3820 eligibility table cell-by-cell; (b) per-jurisdiction (AU, US, UK, EU) brief on whether the strawman defaults give an inattentive operator a defensible posture, with specific issues called out (e.g., EU Article 15 neighbouring rights are NOT addressed by CC license metadata since they apply to news publishers regardless of license declaration); (c) explicit SPEC-038 amendments applied; (d) explicit list of operator-side legal-review gaps that the spec MUST surface in its open-questions section; (e) cross-reference to OBS-3806 and OBS-3807 confirming the audit-trail signals are sufficient evidence for an operator's good-faith claim.")
+  (trace "ADR-3806 + REQ-3818..REQ-3823 + T13..T16 in SPEC-038"))
+
 (meta task-contracts
-  (description "Define the public contracts for SPEC-038. AT MINIMUM: (CON-3801) CLI -- the user-facing surface for outbound feeds (likely configuration in .zetl/config.toml plus the existing zetl build --site-url behaviour, but consider a 'zetl feed validate' subcommand that runs the pinned local validator); (CON-3802) Build output -- exact file paths emitted under dist/ (e.g., /feed.xml at the site root, /atom.xml if both formats per ADR-3801, /tags/<tag>/feed.xml if per-tag is in v1 per ADR-3802); (CON-3803) Serve routes -- exact route patterns the live server registers (must not collide with existing routes per task-survey-publishing-surface); (CON-3804) Configuration -- the .zetl/config.toml [feed] shape for feed configuration ([feed].base_url or --site-url precedence, feed title, feed description, feed author, max-items, selection rules); (CON-3805) Frontmatter -- which page-level frontmatter fields zetl reads for feed inclusion / exclusion / per-item override (e.g., feed-summary, feed-exclude); (CON-3806) Inbound CLI (only if ADR-3803=Y) -- the zetl feed pull / list / status surface; (CON-3807) Inbound config (only if ADR-3803=Y) -- where users declare subscribed feeds (.zetl/config.toml? a separate .zetl/feeds.toml?). Each contract: pre-conditions, post-conditions, error model, structured per-clause so each implemented REQ maps to a distinct clause (per USDD requirement-localised repair).")
+  (description "Define the public contracts for SPEC-038. AT MINIMUM: (CON-3801) CLI -- the user-facing surface for outbound feeds (likely configuration in .zetl/config.toml plus the existing zetl build --site-url behaviour, but consider a 'zetl feed validate' subcommand that runs the pinned local validator); (CON-3802) Build output -- exact file paths emitted under dist/ (e.g., /feed.xml at the site root, /atom.xml if both formats per ADR-3801, /tags/<tag>/feed.xml if per-tag is in v1 per ADR-3802); (CON-3803) Serve routes -- exact route patterns the live server registers (must not collide with existing routes per task-survey-publishing-surface); (CON-3804) Configuration -- the .zetl/config.toml [feed] shape for feed configuration ([feed].base_url or --site-url precedence, feed title, feed description, feed author, max-items, selection rules); (CON-3805) Frontmatter -- which page-level frontmatter fields zetl reads for feed inclusion / exclusion / per-item override (e.g., feed-summary, feed-exclude); (CON-3806) Inbound CLI (only if ADR-3803=Y) -- the zetl feed pull / list / status surface; (CON-3807) Inbound config (only if ADR-3803=Y) -- where users declare subscribed feeds (.zetl/config.toml? a separate .zetl/feeds.toml?); (CON-3808/3809/3810) Subscription catalog and zetl feed metadata, subscriber scoped-selection configuration, and AST changelog state and archive outputs (per the strawman's existing scoped-subscription contracts); (CON-3811) Republication-policy contract -- the [feed.inbound.<feed-slug>] keys for license, republish, republish_mode, excerpt_words, plus vault-level vault_self_license and vault_is_commercial flags per SPEC-038 CON-3811. Each contract: pre-conditions, post-conditions, error model, structured per-clause so each implemented REQ maps to a distinct clause (per USDD requirement-localised repair).")
   (acceptance "SPEC-038-rss-support.md contains CON-3801 .. CON-3807 (or a justified subset if ADR-3803=N) each with the four required subsections (pre-conditions, post-conditions, error model, implements REQs). Each CON's implements list is non-empty -- a contract with no inbound REQ is dead code.")
   (trace "CON-### in SPEC-038"))
 
@@ -267,11 +273,16 @@
   (and task-adr-scheduling completed-adr-inbound-scope)
   ready-adr-scheduling)
 
+(normally r-ready-license-policy
+  (and task-license-policy completed-adr-inbound-scope)
+  ready-license-policy)
+
 (normally r-ready-contracts
   (and task-contracts
        completed-adr-rss-vs-atom
        completed-adr-feed-selection
-       completed-adr-inbound-scope)
+       completed-adr-inbound-scope
+       completed-license-policy)
   ready-contracts)
 
 (normally r-ready-purity-boundary-map
@@ -285,7 +296,8 @@
 (normally r-ready-threat-model
   (and task-threat-model
        completed-adr-inbound-scope
-       completed-survey-fetch-stack)
+       completed-survey-fetch-stack
+       completed-license-policy)
   ready-threat-model)
 
 (normally r-ready-phase2-quality-gates
@@ -333,6 +345,7 @@
 (normally r-assign-adr-inbound-scope (and ready-adr-inbound-scope agent-claude-available) assign-to-adr-inbound-scope-claude)
 (normally r-assign-adr-inbound-storage (and ready-adr-inbound-storage agent-claude-available) assign-to-adr-inbound-storage-claude)
 (normally r-assign-adr-scheduling (and ready-adr-scheduling agent-claude-available) assign-to-adr-scheduling-claude)
+(normally r-assign-license-policy (and ready-license-policy agent-claude-available) assign-to-license-policy-claude)
 (normally r-assign-contracts (and ready-contracts agent-claude-available) assign-to-contracts-claude)
 (normally r-assign-purity-boundary-map (and ready-purity-boundary-map agent-claude-available) assign-to-purity-boundary-map-claude)
 (normally r-assign-test-strategy (and ready-test-strategy agent-claude-available) assign-to-test-strategy-claude)
