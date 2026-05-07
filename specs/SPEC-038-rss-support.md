@@ -714,7 +714,8 @@ published output and from `zetl serve` public routes UNLESS one of
 the following holds: (a) the source feed declares a [[Creative
 Commons]] license that permits redistribution AND the user has not
 explicitly disabled republication for that feed; OR (b) the user has
-set `republish: true` in the feed's `zetl.toml` entry; OR (c) an
+set `republish = true` on the feed's `[[subscriptions]]` entry in
+`.zetl/config.toml`; OR (c) an
 individual item carries `republish: true` in its frontmatter. In all
 other cases, the item is reachable only in the local vault view.
 Publishing a private inbox item is a USER decision; the default
@@ -730,9 +731,13 @@ license metadata from `<atom:rights>`, `<dc:rights>`, channel-level
 `<copyright>` (RSS 2.0), and `<atom:link rel="license">`, normalise
 [[Creative Commons]] license URLs to their canonical SPDX-style
 identifiers (e.g., `CC-BY-4.0`, `CC-BY-SA-4.0`, `CC-BY-NC-4.0`,
-`CC-BY-ND-4.0`, `CC0-1.0`), and persist the result both as
-per-feed configuration metadata and as `license:` frontmatter on
-every item from that feed, FOR every fetch.
+`CC-BY-ND-4.0`, `CC0-1.0`), and persist the result both as the
+`license` field on the corresponding `[[subscriptions]]` entry in
+`.zetl/config.toml` ([[#CON-3811]]) AND as `license:` frontmatter
+on every item ingested from that feed, FOR every fetch. When the
+operator has set an explicit `license` override on the subscription,
+that value is authoritative and the extracted value is recorded
+only as observability metadata for drift detection ([[#OBS-3806]]).
 
 Trace: [[#TEST-3846]], [[#TEST-3847]] (license-URL canonicalisation
 property test), [[#CON-3804]]
@@ -748,13 +753,13 @@ the build:
 |---|---|---|
 | `CC0-1.0`, public domain | eligible | full content allowed |
 | `CC-BY-4.0`, `CC-BY-3.0` | eligible | excerpt-plus-link by default; full allowed if user opts in; attribution mandatory |
-| `CC-BY-SA-4.0` | eligible | excerpt-plus-link by default; full allowed only if the entire vault build is itself published under a compatible CC-BY-SA license (operator-declared in `zetl.toml`) |
+| `CC-BY-SA-4.0` | eligible | excerpt-plus-link by default; full allowed only if the entire vault build is itself published under a compatible CC-BY-SA license (operator-declared via `[wiki].self_license` in `.zetl/config.toml`) |
 | `CC-BY-NC-4.0` | eligible | excerpt-plus-link by default; republication permitted only when the vault is operator-declared non-commercial |
 | `CC-BY-ND-4.0` | eligible | excerpt-plus-link only; full content with modification (including wikilink rewriting that alters the body) is forbidden |
 | no license declared, or "all rights reserved" | NOT eligible | excluded from build unless operator declares `i-have-permission: true` per feed |
 
 The default user-experience setting is the table above. Operators
-override per-feed in `zetl.toml` (CON-3804) but never relax the
+override per-subscription in `.zetl/config.toml` ([[#CON-3811]]) but never relax the
 license constraints on the right-hand column without an explicit
 acknowledgement field acknowledging the legal posture.
 
@@ -826,7 +831,7 @@ Trace: [[#TEST-3858]] (one fixture per scheme), [[#CON-3812]]
 ### REQ-3825: Credential storage and on-disk protection
 
 Inbound-feed credentials SHALL be persisted in
-`.zetl/credentials.toml` (or `.zetl/credentials/<feed-slug>.toml`
+`.zetl/credentials.toml` (or `.zetl/credentials/<subscription-id>.toml`
 per the storage shape selected by [[#ADR-3810]]), with file mode
 `0600` (or platform equivalent restricting read access to the
 running user) enforced AT WRITE TIME. The file SHALL NOT be
@@ -878,7 +883,7 @@ or `403 Forbidden`, the system SHALL emit a structured `warn`-level
 log line naming the feed slug and the response code, AND SHALL
 suspend automatic retries for that feed until either the operator
 updates the credential or invokes a manual `zetl feed pull
-<feed-slug>`. The system SHALL NOT issue an unbounded retry loop
+<subscription-id>`. The system SHALL NOT issue an unbounded retry loop
 that could lock out the upstream credential.
 
 Trace: [[#TEST-3863]] (one-retry property test), [[#TEST-3864]]
@@ -952,7 +957,8 @@ Trace: [[#TEST-3832]] (provisional)
 ### NFR-3808: Excerpt length
 
 For [[#REQ-3821]] excerpt-plus-link mode, the excerpt SHALL default
-to ≤ 200 plain-text words, configurable per feed in `zetl.toml`
+to ≤ 200 plain-text words, configurable per subscription in
+`.zetl/config.toml` (`[[subscriptions]].excerpt_words` per [[#CON-3811]])
 within the bounds [50, 500] words, WITH truncation always falling on
 a sentence or paragraph boundary (never mid-word, never mid-sentence).
 
@@ -1062,8 +1068,9 @@ content under license terms it cannot satisfy.
   they show up in the local vault, they are excerpt-plus-link in the
   published build, attribution is auto-rendered.
 - Operators who want full content under a permissive license make
-  that choice explicitly per feed; the choice is recorded in
-  `zetl.toml` and is auditable by anyone reading the build config.
+  that choice explicitly per subscription; the choice is recorded in
+  `.zetl/config.toml` and is auditable by anyone reading the build
+  config.
 
 **Consequences (negative):**
 - The legal stance is jurisdiction-blind by design. Operators in
@@ -1073,9 +1080,10 @@ content under license terms it cannot satisfy.
 - License-metadata extraction depends on the source publishing it;
   feeds that publish CC-licensed content but don't include license
   metadata in the feed will fall into the "no license declared"
-  default-deny bucket. The operator can override per-feed in
-  `zetl.toml`.
-- The four-axis CC table adds CON-3804 schema complexity.
+  default-deny bucket. The operator can override per-subscription
+  in `.zetl/config.toml`.
+- The four-axis CC table adds [[#CON-3811]] schema complexity on
+  top of [[#CON-3809]].
 
 **Accepted risk:** the spec assumes operators read the
 republication-policy section. A summary line MUST appear in the
@@ -1137,7 +1145,7 @@ persisting credentials between fetches. Three options for where they
 live:
 
 (A) **Separate file at `.zetl/credentials.toml`** (or
-`.zetl/credentials/<feed-slug>.toml` per-feed) with file mode `0600`,
+`.zetl/credentials/<subscription-id>.toml` per-feed) with file mode `0600`,
 gitignored by default, never merged into `.zetl/config.toml`.
 
 (B) **Operating-system keychain** ([[macOS Keychain]],
@@ -1153,8 +1161,12 @@ syntax-highlighted in screenshots, and shared during debugging.
 
 **Decision (provisional):**
 
-- **Default:** (A) `.zetl/credentials.toml` (or per-feed-slug
-  variant), file mode `0600`, gitignored.
+- **Default:** (A) `.zetl/credentials.toml` (or
+  `.zetl/credentials/<subscription-id>.toml` per-subscription
+  variant), file mode `0600`, gitignored. The table key in the
+  combined-file shape is the subscription `id` declared in
+  `.zetl/config.toml`'s `[[subscriptions]]` ([[#CON-3811]]) so the
+  two surfaces stay in sync.
 - **Opt-in:** (B) OS keychain via a `--features keychain` build
   flag, with the credentials file format unchanged but credential
   *values* stored as `keychain://<service>/<account>` references
@@ -1311,8 +1323,16 @@ successful persistence.
 
 ### CON-3811: Republication policy contract
 
-The `[feed.inbound.<feed-slug>]` table in `zetl.toml` SHALL accept
-the following republication-related keys:
+Republication-policy keys extend the existing `[[subscriptions]]`
+array of tables in `.zetl/config.toml` (see [[#CON-3809]] and the
+configuration sketch in §8.1). They do NOT introduce a parallel
+`[feed.inbound.<feed-slug>]` table; the same subscription record
+that carries `source` / `select` / `target` / `mapping` ALSO carries
+the republication posture. Vault-level keys extend the existing
+`[wiki]` section so the vault's own license posture is declared
+once and consulted whenever a per-subscription decision needs it.
+
+**Per-subscription keys (extend `[[subscriptions]]`):**
 
 - `license` (optional, string) — operator-declared license override
   when the feed does not publish license metadata. Accepts SPDX-style
@@ -1321,22 +1341,48 @@ the following republication-related keys:
   [[#REQ-3820]] table) — explicit override of the default
   eligibility decision. Setting to `true` for a no-license-declared
   feed REQUIRES the operator to also set
-  `i-have-permission = true` (acknowledgement field, not a magic
+  `i_have_permission = true` (acknowledgement field, not a magic
   bypass — the spec records the operator's claim of permission
   rather than verifying it).
-- `republish_mode` (optional, enum: `excerpt`, `full`, default =
+- `republish_mode` (optional, enum: `excerpt` | `full`, default =
   derived from licence per [[#REQ-3820]]) — picks the rendering
   mode within whatever republication is permitted by the licence
   axis constraints.
 - `excerpt_words` (optional, int, default = 200, bounds [50, 500])
-  — overrides [[#NFR-3808]] for this feed.
-- `vault_self_license` (vault-level, in `[feed]` section) — the
-  operator-declared license under which the vault build itself is
-  published. Used to evaluate `CC-BY-SA` compatibility per
-  [[#REQ-3820]].
-- `vault_is_commercial` (vault-level, in `[feed]` section, bool,
-  default = false) — used to evaluate `CC-BY-NC` compatibility per
-  [[#REQ-3820]].
+  — overrides [[#NFR-3808]] for this subscription.
+- `credentials_ref` (optional, string) — slug under which auth
+  credentials for this subscription are stored in
+  `.zetl/credentials.toml` (see [[#CON-3812]]). When omitted, the
+  subscription's `id` doubles as the credential slug.
+
+**Vault-level keys (extend `[wiki]`):**
+
+- `self_license` (optional, string) — the operator-declared license
+  under which the vault build itself is published. Used to evaluate
+  `CC-BY-SA` compatibility per [[#REQ-3820]].
+- `is_commercial` (optional, bool, default = false) — used to
+  evaluate `CC-BY-NC` compatibility per [[#REQ-3820]].
+
+**Example (extending the sketch in §8.1):**
+
+```toml
+[wiki]
+id = "wiki-b"
+self_license = "CC-BY-SA-4.0"
+is_commercial = false
+
+[[subscriptions]]
+id = "wiki-a-research"
+source = "https://wiki-a.example.com"
+select = ["/research/**"]
+target = "sources/wiki-a"
+mapping = "mirror"
+# republication-policy keys (this CON):
+license = "CC-BY-SA-4.0"
+republish = true
+republish_mode = "full"      # CC-BY-SA full content allowed when self_license is compatible
+excerpt_words = 200
+```
 
 The contract is structured so that each implemented [[#REQ-3818]]
 .. [[#REQ-3823]] maps to a distinct subset of these keys.
@@ -1344,14 +1390,17 @@ The contract is structured so that each implemented [[#REQ-3818]]
 ### CON-3812: Inbound credentials surface
 
 **Storage location:** `.zetl/credentials.toml` (or
-`.zetl/credentials/<feed-slug>.toml` per [[#ADR-3810]] when the
-per-feed shape is selected).
+`.zetl/credentials/<subscription-id>.toml` per [[#ADR-3810]] when the
+per-subscription shape is selected).
 
-**File format (TOML):** one table per registered inbound feed,
-keyed by feed slug, with the following keys:
+**File format (TOML):** one table per registered subscription,
+keyed by the subscription `id` declared in
+`.zetl/config.toml`'s `[[subscriptions]]` ([[#CON-3811]]) — or, if
+the subscription's `credentials_ref` field is set, by that
+reference instead. With the following keys:
 
 ```toml
-[<feed-slug>]
+[<subscription-id>]
 auth_type = "basic" | "bearer" | "query_param"
 
 # auth_type = "basic":
@@ -1383,9 +1432,10 @@ vault state SHALL exclude these paths by default. Including them
 requires `--include-credentials` AND a manifest acknowledgement
 field.
 
-**Pre-conditions:** `.zetl/config.toml` registers the feed with a
-matching slug; the credentials file exists and is readable by the
-running user.
+**Pre-conditions:** `.zetl/config.toml` declares a `[[subscriptions]]`
+entry whose `id` (or `credentials_ref` override per [[#CON-3811]])
+matches a table key in the credentials file; the credentials file
+exists and is readable by the running user.
 
 **Post-conditions:** the inbound fetcher receives the operator's
 credentials only on requests to the registered feed-host origin
