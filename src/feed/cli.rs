@@ -24,7 +24,27 @@
 //!   * `validate` -> per-format strict parsers (Phase 10 wires this)
 //!   * `forget` -> [`crate::feed::forget::plan_forget`]
 
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
+
+/// Feed wire format for `zetl feed validate`. Closed set; clap rejects
+/// unknown values at parse time. Auto-detection happens when the flag
+/// is omitted.
+#[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FeedValidateFormat {
+    Rss,
+    Atom,
+    Jsonfeed,
+}
+
+impl FeedValidateFormat {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FeedValidateFormat::Rss => "rss",
+            FeedValidateFormat::Atom => "atom",
+            FeedValidateFormat::Jsonfeed => "jsonfeed",
+        }
+    }
+}
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum FeedCommand {
@@ -83,13 +103,13 @@ pub struct FeedValidateArgs {
     /// Path to a feed file. Reads stdin when omitted.
     #[arg(value_name = "PATH")]
     pub path: Option<std::path::PathBuf>,
-    /// Force a particular feed format ('rss', 'atom', 'jsonfeed').
-    /// Auto-detected by default from Content-Type or file extension.
+    /// Force a particular feed format. Auto-detected by default from
+    /// the body shape (`{` → jsonfeed, `<feed` → atom, otherwise rss).
     /// Named `--feed-format` rather than `--format` to avoid colliding
     /// with the global `--format` flag that selects table vs JSON
     /// output for the rest of zetl.
-    #[arg(long = "feed-format")]
-    pub feed_format: Option<String>,
+    #[arg(long = "feed-format", value_enum)]
+    pub feed_format: Option<FeedValidateFormat>,
     #[arg(long)]
     pub json: bool,
 }

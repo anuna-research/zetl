@@ -132,90 +132,11 @@ fn make_action(path: &str, mode: RetentionMode, reason: PruneReason) -> PruneAct
     }
 }
 
-/// Crude RFC 3339 subtraction. Treats every input as UTC; the chrono
-/// crate would be cleaner but the leaf module stays chrono-free per
-/// the design choice in `types.rs`. Wraps via `seconds_since_epoch`
-/// helper.
+/// RFC 3339 subtraction. Re-exports
+/// [`crate::feed::datetime::subtract_seconds_from_rfc3339`] under the
+/// retention-local name the rest of the module already uses.
 fn subtract_seconds(rfc3339: &str, seconds: i64) -> String {
-    // Simple algorithm: extract YYYY-MM-DDTHH:MM:SS, convert to
-    // seconds-since-epoch (integer math, no leap-second adjustment),
-    // subtract, format back.
-    if let (Some(y), Some(m), Some(d), Some(h), Some(mi), Some(se)) = parse_components(rfc3339) {
-        let total = days_since_epoch(y, m, d) * 86_400 + (h as i64) * 3600 + (mi as i64) * 60 + (se as i64);
-        let new_total = total - seconds;
-        if new_total < 0 {
-            return "1970-01-01T00:00:00Z".to_string();
-        }
-        let days = new_total / 86_400;
-        let remainder = new_total - days * 86_400;
-        let new_hms = (
-            (remainder / 3600) as u32,
-            ((remainder % 3600) / 60) as u32,
-            (remainder % 60) as u32,
-        );
-        let (ny, nm, nd) = epoch_days_to_ymd(days);
-        return format!(
-            "{ny:04}-{nm:02}-{nd:02}T{:02}:{:02}:{:02}Z",
-            new_hms.0, new_hms.1, new_hms.2
-        );
-    }
-    rfc3339.to_string()
-}
-
-fn parse_components(s: &str) -> (Option<i32>, Option<u32>, Option<u32>, Option<u32>, Option<u32>, Option<u32>) {
-    if s.len() < 19 {
-        return (None, None, None, None, None, None);
-    }
-    let y = s[..4].parse().ok();
-    let m = s[5..7].parse().ok();
-    let d = s[8..10].parse().ok();
-    let h = s[11..13].parse().ok();
-    let mi = s[14..16].parse().ok();
-    let se = s[17..19].parse().ok();
-    (y, m, d, h, mi, se)
-}
-
-fn days_since_epoch(year: i32, month: u32, day: u32) -> i64 {
-    let mut days: i64 = 0;
-    for y in 1970..year {
-        days += if is_leap_year(y) { 366 } else { 365 };
-    }
-    let dim = days_in_months(year);
-    for m in 1..month as usize {
-        days += dim[m - 1] as i64;
-    }
-    days + (day as i64) - 1
-}
-
-fn epoch_days_to_ymd(mut days: i64) -> (i32, u32, u32) {
-    let mut year: i32 = 1970;
-    loop {
-        let dy = if is_leap_year(year) { 366 } else { 365 };
-        if days < dy {
-            break;
-        }
-        days -= dy;
-        year += 1;
-    }
-    let dim = days_in_months(year);
-    let mut month: u32 = 1;
-    for &d in &dim {
-        if days < d as i64 {
-            break;
-        }
-        days -= d as i64;
-        month += 1;
-    }
-    (year, month, (days + 1) as u32)
-}
-
-fn is_leap_year(y: i32) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
-}
-
-fn days_in_months(y: i32) -> [u8; 12] {
-    let feb = if is_leap_year(y) { 29 } else { 28 };
-    [31, feb, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    crate::feed::datetime::subtract_seconds_from_rfc3339(rfc3339, seconds)
 }
 
 #[cfg(test)]

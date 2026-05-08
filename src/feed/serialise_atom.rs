@@ -147,25 +147,7 @@ fn push_text(out: &mut String, indent: &str, name: &str, value: &str) {
     out.push_str(">\n");
 }
 
-fn escape_text(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
-}
-
-fn escape_attr(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('"', "&quot;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-}
-
-fn absolute_url(base: &str, path: &str) -> String {
-    let base = base.trim_end_matches('/');
-    if path.starts_with('/') {
-        format!("{base}{path}")
-    } else {
-        format!("{base}/{path}")
-    }
-}
+use crate::feed::xml::{absolute_url, escape_attr, escape_text};
 
 #[cfg(test)]
 mod tests {

@@ -177,9 +177,7 @@ fn emit_one_cohort(
         items_selected: pages.iter().filter(|p| visibility(p)).count(),
         items_emitted: chosen.len(),
         duration: started.elapsed(),
-        rss_emitted: true,
-        atom_emitted: true,
-        jsonfeed_emitted: formats.jsonfeed,
+        formats,
     };
     Ok(FeedEmission {
         files,

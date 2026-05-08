@@ -198,14 +198,7 @@ fn push_json_str(buf: &mut String, s: &str) {
     }
 }
 
-fn absolute_url(base: &str, path: &str) -> String {
-    let base = base.trim_end_matches('/');
-    if path.starts_with('/') {
-        format!("{base}{path}")
-    } else {
-        format!("{base}/{path}")
-    }
-}
+use crate::feed::xml::absolute_url;
 
 #[cfg(test)]
 mod tests {

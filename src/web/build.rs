@@ -88,12 +88,19 @@ fn emit_outbound_feeds(
         return Ok(None);
     };
     let base_url_trimmed = base_url.trim_end_matches('/');
-    // Owners for the borrowed-by-PageView data.
+
+    // Build-invariant; parse once, not per page.
+    let id_namespace = url::Url::parse(base_url_trimmed)
+        .or_else(|_| url::Url::parse(&format!("{base_url_trimmed}/")))
+        .unwrap_or_else(|_| url::Url::parse("https://example.invalid/").unwrap());
+    let render_root = format!("{base_url_trimmed}/");
+
     struct Owned {
         slug: String,
         path: PathBuf,
         tags: Vec<String>,
         item: FeedItem,
+        frontmatter_feed_optin: bool,
     }
     let mut owned: Vec<Owned> = Vec::with_capacity(data.files.len());
     for parsed in &data.files {
@@ -101,21 +108,51 @@ fn emit_outbound_feeds(
         let body = std::fs::read_to_string(&abs_path).unwrap_or_default();
         let frontmatter = parse_frontmatter(&body);
 
+        // Cheap fields first; we always need slug + optin so visibility
+        // + selection can prune before the expensive render.
         let slug = data
             .page_slug_map
             .get(&parsed.page_name)
             .cloned()
             .unwrap_or_else(|| parsed.page_name.clone());
+        let frontmatter_feed_optin = frontmatter
+            .get("feed")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // Skip the expensive markdown render + url construction for
+        // pages that would be filtered out by the selection rule.
+        // SelectionRule::FrontmatterOptIn is the only rule the build
+        // wire currently supports; if that's the rule and the page
+        // didn't opt in, emit a stub PageView and move on.
+        if !frontmatter_feed_optin {
+            owned.push(Owned {
+                slug: slug.clone(),
+                path: parsed.path.clone(),
+                tags: Vec::new(),
+                item: FeedItem {
+                    id: format!("urn:zetl:{slug}"),
+                    title: String::new(),
+                    url: String::new(),
+                    date_published: String::new(),
+                    date_modified: None,
+                    summary: None,
+                    content_html: None,
+                    author: None,
+                    tags: Vec::new(),
+                    license: None,
+                    source_metadata: SourceMetadata::default(),
+                },
+                frontmatter_feed_optin: false,
+            });
+            continue;
+        }
+
         let title = frontmatter
             .get("title")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .unwrap_or_else(|| parsed.page_name.clone());
-        // REQ-3804 fallback chain. `zetl build` doesn't currently
-        // surface git author-dates; we use mtime as a deterministic
-        // last-resort. NOT spec-perfect (mtime is non-portable per
-        // NFR-3804) but better than synthesising "now" — the wire
-        // task that surfaces git dates is a separate follow-up.
         let date_published = frontmatter_date(&frontmatter)
             .or_else(|| mtime_to_rfc3339(parsed.mtime))
             .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string());
@@ -131,18 +168,10 @@ fn emit_outbound_feeds(
         tags.sort();
         tags.dedup();
 
-        // Build URL by joining base_url + slug (path-encode segments
-        // with whitespace; production zetl slugs are clean but
-        // demo-vault has files like "Demo Script.md").
         let url = format!(
             "{base_url_trimmed}/{}",
             slug.split('/').map(percent_encode_segment).collect::<Vec<_>>().join("/")
         );
-
-        // Stable item id per REQ-3803.
-        let id_namespace = url::Url::parse(base_url_trimmed)
-            .or_else(|_| url::Url::parse(&format!("{base_url_trimmed}/")))
-            .unwrap_or_else(|_| url::Url::parse("https://example.invalid/").unwrap());
         let id = crate::feed::item_id::item_id(&slug, &id_namespace, 2026)
             .unwrap_or_else(|_| format!("urn:zetl:{slug}"));
 
@@ -153,25 +182,27 @@ fn emit_outbound_feeds(
             Some(summary.chars().take(400).collect::<String>())
         };
         // JSON Feed v1.1 requires at least one of content_html /
-        // content_text per item ("Any item without an id must be
-        // discarded; an item must have content"). Render the
-        // markdown body through zetl's existing pipeline and use it
-        // as content_html; absolute URL rewriting flows through
-        // base_url, slug-map for `[[wikilinks]]`. Bounded at ~64 KiB
-        // per item so a single huge page can't bloat the feed.
+        // content_text per item; truncate at a byte boundary (NOT
+        // chars — multi-byte UTF-8 would inflate the budget by up
+        // to 4×) to keep individual items bounded.
         let content_html = {
-            let rendered = crate::web::markdown::render_to_html(
+            let mut rendered = crate::web::markdown::render_to_html(
                 &body,
                 &data.page_slug_map,
-                &format!("{base_url_trimmed}/"),
+                &render_root,
                 "index.html",
             );
-            if rendered.len() > 65_536 {
-                let mut truncated = rendered.chars().take(65_536).collect::<String>();
-                truncated.push_str("\n<!-- content truncated for feed; visit the page URL for the full body -->\n");
-                Some(truncated)
-            } else if rendered.is_empty() {
+            const MAX_BYTES: usize = 65_536;
+            if rendered.is_empty() {
                 None
+            } else if rendered.len() > MAX_BYTES {
+                let mut cut = MAX_BYTES;
+                while cut > 0 && !rendered.is_char_boundary(cut) {
+                    cut -= 1;
+                }
+                rendered.truncate(cut);
+                rendered.push_str("\n<!-- content truncated for feed; visit the page URL for the full body -->\n");
+                Some(rendered)
             } else {
                 Some(rendered)
             }
@@ -193,7 +224,7 @@ fn emit_outbound_feeds(
                 content_hash: parsed
                     .file_merkle
                     .as_ref()
-                    .map(|m| m.root_hash.iter().map(|b| format!("{b:02x}")).collect::<String>()),
+                    .map(|m| crate::feed::xml::hex_encode(&m.root_hash)),
                 ..Default::default()
             },
         };
@@ -202,31 +233,16 @@ fn emit_outbound_feeds(
             path: parsed.path.clone(),
             tags,
             item,
+            frontmatter_feed_optin: true,
         });
     }
 
-    // Build PageView slice (borrows from owned).
-    let frontmatter_optin: Vec<bool> = data
-        .files
-        .iter()
-        .map(|p| {
-            let abs = vault_root.join(&p.path);
-            std::fs::read_to_string(&abs)
-                .ok()
-                .map(|body| {
-                    let fm = parse_frontmatter(&body);
-                    fm.get("feed").and_then(|v| v.as_bool()).unwrap_or(false)
-                })
-                .unwrap_or(false)
-        })
-        .collect();
     let pages: Vec<PageView<'_>> = owned
         .iter()
-        .zip(frontmatter_optin.iter())
-        .map(|(o, optin)| PageView {
+        .map(|o| PageView {
             slug: &o.slug,
             path: &o.path,
-            frontmatter_feed_optin: *optin,
+            frontmatter_feed_optin: o.frontmatter_feed_optin,
             tags: &o.tags,
             matches_spl_query: false,
             item: o.item.clone(),
@@ -272,58 +288,18 @@ fn frontmatter_date(fm: &serde_json::Value) -> Option<String> {
 }
 
 fn mtime_to_rfc3339(mtime: std::time::SystemTime) -> Option<String> {
-    let dur = mtime.duration_since(std::time::UNIX_EPOCH).ok()?;
-    let secs = dur.as_secs() as i64;
-    // Crude RFC 3339 from epoch seconds. Reuses the same date math
-    // as feed::retention to keep the leaf modules chrono-free.
-    Some(epoch_secs_to_rfc3339(secs))
-}
-
-fn epoch_secs_to_rfc3339(total: i64) -> String {
-    if total < 0 {
-        return "1970-01-01T00:00:00Z".to_string();
-    }
-    let days = total / 86_400;
-    let rem = total - days * 86_400;
-    let hms = ((rem / 3600) as u32, ((rem % 3600) / 60) as u32, (rem % 60) as u32);
-    let (y, m, d) = epoch_days_to_ymd(days);
-    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", hms.0, hms.1, hms.2)
-}
-
-fn epoch_days_to_ymd(mut days: i64) -> (i32, u32, u32) {
-    let mut year: i32 = 1970;
-    loop {
-        let dy = if is_leap(year) { 366 } else { 365 };
-        if days < dy { break; }
-        days -= dy;
-        year += 1;
-    }
-    let dim = if is_leap(year) {
-        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    } else {
-        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    };
-    let mut month: u32 = 1;
-    for &md in &dim {
-        if days < md as i64 { break; }
-        days -= md as i64;
-        month += 1;
-    }
-    (year, month, (days + 1) as u32)
-}
-
-fn is_leap(y: i32) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+    crate::feed::datetime::system_time_to_rfc3339(mtime)
 }
 
 fn percent_encode_segment(s: &str) -> String {
+    use std::fmt::Write;
     let mut out = String::with_capacity(s.len());
     for b in s.as_bytes() {
         match *b {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
                 out.push(*b as char)
             }
-            other => out.push_str(&format!("%{:02X}", other)),
+            other => write!(out, "%{:02X}", other).expect("write to String never fails"),
         }
     }
     out

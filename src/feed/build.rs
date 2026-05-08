@@ -44,12 +44,9 @@ pub struct BuildStats {
     pub items_emitted: usize,
     /// Wall-clock time of the build pass.
     pub duration: Duration,
-    /// Whether RSS was emitted.
-    pub rss_emitted: bool,
-    /// Whether Atom was emitted.
-    pub atom_emitted: bool,
-    /// Whether JSON Feed was emitted.
-    pub jsonfeed_emitted: bool,
+    /// Which formats were emitted; check via `stats.formats.rss` /
+    /// `stats.formats.atom` / `stats.formats.jsonfeed`.
+    pub formats: crate::feed::types::OutputFormatSet,
 }
 
 /// Hard-error cases for [`emit_root_feed`]. These produce a non-zero
@@ -102,7 +99,7 @@ pub fn emit_root_feed(
     };
     let paths = resolve_paths(feed);
 
-    let mut chosen = crate::feed::select::select(pages, rule, visibility, max_items);
+    let chosen = crate::feed::select::select(pages, rule, visibility, max_items);
 
     let items_selected = pages.iter().filter(|p| visibility(p)).count();
     let items_emitted = chosen.len();
@@ -139,11 +136,7 @@ pub fn emit_root_feed(
         copyright: feed.copyright.clone(),
     };
 
-    chosen.sort_by(|a, b| {
-        b.date_published
-            .cmp(&a.date_published)
-            .then_with(|| a.id.cmp(&b.id))
-    });
+    // `select::select` already sorts by (date desc, id asc); no post-sort.
 
     let mut files = Vec::with_capacity(3);
     files.push((paths.rss.clone(), serialise_rss(&chosen, &cfg).into_bytes()));
@@ -160,9 +153,7 @@ pub fn emit_root_feed(
         items_selected,
         items_emitted,
         duration: started.elapsed(),
-        rss_emitted: true,
-        atom_emitted: true,
-        jsonfeed_emitted: formats.jsonfeed,
+        formats,
     };
     Ok(FeedEmission {
         files,
@@ -336,9 +327,9 @@ mod tests {
         let emission = emit_root_feed(&lens, &pages, &always, &SelectionRule::FrontmatterOptIn).unwrap();
         let paths: Vec<&str> = emission.files.iter().map(|(p, _)| p.as_str()).collect();
         assert_eq!(paths, vec!["/feed.xml", "/atom.xml"]);
-        assert!(emission.stats.rss_emitted);
-        assert!(emission.stats.atom_emitted);
-        assert!(!emission.stats.jsonfeed_emitted);
+        assert!(emission.stats.formats.rss);
+        assert!(emission.stats.formats.atom);
+        assert!(!emission.stats.formats.jsonfeed);
         assert_eq!(emission.stats.items_emitted, 3);
     }
 
@@ -349,7 +340,7 @@ mod tests {
         let emission = emit_root_feed(&lens, &pages, &always, &SelectionRule::FrontmatterOptIn).unwrap();
         let paths: Vec<&str> = emission.files.iter().map(|(p, _)| p.as_str()).collect();
         assert!(paths.contains(&"/feed.json"));
-        assert!(emission.stats.jsonfeed_emitted);
+        assert!(emission.stats.formats.jsonfeed);
     }
 
     #[test]

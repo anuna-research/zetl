@@ -91,32 +91,7 @@ fn push_text_element(out: &mut String, indent: &str, name: &str, value: &str) {
     out.push_str(">\n");
 }
 
-fn escape_text(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
-}
-
-fn escape_attr(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('"', "&quot;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-}
-
-/// CDATA-safe content per REQ-3806. The only sequence forbidden inside
-/// a CDATA section is `]]>`; we split it across two CDATA sections
-/// so the content survives strict parsers.
-fn cdata_escape(s: &str) -> String {
-    s.replace("]]>", "]]]]><![CDATA[>")
-}
-
-fn absolute_url(base: &str, path: &str) -> String {
-    let base = base.trim_end_matches('/');
-    if path.starts_with('/') {
-        format!("{base}{path}")
-    } else {
-        format!("{base}/{path}")
-    }
-}
+use crate::feed::xml::{absolute_url, cdata_escape, escape_attr, escape_text};
 
 /// Convert an RFC 3339 timestamp to RFC 822 (RSS pubDate format).
 /// Lexicographic comparison stays valid because we only ever compare

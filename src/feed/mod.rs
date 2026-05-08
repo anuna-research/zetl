@@ -39,6 +39,7 @@ pub mod cap_feed;
 pub mod changelog;
 pub mod cli;
 pub mod config;
+pub mod datetime;
 pub mod observability;
 pub mod credentials;
 pub mod excerpt;
@@ -58,6 +59,7 @@ pub mod serialise_jsonfeed;
 pub mod serialise_rss;
 pub mod serve;
 pub mod types;
+pub mod xml;
 
 pub use types::{
     AuthorRef, FeedConfig, FeedItem, License, OutputFormat, RepublicationDecision,

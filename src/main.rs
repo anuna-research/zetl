@@ -5418,20 +5418,19 @@ fn cmd_feed_validate(cli: &Cli, args: &zetl::feed::cli::FeedValidateArgs) -> Res
             .context("reading feed body from stdin")?;
         buf
     };
+    use zetl::feed::cli::FeedValidateFormat;
     let body_trim = body.trim_start();
-    let format = if let Some(forced) = args.feed_format.as_deref() {
-        forced.to_string()
-    } else if body_trim.starts_with('{') {
-        "jsonfeed".to_string()
-    } else if body_trim.contains("<feed") {
-        "atom".to_string()
-    } else if body_trim.contains("<rss") || body_trim.contains("<channel") {
-        "rss".to_string()
-    } else {
-        "rss".to_string()
-    };
-    let report = match format.as_str() {
-        "rss" | "atom" => {
+    let format = args.feed_format.unwrap_or_else(|| {
+        if body_trim.starts_with('{') {
+            FeedValidateFormat::Jsonfeed
+        } else if body_trim.contains("<feed") {
+            FeedValidateFormat::Atom
+        } else {
+            FeedValidateFormat::Rss
+        }
+    });
+    let report = match format {
+        FeedValidateFormat::Rss | FeedValidateFormat::Atom => {
             let bytes = body.as_bytes();
             zetl::feed::fetch::assert_no_xxe(bytes).map_err(|e| {
                 anyhow::anyhow!("feed-validate xxe-check: {e}")
@@ -5440,13 +5439,13 @@ fn cmd_feed_validate(cli: &Cli, args: &zetl::feed::cli::FeedValidateArgs) -> Res
             // pinned strict-parser CI gate (NFR-3805) lives behind
             // task-tests-conformance.
             serde_json::json!({
-                "format": format,
+                "format": format.as_str(),
                 "size_bytes": body.len(),
                 "xxe": "ok",
                 "warnings": Vec::<String>::new(),
             })
         }
-        "jsonfeed" => {
+        FeedValidateFormat::Jsonfeed => {
             let v: serde_json::Value = serde_json::from_str(&body)
                 .context("feed-validate: body is not valid JSON")?;
             let version = v.get("version").and_then(|x| x.as_str()).unwrap_or("");
@@ -5457,13 +5456,12 @@ fn cmd_feed_validate(cli: &Cli, args: &zetl::feed::cli::FeedValidateArgs) -> Res
                 );
             }
             serde_json::json!({
-                "format": format,
+                "format": format.as_str(),
                 "size_bytes": body.len(),
                 "items": v.get("items").and_then(|x| x.as_array()).map(|a| a.len()).unwrap_or(0),
                 "warnings": Vec::<String>::new(),
             })
         }
-        other => anyhow::bail!("feed-validate: unknown format {other:?}"),
     };
     if args.json {
         println!("{}", serde_json::to_string_pretty(&report)?);

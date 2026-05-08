@@ -197,7 +197,7 @@ pub struct WikiSection {
     /// Other `[wiki]` keys (canonical_repo, etc.) round-trip via this
     /// catch-all; not consumed by SPEC-038.
     #[serde(flatten)]
-    pub _passthrough: std::collections::BTreeMap<String, toml::Value>,
+    pub extras: std::collections::BTreeMap<String, toml::Value>,
 }
 
 /// Wire-shape for `select` keys. Allows either:
@@ -639,7 +639,7 @@ mod tests {
     }
 
     #[test]
-    fn wiki_section_passthrough_preserved() {
+    fn wiki_sectionextras_preserved() {
         let body = r#"
             [wiki]
             self_license = "CC-BY-SA-4.0"
@@ -652,8 +652,8 @@ mod tests {
         assert_eq!(wiki.self_license.as_deref(), Some("CC-BY-SA-4.0"));
         assert_eq!(wiki.is_commercial, Some(false));
         // Other keys round-trip via the catch-all.
-        assert!(wiki._passthrough.contains_key("canonical_repo"));
-        assert!(wiki._passthrough.contains_key("id"));
+        assert!(wiki.extras.contains_key("canonical_repo"));
+        assert!(wiki.extras.contains_key("id"));
     }
 
     #[test]
