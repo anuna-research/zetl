@@ -61,55 +61,46 @@ fn build_feed_discovery_tags(
     out
 }
 
-/// SPEC-038 outbound feed emission helper. Walks the parsed vault,
-/// synthesises a [`feed::types::FeedItem`] per page that opted in via
-/// `frontmatter.feed: true` (or every page if the [feed] selection rule
-/// is otherwise configured), runs the pure-core
-/// [`feed::build::emit_root_feed`] pipeline, and returns its
-/// [`feed::build::FeedEmission`].
+/// Owned per-page data for the SPEC-038 feed pipeline. Lives at the
+/// caller; [`page_views_from_owned`] borrows from this Vec to satisfy
+/// `feed::select::PageView<'a>` lifetimes.
+pub(crate) struct OwnedFeedPage {
+    pub(crate) slug: String,
+    pub(crate) path: PathBuf,
+    pub(crate) tags: Vec<String>,
+    pub(crate) item: crate::feed::types::FeedItem,
+    pub(crate) frontmatter_feed_optin: bool,
+}
+
+/// Build the page set the feed pipeline operates on. Reads each page
+/// from disk; for pages that did not opt in via frontmatter `feed:
+/// true`, only synthesises a stub `FeedItem` unless `populate_all` is
+/// set (scoped/cohort feed families need full items for non-opt-in
+/// pages so their `select` rules can match).
 ///
-/// Returns `Ok(None)` when the [feed] section is absent or has no
-/// `base_url` — REQ-3809 self-publication safety. Returns `Err` only
-/// for hard fatal cases (the pure pipeline asserts).
-fn emit_outbound_feeds(
+/// Returns `None` when `[feed]` is absent / disabled / missing
+/// `base_url`.
+pub(crate) fn build_owned_pages(
     lens: &crate::feed::config::FeedConfigLens,
     data: &VaultData,
     vault_root: &Path,
-    verbose: bool,
-) -> Result<Option<crate::feed::build::FeedEmission>> {
-    use crate::feed::build::emit_root_feed;
-    use crate::feed::select::PageView;
-    use crate::feed::types::{FeedItem, SelectionRule, SourceMetadata};
+) -> Option<Vec<OwnedFeedPage>> {
+    use crate::feed::types::{FeedItem, SourceMetadata};
     use crate::web::markdown::parse_frontmatter;
 
-    let Some(feed) = lens.feed.as_ref() else {
-        return Ok(None);
-    };
-    let Some(base_url) = feed.base_url.as_deref() else {
-        return Ok(None);
-    };
+    let feed = lens.feed.as_ref()?;
+    if matches!(feed.enabled, Some(false)) {
+        return None;
+    }
+    let base_url = feed.base_url.as_deref()?;
+    let populate_all = needs_full_population(lens);
     let base_url_trimmed = base_url.trim_end_matches('/');
-
-    // Build-invariant; parse once, not per page.
     let id_namespace = url::Url::parse(base_url_trimmed)
         .or_else(|_| url::Url::parse(&format!("{base_url_trimmed}/")))
         .unwrap_or_else(|_| url::Url::parse("https://example.invalid/").unwrap());
     let render_root = format!("{base_url_trimmed}/");
 
-    let walk_start = std::time::Instant::now();
-    let mut walk_io_ns: u128 = 0;
-    let mut walk_yaml_ns: u128 = 0;
-    let mut walk_render_ns: u128 = 0;
-    let mut walk_optin_skipped: usize = 0;
-
-    struct Owned {
-        slug: String,
-        path: PathBuf,
-        tags: Vec<String>,
-        item: FeedItem,
-        frontmatter_feed_optin: bool,
-    }
-    let mut owned: Vec<Owned> = Vec::with_capacity(data.files.len());
+    let mut owned: Vec<OwnedFeedPage> = Vec::with_capacity(data.files.len());
     for parsed in &data.files {
         let abs_path = vault_root.join(&parsed.path);
         let slug = data
@@ -117,20 +108,10 @@ fn emit_outbound_feeds(
             .get(&parsed.page_name)
             .cloned()
             .unwrap_or_else(|| parsed.page_name.clone());
-
-        // Single read; byte-scan the prelude for `feed: <bool>`. The
-        // full YAML parse only runs for pages that opted in, which
-        // is the rare case (≤10% of typical vaults). Skipping the
-        // YAML parse for the 90% non-opt-in case is the win — the
-        // read itself is unavoidable because the scanner doesn't
-        // hand us the page body.
-        let io_t = std::time::Instant::now();
         let body = std::fs::read_to_string(&abs_path).unwrap_or_default();
-        walk_io_ns += io_t.elapsed().as_nanos();
-
-        if !matches!(scan_frontmatter_feed_optin(&body), Some(true)) {
-            walk_optin_skipped += 1;
-            owned.push(Owned {
+        let opted_in = matches!(scan_frontmatter_feed_optin(&body), Some(true));
+        if !opted_in && !populate_all {
+            owned.push(OwnedFeedPage {
                 slug: slug.clone(),
                 path: parsed.path.clone(),
                 tags: Vec::new(),
@@ -151,11 +132,7 @@ fn emit_outbound_feeds(
             });
             continue;
         }
-        // Opted in: pay for the full YAML parse + render below.
-        let yaml_t = std::time::Instant::now();
         let frontmatter = parse_frontmatter(&body);
-        walk_yaml_ns += yaml_t.elapsed().as_nanos();
-
         let title = frontmatter
             .get("title")
             .and_then(|v| v.as_str())
@@ -175,7 +152,6 @@ fn emit_outbound_feeds(
             .unwrap_or_default();
         tags.sort();
         tags.dedup();
-
         let url = format!(
             "{base_url_trimmed}/{}",
             slug.split('/')
@@ -185,26 +161,19 @@ fn emit_outbound_feeds(
         );
         let id = crate::feed::item_id::item_id(&slug, &id_namespace, 2026)
             .unwrap_or_else(|_| format!("urn:zetl:{slug}"));
-
         let summary = crate::web::markdown::extract_description(&body, &frontmatter);
         let summary = if summary.is_empty() {
             None
         } else {
             Some(summary.chars().take(400).collect::<String>())
         };
-        // JSON Feed v1.1 requires at least one of content_html /
-        // content_text per item; truncate at a byte boundary (NOT
-        // chars — multi-byte UTF-8 would inflate the budget by up
-        // to 4×) to keep individual items bounded.
         let content_html = {
-            let render_t = std::time::Instant::now();
             let mut rendered = crate::web::markdown::render_to_html(
                 &body,
                 &data.page_slug_map,
                 &render_root,
                 "index.html",
             );
-            walk_render_ns += render_t.elapsed().as_nanos();
             const MAX_BYTES: usize = 65_536;
             if rendered.is_empty() {
                 None
@@ -243,18 +212,26 @@ fn emit_outbound_feeds(
                 ..Default::default()
             },
         };
-        owned.push(Owned {
+        owned.push(OwnedFeedPage {
             slug,
             path: parsed.path.clone(),
             tags,
             item,
-            frontmatter_feed_optin: true,
+            frontmatter_feed_optin: opted_in,
         });
     }
+    Some(owned)
+}
 
-    let pages: Vec<PageView<'_>> = owned
+/// Borrow [`OwnedFeedPage`]s as [`feed::select::PageView`]s. Caller
+/// owns the `Vec<OwnedFeedPage>`; returned references live as long as
+/// the input slice.
+pub(crate) fn page_views_from_owned(
+    owned: &[OwnedFeedPage],
+) -> Vec<crate::feed::select::PageView<'_>> {
+    owned
         .iter()
-        .map(|o| PageView {
+        .map(|o| crate::feed::select::PageView {
             slug: &o.slug,
             path: &o.path,
             frontmatter_feed_optin: o.frontmatter_feed_optin,
@@ -262,7 +239,67 @@ fn emit_outbound_feeds(
             matches_spl_query: false,
             item: o.item.clone(),
         })
-        .collect();
+        .collect()
+}
+
+/// Combined emission set for the SPEC-038 outbound feed families:
+/// the root feed, every `[[feed.scopes]]` entry, the
+/// `/.well-known/zetl-subscriptions.json` catalog, and every
+/// `[[capability_cohorts]]` with `feed_enabled = true`.
+pub(crate) struct OutboundEmission {
+    pub(crate) files: Vec<(String, Vec<u8>)>,
+    pub(crate) root_stats: crate::feed::build::BuildStats,
+    pub(crate) scoped_count: usize,
+    pub(crate) cohort_count: usize,
+    pub(crate) catalog_emitted: bool,
+}
+
+/// True iff any scoped/cohort feed family needs `FeedItem`s for
+/// non-opt-in pages. Scopes that select via `folder`/`tag`/`spl` are
+/// authoritative (independent of frontmatter `feed: true`); cohort
+/// feeds select via `cohort.select` glob, also independent of opt-in.
+fn needs_full_population(lens: &crate::feed::config::FeedConfigLens) -> bool {
+    use crate::feed::config::SelectionRuleWire;
+    if let Some(feed) = lens.feed.as_ref() {
+        for scope in &feed.scopes {
+            if matches!(&scope.select, SelectionRuleWire::Detailed(_)) {
+                return true;
+            }
+        }
+    }
+    lens.capability_cohorts.iter().any(|c| c.feed_enabled)
+}
+
+/// SPEC-038 outbound feed emission helper. Walks the parsed vault,
+/// synthesises a [`feed::types::FeedItem`] per page that opted in via
+/// `frontmatter.feed: true` (or every page when scoped/cohort feeds
+/// require it), runs the pure-core feed pipelines (root + scoped +
+/// catalog + cohort), and returns the combined file set.
+///
+/// Returns `Ok(None)` when the [feed] section is absent, disabled,
+/// or has no `base_url` — REQ-3809 self-publication safety. Returns
+/// `Err` only for hard fatal cases (the pure pipeline asserts).
+pub(crate) fn emit_outbound_feeds(
+    lens: &crate::feed::config::FeedConfigLens,
+    data: &VaultData,
+    vault_root: &Path,
+    verbose: bool,
+) -> Result<Option<OutboundEmission>> {
+    use crate::feed::build::emit_root_feed;
+    use crate::feed::cap_feed::emit_cohort_feeds;
+    use crate::feed::scoped::{emit_catalog, emit_scoped_feeds};
+    use crate::feed::select::PageView;
+    use crate::feed::types::SelectionRule;
+
+    let Some(feed) = lens.feed.as_ref() else {
+        return Ok(None);
+    };
+    let walk_start = std::time::Instant::now();
+    let Some(owned) = build_owned_pages(lens, data, vault_root) else {
+        return Ok(None);
+    };
+    let optin_count = owned.iter().filter(|o| o.frontmatter_feed_optin).count();
+    let pages = page_views_from_owned(&owned);
 
     // Public visibility: exclude cap-protected pages per SPEC-038
     // REQ-3829. The cap-protection check is delegated to feed::cap_feed.
@@ -270,20 +307,74 @@ fn emit_outbound_feeds(
         Box::new(crate::feed::cap_feed::public_visibility());
     let rule = SelectionRule::FrontmatterOptIn;
 
-    let walk_total = walk_start.elapsed();
     if verbose {
         eprintln!(
-            "[zetl] feed-perf: walk={}ms io={}ms yaml={}ms render={}ms pages={} optin_skipped={}",
-            walk_total.as_millis(),
-            walk_io_ns / 1_000_000,
-            walk_yaml_ns / 1_000_000,
-            walk_render_ns / 1_000_000,
+            "[zetl] feed-perf: walk={}ms pages={} optin={}",
+            walk_start.elapsed().as_millis(),
             data.files.len(),
-            walk_optin_skipped,
+            optin_count,
         );
     }
-    let emission = emit_root_feed(lens, &pages, &visibility, &rule)?;
-    Ok(Some(emission))
+    let root_emission = emit_root_feed(lens, &pages, &visibility, &rule)?;
+    let mut combined: Vec<(String, Vec<u8>)> = root_emission.files;
+
+    // ── per-scope feeds (REQ-3813..REQ-3815) ─────────────────────────
+    let scoped = emit_scoped_feeds(lens, &pages, &visibility)?;
+    let scoped_count = scoped.len();
+    for em in scoped {
+        combined.extend(em.files);
+    }
+
+    // ── /.well-known/zetl-subscriptions.json catalog (REQ-3813) ──────
+    let mut catalog_emitted = false;
+    if !feed.scopes.is_empty() {
+        let identity = build_wiki_identity(lens);
+        let (catalog_path, catalog_body) = emit_catalog(lens, &identity)?;
+        combined.push((catalog_path, catalog_body));
+        catalog_emitted = true;
+    }
+
+    // ── per-cohort feeds (REQ-3829, NFR-3809) ────────────────────────
+    // Build mode emits cohort feeds for every `feed_enabled = true`
+    // cohort. The token segment in the URL gates access; we use a
+    // permissive ACL here because per-request ACL doesn't apply at
+    // build time (the static body is what each cap holder fetches).
+    let cohort_acl = |_cohort_id: &str, _p: &PageView<'_>| true;
+    let cohort_emissions = emit_cohort_feeds(lens, &pages, &cohort_acl)?;
+    let cohort_count = cohort_emissions.len();
+    for em in cohort_emissions {
+        combined.extend(em.files);
+    }
+
+    Ok(Some(OutboundEmission {
+        files: combined,
+        root_stats: root_emission.stats,
+        scoped_count,
+        cohort_count,
+        catalog_emitted,
+    }))
+}
+
+/// Build a [`crate::feed::scoped::WikiIdentity`] from `lens.wiki`. The
+/// `[wiki]` section's `id`, `canonical_repo`, and `title` keys
+/// round-trip via the `extras` catch-all (see `WikiSection::extras`).
+fn build_wiki_identity(
+    lens: &crate::feed::config::FeedConfigLens,
+) -> crate::feed::scoped::WikiIdentity {
+    let Some(wiki) = lens.wiki.as_ref() else {
+        return crate::feed::scoped::WikiIdentity::default();
+    };
+    let extra_str = |k: &str| {
+        wiki.extras
+            .get(k)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    };
+    crate::feed::scoped::WikiIdentity {
+        id: extra_str("id"),
+        canonical_repo: extra_str("canonical_repo"),
+        title: extra_str("title"),
+    }
 }
 
 fn frontmatter_date(fm: &serde_json::Value) -> Option<String> {
@@ -875,16 +966,21 @@ pub fn build_static(
     };
     if let Some(lens) = feed_setup.as_ref() {
         if let Some(feed) = lens.feed.as_ref() {
-            // [feed] is configured but base_url is the only required
-            // outbound field. Missing it is REQ-3809 self-publication
-            // safety: hard-fail.
-            let base_url = feed.base_url.as_deref().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "[zetl] feed-config: [feed] is configured but base_url is missing (REQ-3809)"
-                )
-            })?;
-            let title = feed.title.as_deref().unwrap_or("Untitled feed");
-            vault_ctx.feed_discovery = build_feed_discovery_tags(feed, base_url, title);
+            // `enabled = false` is an explicit operator opt-out: skip
+            // discovery-tag injection AND the later emit_outbound_feeds
+            // call so the build doesn't fail with BuildError::Disabled.
+            if !matches!(feed.enabled, Some(false)) {
+                // [feed] is configured but base_url is the only required
+                // outbound field. Missing it is REQ-3809 self-publication
+                // safety: hard-fail.
+                let base_url = feed.base_url.as_deref().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "[zetl] feed-config: [feed] is configured but base_url is missing (REQ-3809)"
+                    )
+                })?;
+                let title = feed.title.as_deref().unwrap_or("Untitled feed");
+                vault_ctx.feed_discovery = build_feed_discovery_tags(feed, base_url, title);
+            }
         }
     }
     #[cfg(feature = "history")]
@@ -1212,11 +1308,14 @@ pub fn build_static(
             }
             if verbose {
                 eprintln!(
-                    "[zetl] feed: emitted {} file(s); items_selected={} items_emitted={} duration_ms={}",
+                    "[zetl] feed: emitted {} file(s); items_selected={} items_emitted={} scopes={} cohorts={} catalog={} root_duration_ms={}",
                     emission.files.len(),
-                    emission.stats.items_selected,
-                    emission.stats.items_emitted,
-                    emission.stats.duration.as_millis(),
+                    emission.root_stats.items_selected,
+                    emission.root_stats.items_emitted,
+                    emission.scoped_count,
+                    emission.cohort_count,
+                    emission.catalog_emitted,
+                    emission.root_stats.duration.as_millis(),
                 );
             }
         }

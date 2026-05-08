@@ -5798,6 +5798,95 @@ pub async fn llms_txt_handler(State(state): State<WebState>) -> Response {
         .into_response()
 }
 
+// ── GET /feed.xml | /atom.xml | /feed.json — SPEC-038 outbound feeds ─────
+//
+// Wraps the same pure-core pipeline as `zetl build` so build- and
+// serve-mode feeds stay byte-identical for the same vault state.
+// Returns 404 when [feed] is absent / disabled / missing base_url so
+// the route doesn't shadow the page-handler fallback for vaults that
+// haven't opted into feeds.
+async fn feed_handler_for(state: WebState, format: crate::feed::types::OutputFormat) -> Response {
+    let cfg_path = state.vault_root.join(".zetl").join("config.toml");
+    let cfg_body = match std::fs::read_to_string(&cfg_path) {
+        Ok(s) => s,
+        Err(_) => return StatusCode::NOT_FOUND.into_response(),
+    };
+    let lens = match crate::feed::config::parse_config(&cfg_body) {
+        Ok(l) => l,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                format!("[zetl] feed-config error: {e}"),
+            )
+                .into_response();
+        }
+    };
+    if lens.feed.is_none()
+        || matches!(lens.feed.as_ref().and_then(|f| f.enabled), Some(false))
+        || lens
+            .feed
+            .as_ref()
+            .map(|f| f.base_url.is_none())
+            .unwrap_or(true)
+    {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    if matches!(format, crate::feed::types::OutputFormat::JsonFeed11)
+        && !lens
+            .feed
+            .as_ref()
+            .and_then(|f| f.enable_json)
+            .unwrap_or(false)
+    {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
+    let owned = match crate::web::build::build_owned_pages(&lens, &data, &state.vault_root) {
+        Some(o) => o,
+        None => return StatusCode::NOT_FOUND.into_response(),
+    };
+    let pages = crate::web::build::page_views_from_owned(&owned);
+    let visibility = crate::feed::cap_feed::public_visibility();
+    let resp = crate::feed::serve::render_feed(
+        &lens,
+        &pages,
+        &visibility,
+        &crate::feed::types::SelectionRule::FrontmatterOptIn,
+        format,
+        state.collab,
+    );
+    match resp {
+        Ok(r) => (
+            StatusCode::from_u16(r.status).unwrap_or(StatusCode::OK),
+            [
+                (header::CONTENT_TYPE, r.content_type.to_string()),
+                (header::CACHE_CONTROL, r.cache_control),
+            ],
+            r.body,
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            format!("[zetl] feed-render error: {e}"),
+        )
+            .into_response(),
+    }
+}
+
+pub async fn feed_xml_handler(State(state): State<WebState>) -> Response {
+    feed_handler_for(state, crate::feed::types::OutputFormat::Rss20).await
+}
+
+pub async fn atom_xml_handler(State(state): State<WebState>) -> Response {
+    feed_handler_for(state, crate::feed::types::OutputFormat::Atom10).await
+}
+
+pub async fn feed_json_handler(State(state): State<WebState>) -> Response {
+    feed_handler_for(state, crate::feed::types::OutputFormat::JsonFeed11).await
+}
+
 // ── GET /graph-index.json — graphology CON-101 export (REQ-103) ──────────
 //
 // Mirrors the build-mode `<out-dir>/graph-index.json` asset so themes can

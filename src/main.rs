@@ -5431,13 +5431,27 @@ fn cmd_feed_validate(cli: &Cli, args: &zetl::feed::cli::FeedValidateArgs) -> Res
             let bytes = body.as_bytes();
             zetl::feed::fetch::assert_no_xxe(bytes)
                 .map_err(|e| anyhow::anyhow!("feed-validate xxe-check: {e}"))?;
-            // For v1: just a no-XXE + parses-as-XML smoke test. The
-            // pinned strict-parser CI gate (NFR-3805) lives behind
-            // task-tests-conformance.
+            // Well-formedness check: walks the body once with a tag
+            // stack so arbitrary text and unbalanced markup don't
+            // exit 0 as a valid feed (PR review fix).
+            let root = zetl::feed::xml::assert_xml_well_formed(&body)
+                .map_err(|e| anyhow::anyhow!("feed-validate xml: {e}"))?;
+            let expected_root = match format {
+                FeedValidateFormat::Rss => "rss",
+                FeedValidateFormat::Atom => "feed",
+                _ => unreachable!(),
+            };
+            if root != expected_root {
+                anyhow::bail!(
+                    "feed-validate {fmt}: root element <{root}> does not match expected <{expected_root}>",
+                    fmt = format.as_str(),
+                );
+            }
             serde_json::json!({
                 "format": format.as_str(),
                 "size_bytes": body.len(),
                 "xxe": "ok",
+                "root": root,
                 "warnings": Vec::<String>::new(),
             })
         }
