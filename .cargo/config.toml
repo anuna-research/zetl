@@ -6,3 +6,11 @@
 # requiring a separate install step.
 [alias]
 xtask = "run --package xtask --"
+
+# Pin a single macOS deployment target so rustc (defaults to 11.0 for
+# aarch64-apple-darwin) and cc-rs (defaults to the host SDK, currently
+# 26.x) agree. Without this, Apple's ld-prime linker (Xcode CLT 26.x)
+# segfaults on the three-way version skew between Rust objects, C
+# objects, and Homebrew dylibs.
+[env]
+MACOSX_DEPLOYMENT_TARGET = "12.0"
