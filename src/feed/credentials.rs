@@ -36,6 +36,14 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+/// REQ-3825 owner-only mode for `.zetl/credentials.toml`. Enforced on
+/// every read; set on every write.
+pub const REQUIRED_MODE: u32 = 0o600;
+/// Mask of permission bits we care about (rwxrwxrwx); ignores SUID
+/// bits and file-type bits when comparing against [`REQUIRED_MODE`].
+pub const MODE_MASK: u32 = 0o777;
 
 /// One subscription's credential record. Tagged-union over auth scheme.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -163,6 +171,25 @@ pub fn config_credential_leak_scan(config_body: &str) -> Result<(), CredentialEr
     }
 }
 
+/// Key names that flag a credential leak when found in
+/// `.zetl/config.toml`. Covers every variant of [`Credential`] plus
+/// the wider set of secret-shaped query-param keys recognised by
+/// [`crate::feed::auth::SECRET_PARAM_KEYS`].
+pub const LEAK_SCAN_KEYS: &[&str] = &[
+    // Credential variants from this module.
+    "password",
+    "token",
+    "token_value",
+    "token_param",
+    "url_with_token",
+    // Generic secret-shaped keys (mirrors auth::SECRET_PARAM_KEYS).
+    "secret",
+    "auth",
+    "api_key",
+    "apikey",
+    "access_token",
+];
+
 fn walk_for_creds(value: &toml::Value, path: String, out: &mut Vec<String>) {
     match value {
         toml::Value::Table(t) => {
@@ -172,7 +199,7 @@ fn walk_for_creds(value: &toml::Value, path: String, out: &mut Vec<String>) {
                 } else {
                     format!("{path}.{k}")
                 };
-                if matches!(k.as_str(), "password" | "token" | "url_with_token") {
+                if LEAK_SCAN_KEYS.iter().any(|key| k.eq_ignore_ascii_case(key)) {
                     out.push(here.clone());
                 }
                 walk_for_creds(v, here, out);
@@ -191,6 +218,96 @@ fn walk_for_creds(value: &toml::Value, path: String, out: &mut Vec<String>) {
 /// stable, deterministic output (BTreeMap iteration order).
 pub fn serialize_credentials_file(file: &CredentialsFile) -> Result<String, CredentialError> {
     toml::to_string_pretty(&file.0).map_err(|e| CredentialError::Toml(e.to_string()))
+}
+
+/// REQ-3825 read path: load `.zetl/credentials.toml` from disk after
+/// verifying the file's permission bits match [`REQUIRED_MODE`].
+/// Refuses to load with [`CredentialError::LooseMode`] when the file
+/// is readable by group or other (or any non-owner bit). On non-Unix
+/// platforms the mode check is skipped — Windows ACLs are out of
+/// scope for v1; the shell layer documents this in its operator
+/// guidance.
+pub fn load_credentials_file(path: &Path) -> Result<CredentialsFile, CredentialError> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let metadata = std::fs::metadata(path).map_err(|e| CredentialError::Io {
+            path: path.to_path_buf(),
+            message: e.to_string(),
+        })?;
+        let mode = metadata.permissions().mode() & MODE_MASK;
+        if mode != REQUIRED_MODE {
+            return Err(CredentialError::LooseMode {
+                path: path.to_path_buf(),
+                actual: mode,
+                required: REQUIRED_MODE,
+            });
+        }
+    }
+    let body = std::fs::read_to_string(path).map_err(|e| CredentialError::Io {
+        path: path.to_path_buf(),
+        message: e.to_string(),
+    })?;
+    parse_credentials_file(&body)
+}
+
+/// REQ-3825 write path: serialise + atomic write-then-rename with
+/// mode-0600 set before the rename. The temp file lives next to the
+/// target so the rename is in the same filesystem (atomic on POSIX
+/// + NTFS). On Unix, the temp file is created with mode-0600 from
+/// the start so the secret is never visible at a looser mode even
+/// transiently.
+pub fn save_credentials_file(
+    path: &Path,
+    file: &CredentialsFile,
+) -> Result<(), CredentialError> {
+    let body = serialize_credentials_file(file)?;
+    let tmp_path = sibling_tmp_path(path);
+    write_owner_only(&tmp_path, body.as_bytes()).map_err(|e| CredentialError::Io {
+        path: tmp_path.clone(),
+        message: e.to_string(),
+    })?;
+    std::fs::rename(&tmp_path, path).map_err(|e| {
+        // Best-effort tmp cleanup; preserve the original error.
+        let _ = std::fs::remove_file(&tmp_path);
+        CredentialError::Io {
+            path: path.to_path_buf(),
+            message: format!("rename {} -> {}: {e}", tmp_path.display(), path.display()),
+        }
+    })?;
+    Ok(())
+}
+
+fn sibling_tmp_path(target: &Path) -> PathBuf {
+    let mut name = target
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_else(|| std::ffi::OsString::from("credentials"));
+    name.push(".tmp");
+    target
+        .parent()
+        .map(|p| p.join(&name))
+        .unwrap_or_else(|| PathBuf::from(&name))
+}
+
+#[cfg(unix)]
+fn write_owner_only(path: &Path, body: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .mode(REQUIRED_MODE)
+        .open(path)?;
+    f.write_all(body)?;
+    f.sync_all()?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn write_owner_only(path: &Path, body: &[u8]) -> std::io::Result<()> {
+    std::fs::write(path, body)
 }
 
 /// Errors at the credentials-store boundary.
@@ -214,6 +331,16 @@ pub enum CredentialError {
          move them to .zetl/credentials.toml (mode 0600)"
     )]
     ConfigLeak(Vec<String>),
+    /// REQ-3825: file mode is looser than 0600 on read.
+    #[error("{path:?} mode {actual:o} differs from required {required:o} (REQ-3825); chmod 600 the file before retrying")]
+    LooseMode {
+        path: PathBuf,
+        actual: u32,
+        required: u32,
+    },
+    /// Filesystem error during read or write.
+    #[error("io on {path:?}: {message}")]
+    Io { path: PathBuf, message: String },
 }
 
 /// Lines added to `.gitignore` by `zetl init` per REQ-3825's secrets-
@@ -388,5 +515,112 @@ mod tests {
     fn gitignore_entries_cover_both_storage_shapes() {
         assert!(GITIGNORE_ENTRIES.contains(&".zetl/credentials.toml"));
         assert!(GITIGNORE_ENTRIES.contains(&".zetl/credentials/"));
+    }
+
+    #[test]
+    fn config_leak_scan_finds_query_param_token_value() {
+        // REQ-3825: an operator pasting a query_param block into
+        // .zetl/config.toml must be warned about every secret-shaped
+        // key, not just `token` / `password` / `url_with_token`.
+        let body = r#"
+            [[subscriptions]]
+            id = "x"
+            source = "https://upstream/feed"
+            token_param = "api_key"
+            token_value = "secret"
+        "#;
+        let err = config_credential_leak_scan(body).unwrap_err();
+        match err {
+            CredentialError::ConfigLeak(paths) => {
+                assert!(paths.iter().any(|p| p.ends_with(".token_value")), "got {paths:?}");
+                assert!(paths.iter().any(|p| p.ends_with(".token_param")), "got {paths:?}");
+            }
+            other => panic!("expected ConfigLeak, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn config_leak_scan_finds_generic_secret_keys() {
+        for key in ["api_key", "apikey", "secret", "auth", "access_token"] {
+            let body = format!(
+                r#"
+                [[subscriptions]]
+                id = "x"
+                source = "y"
+                {key} = "leaked"
+                "#
+            );
+            let err = config_credential_leak_scan(&body).unwrap_err();
+            match err {
+                CredentialError::ConfigLeak(paths) => {
+                    assert!(paths.iter().any(|p| p.ends_with(&format!(".{key}"))), "key {key} not flagged: {paths:?}");
+                }
+                other => panic!("expected ConfigLeak for {key}, got {other:?}"),
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn load_credentials_file_rejects_loose_mode() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!(
+            "zetl-cred-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("credentials.toml");
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(b"[x]\nauth_type=\"bearer\"\ntoken=\"t\"\n").unwrap();
+        // Looser-than-0600 (group + other can read).
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let err = load_credentials_file(&path).unwrap_err();
+        match err {
+            CredentialError::LooseMode { actual, required, .. } => {
+                assert_eq!(actual, 0o644);
+                assert_eq!(required, 0o600);
+            }
+            other => panic!("expected LooseMode, got {other:?}"),
+        }
+        // chmod to 0600 and confirm load succeeds.
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let file = load_credentials_file(&path).unwrap();
+        assert!(file.get("x").unwrap().is_some());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_credentials_file_writes_mode_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!(
+            "zetl-cred-write-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("credentials.toml");
+        let mut file = CredentialsFile::default();
+        file.0.insert(
+            "x".to_string(),
+            Credential::Bearer {
+                token: "secret".to_string(),
+            },
+        );
+        save_credentials_file(&path, &file).unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "save did not set 0600 (got {mode:o})");
+        // Round-trip: load it back via the protected reader.
+        let back = load_credentials_file(&path).unwrap();
+        assert_eq!(file, back);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -18,8 +18,20 @@
 //!   side-effect-only at the file boundary; the parsed scheme structs
 //!   remain inert data.
 //!
-//! Effectful shell modules (`build`, `serve`, `fetch`, `persist`,
-//! `moderation_ui`) land in later phases and are not yet present.
+//! Effectful shell modules:
+//! - [`build`] — outbound build-mode emission (file bodies + stats)
+//! - [`serve`] — outbound serve-mode response builders
+//! - [`scoped`] — Hugo's scoped subscription catalog + per-scope feeds
+//! - [`changelog`] — AST-backed changelog feed events
+//! - [`cap_feed`] — capability-cohort feed exclusion + emission
+//! - [`fetch`] — SSRF/XXE/decompression-safe inbound fetcher
+//!   (transport behind the [`fetch::HttpTransport`] trait)
+//! - [`auth`] — inbound Basic/Bearer/QueryParam auth + redirect drop
+//! - [`inbound`] — CC-aware republication wiring
+//! - [`retention`] / [`forget`] — retention pruning + tombstone-backed
+//!   `zetl feed forget`
+//! - [`cli`] — `zetl feed` clap argument types
+//! - [`observability`] — metric counters + histogram + cardinality bounds
 
 pub mod auth;
 pub mod build;

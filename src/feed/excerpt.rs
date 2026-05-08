@@ -97,8 +97,10 @@ fn strip_html(html: &str) -> String {
                 .unwrap_or("")
                 .to_ascii_lowercase();
             let name = name.trim_end_matches('/');
-            // Skip-block tags swallow content until the matching close.
-            if matches!(name, "script" | "style") && !close {
+            // Skip-block tags swallow content until the matching close
+            // per the module-level "skips images, embeds, scripts,
+            // style, audio/video" promise.
+            if matches!(name, "script" | "style" | "audio" | "video" | "iframe") && !close {
                 if let Some(close_at) = find_close_tag(html, end + 1, name) {
                     i = close_at;
                     continue;
@@ -113,8 +115,12 @@ fn strip_html(html: &str) -> String {
             i = end + 1;
             continue;
         }
-        out.push(html.as_bytes()[i] as char);
-        i += 1;
+        // Default: copy one UTF-8 codepoint. Casting `bytes[i] as char`
+        // would mangle multi-byte sequences (é, em-dash, CJK, emoji).
+        let rest = &html[i..];
+        let ch = rest.chars().next().expect("loop condition guarantees i < len");
+        out.push(ch);
+        i += ch.len_utf8();
     }
     // Decode the most common entities. The pure core deliberately
     // doesn't pull in a full HTML entity table; serialisers fix up
@@ -136,14 +142,36 @@ fn find_byte(bytes: &[u8], target: u8, start: usize) -> Option<usize> {
 }
 
 /// Locate the byte offset just after the next `</name>` (case-
-/// insensitive). Used to skip the entire body of `<script>` / `<style>`.
+/// insensitive). Used to skip the entire body of `<script>` / `<style>`
+/// / `<audio>` / `<video>` / `<iframe>`. We scan the input directly
+/// in a case-insensitive byte-by-byte loop rather than allocating a
+/// lowercased copy of the entire input on every call — with N
+/// container tags in a 1 MiB body the latter would be O(N · |html|).
 fn find_close_tag(html: &str, start: usize, name: &str) -> Option<usize> {
-    let needle = format!("</{}", name);
-    let lower = html.to_ascii_lowercase();
-    let pos = lower[start..].find(&needle)? + start;
-    // Walk to the closing `>`.
-    let after = html.as_bytes().iter().skip(pos).position(|&b| b == b'>')?;
-    Some(pos + after + 1)
+    let bytes = html.as_bytes();
+    let needle: Vec<u8> = format!("</{name}").bytes().collect();
+    if start >= bytes.len() {
+        return None;
+    }
+    let mut i = start;
+    while i + needle.len() <= bytes.len() {
+        let mut matched = true;
+        for (k, &needle_byte) in needle.iter().enumerate() {
+            // Case-insensitive ASCII match; tag names are ASCII.
+            let actual = bytes[i + k];
+            if actual != needle_byte && actual.to_ascii_lowercase() != needle_byte {
+                matched = false;
+                break;
+            }
+        }
+        if matched {
+            // Walk to the closing `>`.
+            let after = bytes[i..].iter().position(|&b| b == b'>')?;
+            return Some(i + after + 1);
+        }
+        i += 1;
+    }
+    None
 }
 
 fn collapse_whitespace(s: &str) -> String {
@@ -320,5 +348,33 @@ mod tests {
         let body = "<p>broken <em>fragment <strong>here";
         let out = excerpt(body, 100);
         assert!(out.contains("broken"));
+    }
+
+    #[test]
+    fn multibyte_utf8_passes_through_intact() {
+        // Earlier `bytes[i] as char` cast mangled multi-byte UTF-8.
+        // Verify café (2-byte), em-dash (3-byte), CJK (3-byte), and
+        // an emoji (4-byte) all survive.
+        let body = "<p>café — 日本語 🎉 plus enough other words to satisfy the fifty-word minimum bound that the function debug-asserts on its first parameter.</p>";
+        let out = excerpt(body, 50);
+        assert!(out.contains("café"), "got {out:?}");
+        assert!(out.contains("—"), "got {out:?}");
+        assert!(out.contains("日本語"), "got {out:?}");
+        assert!(out.contains("🎉"), "got {out:?}");
+    }
+
+    #[test]
+    fn audio_video_iframe_inner_text_swallowed() {
+        let body = "<p>before</p>\
+                    <video><source src=x>narration that should not survive</video>\
+                    <audio>broadcast that should not survive</audio>\
+                    <iframe>third-party that should not survive</iframe>\
+                    <p>after</p>";
+        let out = excerpt(body, 100);
+        assert!(out.contains("before"));
+        assert!(out.contains("after"));
+        assert!(!out.contains("narration"), "audio/video swallowed: {out:?}");
+        assert!(!out.contains("broadcast"));
+        assert!(!out.contains("third-party"));
     }
 }

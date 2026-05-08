@@ -99,7 +99,10 @@ pub fn diff_snapshots(
             Some(prev_node) => {
                 if prev_node.source_path != node.source_path {
                     events.push(ChangeEvent {
-                        event_id: format!("{obj_id}:moved:{seq}"),
+                        event_id: format!(
+                            "{obj_id}:moved:{}->{}",
+                            prev_node.content_hash, node.content_hash
+                        ),
                         object_id: obj_id.clone(),
                         event_type: EventType::Moved,
                         source_path: node.source_path.clone(),
@@ -133,7 +136,7 @@ pub fn diff_snapshots(
     for (obj_id, node) in &prev.nodes {
         if !curr.nodes.contains_key(obj_id) {
             events.push(ChangeEvent {
-                event_id: format!("{obj_id}:deleted:{seq}"),
+                event_id: format!("{obj_id}:deleted:{}", node.content_hash),
                 object_id: obj_id.clone(),
                 event_type: EventType::Deleted,
                 source_path: node.source_path.clone(),
@@ -235,6 +238,27 @@ mod tests {
         let seqs: Vec<u64> = events.iter().map(|e| e.changelog_seq).collect();
         assert_eq!(seqs, vec![100, 101, 102]);
         assert_eq!(next, 103);
+    }
+
+    #[test]
+    fn event_id_is_seq_independent_for_moved_and_deleted() {
+        // REQ-3817: event_id is stable per (object_id, content_hash)
+        // pair regardless of where the running seq counter sits.
+        let mut prev = AstSnapshot::default();
+        prev.nodes.insert("foo".to_string(), fp("a.md", "h1"));
+        let mut curr = AstSnapshot::default();
+        curr.nodes.insert("foo".to_string(), fp("b.md", "h2"));
+        let (e_at_zero, _) = diff_snapshots(&prev, &curr, 0, "2026-05-08T00:00:00Z");
+        let (e_at_thousand, _) = diff_snapshots(&prev, &curr, 1000, "2026-05-08T00:00:00Z");
+        assert_eq!(e_at_zero[0].event_id, e_at_thousand[0].event_id);
+
+        // Same shape for Deleted.
+        let mut prev = AstSnapshot::default();
+        prev.nodes.insert("foo".to_string(), fp("a.md", "h1"));
+        let curr = AstSnapshot::default();
+        let (e_at_zero, _) = diff_snapshots(&prev, &curr, 0, "2026-05-08T00:00:00Z");
+        let (e_at_thousand, _) = diff_snapshots(&prev, &curr, 1000, "2026-05-08T00:00:00Z");
+        assert_eq!(e_at_zero[0].event_id, e_at_thousand[0].event_id);
     }
 
     #[test]

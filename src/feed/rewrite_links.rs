@@ -1,16 +1,20 @@
 //! Wikilink-rewriting pure function per REQ-3805 + REQ-3807.
 //!
-//! Walks the rendered content, finds `[[wikilink]]` syntax (and
-//! optionally already-rendered `<a href="/slug">` to internal slugs),
+//! Walks the rendered content, finds `[[wikilink]]` syntax, and
 //! rewrites each to an absolute URL by prepending the configured
-//! `base_url`. Unresolved targets receive the configured policy
-//! treatment.
+//! `base_url`. Already-rendered `<a href="/slug">` anchors are left
+//! untouched — they're not the rewriter's responsibility, and the
+//! `idempotent` property below depends on the second pass treating
+//! the first pass's `<a>` output as inert. Unresolved targets receive
+//! the configured policy treatment.
 //!
 //! Properties:
 //!   * **Idempotent**: `rewrite(rewrite(c)) == rewrite(c)` (tested).
 //!     Once a wikilink has been replaced with `<a href>` the second
 //!     pass finds no remaining `[[…]]` syntax to rewrite.
 //!   * **Pure**: takes a slug-resolver callable; never reaches network.
+//!   * **UTF-8 safe**: multi-byte sequences round-trip unchanged
+//!     (regression-tested for café / em-dash / CJK / emoji).
 
 use url::Url;
 
@@ -76,10 +80,15 @@ pub fn rewrite_links(
                 }
             }
         }
-        // Default: copy a single byte. Multi-byte UTF-8 chars stream
-        // through unchanged because we never split mid-char.
-        out.push(bytes[i] as char);
-        i += 1;
+        // Default: copy one UTF-8 codepoint. Casting `bytes[i] as char`
+        // would interpret continuation bytes as Latin-1 codepoints and
+        // re-encode them, mangling any multi-byte sequence (é, em-dash,
+        // CJK, emoji). Decode the next char from the &str slice and
+        // advance by its byte length.
+        let rest = &content[i..];
+        let ch = rest.chars().next().expect("loop condition guarantees i < len");
+        out.push(ch);
+        i += ch.len_utf8();
     }
     out
 }
@@ -291,5 +300,18 @@ mod tests {
         let body = "use [single] brackets and [link](http://x)";
         let out = rewrite_links(body, &base(), &always_resolve, UnresolvedPolicy::PreserveText);
         assert_eq!(out, body);
+    }
+
+    #[test]
+    fn multibyte_utf8_passes_through_intact() {
+        // Latin-1 reinterpretation of UTF-8 continuation bytes was the
+        // earlier bug. Test café (2-byte), em-dash (3-byte), CJK
+        // (3-byte), and an emoji (4-byte) all survive both inside
+        // wikilink alias text and in surrounding prose.
+        let body = "before café — 日本語 🎉 [[foo|alias—😀]] after";
+        let out = rewrite_links(body, &base(), &always_resolve, UnresolvedPolicy::PreserveText);
+        assert!(out.contains("before café — 日本語 🎉"), "got {out:?}");
+        assert!(out.contains("alias—😀"), "got {out:?}");
+        assert!(out.contains(r#"href="https://example.com/foo""#));
     }
 }

@@ -70,9 +70,15 @@ pub fn serialise_atom(items: &[FeedItem], config: &FeedConfig) -> String {
             push_text(&mut out, "    ", "summary", summary);
         }
         if let Some(content) = &item.content_html {
-            out.push_str(r#"    <content type="html"><![CDATA[ "#);
-            out.push_str(&cdata_escape(content));
-            out.push_str(" ]]></content>\n");
+            // REQ-3806: Atom content type=html uses character entity
+            // escaping, not CDATA. (CDATA is the RSS path; Atom's
+            // strict-parser conformance gate prefers entity-escaped
+            // bodies.) escape_text expands &, <, >, leaving the rest
+            // of the bytes intact — feed readers re-parse the entities
+            // back to their HTML markup.
+            out.push_str(r#"    <content type="html">"#);
+            out.push_str(&escape_text(content));
+            out.push_str("</content>\n");
         }
         push_zetl_metadata(&mut out, "    ", &item.source_metadata);
         out.push_str("  </entry>\n");
@@ -145,10 +151,6 @@ fn escape_attr(s: &str) -> String {
         .replace('"', "&quot;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
-}
-
-fn cdata_escape(s: &str) -> String {
-    s.replace("]]>", "]]]]><![CDATA[>")
 }
 
 fn absolute_url(base: &str, path: &str) -> String {
@@ -231,6 +233,16 @@ mod tests {
     fn deterministic_byte_identical() {
         let items = vec![item("a"), item("b")];
         assert_eq!(serialise_atom(&items, &cfg()), serialise_atom(&items, &cfg()));
+    }
+
+    #[test]
+    fn content_uses_entity_escaping_not_cdata() {
+        // REQ-3806: Atom content type=html uses character entities;
+        // RSS uses CDATA. Confirm no CDATA wrapper in atom output.
+        let s = serialise_atom(&[item("foo")], &cfg());
+        assert!(!s.contains("<![CDATA["), "atom must not use CDATA, got {s}");
+        // The <p>hello</p> body should appear entity-escaped.
+        assert!(s.contains("&lt;p&gt;hello&lt;/p&gt;"), "got {s}");
     }
 
     #[test]

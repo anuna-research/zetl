@@ -26,7 +26,7 @@ use crate::feed::select::PageView;
 use crate::feed::serialise_atom::serialise_atom;
 use crate::feed::serialise_jsonfeed::serialise_jsonfeed;
 use crate::feed::serialise_rss::serialise_rss;
-use crate::feed::types::{FeedPaths, OutputFormatSet, SelectionRule};
+use crate::feed::types::{FeedPaths, OutputFormatSet};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use std::time::Instant;
 
@@ -61,7 +61,14 @@ pub fn cohort_visibility(
 }
 
 fn is_cap_protected(page: &PageView<'_>) -> bool {
-    page.slug.contains("caps/") || page.url_contains_caps()
+    // The slug check accepts either a top-level `caps/<token>/...`
+    // page or an arbitrarily-nested `*/caps/<token>/...` page; we
+    // require the segment boundary so legitimate slugs like
+    // `landscaps/x` or `caps-lock` don't get hidden.
+    let slug = page.slug;
+    let is_top_level = slug == "caps" || slug.starts_with("caps/");
+    let is_nested = slug.contains("/caps/");
+    is_top_level || is_nested || page.url_contains_caps()
 }
 
 trait UrlContainsCaps {
@@ -109,28 +116,23 @@ fn emit_one_cohort(
         .as_ref()
         .and_then(|f| f.max_items)
         .unwrap_or(crate::feed::build::DEFAULT_MAX_ITEMS);
-    let chosen = crate::feed::select::select(
-        pages,
-        &SelectionRule::FrontmatterOptIn,
-        &visibility,
-        max_items,
-    );
 
-    // Use globset selector implicitly; we already filtered via
-    // visibility above, so SelectionRule::FrontmatterOptIn just keeps
-    // pages that opted in. Cohort feeds intentionally don't require
-    // the public opt-in; flip to a SPL-like always-true rule here.
-    let chosen_no_optin = pages
+    // Cohort feeds don't require the public `feed: true` opt-in
+    // (the cohort's `select` glob is the authoritative selector).
+    // We collect every visibility-passing page, then apply the same
+    // (date desc, id asc) sort + `max_items` truncation that
+    // `select::select` enforces for REQ-3802 determinism.
+    let mut chosen: Vec<crate::feed::types::FeedItem> = pages
         .iter()
         .filter(|p| visibility(p))
         .map(|p| p.item.clone())
-        .take(max_items as usize)
-        .collect::<Vec<_>>();
-    let chosen = if chosen_no_optin.len() > chosen.len() {
-        chosen_no_optin
-    } else {
-        chosen
-    };
+        .collect();
+    chosen.sort_by(|a, b| {
+        b.date_published
+            .cmp(&a.date_published)
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    chosen.truncate(max_items as usize);
 
     let token_segment = &cohort.token;
     let atom_path = format!("/caps/{token_segment}/atom.xml");

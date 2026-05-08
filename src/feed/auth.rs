@@ -51,10 +51,26 @@ pub fn strip_credentials_on_cross_origin_redirect(
     cred: &Credential,
 ) -> FetchRequest {
     if !is_cross_origin(&request.url, redirect_to) {
-        return FetchRequest {
+        // Same-origin: keep the auth_header (Basic/Bearer) attached and
+        // re-splice any QueryParam token onto the new URL — `redirect_to`
+        // is the server's `Location` and won't carry the token we
+        // appended in `apply_auth`.
+        let mut same_origin = FetchRequest {
             url: redirect_to.clone(),
             ..request
         };
+        if let Credential::QueryParam {
+            token_param: Some(param),
+            token_value: Some(value),
+            ..
+        } = cred
+        {
+            same_origin
+                .url
+                .query_pairs_mut()
+                .append_pair(param, value);
+        }
+        return same_origin;
     }
     let mut stripped = FetchRequest {
         url: redirect_to.clone(),
@@ -245,6 +261,28 @@ mod tests {
         let redirect = Url::parse("https://example.com/feed/v2").unwrap();
         let stripped = strip_credentials_on_cross_origin_redirect(original.clone(), &redirect, &cred);
         assert!(stripped.auth_header.is_some());
+    }
+
+    #[test]
+    fn same_origin_redirect_re_splices_query_param_token() {
+        // Without re-splicing, redirect_to (the server's Location)
+        // would lack the token, and the next request would 401.
+        let cred = Credential::QueryParam {
+            url_with_token: None,
+            token_param: Some("api_key".to_string()),
+            token_value: Some("secret".to_string()),
+        };
+        let original = apply_auth(req("https://example.com/feed"), &cred);
+        assert!(original.url.query().unwrap().contains("api_key=secret"));
+        let redirect = Url::parse("https://example.com/feed/v2").unwrap();
+        let resumed = strip_credentials_on_cross_origin_redirect(original, &redirect, &cred);
+        assert_eq!(resumed.url.host_str(), Some("example.com"));
+        assert!(resumed.url.path().starts_with("/feed/v2"));
+        assert!(
+            resumed.url.query().unwrap_or("").contains("api_key=secret"),
+            "expected token re-spliced, got url {}",
+            resumed.url
+        );
     }
 
     #[test]

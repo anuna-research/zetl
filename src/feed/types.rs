@@ -126,7 +126,7 @@ impl SourceMetadata {
 /// Per-feed configuration consumed by every serialiser. Built by the
 /// shell from `[feed]` and (for scoped feeds) `[[feed.scopes]]` /
 /// `[[capability_cohorts]]`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FeedConfig {
     /// Absolute base URL for the published vault, no trailing slash.
     pub base_url: String,
@@ -160,7 +160,7 @@ pub struct FeedConfig {
 
 /// Flags toggling per-format emission. RSS 2.0 + Atom 1.0 are always
 /// produced; JSON Feed is gated by `[feed].enable_json` per ADR-3801.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutputFormatSet {
     pub rss: bool,
     pub atom: bool,
@@ -180,7 +180,7 @@ impl Default for OutputFormatSet {
 
 /// Absolute URLs for each format under the same base. Built by the
 /// shell from `[feed]` keys; the pure core never invents paths.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FeedPaths {
     /// e.g. `/feed.xml`. Always absolute path under `base_url`.
     pub rss: String,
