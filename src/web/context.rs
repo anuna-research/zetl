@@ -50,6 +50,20 @@ pub struct VaultContext {
     /// authoritative source of truth.
     #[serde(default)]
     pub feed_json_enabled: bool,
+    /// URL paths the theme should link to for human-clickable
+    /// subscribe affordances. Honours `[feed.paths]` overrides so a
+    /// vault that remaps the RSS output (e.g. `rss = "/rss.xml"`)
+    /// renders a working link. Empty struct when `[feed]` is not
+    /// configured; defaults are `/feed.xml`, `/atom.xml`, `/feed.json`.
+    #[serde(default)]
+    pub feed_paths: FeedPathsContext,
+}
+
+#[derive(Serialize, Default, Clone, Debug)]
+pub struct FeedPathsContext {
+    pub rss: String,
+    pub atom: String,
+    pub jsonfeed: String,
 }
 
 #[derive(Serialize)]
@@ -290,6 +304,7 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
         site_url: String::new(),
         feed_discovery: Vec::new(),
         feed_json_enabled: false,
+        feed_paths: FeedPathsContext::default(),
     }
 }
 

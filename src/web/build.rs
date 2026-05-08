@@ -85,7 +85,40 @@ pub(crate) fn populate_feed_discovery(
     let title = feed.title.as_deref().unwrap_or("Untitled feed");
     vault_ctx.feed_discovery = build_feed_discovery_tags(feed, base_url, title);
     vault_ctx.feed_json_enabled = feed.enable_json.unwrap_or(false);
+    vault_ctx.feed_paths = feed_paths_context(feed);
     Ok(())
+}
+
+/// Build the [`crate::web::context::FeedPathsContext`] for the
+/// supplied `[feed]` section. Resolves each format against
+/// `[feed.paths]` overrides, falling back to the per-format defaults.
+///
+/// Paths are stored *without* the leading `/` so theme templates can
+/// concatenate them onto `{{ root_path }}` (which itself ends with a
+/// `/`) and produce a working link in both build mode (relative,
+/// `../`-style root_path) and serve mode (`/` root_path).
+pub(crate) fn feed_paths_context(
+    feed: &crate::feed::config::FeedSection,
+) -> crate::web::context::FeedPathsContext {
+    let cfg_paths = feed.paths.as_ref();
+    let strip_leading_slash = |s: String| -> String { s.trim_start_matches('/').to_string() };
+    crate::web::context::FeedPathsContext {
+        rss: strip_leading_slash(
+            cfg_paths
+                .and_then(|p| p.rss.clone())
+                .unwrap_or_else(|| crate::feed::build::DEFAULT_RSS_PATH.to_string()),
+        ),
+        atom: strip_leading_slash(
+            cfg_paths
+                .and_then(|p| p.atom.clone())
+                .unwrap_or_else(|| crate::feed::build::DEFAULT_ATOM_PATH.to_string()),
+        ),
+        jsonfeed: strip_leading_slash(
+            cfg_paths
+                .and_then(|p| p.jsonfeed.clone())
+                .unwrap_or_else(|| crate::feed::build::DEFAULT_JSONFEED_PATH.to_string()),
+        ),
+    }
 }
 
 /// Read `.zetl/config.toml` and populate `vault_ctx.feed_discovery`.
@@ -128,30 +161,55 @@ pub(crate) fn build_owned_pages(
     lens: &crate::feed::config::FeedConfigLens,
     data: &VaultData,
     vault_root: &Path,
-) -> Option<Vec<OwnedFeedPage>> {
+) -> Result<Option<Vec<OwnedFeedPage>>> {
     use crate::feed::types::{FeedItem, SourceMetadata};
     use crate::web::markdown::parse_frontmatter;
 
-    let feed = lens.feed.as_ref()?;
+    let Some(feed) = lens.feed.as_ref() else {
+        return Ok(None);
+    };
     if matches!(feed.enabled, Some(false)) {
-        return None;
+        return Ok(None);
     }
-    let base_url = feed.base_url.as_deref()?;
+    let Some(base_url) = feed.base_url.as_deref() else {
+        return Ok(None);
+    };
     let populate_all = needs_full_population(lens);
     let base_url_trimmed = base_url.trim_end_matches('/');
-    let id_namespace = url::Url::parse(base_url_trimmed)
-        .or_else(|_| url::Url::parse(&format!("{base_url_trimmed}/")))
-        .unwrap_or_else(|_| url::Url::parse("https://example.invalid/").unwrap());
+    // REQ-3809: refuse malformed/relative base URLs at config-resolution
+    // time. Previously a relative string like `example.com` silently
+    // fell back to `https://example.invalid/` for the tag-URI namespace
+    // while emitted item URLs still used the (broken) base — readers
+    // and downstream dedup then saw the wrong identity. Hard-fail
+    // instead so the operator notices.
+    let id_namespace = url::Url::parse(base_url_trimmed).map_err(|e| {
+        anyhow::anyhow!(
+            "[zetl] feed-config: [feed].base_url={base_url:?} is not a valid absolute URL ({e}). \
+             Set base_url to a fully-qualified http(s) URL like \"https://example.com\"."
+        )
+    })?;
+    if !matches!(id_namespace.scheme(), "http" | "https") {
+        anyhow::bail!(
+            "[zetl] feed-config: [feed].base_url={base_url:?} must use http or https \
+             (got scheme {:?})",
+            id_namespace.scheme()
+        );
+    }
+    if id_namespace.host_str().is_none() {
+        anyhow::bail!("[zetl] feed-config: [feed].base_url={base_url:?} has no host component");
+    }
     let render_root = format!("{base_url_trimmed}/");
 
     let mut owned: Vec<OwnedFeedPage> = Vec::with_capacity(data.files.len());
     for parsed in &data.files {
         let abs_path = vault_root.join(&parsed.path);
-        let slug = data
-            .page_slug_map
-            .get(&parsed.page_name)
-            .cloned()
-            .unwrap_or_else(|| parsed.page_name.clone());
+        // Path-derived slug per file. The vault-wide `page_slug_map` is
+        // keyed by `page_name` and only retains one entry when two
+        // pages share a name (e.g. `blog/Index.md` + `notes/Index.md`),
+        // which would otherwise collapse both into a single feed item
+        // with the same id/url. The static-site emitter uses
+        // path-derived slugs for these collisions, so the feed must too.
+        let slug = page_slug_from_path(&parsed.path);
         let body = std::fs::read_to_string(&abs_path).unwrap_or_default();
         let opted_in = matches!(scan_frontmatter_feed_optin(&body), Some(true));
         if !opted_in && !populate_all {
@@ -281,7 +339,7 @@ pub(crate) fn build_owned_pages(
             frontmatter_feed_optin: opted_in,
         });
     }
-    Some(owned)
+    Ok(Some(owned))
 }
 
 /// Borrow [`OwnedFeedPage`]s as [`feed::select::PageView`]s. Caller
@@ -411,7 +469,7 @@ pub(crate) fn emit_outbound_feeds(
         return Ok(None);
     };
     let walk_start = std::time::Instant::now();
-    let Some(owned) = build_owned_pages(lens, data, vault_root) else {
+    let Some(owned) = build_owned_pages(lens, data, vault_root)? else {
         return Ok(None);
     };
     let optin_count = owned.iter().filter(|o| o.frontmatter_feed_optin).count();
@@ -1137,6 +1195,7 @@ pub fn build_static(
                 let title = feed.title.as_deref().unwrap_or("Untitled feed");
                 vault_ctx.feed_discovery = build_feed_discovery_tags(feed, base_url, title);
                 vault_ctx.feed_json_enabled = feed.enable_json.unwrap_or(false);
+                vault_ctx.feed_paths = feed_paths_context(feed);
             }
         }
     }
@@ -1956,6 +2015,45 @@ mod tests {
                 "expected reject: {bad:?}",
             );
         }
+    }
+
+    #[test]
+    fn feed_paths_context_strips_leading_slash() {
+        // Default (no [feed.paths] override).
+        let lens = crate::feed::config::parse_config(
+            r#"
+            [feed]
+            base_url = "https://example.com"
+            title = "T"
+            description = "d"
+        "#,
+        )
+        .unwrap();
+        let ctx = feed_paths_context(lens.feed.as_ref().unwrap());
+        assert_eq!(ctx.rss, "feed.xml");
+        assert_eq!(ctx.atom, "atom.xml");
+        assert_eq!(ctx.jsonfeed, "feed.json");
+
+        // Operator override: should also be slash-stripped so theme
+        // templates can concatenate onto `{{ root_path }}` without
+        // producing `//`.
+        let lens = crate::feed::config::parse_config(
+            r#"
+            [feed]
+            base_url = "https://example.com"
+            title = "T"
+            description = "d"
+            [feed.paths]
+            rss = "/rss.xml"
+            atom = "/feeds/main.atom"
+        "#,
+        )
+        .unwrap();
+        let ctx = feed_paths_context(lens.feed.as_ref().unwrap());
+        assert_eq!(ctx.rss, "rss.xml");
+        assert_eq!(ctx.atom, "feeds/main.atom");
+        // Unconfigured format still uses the default.
+        assert_eq!(ctx.jsonfeed, "feed.json");
     }
 
     #[test]

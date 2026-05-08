@@ -27,9 +27,19 @@ pub fn serialise_atom(items: &[FeedItem], config: &FeedConfig) -> String {
     push_text(&mut out, "  ", "subtitle", &config.description);
     let self_url = absolute_url(&config.base_url, &config.paths.atom);
     push_text(&mut out, "  ", "id", &self_url);
-    if let Some(latest) = items.iter().map(|i| &i.date_published).max() {
-        push_text(&mut out, "  ", "updated", latest);
-    }
+    // RFC 4287 §4.1: every <feed> MUST contain exactly one <updated>.
+    // Use the most recent item's date_published when items exist; fall
+    // back to a deterministic epoch placeholder for an empty feed so a
+    // freshly-configured vault with no opted-in pages still emits a
+    // strict-parser-conformant atom.xml. The same epoch is used as the
+    // empty-feed fallback for missing per-page dates (`build_owned_pages`),
+    // so behaviour is consistent across the build.
+    let updated = items
+        .iter()
+        .map(|i| i.date_published.as_str())
+        .max()
+        .unwrap_or("1970-01-01T00:00:00Z");
+    push_text(&mut out, "  ", "updated", updated);
     out.push_str(&format!(
         r#"  <link rel="alternate" type="text/html" href="{}" />"#,
         escape_attr(&config.base_url)
@@ -233,10 +243,21 @@ mod tests {
     }
 
     #[test]
-    fn empty_feed_has_no_updated_when_no_items() {
+    fn empty_feed_emits_epoch_updated_for_atom_conformance() {
+        // RFC 4287 §4.1: every <feed> must have exactly one
+        // <updated>. When `items` is empty, fall back to a
+        // deterministic epoch placeholder so the empty atom.xml is
+        // still strict-parser conformant. Reverses the prior
+        // behaviour, which silently emitted an invalid feed.
         let s = serialise_atom(&[], &cfg());
-        // No <updated> at the feed level when there are no items.
-        let updated_count = s.matches("<updated>").count();
-        assert_eq!(updated_count, 0);
+        assert_eq!(
+            s.matches("<updated>").count(),
+            1,
+            "empty feed must still carry exactly one <updated>: {s}"
+        );
+        assert!(
+            s.contains("<updated>1970-01-01T00:00:00Z</updated>"),
+            "empty feed should fall back to the epoch placeholder: {s}"
+        );
     }
 }

@@ -5872,8 +5872,16 @@ async fn feed_handler_for(state: WebState, format: crate::feed::types::OutputFor
     }
     let data = state.data.read().unwrap_or_else(|e| e.into_inner());
     let owned = match crate::web::build::build_owned_pages(&lens, &data, &state.vault_root) {
-        Some(o) => o,
-        None => return StatusCode::NOT_FOUND.into_response(),
+        Ok(Some(o)) => o,
+        Ok(None) => return StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                format!("[zetl] feed-config error: {e}"),
+            )
+                .into_response();
+        }
     };
     let pages = crate::web::build::page_views_from_owned(&owned);
     let visibility = crate::feed::cap_feed::public_visibility();

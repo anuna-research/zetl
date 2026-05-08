@@ -5458,6 +5458,13 @@ fn cmd_feed_validate(cli: &Cli, args: &zetl::feed::cli::FeedValidateArgs) -> Res
         FeedValidateFormat::Jsonfeed => {
             let v: serde_json::Value =
                 serde_json::from_str(&body).context("feed-validate: body is not valid JSON")?;
+            // JSON Feed v1.1 §top-level: `version`, `title`, and
+            // `items` are required; `items` MUST be an array (the
+            // empty array is acceptable). Per-item v1.1 §item: `id`
+            // is required, and at least one of `content_html` /
+            // `content_text` must be present. Reject everything
+            // missing — accepting `{"version": "..."}` as valid was
+            // a false positive that hid genuinely malformed feeds.
             let version = v.get("version").and_then(|x| x.as_str()).unwrap_or("");
             if version != zetl::feed::serialise_jsonfeed::JSONFEED_VERSION {
                 anyhow::bail!(
@@ -5465,11 +5472,63 @@ fn cmd_feed_validate(cli: &Cli, args: &zetl::feed::cli::FeedValidateArgs) -> Res
                     zetl::feed::serialise_jsonfeed::JSONFEED_VERSION
                 );
             }
+            let title = v.get("title").and_then(|x| x.as_str()).unwrap_or("");
+            if title.is_empty() {
+                anyhow::bail!(
+                    "feed-validate jsonfeed: top-level `title` is required (JSON Feed v1.1 §top-level)"
+                );
+            }
+            let items = match v.get("items") {
+                Some(serde_json::Value::Array(a)) => a,
+                Some(other) => anyhow::bail!(
+                    "feed-validate jsonfeed: `items` must be an array (got {other:?})"
+                ),
+                None => anyhow::bail!(
+                    "feed-validate jsonfeed: top-level `items` is required (JSON Feed v1.1 §top-level)"
+                ),
+            };
+            let mut warnings: Vec<String> = Vec::new();
+            for (i, item) in items.iter().enumerate() {
+                let id = item.get("id").and_then(|x| x.as_str()).unwrap_or("");
+                if id.is_empty() {
+                    anyhow::bail!(
+                        "feed-validate jsonfeed: items[{i}].id is required (JSON Feed v1.1 §item)"
+                    );
+                }
+                let has_content_html = item
+                    .get("content_html")
+                    .and_then(|x| x.as_str())
+                    .map(|s| !s.is_empty())
+                    .unwrap_or(false);
+                let has_content_text = item
+                    .get("content_text")
+                    .and_then(|x| x.as_str())
+                    .map(|s| !s.is_empty())
+                    .unwrap_or(false);
+                if !has_content_html && !has_content_text {
+                    anyhow::bail!(
+                        "feed-validate jsonfeed: items[{i}] must include `content_html` or `content_text` (JSON Feed v1.1 §item)"
+                    );
+                }
+                // `url` is RECOMMENDED (not required) per spec, but
+                // a feed item without a link is rarely useful — surface
+                // as a warning rather than fail.
+                if item
+                    .get("url")
+                    .and_then(|x| x.as_str())
+                    .map(|s| s.is_empty())
+                    .unwrap_or(true)
+                {
+                    warnings.push(format!(
+                        "items[{i}].url missing or empty (RECOMMENDED per JSON Feed v1.1 §item)"
+                    ));
+                }
+            }
             serde_json::json!({
                 "format": format.as_str(),
                 "size_bytes": body.len(),
-                "items": v.get("items").and_then(|x| x.as_array()).map(|a| a.len()).unwrap_or(0),
-                "warnings": Vec::<String>::new(),
+                "items": items.len(),
+                "warnings": warnings,
             })
         }
     };

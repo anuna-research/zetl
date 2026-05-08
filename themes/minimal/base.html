@@ -770,9 +770,9 @@
   {% if vault.feed_discovery %}
   <aside class="zetl-feed-subscribe" role="complementary" aria-label="Subscribe to feed">
     <span>Subscribe:</span>
-    <a href="{{ root_path }}feed.xml" rel="alternate" type="application/rss+xml">RSS</a>
-    <a href="{{ root_path }}atom.xml" rel="alternate" type="application/atom+xml">Atom</a>
-    {% if vault.feed_json_enabled %}<a href="{{ root_path }}feed.json" rel="alternate" type="application/feed+json">JSON Feed</a>{% endif %}
+    <a href="{{ root_path }}{{ vault.feed_paths.rss }}" rel="alternate" type="application/rss+xml">RSS</a>
+    <a href="{{ root_path }}{{ vault.feed_paths.atom }}" rel="alternate" type="application/atom+xml">Atom</a>
+    {% if vault.feed_json_enabled %}<a href="{{ root_path }}{{ vault.feed_paths.jsonfeed }}" rel="alternate" type="application/feed+json">JSON Feed</a>{% endif %}
   </aside>
   {% endif %}
 

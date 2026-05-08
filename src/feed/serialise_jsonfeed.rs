@@ -78,6 +78,11 @@ fn push_item(buf: &mut String, item: &FeedItem) {
     field!("id", &item.id);
     field!("url", &item.url);
     field!("title", &item.title);
+    // JSON Feed v1.1 §item: every item MUST include at least one of
+    // `content_html` or `content_text`. Prefer the rendered HTML when
+    // present, then fall back to the plain-text summary, and finally
+    // to an empty `content_text` so the document stays conformant for
+    // items that legitimately have no body (e.g. opted-in stubs).
     if let Some(html) = &item.content_html {
         if !first {
             buf.push_str(", ");
@@ -85,6 +90,20 @@ fn push_item(buf: &mut String, item: &FeedItem) {
         buf.push_str(r#""content_html": ""#);
         push_json_str(buf, html);
         buf.push('"');
+        first = false;
+    } else if let Some(s) = &item.summary {
+        if !first {
+            buf.push_str(", ");
+        }
+        buf.push_str(r#""content_text": ""#);
+        push_json_str(buf, s);
+        buf.push('"');
+        first = false;
+    } else {
+        if !first {
+            buf.push_str(", ");
+        }
+        buf.push_str(r#""content_text": """#);
         first = false;
     }
     if let Some(s) = &item.summary {
