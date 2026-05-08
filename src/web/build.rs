@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use petgraph::visit::EdgeRef;
@@ -57,6 +57,239 @@ fn build_feed_discovery_tags(
             scope_title = scope.title.replace('&', "&amp;").replace('"', "&quot;"),
             scope_path = scope.path,
         ));
+    }
+    out
+}
+
+/// SPEC-038 outbound feed emission helper. Walks the parsed vault,
+/// synthesises a [`feed::types::FeedItem`] per page that opted in via
+/// `frontmatter.feed: true` (or every page if the [feed] selection rule
+/// is otherwise configured), runs the pure-core
+/// [`feed::build::emit_root_feed`] pipeline, and returns its
+/// [`feed::build::FeedEmission`].
+///
+/// Returns `Ok(None)` when the [feed] section is absent or has no
+/// `base_url` — REQ-3809 self-publication safety. Returns `Err` only
+/// for hard fatal cases (the pure pipeline asserts).
+fn emit_outbound_feeds(
+    lens: &crate::feed::config::FeedConfigLens,
+    data: &VaultData,
+    vault_root: &Path,
+) -> Result<Option<crate::feed::build::FeedEmission>> {
+    use crate::feed::build::emit_root_feed;
+    use crate::feed::select::PageView;
+    use crate::feed::types::{FeedItem, SelectionRule, SourceMetadata};
+    use crate::web::markdown::parse_frontmatter;
+
+    let Some(feed) = lens.feed.as_ref() else {
+        return Ok(None);
+    };
+    let Some(base_url) = feed.base_url.as_deref() else {
+        return Ok(None);
+    };
+    let base_url_trimmed = base_url.trim_end_matches('/');
+    // Owners for the borrowed-by-PageView data.
+    struct Owned {
+        slug: String,
+        path: PathBuf,
+        tags: Vec<String>,
+        item: FeedItem,
+    }
+    let mut owned: Vec<Owned> = Vec::with_capacity(data.files.len());
+    for parsed in &data.files {
+        let abs_path = vault_root.join(&parsed.path);
+        let body = std::fs::read_to_string(&abs_path).unwrap_or_default();
+        let frontmatter = parse_frontmatter(&body);
+
+        let slug = data
+            .page_slug_map
+            .get(&parsed.page_name)
+            .cloned()
+            .unwrap_or_else(|| parsed.page_name.clone());
+        let title = frontmatter
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| parsed.page_name.clone());
+        // REQ-3804 fallback chain. `zetl build` doesn't currently
+        // surface git author-dates; we use mtime as a deterministic
+        // last-resort. NOT spec-perfect (mtime is non-portable per
+        // NFR-3804) but better than synthesising "now" — the wire
+        // task that surfaces git dates is a separate follow-up.
+        let date_published = frontmatter_date(&frontmatter)
+            .or_else(|| mtime_to_rfc3339(parsed.mtime))
+            .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string());
+        let mut tags: Vec<String> = frontmatter
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|t| t.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        tags.sort();
+        tags.dedup();
+
+        // Build URL by joining base_url + slug (path-encode segments
+        // with whitespace; production zetl slugs are clean but
+        // demo-vault has files like "Demo Script.md").
+        let url = format!(
+            "{base_url_trimmed}/{}",
+            slug.split('/').map(percent_encode_segment).collect::<Vec<_>>().join("/")
+        );
+
+        // Stable item id per REQ-3803.
+        let id_namespace = url::Url::parse(base_url_trimmed)
+            .or_else(|_| url::Url::parse(&format!("{base_url_trimmed}/")))
+            .unwrap_or_else(|_| url::Url::parse("https://example.invalid/").unwrap());
+        let id = crate::feed::item_id::item_id(&slug, &id_namespace, 2026)
+            .unwrap_or_else(|_| format!("urn:zetl:{slug}"));
+
+        let summary = crate::web::markdown::extract_description(&body, &frontmatter);
+        let summary = if summary.is_empty() {
+            None
+        } else {
+            Some(summary.chars().take(400).collect::<String>())
+        };
+        // content_html: render via the existing markdown pipeline.
+        // For v1 we emit summary-only (content_html=None) so feed
+        // bodies stay small + safe; the full-rendering wire is a
+        // follow-up that needs to compose with the theme/sanitiser.
+        let item = FeedItem {
+            id,
+            title,
+            url,
+            date_published,
+            date_modified: None,
+            summary,
+            content_html: None,
+            author: None,
+            tags: tags.clone(),
+            license: None,
+            source_metadata: SourceMetadata {
+                source_path: Some(parsed.path.clone()),
+                object_id: Some(slug.clone()),
+                content_hash: parsed
+                    .file_merkle
+                    .as_ref()
+                    .map(|m| m.root_hash.iter().map(|b| format!("{b:02x}")).collect::<String>()),
+                ..Default::default()
+            },
+        };
+        owned.push(Owned {
+            slug,
+            path: parsed.path.clone(),
+            tags,
+            item,
+        });
+    }
+
+    // Build PageView slice (borrows from owned).
+    let frontmatter_optin: Vec<bool> = data
+        .files
+        .iter()
+        .map(|p| {
+            let abs = vault_root.join(&p.path);
+            std::fs::read_to_string(&abs)
+                .ok()
+                .map(|body| {
+                    let fm = parse_frontmatter(&body);
+                    fm.get("feed").and_then(|v| v.as_bool()).unwrap_or(false)
+                })
+                .unwrap_or(false)
+        })
+        .collect();
+    let pages: Vec<PageView<'_>> = owned
+        .iter()
+        .zip(frontmatter_optin.iter())
+        .map(|(o, optin)| PageView {
+            slug: &o.slug,
+            path: &o.path,
+            frontmatter_feed_optin: *optin,
+            tags: &o.tags,
+            matches_spl_query: false,
+            item: o.item.clone(),
+        })
+        .collect();
+
+    // Public visibility: exclude cap-protected pages per SPEC-038
+    // REQ-3829. The cap-protection check is delegated to feed::cap_feed.
+    let visibility: Box<dyn Fn(&PageView<'_>) -> bool> =
+        Box::new(crate::feed::cap_feed::public_visibility());
+    let rule = SelectionRule::FrontmatterOptIn;
+
+    let emission = emit_root_feed(lens, &pages, &visibility, &rule)?;
+    Ok(Some(emission))
+}
+
+fn frontmatter_date(fm: &serde_json::Value) -> Option<String> {
+    for key in &["published", "date", "created"] {
+        if let Some(v) = fm.get(key).and_then(|v| v.as_str()) {
+            // Bare date YYYY-MM-DD → RFC 3339 midnight UTC.
+            if v.len() == 10 && v.as_bytes()[4] == b'-' && v.as_bytes()[7] == b'-' {
+                return Some(format!("{v}T00:00:00Z"));
+            }
+            return Some(v.to_string());
+        }
+    }
+    None
+}
+
+fn mtime_to_rfc3339(mtime: std::time::SystemTime) -> Option<String> {
+    let dur = mtime.duration_since(std::time::UNIX_EPOCH).ok()?;
+    let secs = dur.as_secs() as i64;
+    // Crude RFC 3339 from epoch seconds. Reuses the same date math
+    // as feed::retention to keep the leaf modules chrono-free.
+    Some(epoch_secs_to_rfc3339(secs))
+}
+
+fn epoch_secs_to_rfc3339(total: i64) -> String {
+    if total < 0 {
+        return "1970-01-01T00:00:00Z".to_string();
+    }
+    let days = total / 86_400;
+    let rem = total - days * 86_400;
+    let hms = ((rem / 3600) as u32, ((rem % 3600) / 60) as u32, (rem % 60) as u32);
+    let (y, m, d) = epoch_days_to_ymd(days);
+    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", hms.0, hms.1, hms.2)
+}
+
+fn epoch_days_to_ymd(mut days: i64) -> (i32, u32, u32) {
+    let mut year: i32 = 1970;
+    loop {
+        let dy = if is_leap(year) { 366 } else { 365 };
+        if days < dy { break; }
+        days -= dy;
+        year += 1;
+    }
+    let dim = if is_leap(year) {
+        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    } else {
+        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    };
+    let mut month: u32 = 1;
+    for &md in &dim {
+        if days < md as i64 { break; }
+        days -= md as i64;
+        month += 1;
+    }
+    (year, month, (days + 1) as u32)
+}
+
+fn is_leap(y: i32) -> bool {
+    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+
+fn percent_encode_segment(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.as_bytes() {
+        match *b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*b as char)
+            }
+            other => out.push_str(&format!("%{:02X}", other)),
+        }
     }
     out
 }
@@ -529,19 +762,55 @@ pub fn build_static(
     #[allow(unused_mut)]
     let mut vault_ctx = build_vault_context(data, &vault_name);
     vault_ctx.site_url = site_url.clone();
-    // ── SPEC-038 feed-discovery `<link rel="alternate">` tags ─────
-    // Populated only when `[feed]` is configured AND `base_url` is
-    // set (REQ-3809 self-publication safety). Failure to parse is
-    // non-fatal — operators see the parse error elsewhere via the
-    // feed-validate path; we just don't inject the tags.
+    // ── SPEC-038 feed setup: discovery tags + body emission ──────
+    //
+    // Hard-fatal classes (cohort token below NFR-3809 floor; [feed]
+    // configured but missing base_url per REQ-3809 self-publication
+    // safety; duplicate ids; etc.) bubble up from
+    // [`crate::feed::config::parse_config`] and fail the build with
+    // a non-zero exit code. Soft-fatal classes (e.g. unknown TOML
+    // keys — `deny_unknown_fields` rejects, surfaced as `Toml(...)`)
+    // also fail the build because typos are the only signal an
+    // operator gets that they've misconfigured something.
+    //
+    // The only non-fatal case is "no config.toml at all" — vaults
+    // without `[feed]` deserve to build silently.
     let config_path = vault_root.join(".zetl/config.toml");
-    if let Ok(config_body) = std::fs::read_to_string(&config_path) {
-        if let Ok(lens) = crate::feed::config::parse_config(&config_body) {
-            if let Some(feed) = lens.feed.as_ref() {
-                if let (Some(base_url), Some(title)) = (feed.base_url.as_deref(), feed.title.as_deref()) {
-                    vault_ctx.feed_discovery = build_feed_discovery_tags(feed, base_url, title);
-                }
+    let feed_setup = match std::fs::read_to_string(&config_path) {
+        Ok(body) => match crate::feed::config::parse_config(&body) {
+            Ok(lens) => Some(lens),
+            Err(crate::feed::config::FeedConfigError::Toml(msg)) => {
+                // Toml errors are usually typos. Hard-fail with a clear
+                // pointer to the file + the exact message.
+                anyhow::bail!(
+                    "[zetl] feed-config: {} (REQ-3809 / NFR-3807): {msg}",
+                    config_path.display(),
+                );
             }
+            Err(other) => {
+                // Validation errors (cohort entropy, retention, mode,
+                // license, max_items, archive_size, scope/sub id
+                // collisions, no-permission republish) all reach here.
+                anyhow::bail!(
+                    "[zetl] feed-config: {} (REQ-3809 / NFR-3807 / NFR-3809): {other}",
+                    config_path.display(),
+                );
+            }
+        },
+        Err(_) => None, // No .zetl/config.toml -> no feed setup. Fine.
+    };
+    if let Some(lens) = feed_setup.as_ref() {
+        if let Some(feed) = lens.feed.as_ref() {
+            // [feed] is configured but base_url is the only required
+            // outbound field. Missing it is REQ-3809 self-publication
+            // safety: hard-fail.
+            let base_url = feed.base_url.as_deref().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "[zetl] feed-config: [feed] is configured but base_url is missing (REQ-3809)"
+                )
+            })?;
+            let title = feed.title.as_deref().unwrap_or("Untitled feed");
+            vault_ctx.feed_discovery = build_feed_discovery_tags(feed, base_url, title);
         }
     }
     #[cfg(feature = "history")]
@@ -850,6 +1119,35 @@ pub fn build_static(
         .context("writing sitemap.xml")?;
     std::fs::write(out.join("llms.txt"), build_llms_txt(&vault_ctx, "build"))
         .context("writing llms.txt")?;
+
+    // ── SPEC-038 feed bodies (REQ-3801 + REQ-3808 + REQ-3809) ─────
+    // Emit dist/feed.xml + dist/atom.xml + (optional) dist/feed.json
+    // backing the rel=alternate discovery tags injected into <head>.
+    // Feeds are only emitted when [feed] is configured AND base_url
+    // is set; otherwise the discovery tags would advertise URLs that
+    // 404 (the bug this branch fixes).
+    if let Some(lens) = feed_setup.as_ref() {
+        if let Some(emission) = emit_outbound_feeds(lens, data, vault_root)? {
+            for (rel_path, body) in &emission.files {
+                let target = out.join(rel_path.trim_start_matches('/'));
+                if let Some(parent) = target.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&target, body).with_context(|| {
+                    format!("writing feed body {}", target.display())
+                })?;
+            }
+            if verbose {
+                eprintln!(
+                    "[zetl] feed: emitted {} file(s); items_selected={} items_emitted={} duration_ms={}",
+                    emission.files.len(),
+                    emission.stats.items_selected,
+                    emission.stats.items_emitted,
+                    emission.stats.duration.as_millis(),
+                );
+            }
+        }
+    }
     // Cloudflare Pages / Netlify-style _headers: long-cache hashed static assets and JSON indexes.
     let headers = "/_static/*\n  Cache-Control: public, max-age=31536000, immutable\n\n/*.json\n  Cache-Control: public, max-age=3600\n";
     if !out.join("_headers").exists() {

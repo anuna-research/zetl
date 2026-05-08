@@ -12,6 +12,10 @@
   {{ tag | safe }}
   {% endfor %}
   <style>
+    .zetl-feed-subscribe { margin: 2rem auto; max-width: 60ch; padding: 0.75rem 1rem; border-top: 1px solid #ddd; font-size: 0.875rem; color: #555; }
+    .zetl-feed-subscribe a { margin-right: 0.5rem; color: inherit; }
+  </style>
+  <style>
     /* ── Reset */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -761,6 +765,16 @@
   })();
   </script>
   {% block scripts %}{% endblock %}
+
+  {# SPEC-038 human-clickable feed affordance. #}
+  {% if vault.feed_discovery %}
+  <aside class="zetl-feed-subscribe" role="complementary" aria-label="Subscribe to feed">
+    <span>Subscribe:</span>
+    <a href="{{ root_path }}feed.xml" rel="alternate" type="application/rss+xml">RSS</a>
+    <a href="{{ root_path }}atom.xml" rel="alternate" type="application/atom+xml">Atom</a>
+    {% if vault.feed_discovery | length > 2 %}<a href="{{ root_path }}feed.json" rel="alternate" type="application/feed+json">JSON Feed</a>{% endif %}
+  </aside>
+  {% endif %}
 
 </body>
 </html>

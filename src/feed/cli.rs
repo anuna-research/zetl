@@ -83,10 +83,13 @@ pub struct FeedValidateArgs {
     /// Path to a feed file. Reads stdin when omitted.
     #[arg(value_name = "PATH")]
     pub path: Option<std::path::PathBuf>,
-    /// Force a particular format ('rss', 'atom', 'jsonfeed').
+    /// Force a particular feed format ('rss', 'atom', 'jsonfeed').
     /// Auto-detected by default from Content-Type or file extension.
-    #[arg(long)]
-    pub format: Option<String>,
+    /// Named `--feed-format` rather than `--format` to avoid colliding
+    /// with the global `--format` flag that selects table vs JSON
+    /// output for the rest of zetl.
+    #[arg(long = "feed-format")]
+    pub feed_format: Option<String>,
     #[arg(long)]
     pub json: bool,
 }

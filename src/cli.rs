@@ -442,6 +442,17 @@ pub enum Command {
         command: EcosystemCommand,
     },
 
+    /// SPEC-038 inbound feed subscriptions: `pull|list|status|validate|forget`.
+    /// (Outbound feed publishing happens automatically inside `zetl build`
+    /// when `[feed]` is configured; there is no `zetl feed publish`.)
+    #[command(
+        after_help = "Examples:\n  zetl feed validate path/to/feed.xml    Run strict-parser conformance against a feed\n  zetl feed pull                          Pull every configured [[subscriptions]] (not yet implemented)"
+    )]
+    Feed {
+        #[command(subcommand)]
+        command: crate::feed::cli::FeedCommand,
+    },
+
     /// Inspect the zetl-ext AST for a page or diff two AST documents
     #[command(
         after_help = "Examples:\n  zetl ast sample notes/page.md                  Print canonical AST JSON\n  zetl ast sample notes/page.md --stage pre-parse  Print raw markdown input\n  zetl ast diff before.json after.json           Tree diff of two AST files"

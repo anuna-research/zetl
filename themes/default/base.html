@@ -779,5 +779,18 @@
   {% if spa_enabled %}<script src="{{ root_path }}_static/spa.js" defer></script>{% endif %}
   {% block scripts %}{% endblock %}
 
+  {# SPEC-038 human-clickable feed affordance. Renders only when
+     [feed] is configured (vault.feed_discovery non-empty); zetl
+     vaults without [feed] are unaffected. Three small badges; no
+     JS, no extra deps. #}
+  {% if vault.feed_discovery %}
+  <aside class="zetl-feed-subscribe" role="complementary" aria-label="Subscribe to feed" style="margin: 2rem auto; max-width: 60ch; padding: 0.75rem 1rem; border-top: 1px solid var(--fallback-bc, oklch(var(--bc)/0.12)); font-size: 0.875rem; opacity: 0.8;">
+    <span style="margin-right: 0.5rem;">Subscribe:</span>
+    <a href="{{ root_path }}feed.xml" rel="alternate" type="application/rss+xml" style="margin-right: 0.5rem;">RSS</a>
+    <a href="{{ root_path }}atom.xml" rel="alternate" type="application/atom+xml" style="margin-right: 0.5rem;">Atom</a>
+    {% if vault.feed_discovery | length > 2 %}<a href="{{ root_path }}feed.json" rel="alternate" type="application/feed+json">JSON Feed</a>{% endif %}
+  </aside>
+  {% endif %}
+
 </body>
 </html>

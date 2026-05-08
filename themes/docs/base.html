@@ -455,5 +455,15 @@
 
   {% block scripts %}{% endblock %}
 
+  {# SPEC-038 human-clickable feed affordance. #}
+  {% if vault.feed_discovery %}
+  <aside class="zetl-feed-subscribe" role="complementary" aria-label="Subscribe to feed" style="margin: 2rem 1rem; padding: 0.75rem 1rem; border-top: 1px solid rgba(0,0,0,0.1); font-size: 0.85rem; color: #555;">
+    <span style="margin-right: 0.5rem;">Subscribe:</span>
+    <a href="{{ root_path }}feed.xml" rel="alternate" type="application/rss+xml" style="margin-right: 0.5rem;">RSS</a>
+    <a href="{{ root_path }}atom.xml" rel="alternate" type="application/atom+xml" style="margin-right: 0.5rem;">Atom</a>
+    {% if vault.feed_discovery | length > 2 %}<a href="{{ root_path }}feed.json" rel="alternate" type="application/feed+json">JSON Feed</a>{% endif %}
+  </aside>
+  {% endif %}
+
 </body>
 </html>

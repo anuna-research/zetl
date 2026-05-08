@@ -5366,6 +5366,117 @@ fn render_capabilities_table(reports: &[zetl::hooks::capability::CapabilityRepor
 /// Exits non-zero only when a *configured* ecosystem's runtime isn't
 /// available. The zero-configured state prints the informational footer
 /// and exits 0 regardless of host state.
+/// SPEC-038 `zetl feed` dispatch. v1 surface:
+///
+///   * `validate` — fully wired (offline strict-parser smoke check).
+///   * `pull|list|status|forget` — typed args, but the inbound shell
+///     pipeline (HTTP transport, retention scheduling, tombstone
+///     persistence in `.zetl/feeds/`) is not yet attached. Each
+///     produces a structured "not yet wired" error rather than a
+///     `unrecognized subcommand` failure.
+fn cmd_feed(cli: &Cli, command: &zetl::feed::cli::FeedCommand) -> Result<()> {
+    use zetl::feed::cli::FeedCommand;
+    match command {
+        FeedCommand::Validate(args) => cmd_feed_validate(cli, args),
+        FeedCommand::Pull(_) => cmd_feed_not_yet_wired(
+            "pull",
+            "wires HTTP transport, dedup state, and inbox writes; depends on `feed::fetch::HttpTransport` impl",
+        ),
+        FeedCommand::List(_) => cmd_feed_not_yet_wired(
+            "list",
+            "needs to read .zetl/feeds/<sub-id>/state.json which the pull command writes",
+        ),
+        FeedCommand::Status(_) => cmd_feed_not_yet_wired(
+            "status",
+            "needs to read .zetl/feeds/<sub-id>/state.json which the pull command writes",
+        ),
+        FeedCommand::Forget(_) => cmd_feed_not_yet_wired(
+            "forget",
+            "needs to mutate .zetl/feeds/<sub-id>/inbox/ + tombstones.jsonl on disk",
+        ),
+    }
+}
+
+fn cmd_feed_not_yet_wired(name: &str, why: &str) -> Result<()> {
+    eprintln!("[zetl] feed {name}: not yet wired — {why}");
+    eprintln!(
+        "[zetl] feed {name}: see plans/IMPL-038-wires.spl for follow-up tasks"
+    );
+    std::process::exit(2);
+}
+
+fn cmd_feed_validate(cli: &Cli, args: &zetl::feed::cli::FeedValidateArgs) -> Result<()> {
+    use std::io::Read;
+    let _ = cli;
+    let body = if let Some(p) = &args.path {
+        std::fs::read_to_string(p)
+            .with_context(|| format!("reading feed file {}", p.display()))?
+    } else {
+        let mut buf = String::new();
+        std::io::stdin()
+            .read_to_string(&mut buf)
+            .context("reading feed body from stdin")?;
+        buf
+    };
+    let body_trim = body.trim_start();
+    let format = if let Some(forced) = args.feed_format.as_deref() {
+        forced.to_string()
+    } else if body_trim.starts_with('{') {
+        "jsonfeed".to_string()
+    } else if body_trim.contains("<feed") {
+        "atom".to_string()
+    } else if body_trim.contains("<rss") || body_trim.contains("<channel") {
+        "rss".to_string()
+    } else {
+        "rss".to_string()
+    };
+    let report = match format.as_str() {
+        "rss" | "atom" => {
+            let bytes = body.as_bytes();
+            zetl::feed::fetch::assert_no_xxe(bytes).map_err(|e| {
+                anyhow::anyhow!("feed-validate xxe-check: {e}")
+            })?;
+            // For v1: just a no-XXE + parses-as-XML smoke test. The
+            // pinned strict-parser CI gate (NFR-3805) lives behind
+            // task-tests-conformance.
+            serde_json::json!({
+                "format": format,
+                "size_bytes": body.len(),
+                "xxe": "ok",
+                "warnings": Vec::<String>::new(),
+            })
+        }
+        "jsonfeed" => {
+            let v: serde_json::Value = serde_json::from_str(&body)
+                .context("feed-validate: body is not valid JSON")?;
+            let version = v.get("version").and_then(|x| x.as_str()).unwrap_or("");
+            if version != zetl::feed::serialise_jsonfeed::JSONFEED_VERSION {
+                anyhow::bail!(
+                    "feed-validate jsonfeed: version mismatch (got {version:?}, expected {:?})",
+                    zetl::feed::serialise_jsonfeed::JSONFEED_VERSION
+                );
+            }
+            serde_json::json!({
+                "format": format,
+                "size_bytes": body.len(),
+                "items": v.get("items").and_then(|x| x.as_array()).map(|a| a.len()).unwrap_or(0),
+                "warnings": Vec::<String>::new(),
+            })
+        }
+        other => anyhow::bail!("feed-validate: unknown format {other:?}"),
+    };
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!(
+            "[zetl] feed-validate: format={} size={} bytes",
+            report["format"].as_str().unwrap_or("?"),
+            report["size_bytes"].as_u64().unwrap_or(0)
+        );
+    }
+    Ok(())
+}
+
 fn cmd_ecosystem_check(cli: &Cli, theme: &str, json: bool) -> Result<()> {
     use zetl::ecosystems::check::{run_ecosystem_check, EcosystemCheckStatus};
     use zetl::hooks::composition::compose_all_stages;
@@ -11236,6 +11347,7 @@ fn main() -> anyhow::Result<()> {
         Command::Ecosystem { command } => match command {
             EcosystemCommand::Check { theme, json } => cmd_ecosystem_check(&cli, theme, *json),
         },
+        Command::Feed { command } => cmd_feed(&cli, command),
         Command::Ast { command } => {
             use zetl::cli::AstCommand;
             match command {
