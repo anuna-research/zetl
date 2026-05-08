@@ -166,7 +166,9 @@ fn canonicalise_license_url(href: &str) -> Option<License> {
 fn parse_rights_text(text: &str) -> Option<License> {
     // 1. URL embedded somewhere in the text.
     for word in text.split_whitespace() {
-        let trimmed = word.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '/' && c != ':' && c != '.' && c != '-');
+        let trimmed = word.trim_matches(|c: char| {
+            !c.is_ascii_alphanumeric() && c != '/' && c != ':' && c != '.' && c != '-'
+        });
         if let Some(lic) = canonicalise_license_url(trimmed) {
             return Some(lic);
         }
@@ -215,9 +217,7 @@ mod tests {
     #[test]
     fn http_no_trailing_slash() {
         let m = FeedLicenseMetadata {
-            atom_link_license_href: Some(
-                "http://creativecommons.org/licenses/by/4.0".to_string(),
-            ),
+            atom_link_license_href: Some("http://creativecommons.org/licenses/by/4.0".to_string()),
             ..Default::default()
         };
         assert_eq!(license_resolve(&m, None).effective, License::CcBy4_0);

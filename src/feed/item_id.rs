@@ -102,7 +102,10 @@ mod tests {
     #[test]
     fn hostless_namespace_returns_error() {
         let ns = Url::parse("file:///tmp/foo").unwrap();
-        assert_eq!(item_id("foo", &ns, 2026), Err(ItemIdError::NamespaceHostless));
+        assert_eq!(
+            item_id("foo", &ns, 2026),
+            Err(ItemIdError::NamespaceHostless)
+        );
     }
 
     #[test]

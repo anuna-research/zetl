@@ -10,7 +10,9 @@
 /// element bodies (other than CDATA-wrapped content) consume the
 /// 3-char form; attributes use [`escape_attr`] (which adds `"`).
 pub fn escape_text(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// Escape `&`, `<`, `>`, `"` for XML attribute values. Same as
@@ -77,10 +79,22 @@ mod tests {
 
     #[test]
     fn absolute_url_one_separator() {
-        assert_eq!(absolute_url("https://x.com", "/feed.xml"), "https://x.com/feed.xml");
-        assert_eq!(absolute_url("https://x.com/", "/feed.xml"), "https://x.com/feed.xml");
-        assert_eq!(absolute_url("https://x.com", "feed.xml"), "https://x.com/feed.xml");
-        assert_eq!(absolute_url("https://x.com/", "feed.xml"), "https://x.com/feed.xml");
+        assert_eq!(
+            absolute_url("https://x.com", "/feed.xml"),
+            "https://x.com/feed.xml"
+        );
+        assert_eq!(
+            absolute_url("https://x.com/", "/feed.xml"),
+            "https://x.com/feed.xml"
+        );
+        assert_eq!(
+            absolute_url("https://x.com", "feed.xml"),
+            "https://x.com/feed.xml"
+        );
+        assert_eq!(
+            absolute_url("https://x.com/", "feed.xml"),
+            "https://x.com/feed.xml"
+        );
     }
 
     #[test]

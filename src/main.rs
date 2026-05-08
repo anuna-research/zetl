@@ -5399,9 +5399,7 @@ fn cmd_feed(cli: &Cli, command: &zetl::feed::cli::FeedCommand) -> Result<()> {
 
 fn cmd_feed_not_yet_wired(name: &str, why: &str) -> Result<()> {
     eprintln!("[zetl] feed {name}: not yet wired — {why}");
-    eprintln!(
-        "[zetl] feed {name}: see plans/IMPL-038-wires.spl for follow-up tasks"
-    );
+    eprintln!("[zetl] feed {name}: see plans/IMPL-038-wires.spl for follow-up tasks");
     std::process::exit(2);
 }
 
@@ -5409,8 +5407,7 @@ fn cmd_feed_validate(cli: &Cli, args: &zetl::feed::cli::FeedValidateArgs) -> Res
     use std::io::Read;
     let _ = cli;
     let body = if let Some(p) = &args.path {
-        std::fs::read_to_string(p)
-            .with_context(|| format!("reading feed file {}", p.display()))?
+        std::fs::read_to_string(p).with_context(|| format!("reading feed file {}", p.display()))?
     } else {
         let mut buf = String::new();
         std::io::stdin()
@@ -5432,9 +5429,8 @@ fn cmd_feed_validate(cli: &Cli, args: &zetl::feed::cli::FeedValidateArgs) -> Res
     let report = match format {
         FeedValidateFormat::Rss | FeedValidateFormat::Atom => {
             let bytes = body.as_bytes();
-            zetl::feed::fetch::assert_no_xxe(bytes).map_err(|e| {
-                anyhow::anyhow!("feed-validate xxe-check: {e}")
-            })?;
+            zetl::feed::fetch::assert_no_xxe(bytes)
+                .map_err(|e| anyhow::anyhow!("feed-validate xxe-check: {e}"))?;
             // For v1: just a no-XXE + parses-as-XML smoke test. The
             // pinned strict-parser CI gate (NFR-3805) lives behind
             // task-tests-conformance.
@@ -5446,8 +5442,8 @@ fn cmd_feed_validate(cli: &Cli, args: &zetl::feed::cli::FeedValidateArgs) -> Res
             })
         }
         FeedValidateFormat::Jsonfeed => {
-            let v: serde_json::Value = serde_json::from_str(&body)
-                .context("feed-validate: body is not valid JSON")?;
+            let v: serde_json::Value =
+                serde_json::from_str(&body).context("feed-validate: body is not valid JSON")?;
             let version = v.get("version").and_then(|x| x.as_str()).unwrap_or("");
             if version != zetl::feed::serialise_jsonfeed::JSONFEED_VERSION {
                 anyhow::bail!(

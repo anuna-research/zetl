@@ -122,9 +122,18 @@ fn determinism_same_inputs_produce_byte_identical_output() {
         item("bravo", "2026-05-02T00:00:00Z"),
     ];
     for _ in 0..3 {
-        assert_eq!(serialise_rss(&items, &cfg(true)), serialise_rss(&items, &cfg(true)));
-        assert_eq!(serialise_atom(&items, &cfg(true)), serialise_atom(&items, &cfg(true)));
-        assert_eq!(serialise_jsonfeed(&items, &cfg(true)), serialise_jsonfeed(&items, &cfg(true)));
+        assert_eq!(
+            serialise_rss(&items, &cfg(true)),
+            serialise_rss(&items, &cfg(true))
+        );
+        assert_eq!(
+            serialise_atom(&items, &cfg(true)),
+            serialise_atom(&items, &cfg(true))
+        );
+        assert_eq!(
+            serialise_jsonfeed(&items, &cfg(true)),
+            serialise_jsonfeed(&items, &cfg(true))
+        );
     }
 }
 
@@ -208,7 +217,10 @@ fn safe_scheme_rejects_dangerous_prefixes() {
         "javascript:void(0)",
     ] {
         let parsed = url::Url::parse(url).unwrap();
-        assert!(assert_safe_scheme(&parsed).is_err(), "url {url} not rejected");
+        assert!(
+            assert_safe_scheme(&parsed).is_err(),
+            "url {url} not rejected"
+        );
     }
 }
 
@@ -238,7 +250,12 @@ fn t22_tombstone_blocks_reimport() {
     // Re-importing same guid is blocked.
     assert!(is_tombstoned(&tombs, Some("urn:gone"), None, None));
     // Re-importing same content_hash (attacker mutated guid) is blocked.
-    assert!(is_tombstoned(&tombs, Some("urn:fresh"), None, Some("hashgone")));
+    assert!(is_tombstoned(
+        &tombs,
+        Some("urn:fresh"),
+        None,
+        Some("hashgone")
+    ));
     // Genuinely new item passes.
     assert!(!is_tombstoned(
         &tombs,
@@ -279,7 +296,10 @@ fn item_id_stable_across_invocations() {
     let b = item_id("notes/foo", &ns, 2024).unwrap();
     assert_eq!(a, b);
     // Distinct slugs collide never.
-    assert_ne!(item_id("notes/foo", &ns, 2024), item_id("notes/bar", &ns, 2024));
+    assert_ne!(
+        item_id("notes/foo", &ns, 2024),
+        item_id("notes/bar", &ns, 2024)
+    );
 }
 
 #[test]
@@ -423,8 +443,7 @@ fn atom_rfc4287_feed_carries_default_author_via_emit_root_feed() {
     let lens = parse_config(body).unwrap();
     let pages: Vec<zetl::feed::select::PageView<'_>> = vec![];
     let always = |_: &zetl::feed::select::PageView<'_>| true;
-    let visibility: Box<dyn Fn(&zetl::feed::select::PageView<'_>) -> bool> =
-        Box::new(always);
+    let visibility: Box<dyn Fn(&zetl::feed::select::PageView<'_>) -> bool> = Box::new(always);
     let emission = zetl::feed::build::emit_root_feed(
         &lens,
         &pages,
@@ -452,7 +471,10 @@ fn frontmatter_feed_optin_byte_scan() {
 
     assert_eq!(scan("---\nfeed: true\n---\nbody"), Some(true));
     assert_eq!(scan("---\nfeed: false\n---\nbody"), Some(false));
-    assert_eq!(scan("---\ntitle: x\nfeed: true\ntag: a\n---\nbody"), Some(true));
+    assert_eq!(
+        scan("---\ntitle: x\nfeed: true\ntag: a\n---\nbody"),
+        Some(true)
+    );
     assert_eq!(scan("---\ntitle: x\n---\nbody"), None);
     assert_eq!(scan("# no frontmatter at all"), None);
     assert_eq!(scan("---\nfeed: yes\n---\nbody"), None);

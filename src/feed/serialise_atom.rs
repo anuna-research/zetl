@@ -65,10 +65,7 @@ pub fn serialise_atom(items: &[FeedItem], config: &FeedConfig) -> String {
             push_author(&mut out, "    ", a);
         }
         for tag in &item.tags {
-            out.push_str(&format!(
-                r#"    <category term="{}" />"#,
-                escape_attr(tag)
-            ));
+            out.push_str(&format!(r#"    <category term="{}" />"#, escape_attr(tag)));
             out.push('\n');
         }
         if let Some(summary) = &item.summary {
@@ -219,7 +216,10 @@ mod tests {
     #[test]
     fn deterministic_byte_identical() {
         let items = vec![item("a"), item("b")];
-        assert_eq!(serialise_atom(&items, &cfg()), serialise_atom(&items, &cfg()));
+        assert_eq!(
+            serialise_atom(&items, &cfg()),
+            serialise_atom(&items, &cfg())
+        );
     }
 
     #[test]

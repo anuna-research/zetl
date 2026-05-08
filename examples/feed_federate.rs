@@ -57,16 +57,20 @@ use zetl::feed::inbound::{
 };
 use zetl::feed::license_resolve::{license_resolve, FeedLicenseMetadata};
 use zetl::feed::select::PageView;
-use zetl::feed::types::{
-    FeedItem, License, RepublicationMode, SelectionRule, SourceMetadata,
-};
+use zetl::feed::types::{FeedItem, License, RepublicationMode, SelectionRule, SourceMetadata};
 
 const A_FEED_URL: &str = "http://localhost:8088/atom.xml";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
-    let vault_b_path = PathBuf::from(args.next().ok_or("usage: feed_federate <vault-b-dir> <vault-b-out-dir>")?);
-    let vault_b_out = PathBuf::from(args.next().ok_or("usage: feed_federate <vault-b-dir> <vault-b-out-dir>")?);
+    let vault_b_path = PathBuf::from(
+        args.next()
+            .ok_or("usage: feed_federate <vault-b-dir> <vault-b-out-dir>")?,
+    );
+    let vault_b_out = PathBuf::from(
+        args.next()
+            .ok_or("usage: feed_federate <vault-b-dir> <vault-b-out-dir>")?,
+    );
     fs::create_dir_all(&vault_b_path)?;
     fs::create_dir_all(&vault_b_out)?;
 
@@ -123,7 +127,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut deny_count = 0usize;
     let mut written = Vec::new();
 
-    println!("\n[4/8] processing {} entries through eligibility table:", feed.entries.len());
+    println!(
+        "\n[4/8] processing {} entries through eligibility table:",
+        feed.entries.len()
+    );
     for entry in &feed.entries {
         let item = inbound_item_from_entry(entry, &feed, &metadata);
         let identity = SeenIdentity {
@@ -148,7 +155,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "       full={full_count} excerpt={excerpt_count} suppress={deny_count} (total {})",
         feed.entries.len()
     );
-    println!("[5/8] wrote {} files into {}", written.len(), inbox.display());
+    println!(
+        "[5/8] wrote {} files into {}",
+        written.len(),
+        inbox.display()
+    );
 
     // ── Step 6: second-pull dedup ─────────────────────────────
     let mut second_pull_skipped = 0usize;
@@ -165,11 +176,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             second_pull_imported += 1;
         }
     }
-    println!(
-        "\n[6/8] second pull: skipped={second_pull_skipped} imported={second_pull_imported}"
-    );
+    println!("\n[6/8] second pull: skipped={second_pull_skipped} imported={second_pull_imported}");
     if second_pull_imported != 0 {
-        return Err(format!("dedup failed; {} would have been re-imported", second_pull_imported).into());
+        return Err(format!(
+            "dedup failed; {} would have been re-imported",
+            second_pull_imported
+        )
+        .into());
     }
 
     // ── Step 7: forget + tombstone re-import block ────────────
@@ -179,7 +192,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("nothing was written")?;
     println!("\n[7/8] zetl feed forget vault-a {target_slug:?}");
     let candidate = ForgetCandidate {
-        path: inbox.join(format!("{target_slug}.md")).to_string_lossy().into_owned(),
+        path: inbox
+            .join(format!("{target_slug}.md"))
+            .to_string_lossy()
+            .into_owned(),
         slug: target_slug.clone(),
         guid: written[0].0.clone(),
         content_hash: None,
@@ -192,7 +208,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("federation playtest"),
         "2026-05-08T07:30:00Z",
     )?;
-    println!("       plan removed {}, tombstones {}", plan.remove.len(), plan.tombstones.len());
+    println!(
+        "       plan removed {}, tombstones {}",
+        plan.remove.len(),
+        plan.tombstones.len()
+    );
     for cand in &plan.remove {
         let _ = fs::remove_file(&cand.path);
     }
@@ -212,9 +232,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ) {
         blocked_by_tombstone = true;
     }
-    println!(
-        "       re-import attempt: blocked_by_tombstone={blocked_by_tombstone} ✓"
-    );
+    println!("       re-import attempt: blocked_by_tombstone={blocked_by_tombstone} ✓");
     if !blocked_by_tombstone {
         return Err("tombstone failed to block re-import".into());
     }
@@ -251,7 +269,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect();
     let visibility: Box<dyn Fn(&PageView<'_>) -> bool> = Box::new(|_p| true);
-    let emission = emit_root_feed(&b_lens, &b_views, &visibility, &SelectionRule::FrontmatterOptIn)?;
+    let emission = emit_root_feed(
+        &b_lens,
+        &b_views,
+        &visibility,
+        &SelectionRule::FrontmatterOptIn,
+    )?;
     println!(
         "       items_emitted={} (forgotten 1 excluded; {} files)",
         emission.stats.items_emitted,
@@ -310,7 +333,12 @@ fn sub_config_for_vault_a() -> SubscriptionSection {
         retention = "90d"
         retention_mode = "archive"
     "#;
-    parse_config(body).unwrap().subscriptions.into_iter().next().unwrap()
+    parse_config(body)
+        .unwrap()
+        .subscriptions
+        .into_iter()
+        .next()
+        .unwrap()
 }
 
 // ── Inbox writer ────────────────────────────────────────────────
@@ -339,7 +367,9 @@ fn write_inbox_entry(
 }
 
 fn read_tombstones(path: &Path) -> Vec<Tombstone> {
-    let Ok(s) = fs::read_to_string(path) else { return Vec::new() };
+    let Ok(s) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
     s.lines()
         .filter_map(|l| serde_json::from_str(l).ok())
         .collect()
@@ -388,7 +418,11 @@ struct Entry {
 impl Entry {
     fn slug_for_path(&self) -> String {
         // tag:host,year:zetl/<slug> → <slug>, with slashes replaced.
-        let after = self.id.rsplit_once(":zetl/").map(|(_, s)| s).unwrap_or(&self.id);
+        let after = self
+            .id
+            .rsplit_once(":zetl/")
+            .map(|(_, s)| s)
+            .unwrap_or(&self.id);
         after.replace('/', "_").replace(' ', "_")
     }
 }
@@ -404,15 +438,27 @@ fn parse_atom(body: &str) -> ParsedFeed {
         let Some(close) = close else { break };
         let segment = &body[abs_open..close];
         entries.push(Entry {
-            id: extract_first_tag(segment, "id").map(decode_entities).unwrap_or_default(),
-            title: extract_first_tag(segment, "title").map(decode_entities).unwrap_or_default(),
+            id: extract_first_tag(segment, "id")
+                .map(decode_entities)
+                .unwrap_or_default(),
+            title: extract_first_tag(segment, "title")
+                .map(decode_entities)
+                .unwrap_or_default(),
             link: extract_link_alternate(segment).unwrap_or_default(),
-            published: extract_first_tag(segment, "published").map(decode_entities).unwrap_or_default(),
-            content_html: extract_first_tag(segment, "content").map(decode_entities).unwrap_or_default(),
+            published: extract_first_tag(segment, "published")
+                .map(decode_entities)
+                .unwrap_or_default(),
+            content_html: extract_first_tag(segment, "content")
+                .map(decode_entities)
+                .unwrap_or_default(),
         });
         cursor = close + "</entry>".len();
     }
-    ParsedFeed { title, rights, entries }
+    ParsedFeed {
+        title,
+        rights,
+        entries,
+    }
 }
 
 fn extract_first_tag(s: &str, name: &str) -> Option<String> {
@@ -496,7 +542,10 @@ fn build_b_page(entry: &Entry, license: &License) -> Page {
         url: format!("http://localhost:8089/subs/vault-a/{slug}"),
         date_published: entry.published.clone(),
         date_modified: None,
-        summary: Some(format!("Excerpt of vault A's \"{}\" — full body at {}.", entry.title, entry.link)),
+        summary: Some(format!(
+            "Excerpt of vault A's \"{}\" — full body at {}.",
+            entry.title, entry.link
+        )),
         content_html: Some(format!(
             "<p><em>Republished from <a href=\"{link}\">vault A</a> under {lic}</em></p>{body}",
             link = entry.link,
@@ -521,7 +570,9 @@ fn build_b_page(entry: &Entry, license: &License) -> Page {
 }
 
 fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn simple_hash(bytes: &[u8]) -> u64 {

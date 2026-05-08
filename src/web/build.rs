@@ -178,7 +178,10 @@ fn emit_outbound_feeds(
 
         let url = format!(
             "{base_url_trimmed}/{}",
-            slug.split('/').map(percent_encode_segment).collect::<Vec<_>>().join("/")
+            slug.split('/')
+                .map(percent_encode_segment)
+                .collect::<Vec<_>>()
+                .join("/")
         );
         let id = crate::feed::item_id::item_id(&slug, &id_namespace, 2026)
             .unwrap_or_else(|_| format!("urn:zetl:{slug}"));
@@ -211,7 +214,9 @@ fn emit_outbound_feeds(
                     cut -= 1;
                 }
                 rendered.truncate(cut);
-                rendered.push_str("\n<!-- content truncated for feed; visit the page URL for the full body -->\n");
+                rendered.push_str(
+                    "\n<!-- content truncated for feed; visit the page URL for the full body -->\n",
+                );
                 Some(rendered)
             } else {
                 Some(rendered)
@@ -357,7 +362,7 @@ fn percent_encode_segment(s: &str) -> String {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
                 out.push(*b as char)
             }
-            other => write!(out, "%{:02X}", other).expect("write to String never fails"),
+            other => write!(out, "%{other:02X}").expect("write to String never fails"),
         }
     }
     out
@@ -1202,9 +1207,8 @@ pub fn build_static(
                 if let Some(parent) = target.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                std::fs::write(&target, body).with_context(|| {
-                    format!("writing feed body {}", target.display())
-                })?;
+                std::fs::write(&target, body)
+                    .with_context(|| format!("writing feed body {}", target.display()))?;
             }
             if verbose {
                 eprintln!(

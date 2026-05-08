@@ -232,7 +232,8 @@ mod tests {
         let prev = AstSnapshot::default();
         let mut curr = AstSnapshot::default();
         for i in 0..3 {
-            curr.nodes.insert(format!("p{i}"), fp(&format!("p{i}.md"), "h"));
+            curr.nodes
+                .insert(format!("p{i}"), fp(&format!("p{i}.md"), "h"));
         }
         let (events, next) = diff_snapshots(&prev, &curr, 100, "2026-05-08T00:00:00Z");
         let seqs: Vec<u64> = events.iter().map(|e| e.changelog_seq).collect();

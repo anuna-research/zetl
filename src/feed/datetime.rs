@@ -36,10 +36,8 @@ pub fn epoch_secs_to_rfc3339(total: i64) -> String {
 /// produces); other shapes pass through unchanged.
 pub fn subtract_seconds_from_rfc3339(rfc3339: &str, seconds: i64) -> String {
     if let Some((y, m, d, h, mi, se)) = parse_components(rfc3339) {
-        let total = days_since_epoch(y, m, d) * 86_400
-            + (h as i64) * 3600
-            + (mi as i64) * 60
-            + (se as i64);
+        let total =
+            days_since_epoch(y, m, d) * 86_400 + (h as i64) * 3600 + (mi as i64) * 60 + (se as i64);
         return epoch_secs_to_rfc3339(total - seconds);
     }
     rfc3339.to_string()

@@ -19,8 +19,7 @@ pub fn apply_auth(mut request: FetchRequest, cred: &Credential) -> FetchRequest 
             request.auth_header = Some(("Authorization".to_string(), format!("Basic {encoded}")));
         }
         Credential::Bearer { token } => {
-            request.auth_header =
-                Some(("Authorization".to_string(), format!("Bearer {token}")));
+            request.auth_header = Some(("Authorization".to_string(), format!("Bearer {token}")));
         }
         Credential::QueryParam {
             url_with_token,
@@ -32,10 +31,7 @@ pub fn apply_auth(mut request: FetchRequest, cred: &Credential) -> FetchRequest 
                     request.url = parsed;
                 }
             } else if let (Some(param), Some(value)) = (token_param, token_value) {
-                request
-                    .url
-                    .query_pairs_mut()
-                    .append_pair(param, value);
+                request.url.query_pairs_mut().append_pair(param, value);
             }
         }
     }
@@ -65,10 +61,7 @@ pub fn strip_credentials_on_cross_origin_redirect(
             ..
         } = cred
         {
-            same_origin
-                .url
-                .query_pairs_mut()
-                .append_pair(param, value);
+            same_origin.url.query_pairs_mut().append_pair(param, value);
         }
         return same_origin;
     }
@@ -247,7 +240,8 @@ mod tests {
         };
         let original = apply_auth(req("https://a.example/feed"), &cred);
         let redirect = Url::parse("https://b.example/feed").unwrap();
-        let stripped = strip_credentials_on_cross_origin_redirect(original.clone(), &redirect, &cred);
+        let stripped =
+            strip_credentials_on_cross_origin_redirect(original.clone(), &redirect, &cred);
         assert!(stripped.auth_header.is_none());
         assert_eq!(stripped.url, redirect);
     }
@@ -259,7 +253,8 @@ mod tests {
         };
         let original = apply_auth(req("https://example.com/feed"), &cred);
         let redirect = Url::parse("https://example.com/feed/v2").unwrap();
-        let stripped = strip_credentials_on_cross_origin_redirect(original.clone(), &redirect, &cred);
+        let stripped =
+            strip_credentials_on_cross_origin_redirect(original.clone(), &redirect, &cred);
         assert!(stripped.auth_header.is_some());
     }
 
@@ -294,7 +289,8 @@ mod tests {
         };
         let original = apply_auth(req("https://a.example/feed"), &cred);
         let redirect = Url::parse("https://b.example/feed?api_key=secret").unwrap();
-        let stripped = strip_credentials_on_cross_origin_redirect(original.clone(), &redirect, &cred);
+        let stripped =
+            strip_credentials_on_cross_origin_redirect(original.clone(), &redirect, &cred);
         assert!(!stripped.url.query().unwrap_or("").contains("api_key"));
     }
 

@@ -191,7 +191,10 @@ fn emit_scope(
 
     let mut files = Vec::with_capacity(3);
     files.push((rss_path.clone(), serialise_rss(&chosen, &cfg).into_bytes()));
-    files.push((atom_path.clone(), serialise_atom(&chosen, &cfg).into_bytes()));
+    files.push((
+        atom_path.clone(),
+        serialise_atom(&chosen, &cfg).into_bytes(),
+    ));
     if formats.jsonfeed {
         files.push((
             json_path.clone(),

@@ -84,7 +84,10 @@ pub enum RepublicationOutcome {
     /// Item is private to the operator's local vault view only.
     Suppress { rationale: String },
     /// Public republication is permitted; carry the rendered body.
-    Excerpt { decision: RepublicationDecision, body: String },
+    Excerpt {
+        decision: RepublicationDecision,
+        body: String,
+    },
     /// Full content republication permitted.
     Full { decision: RepublicationDecision },
 }
@@ -97,10 +100,7 @@ pub fn process_inbound_item(
     vault: &VaultContext,
     excerpt_word_count: usize,
 ) -> InboundOutcome {
-    let resolution = license_resolve(
-        &item.feed_license_metadata,
-        subscription.license.as_deref(),
-    );
+    let resolution = license_resolve(&item.feed_license_metadata, subscription.license.as_deref());
     let license = resolution.effective.clone();
 
     let policy = SubscriptionPolicy {
@@ -248,7 +248,12 @@ mod tests {
             i_have_permission = true
             "#
         );
-        parse_config(&body).unwrap().subscriptions.into_iter().next().unwrap()
+        parse_config(&body)
+            .unwrap()
+            .subscriptions
+            .into_iter()
+            .next()
+            .unwrap()
     }
 
     #[test]
@@ -259,7 +264,10 @@ mod tests {
             is_commercial: false,
         };
         let outcome = process_inbound_item(&item(), &s, &v, 200);
-        assert!(matches!(outcome.republication, RepublicationOutcome::Full { .. }));
+        assert!(matches!(
+            outcome.republication,
+            RepublicationOutcome::Full { .. }
+        ));
     }
 
     #[test]
@@ -267,7 +275,10 @@ mod tests {
         let s = sub(true, "full");
         let v = VaultContext::default();
         let outcome = process_inbound_item(&item(), &s, &v, 200);
-        assert!(matches!(outcome.republication, RepublicationOutcome::Excerpt { .. }));
+        assert!(matches!(
+            outcome.republication,
+            RepublicationOutcome::Excerpt { .. }
+        ));
     }
 
     #[test]
@@ -278,7 +289,10 @@ mod tests {
             is_commercial: false,
         };
         let outcome = process_inbound_item(&item(), &s, &v, 200);
-        assert!(matches!(outcome.republication, RepublicationOutcome::Suppress { .. }));
+        assert!(matches!(
+            outcome.republication,
+            RepublicationOutcome::Suppress { .. }
+        ));
     }
 
     #[test]
@@ -310,19 +324,17 @@ mod tests {
             retracted_by_source: None,
         };
         mark_retracted(&mut fm, "2026-05-09T00:00:00Z");
-        assert_eq!(fm.retracted_by_source.as_deref(), Some("2026-05-09T00:00:00Z"));
+        assert_eq!(
+            fm.retracted_by_source.as_deref(),
+            Some("2026-05-09T00:00:00Z")
+        );
     }
 
     #[test]
     fn license_drift_recorded_when_operator_overrides() {
         let mut s = sub(true, "full");
         s.license = Some("CC-BY-4.0".to_string());
-        let outcome = process_inbound_item(
-            &item(),
-            &s,
-            &VaultContext::default(),
-            200,
-        );
+        let outcome = process_inbound_item(&item(), &s, &VaultContext::default(), 200);
         assert!(outcome.license_drift);
         assert_eq!(outcome.license, License::CcBy4_0);
     }

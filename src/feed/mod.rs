@@ -39,15 +39,15 @@ pub mod cap_feed;
 pub mod changelog;
 pub mod cli;
 pub mod config;
-pub mod datetime;
-pub mod observability;
 pub mod credentials;
+pub mod datetime;
 pub mod excerpt;
 pub mod fetch;
 pub mod forget;
 pub mod inbound;
 pub mod item_id;
 pub mod license_resolve;
+pub mod observability;
 pub mod republication;
 pub mod resolve_date;
 pub mod retention;
@@ -63,6 +63,5 @@ pub mod xml;
 
 pub use types::{
     AuthorRef, FeedConfig, FeedItem, License, OutputFormat, RepublicationDecision,
-    RepublicationMode, RepublicationRationale, RetentionPolicy, SelectionRule,
-    SourceMetadata,
+    RepublicationMode, RepublicationRationale, RetentionPolicy, SelectionRule, SourceMetadata,
 };

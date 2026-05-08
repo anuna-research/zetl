@@ -85,10 +85,7 @@ pub fn emit_root_feed(
     if matches!(feed.enabled, Some(false)) {
         return Err(BuildError::Disabled);
     }
-    let base_url = feed
-        .base_url
-        .as_deref()
-        .ok_or(BuildError::MissingBaseUrl)?;
+    let base_url = feed.base_url.as_deref().ok_or(BuildError::MissingBaseUrl)?;
     let title = feed.title.clone().unwrap_or_else(|| "Untitled".to_string());
     let description = feed.description.clone().unwrap_or_default();
     let max_items = feed.max_items.unwrap_or(DEFAULT_MAX_ITEMS);
@@ -140,7 +137,10 @@ pub fn emit_root_feed(
 
     let mut files = Vec::with_capacity(3);
     files.push((paths.rss.clone(), serialise_rss(&chosen, &cfg).into_bytes()));
-    files.push((paths.atom.clone(), serialise_atom(&chosen, &cfg).into_bytes()));
+    files.push((
+        paths.atom.clone(),
+        serialise_atom(&chosen, &cfg).into_bytes(),
+    ));
     if formats.jsonfeed {
         files.push((
             paths.jsonfeed.clone(),
@@ -217,10 +217,7 @@ pub fn build_feed_config(
     cohort_id: Option<String>,
 ) -> Result<FeedConfig, BuildError> {
     let feed = lens.feed.as_ref().ok_or(BuildError::Disabled)?;
-    let base_url = feed
-        .base_url
-        .as_deref()
-        .ok_or(BuildError::MissingBaseUrl)?;
+    let base_url = feed.base_url.as_deref().ok_or(BuildError::MissingBaseUrl)?;
     let description = feed.description.clone().unwrap_or_default();
     let max_items = feed.max_items.unwrap_or(DEFAULT_MAX_ITEMS);
     Ok(FeedConfig {
@@ -303,7 +300,8 @@ mod tests {
         "#;
         let lens = crate::feed::config::parse_config(body).unwrap();
         let (pages, _) = views(0);
-        let err = emit_root_feed(&lens, &pages, &always, &SelectionRule::FrontmatterOptIn).unwrap_err();
+        let err =
+            emit_root_feed(&lens, &pages, &always, &SelectionRule::FrontmatterOptIn).unwrap_err();
         assert_eq!(err, BuildError::MissingBaseUrl);
     }
 
@@ -316,7 +314,8 @@ mod tests {
         "#;
         let lens = crate::feed::config::parse_config(body).unwrap();
         let (pages, _) = views(0);
-        let err = emit_root_feed(&lens, &pages, &always, &SelectionRule::FrontmatterOptIn).unwrap_err();
+        let err =
+            emit_root_feed(&lens, &pages, &always, &SelectionRule::FrontmatterOptIn).unwrap_err();
         assert_eq!(err, BuildError::Disabled);
     }
 
@@ -324,7 +323,8 @@ mod tests {
     fn emits_rss_and_atom_by_default() {
         let lens = lens_with_feed(false);
         let (pages, _) = views(3);
-        let emission = emit_root_feed(&lens, &pages, &always, &SelectionRule::FrontmatterOptIn).unwrap();
+        let emission =
+            emit_root_feed(&lens, &pages, &always, &SelectionRule::FrontmatterOptIn).unwrap();
         let paths: Vec<&str> = emission.files.iter().map(|(p, _)| p.as_str()).collect();
         assert_eq!(paths, vec!["/feed.xml", "/atom.xml"]);
         assert!(emission.stats.formats.rss);
@@ -337,7 +337,8 @@ mod tests {
     fn enable_json_emits_feed_json() {
         let lens = lens_with_feed(true);
         let (pages, _) = views(2);
-        let emission = emit_root_feed(&lens, &pages, &always, &SelectionRule::FrontmatterOptIn).unwrap();
+        let emission =
+            emit_root_feed(&lens, &pages, &always, &SelectionRule::FrontmatterOptIn).unwrap();
         let paths: Vec<&str> = emission.files.iter().map(|(p, _)| p.as_str()).collect();
         assert!(paths.contains(&"/feed.json"));
         assert!(emission.stats.formats.jsonfeed);
@@ -347,7 +348,8 @@ mod tests {
     fn discovery_tags_present_for_active_formats() {
         let lens = lens_with_feed(true);
         let (pages, _) = views(0);
-        let emission = emit_root_feed(&lens, &pages, &always, &SelectionRule::FrontmatterOptIn).unwrap();
+        let emission =
+            emit_root_feed(&lens, &pages, &always, &SelectionRule::FrontmatterOptIn).unwrap();
         assert_eq!(emission.discovery_tags.len(), 3);
         assert!(emission.discovery_tags[0].contains("application/rss+xml"));
         assert!(emission.discovery_tags[1].contains("application/atom+xml"));
@@ -369,8 +371,16 @@ mod tests {
     fn visibility_predicate_filters_pages() {
         let lens = lens_with_feed(false);
         let (pages, _) = views(5);
-        let only_first_three = |p: &PageView<'_>| p.slug.ends_with('0') || p.slug.ends_with('1') || p.slug.ends_with('2');
-        let emission = emit_root_feed(&lens, &pages, &only_first_three, &SelectionRule::FrontmatterOptIn).unwrap();
+        let only_first_three = |p: &PageView<'_>| {
+            p.slug.ends_with('0') || p.slug.ends_with('1') || p.slug.ends_with('2')
+        };
+        let emission = emit_root_feed(
+            &lens,
+            &pages,
+            &only_first_three,
+            &SelectionRule::FrontmatterOptIn,
+        )
+        .unwrap();
         assert_eq!(emission.stats.items_emitted, 3);
     }
 }

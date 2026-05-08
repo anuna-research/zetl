@@ -20,17 +20,12 @@ pub struct InboxItem {
 }
 
 /// Retention mode: archive (default per ADR-3812) or delete.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RetentionMode {
+    #[default]
     Archive,
     Delete,
-}
-
-impl Default for RetentionMode {
-    fn default() -> Self {
-        RetentionMode::Archive
-    }
 }
 
 impl RetentionMode {
@@ -153,8 +148,16 @@ mod tests {
 
     #[test]
     fn forever_keeps_everything() {
-        let items = vec![it("a", "2026-01-01T00:00:00Z"), it("b", "2025-01-01T00:00:00Z")];
-        let actions = plan_retention(&items, &RetentionPolicy::Forever, RetentionMode::Archive, "2026-05-08T00:00:00Z");
+        let items = vec![
+            it("a", "2026-01-01T00:00:00Z"),
+            it("b", "2025-01-01T00:00:00Z"),
+        ];
+        let actions = plan_retention(
+            &items,
+            &RetentionPolicy::Forever,
+            RetentionMode::Archive,
+            "2026-05-08T00:00:00Z",
+        );
         for a in &actions {
             assert!(matches!(a, PruneAction::Keep { .. }));
         }
@@ -196,8 +199,22 @@ mod tests {
             RetentionMode::Archive,
             "2026-05-08T00:00:00Z",
         );
-        let kept = actions.iter().filter(|a| matches!(a, PruneAction::Keep { .. })).count();
-        let archived = actions.iter().filter(|a| matches!(a, PruneAction::Archive { reason: PruneReason::Count, .. })).count();
+        let kept = actions
+            .iter()
+            .filter(|a| matches!(a, PruneAction::Keep { .. }))
+            .count();
+        let archived = actions
+            .iter()
+            .filter(|a| {
+                matches!(
+                    a,
+                    PruneAction::Archive {
+                        reason: PruneReason::Count,
+                        ..
+                    }
+                )
+            })
+            .count();
         assert_eq!(kept, 3);
         assert_eq!(archived, 2);
     }
@@ -230,9 +247,15 @@ mod tests {
     #[test]
     fn retention_mode_parse_defaults_to_archive() {
         assert_eq!(RetentionMode::parse(None), RetentionMode::Archive);
-        assert_eq!(RetentionMode::parse(Some("archive")), RetentionMode::Archive);
+        assert_eq!(
+            RetentionMode::parse(Some("archive")),
+            RetentionMode::Archive
+        );
         assert_eq!(RetentionMode::parse(Some("delete")), RetentionMode::Delete);
-        assert_eq!(RetentionMode::parse(Some("garbage")), RetentionMode::Archive);
+        assert_eq!(
+            RetentionMode::parse(Some("garbage")),
+            RetentionMode::Archive
+        );
     }
 
     #[test]

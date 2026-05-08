@@ -34,7 +34,11 @@ pub fn excerpt(content_html: &str, word_count: usize) -> String {
         return String::new();
     }
 
-    let paragraphs: Vec<&str> = plain.split("\n\n").map(|p| p.trim()).filter(|p| !p.is_empty()).collect();
+    let paragraphs: Vec<&str> = plain
+        .split("\n\n")
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .collect();
     if paragraphs.is_empty() {
         return String::new();
     }
@@ -109,7 +113,10 @@ fn strip_html(html: &str) -> String {
                 }
             }
             // Boundary tags inject paragraph breaks.
-            if matches!(name, "p" | "div" | "br" | "li" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
+            if matches!(
+                name,
+                "p" | "div" | "br" | "li" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
+            ) {
                 out.push_str("\n\n");
             }
             i = end + 1;
@@ -118,7 +125,10 @@ fn strip_html(html: &str) -> String {
         // Default: copy one UTF-8 codepoint. Casting `bytes[i] as char`
         // would mangle multi-byte sequences (é, em-dash, CJK, emoji).
         let rest = &html[i..];
-        let ch = rest.chars().next().expect("loop condition guarantees i < len");
+        let ch = rest
+            .chars()
+            .next()
+            .expect("loop condition guarantees i < len");
         out.push(ch);
         i += ch.len_utf8();
     }
@@ -138,7 +148,10 @@ fn strip_html(html: &str) -> String {
 }
 
 fn find_byte(bytes: &[u8], target: u8, start: usize) -> Option<usize> {
-    bytes[start..].iter().position(|&b| b == target).map(|p| p + start)
+    bytes[start..]
+        .iter()
+        .position(|&b| b == target)
+        .map(|p| p + start)
 }
 
 /// Locate the byte offset just after the next `</name>` (case-
@@ -188,10 +201,12 @@ fn collapse_whitespace(s: &str) -> String {
                     } else {
                         out.push_str("\n\n");
                     }
-                } else if newlines_run == 1 {
-                    if !out.is_empty() && !out.ends_with(' ') && !out.ends_with('\n') {
-                        out.push(' ');
-                    }
+                } else if newlines_run == 1
+                    && !out.is_empty()
+                    && !out.ends_with(' ')
+                    && !out.ends_with('\n')
+                {
+                    out.push(' ');
                 }
                 last_was_newline = true;
             }

@@ -225,7 +225,8 @@ pub struct SelectionRuleTable {
 /// Parse the lens from a `.zetl/config.toml` body. Surfaces a
 /// structured error naming the offending key.
 pub fn parse_config(body: &str) -> Result<FeedConfigLens, FeedConfigError> {
-    let lens: FeedConfigLens = toml::from_str(body).map_err(|e| FeedConfigError::Toml(e.to_string()))?;
+    let lens: FeedConfigLens =
+        toml::from_str(body).map_err(|e| FeedConfigError::Toml(e.to_string()))?;
     validate_lens(&lens)?;
     Ok(lens)
 }
@@ -305,7 +306,9 @@ pub fn validate_lens(lens: &FeedConfigLens) -> Result<(), FeedConfigError> {
     if let Some(feed) = &lens.feed {
         if let Some(c) = &feed.changelog {
             if !(10..=100_000).contains(&c.archive_size) {
-                return Err(FeedConfigError::InvalidArchiveSize { value: c.archive_size });
+                return Err(FeedConfigError::InvalidArchiveSize {
+                    value: c.archive_size,
+                });
             }
         }
         if let Some(max) = feed.max_items {
@@ -330,13 +333,23 @@ pub fn validate_lens(lens: &FeedConfigLens) -> Result<(), FeedConfigError> {
 pub fn parse_selection_rule(w: &SelectionRuleWire) -> Result<SelectionRule, FeedConfigError> {
     match w {
         SelectionRuleWire::Sentinel(s) if s == "frontmatter" => Ok(SelectionRule::FrontmatterOptIn),
-        SelectionRuleWire::Sentinel(other) => Err(FeedConfigError::InvalidSelectSentinel(other.clone())),
-        SelectionRuleWire::Detailed(t) => match (t.folder.as_deref(), t.tag.as_deref(), t.spl.as_deref()) {
-            (Some(f), None, None) => Ok(SelectionRule::Folder { path: PathBuf::from(f) }),
-            (None, Some(tag), None) => Ok(SelectionRule::Tag { tag: tag.to_string() }),
-            (None, None, Some(spl)) => Ok(SelectionRule::SplQuery { query: spl.to_string() }),
-            _ => Err(FeedConfigError::AmbiguousSelectTable),
-        },
+        SelectionRuleWire::Sentinel(other) => {
+            Err(FeedConfigError::InvalidSelectSentinel(other.clone()))
+        }
+        SelectionRuleWire::Detailed(t) => {
+            match (t.folder.as_deref(), t.tag.as_deref(), t.spl.as_deref()) {
+                (Some(f), None, None) => Ok(SelectionRule::Folder {
+                    path: PathBuf::from(f),
+                }),
+                (None, Some(tag), None) => Ok(SelectionRule::Tag {
+                    tag: tag.to_string(),
+                }),
+                (None, None, Some(spl)) => Ok(SelectionRule::SplQuery {
+                    query: spl.to_string(),
+                }),
+                _ => Err(FeedConfigError::AmbiguousSelectTable),
+            }
+        }
     }
 }
 
@@ -359,10 +372,7 @@ fn check_token_entropy(token: &str) -> Result<(), String> {
     if (total_bits as u32) < COHORT_TOKEN_MIN_ENTROPY_BITS {
         return Err(format!(
             "token entropy {} bits < required {} (len={}, alphabet={})",
-            total_bits as u32,
-            COHORT_TOKEN_MIN_ENTROPY_BITS,
-            len,
-            alphabet_size as u32
+            total_bits as u32, COHORT_TOKEN_MIN_ENTROPY_BITS, len, alphabet_size as u32
         ));
     }
     Ok(())
@@ -403,12 +413,25 @@ pub enum FeedConfigError {
         reason: String,
     },
     #[error("[[subscriptions.{subscription_id}].retention_mode]: {value:?} (expected 'archive' or 'delete')")]
-    InvalidRetentionMode { subscription_id: String, value: String },
+    InvalidRetentionMode {
+        subscription_id: String,
+        value: String,
+    },
     #[error("[[subscriptions.{subscription_id}].license]: {value:?}")]
-    InvalidLicense { subscription_id: String, value: String },
+    InvalidLicense {
+        subscription_id: String,
+        value: String,
+    },
     #[error("[[subscriptions.{subscription_id}].republish_mode]: {value:?} (expected 'full' or 'excerpt')")]
-    InvalidRepublishMode { subscription_id: String, value: String },
-    #[error("[[subscriptions.{subscription_id}].excerpt_words]: {value} out of [{}, {}]", EXCERPT_WORDS_MIN, EXCERPT_WORDS_MAX)]
+    InvalidRepublishMode {
+        subscription_id: String,
+        value: String,
+    },
+    #[error(
+        "[[subscriptions.{subscription_id}].excerpt_words]: {value} out of [{}, {}]",
+        EXCERPT_WORDS_MIN,
+        EXCERPT_WORDS_MAX
+    )]
     InvalidExcerptWords { subscription_id: String, value: u32 },
     #[error(
         "[[subscriptions.{subscription_id}]] republish=true with no license declared requires i_have_permission=true (REQ-3820)"
@@ -537,7 +560,10 @@ mod tests {
             republish = true
         "#;
         let err = parse_config(body).unwrap_err();
-        assert!(matches!(err, FeedConfigError::RepublishWithoutPermission { .. }));
+        assert!(matches!(
+            err,
+            FeedConfigError::RepublishWithoutPermission { .. }
+        ));
 
         let body_ok = r#"
             [[subscriptions]]
@@ -600,7 +626,10 @@ mod tests {
         "#;
         let lens = parse_config(body).unwrap();
         let scope = &lens.feed.unwrap().scopes[0];
-        assert_eq!(parse_selection_rule(&scope.select).unwrap(), SelectionRule::FrontmatterOptIn);
+        assert_eq!(
+            parse_selection_rule(&scope.select).unwrap(),
+            SelectionRule::FrontmatterOptIn
+        );
     }
 
     #[test]
@@ -658,7 +687,10 @@ mod tests {
 
     #[test]
     fn parse_self_license_returns_typed_license() {
-        assert_eq!(parse_self_license(Some("CC-BY-SA-4.0")), Some(License::CcBySa4_0));
+        assert_eq!(
+            parse_self_license(Some("CC-BY-SA-4.0")),
+            Some(License::CcBySa4_0)
+        );
         assert_eq!(parse_self_license(None), None);
     }
 

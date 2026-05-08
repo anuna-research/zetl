@@ -33,7 +33,12 @@ pub fn serialise_rss(items: &[FeedItem], config: &FeedConfig) -> String {
     // lastBuildDate is the most-recent item's date (REQ-3804). Empty
     // feed produces no element.
     if let Some(latest) = items.iter().map(|i| &i.date_published).max() {
-        push_text_element(&mut out, "    ", "lastBuildDate", &rfc3339_to_rfc822(latest));
+        push_text_element(
+            &mut out,
+            "    ",
+            "lastBuildDate",
+            &rfc3339_to_rfc822(latest),
+        );
     }
     for item in items {
         out.push_str("    <item>\n");

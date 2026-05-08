@@ -32,18 +32,19 @@ pub struct SubscriptionPolicy {
 /// Decide republication eligibility against REQ-3820's table.
 ///
 /// Behavioural summary (one row per [`License`] variant):
-///   * `Cc0_1_0`            -> `FullAllowed`
-///   * `CcBy*` (any version)
-///       -> `Full` if operator opted into Full, else `ExcerptOnly`
-///   * `CcBySa4_0`          -> `Full` only if vault_self_license is
-///                              compatible CC-BY-SA, else `ExcerptOnly`
-///   * `CcByNc4_0`          -> `Full` only if vault is non-commercial,
-///                              else `ExcerptOnly`
-///   * `CcByNd4_0`          -> `ExcerptOnly` always (derivatives blocked,
-///                              and wikilink-rewriting modifies bodies)
-///   * `Other(_)` / `Unknown`
-///       -> `Deny` unless operator set `i_have_permission=true`, then
-///          `Full` if operator chose Full else `ExcerptOnly`
+///
+/// * `Cc0_1_0` — always `FullAllowed`.
+/// * `CcBy*` (any version) — `Full` if operator opted into Full,
+///   else `ExcerptOnly`.
+/// * `CcBySa4_0` — `Full` only if `vault_self_license` is a compatible
+///   CC-BY-SA, else `ExcerptOnly`.
+/// * `CcByNc4_0` — `Full` only if vault is non-commercial, else
+///   `ExcerptOnly`.
+/// * `CcByNd4_0` — `ExcerptOnly` always (derivatives blocked, and
+///   wikilink-rewriting modifies bodies).
+/// * `Other(_)` / `Unknown` — `Deny` unless operator set
+///   `i_have_permission=true`, then `Full` if operator chose Full
+///   else `ExcerptOnly`.
 ///
 /// `republish=false` short-circuits to `Deny` first; downstream test
 /// matrix in [`crate::feed::tests`] (Phase 2 task-tests-pure-core)
@@ -200,12 +201,8 @@ mod tests {
     #[test]
     fn ccbynd_excerpt_only_always() {
         for is_commercial in [false, true] {
-            let d = republication_eligible(
-                &License::CcByNd4_0,
-                &full_policy(),
-                None,
-                is_commercial,
-            );
+            let d =
+                republication_eligible(&License::CcByNd4_0, &full_policy(), None, is_commercial);
             assert_eq!(d.mode, RepublicationMode::ExcerptOnly);
             assert_eq!(d.rationale, RepublicationRationale::CcByNdExcerptOnly);
         }
@@ -224,7 +221,10 @@ mod tests {
         policy.i_have_permission = true;
         let d = republication_eligible(&License::Unknown, &policy, None, false);
         assert_eq!(d.mode, RepublicationMode::ExcerptOnly);
-        assert_eq!(d.rationale, RepublicationRationale::UnknownOperatorPermitted);
+        assert_eq!(
+            d.rationale,
+            RepublicationRationale::UnknownOperatorPermitted
+        );
         policy.mode = RepublicationMode::FullAllowed;
         let d = republication_eligible(&License::Unknown, &policy, None, false);
         assert_eq!(d.mode, RepublicationMode::FullAllowed);

@@ -86,7 +86,10 @@ pub fn rewrite_links(
         // CJK, emoji). Decode the next char from the &str slice and
         // advance by its byte length.
         let rest = &content[i..];
-        let ch = rest.chars().next().expect("loop condition guarantees i < len");
+        let ch = rest
+            .chars()
+            .next()
+            .expect("loop condition guarantees i < len");
         out.push(ch);
         i += ch.len_utf8();
     }
@@ -163,7 +166,9 @@ fn escape_attr(s: &str) -> String {
 }
 
 fn escape_text(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 #[cfg(test)]
@@ -190,7 +195,10 @@ mod tests {
             &always_resolve,
             UnresolvedPolicy::PreserveText,
         );
-        assert_eq!(out, r#"see <a href="https://example.com/foo">foo</a> for details"#);
+        assert_eq!(
+            out,
+            r#"see <a href="https://example.com/foo">foo</a> for details"#
+        );
     }
 
     #[test]
@@ -210,8 +218,18 @@ mod tests {
     #[test]
     fn idempotent() {
         let body = "Hi [[foo]] and [[bar|alias]]";
-        let once = rewrite_links(body, &base(), &always_resolve, UnresolvedPolicy::PreserveText);
-        let twice = rewrite_links(&once, &base(), &always_resolve, UnresolvedPolicy::PreserveText);
+        let once = rewrite_links(
+            body,
+            &base(),
+            &always_resolve,
+            UnresolvedPolicy::PreserveText,
+        );
+        let twice = rewrite_links(
+            &once,
+            &base(),
+            &always_resolve,
+            UnresolvedPolicy::PreserveText,
+        );
         assert_eq!(once, twice);
     }
 
@@ -290,7 +308,12 @@ mod tests {
         // Already-rendered <a> stays untouched; idempotence covers
         // re-running rewrite over its own output.
         let body = r#"<a href="/foo">foo</a> and [[bar]]"#;
-        let out = rewrite_links(body, &base(), &always_resolve, UnresolvedPolicy::PreserveText);
+        let out = rewrite_links(
+            body,
+            &base(),
+            &always_resolve,
+            UnresolvedPolicy::PreserveText,
+        );
         assert!(out.contains(r#"<a href="/foo">foo</a>"#));
         assert!(out.contains(r#"<a href="https://example.com/bar">bar</a>"#));
     }
@@ -298,7 +321,12 @@ mod tests {
     #[test]
     fn preserves_non_wikilink_brackets() {
         let body = "use [single] brackets and [link](http://x)";
-        let out = rewrite_links(body, &base(), &always_resolve, UnresolvedPolicy::PreserveText);
+        let out = rewrite_links(
+            body,
+            &base(),
+            &always_resolve,
+            UnresolvedPolicy::PreserveText,
+        );
         assert_eq!(out, body);
     }
 
@@ -309,7 +337,12 @@ mod tests {
         // (3-byte), and an emoji (4-byte) all survive both inside
         // wikilink alias text and in surrounding prose.
         let body = "before café — 日本語 🎉 [[foo|alias—😀]] after";
-        let out = rewrite_links(body, &base(), &always_resolve, UnresolvedPolicy::PreserveText);
+        let out = rewrite_links(
+            body,
+            &base(),
+            &always_resolve,
+            UnresolvedPolicy::PreserveText,
+        );
         assert!(out.contains("before café — 日本語 🎉"), "got {out:?}");
         assert!(out.contains("alias—😀"), "got {out:?}");
         assert!(out.contains(r#"href="https://example.com/foo""#));

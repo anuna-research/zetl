@@ -29,10 +29,7 @@ impl ForgetPattern {
         if input.starts_with("urn:") || input.starts_with("tag:") {
             return ForgetPattern::GuidPrefix(input.to_string());
         }
-        if input.len() >= 4
-            && input.len() <= 64
-            && input.chars().all(|c| c.is_ascii_hexdigit())
-        {
+        if input.len() >= 4 && input.len() <= 64 && input.chars().all(|c| c.is_ascii_hexdigit()) {
             return ForgetPattern::ContentHashPrefix(input.to_string());
         }
         ForgetPattern::SlugGlob(input.to_string())
@@ -120,7 +117,9 @@ fn build_matcher(p: &ForgetPattern) -> Result<Matcher, ForgetError> {
         ForgetPattern::SlugGlob(g) => {
             let mut b = GlobSetBuilder::new();
             b.add(Glob::new(g).map_err(|e| ForgetError::Pattern(e.to_string()))?);
-            Ok(Matcher::Glob(b.build().map_err(|e| ForgetError::Pattern(e.to_string()))?))
+            Ok(Matcher::Glob(
+                b.build().map_err(|e| ForgetError::Pattern(e.to_string()))?,
+            ))
         }
         ForgetPattern::GuidPrefix(g) => Ok(Matcher::GuidPrefix(g.clone())),
         ForgetPattern::ContentHashPrefix(g) => Ok(Matcher::HashPrefix(g.clone())),
@@ -142,7 +141,12 @@ fn matches(m: &Matcher, c: &ForgetCandidate) -> bool {
 /// Verify a fetched item against an existing tombstone log per
 /// REQ-3834. Returns `true` iff at least one signal matches a stored
 /// tombstone (T22: refuse re-import).
-pub fn is_tombstoned(tombstones: &[Tombstone], guid: Option<&str>, link: Option<&str>, hash: Option<&str>) -> bool {
+pub fn is_tombstoned(
+    tombstones: &[Tombstone],
+    guid: Option<&str>,
+    link: Option<&str>,
+    hash: Option<&str>,
+) -> bool {
     for t in tombstones {
         if matches_signal(&t.guid, guid)
             || matches_signal(&t.link, link)
@@ -276,7 +280,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(plan.tombstones.len(), 1);
-        assert_eq!(plan.tombstones[0].reason.as_deref(), Some("operator request"));
+        assert_eq!(
+            plan.tombstones[0].reason.as_deref(),
+            Some("operator request")
+        );
         assert_eq!(plan.tombstones[0].erased_at, "2026-05-08T00:00:00Z");
     }
 
@@ -291,7 +298,12 @@ mod tests {
         }];
         assert!(is_tombstoned(&tombs, Some("urn:x"), None, None));
         assert!(is_tombstoned(&tombs, None, None, Some("hashx")));
-        assert!(!is_tombstoned(&tombs, Some("urn:fresh"), None, Some("hashfresh")));
+        assert!(!is_tombstoned(
+            &tombs,
+            Some("urn:fresh"),
+            None,
+            Some("hashfresh")
+        ));
     }
 
     #[test]

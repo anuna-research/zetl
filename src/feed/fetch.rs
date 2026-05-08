@@ -196,10 +196,7 @@ impl FetchState {
             if signals_match(&stored.canonical_link, &candidate.canonical_link) {
                 return true;
             }
-            if signals_match(
-                &stored.content_fingerprint,
-                &candidate.content_fingerprint,
-            ) {
+            if signals_match(&stored.content_fingerprint, &candidate.content_fingerprint) {
                 return true;
             }
         }
@@ -325,9 +322,16 @@ mod tests {
 
     #[test]
     fn safe_scheme_rejects_file_data_javascript() {
-        for s in ["file:///tmp/foo", "data:text/plain,hi", "javascript:alert(1)"] {
+        for s in [
+            "file:///tmp/foo",
+            "data:text/plain,hi",
+            "javascript:alert(1)",
+        ] {
             let url = Url::parse(s).unwrap();
-            assert!(matches!(assert_safe_scheme(&url), Err(FetchError::UnsafeScheme(_))));
+            assert!(matches!(
+                assert_safe_scheme(&url),
+                Err(FetchError::UnsafeScheme(_))
+            ));
         }
         for s in ["http://example.com", "https://example.com"] {
             let url = Url::parse(s).unwrap();

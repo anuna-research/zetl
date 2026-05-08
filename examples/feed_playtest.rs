@@ -35,7 +35,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(&out)?;
 
     let pages = collect_pages(&vault)?;
-    println!("[playtest] {} pages collected from {}", pages.len(), vault.display());
+    println!(
+        "[playtest] {} pages collected from {}",
+        pages.len(),
+        vault.display()
+    );
 
     // Synthesise feed config in-memory. enable_json on so the JSON
     // Feed output is also produced.
@@ -85,7 +89,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             fs::create_dir_all(parent)?;
         }
         fs::write(&target, body)?;
-        println!("[playtest]   wrote {} ({} bytes)", target.display(), body.len());
+        println!(
+            "[playtest]   wrote {} ({} bytes)",
+            target.display(),
+            body.len()
+        );
     }
 
     // index.html with rel=alternate tags + a small page list so ar-crawl
@@ -141,11 +149,7 @@ fn collect_pages(vault: &Path) -> Result<Vec<Page>, Box<dyn std::error::Error>> 
     Ok(pages)
 }
 
-fn walk(
-    root: &Path,
-    here: &Path,
-    out: &mut Vec<Page>,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn walk(root: &Path, here: &Path, out: &mut Vec<Page>) -> Result<(), Box<dyn std::error::Error>> {
     for entry in fs::read_dir(here)? {
         let entry = entry?;
         let path = entry.path();
@@ -184,7 +188,10 @@ fn walk(
         let id = format!("tag:localhost,2026:zetl/{slug}");
         let url = format!(
             "http://localhost:8088/{}",
-            slug.split('/').map(url_segment_encode).collect::<Vec<_>>().join("/")
+            slug.split('/')
+                .map(url_segment_encode)
+                .collect::<Vec<_>>()
+                .join("/")
         );
         let item = FeedItem {
             id,
@@ -260,7 +267,9 @@ fn url_segment_encode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.as_bytes() {
         match *b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(*b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*b as char)
+            }
             other => out.push_str(&format!("%{:02X}", other)),
         }
     }

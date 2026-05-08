@@ -140,11 +140,13 @@ pub fn parse_credentials_file(body: &str) -> Result<CredentialsFile, CredentialE
         toml::from_str(body).map_err(|e| CredentialError::Toml(e.to_string()))?;
     for (id, cred) in &raw {
         cred.validate().map_err(|e| match e {
-            CredentialError::MissingField { scheme, field } => CredentialError::SubscriptionMissingField {
-                subscription_id: id.clone(),
-                scheme,
-                field,
-            },
+            CredentialError::MissingField { scheme, field } => {
+                CredentialError::SubscriptionMissingField {
+                    subscription_id: id.clone(),
+                    scheme,
+                    field,
+                }
+            }
             other => other,
         })?;
     }
@@ -254,13 +256,10 @@ pub fn load_credentials_file(path: &Path) -> Result<CredentialsFile, CredentialE
 /// REQ-3825 write path: serialise + atomic write-then-rename with
 /// mode-0600 set before the rename. The temp file lives next to the
 /// target so the rename is in the same filesystem (atomic on POSIX
-/// + NTFS). On Unix, the temp file is created with mode-0600 from
+/// and NTFS). On Unix, the temp file is created with mode-0600 from
 /// the start so the secret is never visible at a looser mode even
 /// transiently.
-pub fn save_credentials_file(
-    path: &Path,
-    file: &CredentialsFile,
-) -> Result<(), CredentialError> {
+pub fn save_credentials_file(path: &Path, file: &CredentialsFile) -> Result<(), CredentialError> {
     let body = serialize_credentials_file(file)?;
     let tmp_path = sibling_tmp_path(path);
     write_owner_only(&tmp_path, body.as_bytes()).map_err(|e| CredentialError::Io {
@@ -316,7 +315,10 @@ pub enum CredentialError {
     #[error("malformed credentials file: {0}")]
     Toml(String),
     #[error("[{scheme}] credential missing field: {field}")]
-    MissingField { scheme: &'static str, field: &'static str },
+    MissingField {
+        scheme: &'static str,
+        field: &'static str,
+    },
     #[error("[{subscription_id}] {scheme} credential missing field: {field}")]
     SubscriptionMissingField {
         subscription_id: String,
@@ -443,7 +445,13 @@ mod tests {
             token_value: None,
         };
         let err = cred.validate().unwrap_err();
-        assert!(matches!(err, CredentialError::MissingField { scheme: "query_param", .. }));
+        assert!(matches!(
+            err,
+            CredentialError::MissingField {
+                scheme: "query_param",
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -460,7 +468,10 @@ mod tests {
         let err = config_credential_leak_scan(body).unwrap_err();
         match err {
             CredentialError::ConfigLeak(paths) => {
-                assert!(paths.iter().any(|p| p.ends_with(".password")), "got {paths:?}");
+                assert!(
+                    paths.iter().any(|p| p.ends_with(".password")),
+                    "got {paths:?}"
+                );
             }
             other => panic!("expected ConfigLeak, got {other:?}"),
         }
@@ -532,8 +543,14 @@ mod tests {
         let err = config_credential_leak_scan(body).unwrap_err();
         match err {
             CredentialError::ConfigLeak(paths) => {
-                assert!(paths.iter().any(|p| p.ends_with(".token_value")), "got {paths:?}");
-                assert!(paths.iter().any(|p| p.ends_with(".token_param")), "got {paths:?}");
+                assert!(
+                    paths.iter().any(|p| p.ends_with(".token_value")),
+                    "got {paths:?}"
+                );
+                assert!(
+                    paths.iter().any(|p| p.ends_with(".token_param")),
+                    "got {paths:?}"
+                );
             }
             other => panic!("expected ConfigLeak, got {other:?}"),
         }
@@ -553,7 +570,10 @@ mod tests {
             let err = config_credential_leak_scan(&body).unwrap_err();
             match err {
                 CredentialError::ConfigLeak(paths) => {
-                    assert!(paths.iter().any(|p| p.ends_with(&format!(".{key}"))), "key {key} not flagged: {paths:?}");
+                    assert!(
+                        paths.iter().any(|p| p.ends_with(&format!(".{key}"))),
+                        "key {key} not flagged: {paths:?}"
+                    );
                 }
                 other => panic!("expected ConfigLeak for {key}, got {other:?}"),
             }
@@ -576,12 +596,15 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("credentials.toml");
         let mut f = std::fs::File::create(&path).unwrap();
-        f.write_all(b"[x]\nauth_type=\"bearer\"\ntoken=\"t\"\n").unwrap();
+        f.write_all(b"[x]\nauth_type=\"bearer\"\ntoken=\"t\"\n")
+            .unwrap();
         // Looser-than-0600 (group + other can read).
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
         let err = load_credentials_file(&path).unwrap_err();
         match err {
-            CredentialError::LooseMode { actual, required, .. } => {
+            CredentialError::LooseMode {
+                actual, required, ..
+            } => {
                 assert_eq!(actual, 0o644);
                 assert_eq!(required, 0o600);
             }

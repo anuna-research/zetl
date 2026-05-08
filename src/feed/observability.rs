@@ -239,11 +239,14 @@ mod tests {
     #[test]
     fn label_cardinality_check_passes_for_allowed_labels() {
         let mut sink = MetricSink::default();
-        sink.incr(CounterKind::Retention, &[
-            ("subscription_id", "x"),
-            ("action", "archive"),
-            ("reason", "age"),
-        ]);
+        sink.incr(
+            CounterKind::Retention,
+            &[
+                ("subscription_id", "x"),
+                ("action", "archive"),
+                ("reason", "age"),
+            ],
+        );
         sink.verify_label_cardinality(ALLOWED_LABELS).unwrap();
     }
 

@@ -127,10 +127,29 @@ mod tests {
         let p_alpha = Path::new("alpha.md");
         let p_beta = Path::new("beta.md");
         let pages = vec![
-            view("alpha", p_alpha, true, &no_tags, false, item("alpha", "2026-05-01T00:00:00Z")),
-            view("beta", p_beta, false, &no_tags, false, item("beta", "2026-05-02T00:00:00Z")),
+            view(
+                "alpha",
+                p_alpha,
+                true,
+                &no_tags,
+                false,
+                item("alpha", "2026-05-01T00:00:00Z"),
+            ),
+            view(
+                "beta",
+                p_beta,
+                false,
+                &no_tags,
+                false,
+                item("beta", "2026-05-02T00:00:00Z"),
+            ),
         ];
-        let out = select(&pages, &SelectionRule::FrontmatterOptIn, &always_visible, 10);
+        let out = select(
+            &pages,
+            &SelectionRule::FrontmatterOptIn,
+            &always_visible,
+            10,
+        );
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].id, "alpha");
     }
@@ -141,8 +160,22 @@ mod tests {
         let p_a = Path::new("notes/a.md");
         let p_b = Path::new("blog/b.md");
         let pages = vec![
-            view("a", p_a, false, &no_tags, false, item("a", "2026-05-01T00:00:00Z")),
-            view("b", p_b, false, &no_tags, false, item("b", "2026-05-02T00:00:00Z")),
+            view(
+                "a",
+                p_a,
+                false,
+                &no_tags,
+                false,
+                item("a", "2026-05-01T00:00:00Z"),
+            ),
+            view(
+                "b",
+                p_b,
+                false,
+                &no_tags,
+                false,
+                item("b", "2026-05-02T00:00:00Z"),
+            ),
         ];
         let out = select(
             &pages,
@@ -162,8 +195,22 @@ mod tests {
         let tags_alpha = vec!["alpha".to_string()];
         let tags_beta = vec!["beta".to_string()];
         let pages = vec![
-            view("a", p, false, &tags_alpha, false, item("a", "2026-05-01T00:00:00Z")),
-            view("b", p, false, &tags_beta, false, item("b", "2026-05-02T00:00:00Z")),
+            view(
+                "a",
+                p,
+                false,
+                &tags_alpha,
+                false,
+                item("a", "2026-05-01T00:00:00Z"),
+            ),
+            view(
+                "b",
+                p,
+                false,
+                &tags_beta,
+                false,
+                item("b", "2026-05-02T00:00:00Z"),
+            ),
         ];
         let out = select(
             &pages,
@@ -182,8 +229,22 @@ mod tests {
         let p = Path::new("p.md");
         let no_tags: Vec<String> = vec![];
         let pages = vec![
-            view("a", p, false, &no_tags, true, item("a", "2026-05-01T00:00:00Z")),
-            view("b", p, false, &no_tags, false, item("b", "2026-05-02T00:00:00Z")),
+            view(
+                "a",
+                p,
+                false,
+                &no_tags,
+                true,
+                item("a", "2026-05-01T00:00:00Z"),
+            ),
+            view(
+                "b",
+                p,
+                false,
+                &no_tags,
+                false,
+                item("b", "2026-05-02T00:00:00Z"),
+            ),
         ];
         let out = select(
             &pages,
@@ -203,12 +264,41 @@ mod tests {
         let no_tags: Vec<String> = vec![];
         // Two items at the same timestamp -> id tiebreaks lexicographically.
         let pages = vec![
-            view("z", p, true, &no_tags, false, item("z", "2026-05-01T00:00:00Z")),
-            view("a", p, true, &no_tags, false, item("a", "2026-05-01T00:00:00Z")),
-            view("m", p, true, &no_tags, false, item("m", "2026-06-01T00:00:00Z")),
+            view(
+                "z",
+                p,
+                true,
+                &no_tags,
+                false,
+                item("z", "2026-05-01T00:00:00Z"),
+            ),
+            view(
+                "a",
+                p,
+                true,
+                &no_tags,
+                false,
+                item("a", "2026-05-01T00:00:00Z"),
+            ),
+            view(
+                "m",
+                p,
+                true,
+                &no_tags,
+                false,
+                item("m", "2026-06-01T00:00:00Z"),
+            ),
         ];
-        let out = select(&pages, &SelectionRule::FrontmatterOptIn, &always_visible, 10);
-        assert_eq!(out.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), vec!["m", "a", "z"]);
+        let out = select(
+            &pages,
+            &SelectionRule::FrontmatterOptIn,
+            &always_visible,
+            10,
+        );
+        assert_eq!(
+            out.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(),
+            vec!["m", "a", "z"]
+        );
     }
 
     #[test]
@@ -235,8 +325,22 @@ mod tests {
         let p = Path::new("p.md");
         let no_tags: Vec<String> = vec![];
         let pages = vec![
-            view("public", p, true, &no_tags, false, item("public", "2026-05-01T00:00:00Z")),
-            view("private", p, true, &no_tags, false, item("private", "2026-05-02T00:00:00Z")),
+            view(
+                "public",
+                p,
+                true,
+                &no_tags,
+                false,
+                item("public", "2026-05-01T00:00:00Z"),
+            ),
+            view(
+                "private",
+                p,
+                true,
+                &no_tags,
+                false,
+                item("private", "2026-05-02T00:00:00Z"),
+            ),
         ];
         let only_public = |p: &PageView<'_>| p.slug == "public";
         let out = select(&pages, &SelectionRule::FrontmatterOptIn, &only_public, 10);
@@ -249,17 +353,69 @@ mod tests {
         let p = Path::new("p.md");
         let no_tags: Vec<String> = vec![];
         let order_a = vec![
-            view("a", p, true, &no_tags, false, item("a", "2026-05-01T00:00:00Z")),
-            view("b", p, true, &no_tags, false, item("b", "2026-05-02T00:00:00Z")),
-            view("c", p, true, &no_tags, false, item("c", "2026-05-03T00:00:00Z")),
+            view(
+                "a",
+                p,
+                true,
+                &no_tags,
+                false,
+                item("a", "2026-05-01T00:00:00Z"),
+            ),
+            view(
+                "b",
+                p,
+                true,
+                &no_tags,
+                false,
+                item("b", "2026-05-02T00:00:00Z"),
+            ),
+            view(
+                "c",
+                p,
+                true,
+                &no_tags,
+                false,
+                item("c", "2026-05-03T00:00:00Z"),
+            ),
         ];
         let order_b = vec![
-            view("c", p, true, &no_tags, false, item("c", "2026-05-03T00:00:00Z")),
-            view("a", p, true, &no_tags, false, item("a", "2026-05-01T00:00:00Z")),
-            view("b", p, true, &no_tags, false, item("b", "2026-05-02T00:00:00Z")),
+            view(
+                "c",
+                p,
+                true,
+                &no_tags,
+                false,
+                item("c", "2026-05-03T00:00:00Z"),
+            ),
+            view(
+                "a",
+                p,
+                true,
+                &no_tags,
+                false,
+                item("a", "2026-05-01T00:00:00Z"),
+            ),
+            view(
+                "b",
+                p,
+                true,
+                &no_tags,
+                false,
+                item("b", "2026-05-02T00:00:00Z"),
+            ),
         ];
-        let out_a = select(&order_a, &SelectionRule::FrontmatterOptIn, &always_visible, 10);
-        let out_b = select(&order_b, &SelectionRule::FrontmatterOptIn, &always_visible, 10);
+        let out_a = select(
+            &order_a,
+            &SelectionRule::FrontmatterOptIn,
+            &always_visible,
+            10,
+        );
+        let out_b = select(
+            &order_b,
+            &SelectionRule::FrontmatterOptIn,
+            &always_visible,
+            10,
+        );
         assert_eq!(out_a, out_b);
     }
 }

@@ -92,10 +92,22 @@ pub fn resolve_date(
     build_time_ceiling: Option<&str>,
 ) -> Result<ResolvedDate, ResolveDateError> {
     let chain = [
-        (DateSource::FrontmatterPublished, dates.frontmatter_published.as_deref()),
-        (DateSource::FrontmatterDate, dates.frontmatter_date.as_deref()),
-        (DateSource::FrontmatterCreated, dates.frontmatter_created.as_deref()),
-        (DateSource::GitFirstCommit, dates.git_first_commit.as_deref()),
+        (
+            DateSource::FrontmatterPublished,
+            dates.frontmatter_published.as_deref(),
+        ),
+        (
+            DateSource::FrontmatterDate,
+            dates.frontmatter_date.as_deref(),
+        ),
+        (
+            DateSource::FrontmatterCreated,
+            dates.frontmatter_created.as_deref(),
+        ),
+        (
+            DateSource::GitFirstCommit,
+            dates.git_first_commit.as_deref(),
+        ),
         (DateSource::GitLastCommit, dates.git_last_commit.as_deref()),
     ];
     for (source, value) in chain {
@@ -107,11 +119,12 @@ pub fn resolve_date(
             // Parse + normalise. Bare YYYY-MM-DD is allowed and
             // interpreted as midnight UTC; everything else must carry
             // an explicit timezone marker.
-            let canonical = canonicalise_rfc3339(raw).map_err(|reason| ResolveDateError::Malformed {
-                from: source,
-                value: raw.to_string(),
-                reason,
-            })?;
+            let canonical =
+                canonicalise_rfc3339(raw).map_err(|reason| ResolveDateError::Malformed {
+                    from: source,
+                    value: raw.to_string(),
+                    reason,
+                })?;
             if let Some(ceiling) = build_time_ceiling {
                 if canonical.as_str() > ceiling {
                     return Err(ResolveDateError::Malformed {
