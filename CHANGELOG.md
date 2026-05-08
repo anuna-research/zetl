@@ -60,9 +60,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     as a label). Cohort token labels enforce REQ-3831's never-leak
     invariant.
 
-  Tracked in plan `IMPL-038` (33 tasks). 225+ unit + integration tests
+  Tracked in plan `IMPL-038` (33 tasks); follow-up wires landed under
+  `IMPL-038-wires` (5 tasks: outbound emission into `zetl build`, CLI
+  surface attach, fail-loud config validation, theme Subscribe
+  affordance, end-to-end playtest). 2,169 lib + 24 integration tests
   cover per-format determinism, cross-format equivalence, threat-model
-  corpus (T1..T22), and the CC eligibility matrix.
+  corpus (T1..T22), the CC eligibility matrix, RFC 4287 §4.1.1
+  feed-author conformance, and JSON Feed v1.1 minimum-required-fields.
+
+  Operator how-to: [`user-guide/reading/Feeds.md`](user-guide/reading/Feeds.md).
+  Reference spec: `specs/SPEC-038-rss-support.md`. CLI surface in v1.0:
+  `zetl feed validate` (offline strict-parser smoke test) is fully
+  wired; `pull|list|status|forget` exit non-zero with structured
+  "not yet wired" stubs pointing at the deferred shell-side work.
 
 - **Capability-URL distribution (SPEC-034 v0.4.0).** A new
   `zetl build --capability` build mode encrypts every page with
