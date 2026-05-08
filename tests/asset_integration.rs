@@ -22,14 +22,6 @@ use zetl::web::WebState;
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-fn write_file(root: &Path, relative: &str, content: &[u8]) {
-    let full = root.join(relative);
-    if let Some(parent) = full.parent() {
-        fs::create_dir_all(parent).expect("create parent dirs");
-    }
-    fs::write(&full, content).expect("write test file");
-}
-
 /// Build a WebState in collab mode with an owner profile.
 fn build_collab_state(vault_root: &Path) -> (WebState, String, String) {
     fs::create_dir_all(vault_root.join(".zetl/collab")).unwrap();
@@ -144,22 +136,6 @@ async fn delete_asset(app: &Router, uri: &str, cookie: &str, csrf: &str) -> Stat
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     resp.status()
-}
-
-async fn get_body(app: &Router, uri: &str) -> (StatusCode, Vec<u8>, String) {
-    let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
-    let resp = app.clone().oneshot(req).await.unwrap();
-    let status = resp.status();
-    let ct = resp
-        .headers()
-        .get("content-type")
-        .map(|v| v.to_str().unwrap().to_string())
-        .unwrap_or_default();
-    let body = axum::body::to_bytes(resp.into_body(), 1_000_000)
-        .await
-        .unwrap()
-        .to_vec();
-    (status, body, ct)
 }
 
 async fn get_body_auth(app: &Router, uri: &str, cookie: &str) -> (StatusCode, Vec<u8>, String) {
