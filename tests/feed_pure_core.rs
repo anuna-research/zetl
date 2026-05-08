@@ -445,6 +445,24 @@ fn atom_rfc4287_feed_carries_default_author_via_emit_root_feed() {
 }
 
 #[test]
+fn frontmatter_feed_optin_byte_scan() {
+    // The fast-path byte-scan in web::build short-circuits the YAML
+    // parse for the 90% non-opt-in case. Lock the wire-format down.
+    use zetl::web::build::scan_frontmatter_feed_optin as scan;
+
+    assert_eq!(scan("---\nfeed: true\n---\nbody"), Some(true));
+    assert_eq!(scan("---\nfeed: false\n---\nbody"), Some(false));
+    assert_eq!(scan("---\ntitle: x\nfeed: true\ntag: a\n---\nbody"), Some(true));
+    assert_eq!(scan("---\ntitle: x\n---\nbody"), None);
+    assert_eq!(scan("# no frontmatter at all"), None);
+    assert_eq!(scan("---\nfeed: yes\n---\nbody"), None);
+    assert_eq!(scan("---\nfeed:\n  enabled: true\n---\nbody"), None);
+    // Whitespace tolerance:
+    assert_eq!(scan("---\n  feed: true\n---\nbody"), Some(true));
+    assert_eq!(scan("---\nfeed:   true   \n---\nbody"), Some(true));
+}
+
+#[test]
 fn vault_path_unused_in_test_does_not_break_compilation() {
     // Compile-time check that crate paths resolve.
     let _ = Path::new("ok");
