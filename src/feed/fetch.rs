@@ -99,7 +99,19 @@ fn is_public_v6(addr: std::net::Ipv6Addr) -> bool {
     if addr.is_loopback() || addr.is_unspecified() || addr.is_multicast() {
         return false;
     }
+    // IPv4-mapped (::ffff:a.b.c.d) addresses must be classified by the IPv4
+    // rules — otherwise an attacker can wrap a private/loopback IPv4 in a v6
+    // literal (e.g. http://[::ffff:127.0.0.1]/) to bypass the SSRF guard.
+    if let Some(v4) = addr.to_ipv4_mapped() {
+        return is_public_v4(v4);
+    }
+    // Deprecated IPv4-compatible form (::a.b.c.d, high 96 bits zero, not the
+    // ::ffff: prefix). Refuse outright — it has no legitimate modern use and
+    // could otherwise smuggle a private v4 past us.
     let segs = addr.segments();
+    if segs[..6] == [0, 0, 0, 0, 0, 0] && (segs[6] != 0 || segs[7] != 0) {
+        return false;
+    }
     // fe80::/10 link-local.
     if (segs[0] & 0xffc0) == 0xfe80 {
         return false;
@@ -309,6 +321,31 @@ mod tests {
         }
         let good: Ipv6Addr = "2606:4700:4700::1111".parse().unwrap();
         assert!(is_public_ip(good.into()));
+    }
+
+    #[test]
+    fn ssrf_rejects_ipv4_mapped_private_v6() {
+        // IPv4-mapped IPv6 wraps the v4 address in the low 32 bits of a v6
+        // literal (::ffff:127.0.0.1). It must be classified by the v4 rules
+        // so private/loopback v4 cannot bypass the guard.
+        for bad in [
+            "::ffff:127.0.0.1",
+            "::ffff:10.0.0.1",
+            "::ffff:192.168.1.1",
+            "::ffff:169.254.1.1",
+            "::ffff:100.64.0.1",
+        ] {
+            let addr: Ipv6Addr = bad.parse().unwrap();
+            assert!(!is_public_ip(addr.into()), "expected private: {bad}");
+        }
+        // Public v4 wrapped as v6-mapped is still public.
+        let good: Ipv6Addr = "::ffff:8.8.8.8".parse().unwrap();
+        assert!(is_public_ip(good.into()));
+        // Deprecated IPv4-compatible form ::a.b.c.d is rejected outright.
+        for bad in ["::127.0.0.1", "::8.8.8.8"] {
+            let addr: Ipv6Addr = bad.parse().unwrap();
+            assert!(!is_public_ip(addr.into()), "expected reject: {bad}");
+        }
     }
 
     #[test]

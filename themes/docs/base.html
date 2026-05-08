@@ -461,7 +461,7 @@
     <span style="margin-right: 0.5rem;">Subscribe:</span>
     <a href="{{ root_path }}feed.xml" rel="alternate" type="application/rss+xml" style="margin-right: 0.5rem;">RSS</a>
     <a href="{{ root_path }}atom.xml" rel="alternate" type="application/atom+xml" style="margin-right: 0.5rem;">Atom</a>
-    {% if vault.feed_discovery | length > 2 %}<a href="{{ root_path }}feed.json" rel="alternate" type="application/feed+json">JSON Feed</a>{% endif %}
+    {% if vault.feed_json_enabled %}<a href="{{ root_path }}feed.json" rel="alternate" type="application/feed+json">JSON Feed</a>{% endif %}
   </aside>
   {% endif %}
 

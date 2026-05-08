@@ -6,7 +6,9 @@
 //! provides the per-format response *builders* so the route handlers
 //! reduce to a one-liner.
 
-use crate::feed::build::{emit_root_feed, BuildError};
+use crate::feed::build::{
+    emit_root_feed, BuildError, DEFAULT_ATOM_PATH, DEFAULT_JSONFEED_PATH, DEFAULT_RSS_PATH,
+};
 use crate::feed::config::FeedConfigLens;
 use crate::feed::select::PageView;
 use crate::feed::types::{OutputFormat, SelectionRule};
@@ -24,6 +26,42 @@ pub struct FeedResponse {
     pub body: Vec<u8>,
 }
 
+/// Resolve the URL path the operator configured for `format`. Falls
+/// back to the per-format default when `[feed.paths]` doesn't override
+/// it. Pure: pulls everything out of the lens.
+pub fn configured_feed_path(lens: &FeedConfigLens, format: OutputFormat) -> String {
+    let default = match format {
+        OutputFormat::Rss20 => DEFAULT_RSS_PATH,
+        OutputFormat::Atom10 => DEFAULT_ATOM_PATH,
+        OutputFormat::JsonFeed11 => DEFAULT_JSONFEED_PATH,
+    };
+    lens.feed
+        .as_ref()
+        .and_then(|f| f.paths.as_ref())
+        .and_then(|p| match format {
+            OutputFormat::Rss20 => p.rss.clone(),
+            OutputFormat::Atom10 => p.atom.clone(),
+            OutputFormat::JsonFeed11 => p.jsonfeed.clone(),
+        })
+        .unwrap_or_else(|| default.to_string())
+}
+
+/// Reverse of [`configured_feed_path`]: classify a request URL path
+/// against the operator's [feed.paths] config (falling back to the
+/// per-format defaults). Returns the matching format or `None`. Used
+/// by the route dispatcher so requests to a custom path like
+/// `/rss.xml` reach the correct format handler when the operator has
+/// remapped feed URLs.
+pub fn classify_feed_path(lens: &FeedConfigLens, url_path: &str) -> Option<OutputFormat> {
+    [
+        OutputFormat::Rss20,
+        OutputFormat::Atom10,
+        OutputFormat::JsonFeed11,
+    ]
+    .into_iter()
+    .find(|&fmt| configured_feed_path(lens, fmt) == url_path)
+}
+
 /// Render a feed for serve mode. `format` selects which file from the
 /// emission set we return; `is_collab` chooses no-store (collab) vs
 /// max-age (public) caching.
@@ -36,15 +74,11 @@ pub fn render_feed(
     is_collab: bool,
 ) -> Result<FeedResponse, BuildError> {
     let emission = emit_root_feed(lens, pages, visibility, rule)?;
-    let target_path = match format {
-        OutputFormat::Rss20 => "/feed.xml",
-        OutputFormat::Atom10 => "/atom.xml",
-        OutputFormat::JsonFeed11 => "/feed.json",
-    };
+    let target_path = configured_feed_path(lens, format);
     let body = emission
         .files
         .iter()
-        .find(|(p, _)| p == target_path)
+        .find(|(p, _)| p == &target_path)
         .map(|(_, b)| b.clone())
         .ok_or(BuildError::Disabled)?;
     let cache_control = if is_collab {

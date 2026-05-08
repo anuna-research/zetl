@@ -43,6 +43,13 @@ pub struct VaultContext {
     /// via `{{ vault.feed_discovery | join(safe='') | safe }}`.
     #[serde(default)]
     pub feed_discovery: Vec<String>,
+    /// True when `[feed].enable_json = true`; gates the human-clickable
+    /// "JSON Feed" affordance in the theme. Themes that just use
+    /// `feed_discovery | length > 2` to detect JSON Feed support are
+    /// wrong (scoped feeds also extend that list), so this flag is the
+    /// authoritative source of truth.
+    #[serde(default)]
+    pub feed_json_enabled: bool,
 }
 
 #[derive(Serialize)]
@@ -282,6 +289,7 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
         semantic_available: false,
         site_url: String::new(),
         feed_discovery: Vec::new(),
+        feed_json_enabled: false,
     }
 }
 

@@ -220,6 +220,20 @@ pub fn build_feed_config(
     let base_url = feed.base_url.as_deref().ok_or(BuildError::MissingBaseUrl)?;
     let description = feed.description.clone().unwrap_or_default();
     let max_items = feed.max_items.unwrap_or(DEFAULT_MAX_ITEMS);
+    // RFC 4287 §4.1.1: feeds without per-entry authors MUST carry a
+    // feed-level <atom:author>. Scoped + cohort feeds inherit the
+    // root's `[feed].author` (or fall back to `[feed].title` and then
+    // the scope title) so a scoped Atom output is still strict-parser
+    // conformant when its items lack item.author.
+    let default_author = Some(crate::feed::types::AuthorRef {
+        name: feed
+            .author
+            .clone()
+            .or_else(|| feed.title.clone())
+            .unwrap_or_else(|| title.clone()),
+        email: None,
+        url: None,
+    });
     Ok(FeedConfig {
         base_url: base_url.to_string(),
         title,
@@ -229,7 +243,7 @@ pub fn build_feed_config(
         paths,
         scope_id,
         cohort_id,
-        default_author: None,
+        default_author,
         language: feed.language.clone(),
         copyright: feed.copyright.clone(),
     })

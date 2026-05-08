@@ -359,6 +359,7 @@ pub async fn index_handler(
         .unwrap_or_else(|| "vault".to_string());
 
     let mut vault_ctx = build_vault_context(&data, &vault_name);
+    crate::web::build::populate_feed_discovery_from_disk(&mut vault_ctx, &state.vault_root);
 
     // ── Visibility filtering for sidebar (REQ-020-031) ────────────────
     #[cfg(feature = "reason")]
@@ -413,6 +414,7 @@ pub async fn help_handler(State(state): State<WebState>) -> Response {
     // renders on /help too (BUG-502 class).
     #[allow(unused_mut)]
     let mut vault_ctx = build_vault_context(&data, &vault_name);
+    crate::web::build::populate_feed_discovery_from_disk(&mut vault_ctx, &state.vault_root);
     #[cfg(feature = "history")]
     {
         if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
@@ -433,6 +435,14 @@ pub async fn page_handler(
     Path(slug): Path<String>,
 ) -> Response {
     if let Some(resp) = try_serve_public(&state, &slug) {
+        return resp;
+    }
+    // Operator-configured feed URLs (`[feed.paths].rss/atom/jsonfeed`)
+    // — the static `/feed.xml` etc. routes only cover the per-format
+    // defaults, so a remap like `rss = "/rss.xml"` must be picked up
+    // here before falling through to the page lookup.
+    let url_path = format!("/{slug}");
+    if let Some(resp) = try_serve_configured_feed(&state, &url_path).await {
         return resp;
     }
     let slug = urldecode(&slug);
@@ -724,6 +734,7 @@ pub async fn page_handler(
     if file.is_none() && slug.eq_ignore_ascii_case("tag-cloud") {
         #[allow(unused_mut)]
         let mut vault_ctx = build_vault_context(&data, &vault_name);
+        crate::web::build::populate_feed_discovery_from_disk(&mut vault_ctx, &state.vault_root);
         #[cfg(feature = "history")]
         if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
             vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
@@ -754,6 +765,7 @@ pub async fn page_handler(
             let folder_name = slug.rsplit('/').next().unwrap_or(slug);
             #[allow(unused_mut)]
             let mut vault_ctx = build_vault_context(&data, &vault_name);
+            crate::web::build::populate_feed_discovery_from_disk(&mut vault_ctx, &state.vault_root);
             #[cfg(feature = "history")]
             {
                 // OBS-013: time vault history context build.
@@ -938,6 +950,7 @@ pub async fn page_handler(
 
     #[allow(unused_mut)]
     let mut vault_ctx = build_vault_context(&data, &vault_name);
+    crate::web::build::populate_feed_discovery_from_disk(&mut vault_ctx, &state.vault_root);
     #[cfg(feature = "history")]
     {
         // OBS-013: time vault history context build.
@@ -1056,6 +1069,7 @@ pub async fn edit_handler(
     // the default build doesn't trip the lint.
     #[allow(unused_mut)]
     let mut vault_ctx = build_vault_context(&data, &vault_name);
+    crate::web::build::populate_feed_discovery_from_disk(&mut vault_ctx, &state.vault_root);
 
     // BUG-502: sidebar parity with page_handler. Without this the
     // "Recent changes" link is gated on vault.history.snapshot_count and
@@ -2379,6 +2393,7 @@ async fn page_history_handler_inner(State(state): State<WebState>, page_slug: St
     // Sidebar-parity: populate vault_ctx.history so "Recent changes" renders.
     #[allow(unused_mut)]
     let mut vault_ctx = build_vault_context(&data, &vault_name);
+    crate::web::build::populate_feed_discovery_from_disk(&mut vault_ctx, &state.vault_root);
     #[cfg(feature = "history")]
     {
         if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
@@ -2443,6 +2458,7 @@ async fn vault_history_handler_inner(State(state): State<WebState>) -> Response 
         .unwrap_or_else(|| "vault".to_string());
 
     let mut vault_ctx = build_vault_context(&data, &vault_name);
+    crate::web::build::populate_feed_discovery_from_disk(&mut vault_ctx, &state.vault_root);
     // SPEC-027 Finding 1: populate vault.history before rendering so
     // `vault_history.html`'s `{% if vault.history %}` guard passes and
     // snapshot_count / trend are available to the template.
@@ -5798,6 +5814,19 @@ pub async fn llms_txt_handler(State(state): State<WebState>) -> Response {
         .into_response()
 }
 
+/// Try to serve a request URL as a configured feed path
+/// (`[feed.paths].rss/atom/jsonfeed`). Returns `Some(response)` when
+/// the path matches a configured feed URL, `None` otherwise. Used by
+/// `page_handler` so operator-remapped URLs like `/rss.xml` reach the
+/// feed handler instead of falling through to the page lookup.
+pub async fn try_serve_configured_feed(state: &WebState, url_path: &str) -> Option<Response> {
+    let cfg_path = state.vault_root.join(".zetl").join("config.toml");
+    let cfg_body = std::fs::read_to_string(&cfg_path).ok()?;
+    let lens = crate::feed::config::parse_config(&cfg_body).ok()?;
+    let format = crate::feed::serve::classify_feed_path(&lens, url_path)?;
+    Some(feed_handler_for(state.clone(), format).await)
+}
+
 // ── GET /feed.xml | /atom.xml | /feed.json — SPEC-038 outbound feeds ─────
 //
 // Wraps the same pure-core pipeline as `zetl build` so build- and
@@ -5875,16 +5904,47 @@ async fn feed_handler_for(state: WebState, format: crate::feed::types::OutputFor
     }
 }
 
+/// Default-path handler. Each `/feed.xml`/`/atom.xml`/`/feed.json`
+/// route is registered statically, but the operator can remap any of
+/// them via `[feed.paths]`. When a format has been remapped to a
+/// non-default URL, the default URL must 404 so feed readers can't
+/// rely on stale defaults — the configured URL is then served by
+/// `try_serve_configured_feed` from inside `page_handler`.
+async fn default_feed_handler(
+    state: WebState,
+    format: crate::feed::types::OutputFormat,
+) -> Response {
+    let cfg_path = state.vault_root.join(".zetl").join("config.toml");
+    let cfg_body = match std::fs::read_to_string(&cfg_path) {
+        Ok(s) => s,
+        Err(_) => return StatusCode::NOT_FOUND.into_response(),
+    };
+    if let Ok(lens) = crate::feed::config::parse_config(&cfg_body) {
+        let configured = crate::feed::serve::configured_feed_path(&lens, format);
+        let default = match format {
+            crate::feed::types::OutputFormat::Rss20 => crate::feed::build::DEFAULT_RSS_PATH,
+            crate::feed::types::OutputFormat::Atom10 => crate::feed::build::DEFAULT_ATOM_PATH,
+            crate::feed::types::OutputFormat::JsonFeed11 => {
+                crate::feed::build::DEFAULT_JSONFEED_PATH
+            }
+        };
+        if configured != default {
+            return StatusCode::NOT_FOUND.into_response();
+        }
+    }
+    feed_handler_for(state, format).await
+}
+
 pub async fn feed_xml_handler(State(state): State<WebState>) -> Response {
-    feed_handler_for(state, crate::feed::types::OutputFormat::Rss20).await
+    default_feed_handler(state, crate::feed::types::OutputFormat::Rss20).await
 }
 
 pub async fn atom_xml_handler(State(state): State<WebState>) -> Response {
-    feed_handler_for(state, crate::feed::types::OutputFormat::Atom10).await
+    default_feed_handler(state, crate::feed::types::OutputFormat::Atom10).await
 }
 
 pub async fn feed_json_handler(State(state): State<WebState>) -> Response {
-    feed_handler_for(state, crate::feed::types::OutputFormat::JsonFeed11).await
+    default_feed_handler(state, crate::feed::types::OutputFormat::JsonFeed11).await
 }
 
 // ── GET /graph-index.json — graphology CON-101 export (REQ-103) ──────────
@@ -5940,6 +6000,7 @@ pub async fn vault_graph_handler(State(state): State<WebState>) -> Response {
     // silently disappears from the /_graph sidebar.
     #[allow(unused_mut)]
     let mut vault_ctx = build_vault_context(&data, &vault_name);
+    crate::web::build::populate_feed_discovery_from_disk(&mut vault_ctx, &state.vault_root);
     #[cfg(feature = "history")]
     {
         if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {

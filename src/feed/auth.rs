@@ -73,12 +73,39 @@ pub fn strip_credentials_on_cross_origin_redirect(
     // For query-param credentials, also remove the token parameter
     // from the URL so the redirected request carries no auth.
     if let Credential::QueryParam {
-        token_param: Some(param),
+        url_with_token,
+        token_param,
         ..
     } = cred
     {
-        let scrubbed = drop_query_param(&stripped.url, param);
-        stripped.url = scrubbed;
+        // Pair-form (`token_param` / `token_value`): we know the exact
+        // param name; drop it.
+        if let Some(param) = token_param {
+            stripped.url = drop_query_param(&stripped.url, param);
+        }
+        // URL-form (`url_with_token`): the operator handed us a full
+        // URL with the secret embedded. We don't have a single
+        // canonical param name, so:
+        //   1. Strip any param the *credential URL* carried — the
+        //      operator has effectively declared every key in that
+        //      query string is a secret;
+        //   2. Belt-and-braces, strip any well-known secret-shaped
+        //      parameter (`token`, `api_key`, ...) from the redirect
+        //      URL even if the credential URL didn't carry it,
+        //      because cross-origin redirects must never propagate
+        //      ambient credentials.
+        if let Some(full) = url_with_token {
+            if let Ok(parsed) = Url::parse(full) {
+                let cred_params: Vec<String> =
+                    parsed.query_pairs().map(|(k, _)| k.into_owned()).collect();
+                for k in &cred_params {
+                    stripped.url = drop_query_param(&stripped.url, k);
+                }
+            }
+        }
+        for k in SECRET_PARAM_KEYS {
+            stripped.url = drop_query_param(&stripped.url, k);
+        }
     }
     stripped
 }
@@ -86,7 +113,7 @@ pub fn strip_credentials_on_cross_origin_redirect(
 fn drop_query_param(url: &Url, name: &str) -> Url {
     let pairs: Vec<(String, String)> = url
         .query_pairs()
-        .filter(|(k, _)| k != name)
+        .filter(|(k, _)| !k.eq_ignore_ascii_case(name))
         .map(|(k, v)| (k.into_owned(), v.into_owned()))
         .collect();
     let mut out = url.clone();
@@ -292,6 +319,58 @@ mod tests {
         let stripped =
             strip_credentials_on_cross_origin_redirect(original.clone(), &redirect, &cred);
         assert!(!stripped.url.query().unwrap_or("").contains("api_key"));
+    }
+
+    #[test]
+    fn cross_origin_redirect_strips_url_form_credential_params() {
+        // Reviewer fix: with `url_with_token` credentials, `token_param`
+        // is None, but a cross-origin redirect URL carrying `api_key=...`
+        // (or another secret-shaped param) must still be scrubbed —
+        // otherwise the operator's secret tokens leak past the
+        // origin boundary.
+        let cred = Credential::QueryParam {
+            url_with_token: Some("https://a.example/feed?api_key=secret".to_string()),
+            token_param: None,
+            token_value: None,
+        };
+        let original = apply_auth(req("https://a.example/feed"), &cred);
+        // The transport followed a cross-origin redirect that itself
+        // carries the secret in the query string.
+        let redirect = Url::parse("https://b.example/feed?api_key=secret&q=keep").unwrap();
+        let stripped =
+            strip_credentials_on_cross_origin_redirect(original.clone(), &redirect, &cred);
+        assert!(
+            !stripped.url.query().unwrap_or("").contains("api_key"),
+            "expected api_key scrubbed from cross-origin redirect URL: {}",
+            stripped.url
+        );
+        assert!(
+            stripped.url.query().unwrap_or("").contains("q=keep"),
+            "non-secret params should pass through: {}",
+            stripped.url
+        );
+    }
+
+    #[test]
+    fn cross_origin_redirect_strips_well_known_secret_params() {
+        // Even when the credential URL didn't carry the param, a
+        // cross-origin redirect URL containing a well-known secret
+        // shape (`token`, `auth`, `access_token`, ...) must be
+        // scrubbed — these are credentials by convention.
+        let cred = Credential::QueryParam {
+            url_with_token: Some("https://a.example/feed".to_string()),
+            token_param: None,
+            token_value: None,
+        };
+        let original = apply_auth(req("https://a.example/feed"), &cred);
+        let redirect =
+            Url::parse("https://b.example/feed?token=xyz&access_token=abc&q=keep").unwrap();
+        let stripped =
+            strip_credentials_on_cross_origin_redirect(original.clone(), &redirect, &cred);
+        let q = stripped.url.query().unwrap_or("");
+        assert!(!q.contains("token=xyz"), "token leaked: {q}");
+        assert!(!q.contains("access_token=abc"), "access_token leaked: {q}");
+        assert!(q.contains("q=keep"), "non-secret param missing: {q}");
     }
 
     #[test]

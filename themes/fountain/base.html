@@ -1513,7 +1513,7 @@
   <aside class="zetl-feed-subscribe sp-colophon" role="complementary" aria-label="Subscribe to feed" style="margin: 3rem auto 1rem; max-width: 60ch; padding-top: 1rem; border-top: 1px solid currentColor; opacity: 0.6; font-style: italic; text-align: center; font-size: 0.9rem;">
     Subscribe via
     <a href="{{ root_path }}feed.xml" rel="alternate" type="application/rss+xml">RSS</a>,
-    <a href="{{ root_path }}atom.xml" rel="alternate" type="application/atom+xml">Atom</a>{% if vault.feed_discovery | length > 2 %},
+    <a href="{{ root_path }}atom.xml" rel="alternate" type="application/atom+xml">Atom</a>{% if vault.feed_json_enabled %},
     or <a href="{{ root_path }}feed.json" rel="alternate" type="application/feed+json">JSON Feed</a>{% endif %}.
   </aside>
   {% endif %}

@@ -1366,6 +1366,7 @@ mod tests {
             semantic_available: false,
             site_url: String::new(),
             feed_discovery: Vec::new(),
+            feed_json_enabled: false,
         }
     }
 
@@ -1454,6 +1455,7 @@ mod tests {
             semantic_available: false,
             site_url: "https://example.test".to_string(),
             feed_discovery: Vec::new(),
+            feed_json_enabled: false,
         }
     }
 
@@ -1644,6 +1646,7 @@ mod tests {
             semantic_available: false,
             site_url: String::new(),
             feed_discovery: Vec::new(),
+            feed_json_enabled: false,
         };
         let idx = build_search_index(&vault);
         assert!(idx.contains(r#"\"hello\""#));
@@ -2399,6 +2402,7 @@ mod tests {
             semantic_available: false,
             site_url: String::new(),
             feed_discovery: Vec::new(),
+            feed_json_enabled: false,
         }
     }
 
@@ -2513,6 +2517,7 @@ mod tests {
             semantic_available: false,
             site_url: String::new(),
             feed_discovery: Vec::new(),
+            feed_json_enabled: false,
         };
         let html = render_graph_partial(&vault);
         assert!(

@@ -294,12 +294,18 @@ pub fn validate_lens(lens: &FeedConfigLens) -> Result<(), FeedConfigError> {
                 });
             }
         }
-        // No-license-declared + republish=true requires i_have_permission.
-        if s.republish && s.license.is_none() && !s.i_have_permission {
-            return Err(FeedConfigError::RepublishWithoutPermission {
-                subscription_id: s.id.clone(),
-            });
-        }
+        // The "republish=true with no operator-declared license" decision
+        // is intentionally NOT enforced at config-parse time. The
+        // operator's `license = ...` field is only an *override*; the
+        // upstream feed's Atom/RSS license metadata is fetched at
+        // republication time and may itself carry a CC license that
+        // makes the subscription valid. The default-deny for the
+        // `License::Unknown` case lives in
+        // [`crate::feed::republication::republication_eligible`] and
+        // already requires `i_have_permission`. Rejecting at parse
+        // time would block unrelated `zetl build` runs whose only
+        // crime is configuring a subscription against a
+        // license-declaring source.
     }
 
     // Changelog archive_size bounds.
@@ -433,6 +439,11 @@ pub enum FeedConfigError {
         EXCERPT_WORDS_MAX
     )]
     InvalidExcerptWords { subscription_id: String, value: u32 },
+    /// Reserved (kept for back-compat with downstream matchers): the
+    /// original "republish=true with no license declared" parse-time
+    /// rejection moved to the runtime `License::Unknown` decision in
+    /// [`crate::feed::republication::republication_eligible`]. This
+    /// variant is no longer constructed by `parse_config`.
     #[error(
         "[[subscriptions.{subscription_id}]] republish=true with no license declared requires i_have_permission=true (REQ-3820)"
     )]
@@ -552,27 +563,28 @@ mod tests {
     }
 
     #[test]
-    fn subscription_republish_without_license_requires_permission() {
-        let body = r#"
+    fn subscription_republish_without_license_parses_at_config_time() {
+        // The "no operator-declared license + republish=true" check
+        // moved out of parse_config and into the runtime
+        // republication-eligibility decision (REQ-3820), because the
+        // upstream feed may itself declare a CC license. Both shapes
+        // must therefore parse cleanly.
+        let body_no_perm = r#"
             [[subscriptions]]
             id = "s"
             source = "https://example.com/feed"
             republish = true
         "#;
-        let err = parse_config(body).unwrap_err();
-        assert!(matches!(
-            err,
-            FeedConfigError::RepublishWithoutPermission { .. }
-        ));
+        parse_config(body_no_perm).unwrap();
 
-        let body_ok = r#"
+        let body_with_perm = r#"
             [[subscriptions]]
             id = "s"
             source = "https://example.com/feed"
             republish = true
             i_have_permission = true
         "#;
-        parse_config(body_ok).unwrap();
+        parse_config(body_with_perm).unwrap();
     }
 
     #[test]

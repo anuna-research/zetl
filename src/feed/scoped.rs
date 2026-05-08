@@ -18,7 +18,16 @@ use crate::feed::serialise_atom::serialise_atom;
 use crate::feed::serialise_jsonfeed::serialise_jsonfeed;
 use crate::feed::serialise_rss::serialise_rss;
 use crate::feed::types::{FeedPaths, OutputFormatSet, SelectionRule};
+use std::collections::HashSet;
 use std::time::Instant;
+
+/// Closure handed in by the shell to evaluate an SPL query against the
+/// vault and return the matching slug set. Required for any
+/// `[[feed.scopes]]` whose `select.spl = "..."` rule is configured;
+/// when no resolver is supplied we emit a runtime warning and the
+/// scope selects nothing (preserving the prior — broken — behaviour
+/// without changing semantics for vaults that don't use SPL scopes).
+pub type SplResolver<'a> = dyn Fn(&str) -> HashSet<String> + 'a;
 
 /// Schema version of `/.well-known/zetl-subscriptions.json`.
 pub const CATALOG_SCHEMA_VERSION: &str = "1.0";
@@ -126,10 +135,17 @@ fn push_json(buf: &mut String, s: &str) {
 
 /// Emit per-[[feed.scopes]] feeds. Returns one [`FeedEmission`] per
 /// scope; the caller writes them into dist/.
+///
+/// When `spl_resolver` is `None`, scopes whose rule is `select.spl =
+/// "..."` will warn and select nothing (preserving the previous —
+/// broken — behaviour while keeping the vault build succeeding).
+/// Callers that have a search index handy should pass a resolver so
+/// SPL scopes actually populate.
 pub fn emit_scoped_feeds(
     lens: &FeedConfigLens,
     pages: &[PageView<'_>],
     visibility: &dyn Fn(&PageView<'_>) -> bool,
+    spl_resolver: Option<&SplResolver<'_>>,
 ) -> Result<Vec<FeedEmission>, BuildError> {
     let feed = lens.feed.as_ref().ok_or(BuildError::Disabled)?;
     if feed.scopes.is_empty() {
@@ -137,7 +153,7 @@ pub fn emit_scoped_feeds(
     }
     let mut out = Vec::with_capacity(feed.scopes.len());
     for scope in &feed.scopes {
-        let emission = emit_scope(lens, scope, pages, visibility)?;
+        let emission = emit_scope(lens, scope, pages, visibility, spl_resolver)?;
         out.push(emission);
     }
     Ok(out)
@@ -148,6 +164,7 @@ fn emit_scope(
     scope: &FeedScope,
     pages: &[PageView<'_>],
     visibility: &dyn Fn(&PageView<'_>) -> bool,
+    spl_resolver: Option<&SplResolver<'_>>,
 ) -> Result<FeedEmission, BuildError> {
     let started = Instant::now();
     let rule: SelectionRule =
@@ -157,7 +174,38 @@ fn emit_scope(
         .as_ref()
         .and_then(|f| f.max_items)
         .unwrap_or(crate::feed::build::DEFAULT_MAX_ITEMS);
-    let chosen = crate::feed::select::select(pages, &rule, visibility, max_items);
+    // For SPL-scoped feeds, evaluate the query upfront and rebuild a
+    // per-scope page set with `matches_spl_query` flagged on every slug
+    // the resolver returns. The shared `pages` slice always carries
+    // `matches_spl_query: false`, so without this rebuild the scope
+    // would never select anything (the bug the reviewer flagged).
+    let scoped_pages: Option<Vec<PageView<'_>>> = match (&rule, spl_resolver) {
+        (SelectionRule::SplQuery { query }, Some(resolver)) => {
+            let matched = resolver(query);
+            Some(
+                pages
+                    .iter()
+                    .map(|p| {
+                        let mut np = p.clone();
+                        np.matches_spl_query = matched.contains(p.slug);
+                        np
+                    })
+                    .collect(),
+            )
+        }
+        (SelectionRule::SplQuery { query }, None) => {
+            eprintln!(
+                "[zetl] feed: scope {scope_id:?} configured with select.spl = {query:?} \
+                 but no SPL resolver was supplied to emit_scoped_feeds; this scope will \
+                 select zero pages",
+                scope_id = scope.id,
+            );
+            None
+        }
+        _ => None,
+    };
+    let pages_for_select: &[PageView<'_>] = scoped_pages.as_deref().unwrap_or(pages);
+    let chosen = crate::feed::select::select(pages_for_select, &rule, visibility, max_items);
 
     // Build per-format paths anchored at the scope's path. The scope
     // is published as its own atom feed at exactly the configured
@@ -202,7 +250,7 @@ fn emit_scope(
         ));
     }
     let stats = crate::feed::build::BuildStats {
-        items_selected: pages.iter().filter(|p| visibility(p)).count(),
+        items_selected: pages_for_select.iter().filter(|p| visibility(p)).count(),
         items_emitted: chosen.len(),
         duration: started.elapsed(),
         formats,
@@ -290,16 +338,76 @@ mod tests {
     fn scoped_emit_produces_one_emission_per_scope() {
         let pages: Vec<PageView<'_>> = Vec::new();
         let always = |_: &PageView<'_>| true;
-        let emissions = emit_scoped_feeds(&lens(), &pages, &always).unwrap();
+        let emissions = emit_scoped_feeds(&lens(), &pages, &always, None).unwrap();
         assert_eq!(emissions.len(), 2);
+    }
+
+    #[test]
+    fn spl_resolver_populates_scope_selection() {
+        // A second `lens` with a single SPL-scoped feed.
+        let lens_spl = parse_config(
+            r#"
+            [feed]
+            base_url = "https://example.com"
+            title = "T"
+            description = "d"
+            [[feed.scopes]]
+            id = "blog"
+            title = "Blog"
+            path = "/blog/feed.xml"
+            select.spl = "tag:blog"
+        "#,
+        )
+        .unwrap();
+        let path = std::path::PathBuf::from("a.md");
+        let path_b = std::path::PathBuf::from("b.md");
+        let tags: Vec<String> = vec![];
+        let mk = |slug: &str, p: &std::path::Path| crate::feed::select::PageView {
+            slug: Box::leak(slug.to_string().into_boxed_str()) as &str,
+            path: Box::leak(p.to_path_buf().into_boxed_path()),
+            frontmatter_feed_optin: true,
+            tags: &tags,
+            matches_spl_query: false,
+            item: crate::feed::types::FeedItem {
+                id: format!("urn:{slug}"),
+                title: slug.to_string(),
+                url: format!("https://example.com/{slug}"),
+                date_published: "2026-05-08T00:00:00Z".to_string(),
+                date_modified: None,
+                summary: None,
+                content_html: None,
+                author: None,
+                tags: Vec::new(),
+                license: Some(crate::feed::types::License::Cc0_1_0),
+                source_metadata: Default::default(),
+            },
+        };
+        let pages = vec![mk("a", &path), mk("b", &path_b)];
+        let always = |_: &PageView<'_>| true;
+        let resolver = |_q: &str| {
+            let mut s = std::collections::HashSet::new();
+            s.insert("a".to_string());
+            s
+        };
+        let emissions = emit_scoped_feeds(&lens_spl, &pages, &always, Some(&resolver)).unwrap();
+        assert_eq!(emissions.len(), 1);
+        // Atom body should contain `urn:a` (selected) and not `urn:b`.
+        let atom = emissions[0]
+            .files
+            .iter()
+            .find(|(p, _)| p == "/blog/feed.xml")
+            .map(|(_, b)| std::str::from_utf8(b).unwrap().to_string())
+            .unwrap();
+        assert!(atom.contains("urn:a"), "expected urn:a in atom: {atom}");
+        assert!(!atom.contains("urn:b"), "did not expect urn:b: {atom}");
     }
 
     #[test]
     fn scoped_emission_deterministic() {
         let pages: Vec<PageView<'_>> = Vec::new();
         let always = |_: &PageView<'_>| true;
-        let a = emit_scoped_feeds(&lens(), &pages, &always).unwrap();
-        let b = emit_scoped_feeds(&lens(), &pages, &always).unwrap();
+        let a = emit_scoped_feeds(&lens(), &pages, &always, None).unwrap();
+        let b = emit_scoped_feeds(&lens(), &pages, &always, None).unwrap();
         for (ea, eb) in a.iter().zip(b.iter()) {
             assert_eq!(ea.files, eb.files);
         }
