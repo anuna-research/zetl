@@ -106,6 +106,25 @@ pub fn emit_root_feed(
 
     let items_selected = pages.iter().filter(|p| visibility(p)).count();
     let items_emitted = chosen.len();
+    // RFC 4287 §4.1.1: feeds without per-entry authors MUST carry a
+    // feed-level <atom:author>. Populate from `[feed].author` if set,
+    // else from `[feed].title` so the emitted Atom is always
+    // strict-parser conformant.
+    let default_author = feed
+        .author
+        .as_deref()
+        .map(|name| crate::feed::types::AuthorRef {
+            name: name.to_string(),
+            email: None,
+            url: None,
+        })
+        .or_else(|| {
+            Some(crate::feed::types::AuthorRef {
+                name: feed.title.clone().unwrap_or_else(|| "Untitled".to_string()),
+                email: None,
+                url: None,
+            })
+        });
     let cfg = FeedConfig {
         base_url: base_url.to_string(),
         title,
@@ -115,7 +134,7 @@ pub fn emit_root_feed(
         paths: paths.clone(),
         scope_id: None,
         cohort_id: None,
-        default_author: None,
+        default_author,
         language: feed.language.clone(),
         copyright: feed.copyright.clone(),
     };

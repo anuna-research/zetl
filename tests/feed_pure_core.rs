@@ -355,6 +355,96 @@ fn config_lens_rejects_credentials_in_subscriptions_block() {
 }
 
 #[test]
+fn jsonfeed_v1_1_minimum_required_fields_present() {
+    // JSON Feed v1.1 spec: top-level MUST have version, title, items.
+    // Per item: id is required; at least one of content_html /
+    // content_text must be present.
+    let cfg = zetl::feed::types::FeedConfig {
+        base_url: "https://example.com".to_string(),
+        title: "T".to_string(),
+        description: "d".to_string(),
+        max_items: 50,
+        formats: zetl::feed::types::OutputFormatSet {
+            rss: false,
+            atom: false,
+            jsonfeed: true,
+        },
+        paths: zetl::feed::types::FeedPaths {
+            rss: "/feed.xml".to_string(),
+            atom: "/atom.xml".to_string(),
+            jsonfeed: "/feed.json".to_string(),
+        },
+        scope_id: None,
+        cohort_id: None,
+        default_author: None,
+        language: None,
+        copyright: None,
+    };
+    let item = zetl::feed::types::FeedItem {
+        id: "tag:example.com,2026:zetl/x".to_string(),
+        title: "x".to_string(),
+        url: "https://example.com/x".to_string(),
+        date_published: "2026-05-08T00:00:00Z".to_string(),
+        date_modified: None,
+        summary: Some("s".to_string()),
+        content_html: Some("<p>body</p>".to_string()),
+        author: None,
+        tags: vec![],
+        license: None,
+        source_metadata: Default::default(),
+    };
+    let body = zetl::feed::serialise_jsonfeed::serialise_jsonfeed(&[item], &cfg);
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["version"], "https://jsonfeed.org/version/1.1");
+    assert!(v["title"].is_string());
+    assert!(v["items"].is_array());
+    let item0 = &v["items"][0];
+    assert!(item0["id"].is_string());
+    assert!(
+        item0.get("content_html").is_some() || item0.get("content_text").is_some(),
+        "v1.1 spec MUST: each item needs at least one of content_html / content_text"
+    );
+}
+
+#[test]
+fn atom_rfc4287_feed_carries_default_author_via_emit_root_feed() {
+    // RFC 4287 §4.1.1: feeds without per-entry authors MUST carry a
+    // feed-level <atom:author>. emit_root_feed populates default_author
+    // from [feed].author OR (fallback) [feed].title.
+    use zetl::feed::config::parse_config;
+    use zetl::feed::types::SelectionRule;
+
+    let body = r#"
+        [feed]
+        base_url = "https://example.com"
+        title = "Example"
+        author = "Anuna"
+    "#;
+    let lens = parse_config(body).unwrap();
+    let pages: Vec<zetl::feed::select::PageView<'_>> = vec![];
+    let always = |_: &zetl::feed::select::PageView<'_>| true;
+    let visibility: Box<dyn Fn(&zetl::feed::select::PageView<'_>) -> bool> =
+        Box::new(always);
+    let emission = zetl::feed::build::emit_root_feed(
+        &lens,
+        &pages,
+        &visibility,
+        &SelectionRule::FrontmatterOptIn,
+    )
+    .unwrap();
+    let atom_body = emission
+        .files
+        .iter()
+        .find(|(p, _)| p == "/atom.xml")
+        .map(|(_, b)| std::str::from_utf8(b).unwrap().to_string())
+        .unwrap();
+    assert!(
+        atom_body.contains("<author>") && atom_body.contains("<name>Anuna</name>"),
+        "atom feed must carry feed-level <author>: {atom_body}"
+    );
+}
+
+#[test]
 fn vault_path_unused_in_test_does_not_break_compilation() {
     // Compile-time check that crate paths resolve.
     let _ = Path::new("ok");

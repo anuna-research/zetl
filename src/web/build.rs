@@ -152,10 +152,30 @@ fn emit_outbound_feeds(
         } else {
             Some(summary.chars().take(400).collect::<String>())
         };
-        // content_html: render via the existing markdown pipeline.
-        // For v1 we emit summary-only (content_html=None) so feed
-        // bodies stay small + safe; the full-rendering wire is a
-        // follow-up that needs to compose with the theme/sanitiser.
+        // JSON Feed v1.1 requires at least one of content_html /
+        // content_text per item ("Any item without an id must be
+        // discarded; an item must have content"). Render the
+        // markdown body through zetl's existing pipeline and use it
+        // as content_html; absolute URL rewriting flows through
+        // base_url, slug-map for `[[wikilinks]]`. Bounded at ~64 KiB
+        // per item so a single huge page can't bloat the feed.
+        let content_html = {
+            let rendered = crate::web::markdown::render_to_html(
+                &body,
+                &data.page_slug_map,
+                &format!("{base_url_trimmed}/"),
+                "index.html",
+            );
+            if rendered.len() > 65_536 {
+                let mut truncated = rendered.chars().take(65_536).collect::<String>();
+                truncated.push_str("\n<!-- content truncated for feed; visit the page URL for the full body -->\n");
+                Some(truncated)
+            } else if rendered.is_empty() {
+                None
+            } else {
+                Some(rendered)
+            }
+        };
         let item = FeedItem {
             id,
             title,
@@ -163,7 +183,7 @@ fn emit_outbound_feeds(
             date_published,
             date_modified: None,
             summary,
-            content_html: None,
+            content_html,
             author: None,
             tags: tags.clone(),
             license: None,
@@ -225,13 +245,28 @@ fn emit_outbound_feeds(
 
 fn frontmatter_date(fm: &serde_json::Value) -> Option<String> {
     for key in &["published", "date", "created"] {
-        if let Some(v) = fm.get(key).and_then(|v| v.as_str()) {
-            // Bare date YYYY-MM-DD → RFC 3339 midnight UTC.
-            if v.len() == 10 && v.as_bytes()[4] == b'-' && v.as_bytes()[7] == b'-' {
-                return Some(format!("{v}T00:00:00Z"));
-            }
-            return Some(v.to_string());
+        let Some(v) = fm.get(key) else {
+            continue;
+        };
+        if v.is_null() {
+            continue;
         }
+        // Coerce: prefer `as_str` (handles quoted YAML strings); fall
+        // back to JSON stringification (handles unquoted YAML dates
+        // like `date: 2026-04-15` that serde_yaml_ng has decoded
+        // into a timestamp-shaped value).
+        let raw = v
+            .as_str()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| v.to_string().trim_matches('"').to_string());
+        if raw.is_empty() {
+            continue;
+        }
+        // Bare date YYYY-MM-DD → RFC 3339 midnight UTC.
+        if raw.len() == 10 && raw.as_bytes()[4] == b'-' && raw.as_bytes()[7] == b'-' {
+            return Some(format!("{raw}T00:00:00Z"));
+        }
+        return Some(raw);
     }
     None
 }
