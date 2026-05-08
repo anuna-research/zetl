@@ -28,6 +28,9 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 - **Web UI** — local server with rendered pages, transclusion panels, backlink navigation, and inline editing
 - **Static site export** — deployable HTML site from your vault (same look, no server required)
 - **Custom themes** — override Minijinja templates and static assets via `.zetl/themes/`, with full access to frontmatter and vault context
+- **RSS / Atom / JSON Feed** — `zetl build` and `zetl serve` emit byte-deterministic RSS 2.0 + Atom 1.0 feeds (and opt-in JSON Feed v1.1) discoverable via `<link rel="alternate">`. Configure scoped feeds (`[[feed.scopes]]`), capability-cohort feeds (`[[capability_cohorts]]`), and inbound subscriptions (`[[subscriptions]]`) in `.zetl/config.toml`; `zetl feed pull|list|status|validate|forget` covers the operator surface. SSRF-, XXE-, and decompression-bomb-safe by construction; Creative-Commons-aware republication with private-by-default + license-driven eligibility (CC0 → full, CC-BY-SA → compatible-vault gate, CC-BY-ND → excerpt-only, Unknown → default-deny). Per-subscription retention with archive-not-delete default and tombstone-backed `forget` to block re-import after explicit erasure.
+
+  > Republication of any third-party feed has legal consequences. The pure-core eligibility table mirrors the major Creative Commons clauses, but operators are responsible for verifying their use case with their own legal counsel — particularly around `i_have_permission=true` and CC-BY-NC `is_commercial=false` declarations.
 
 ### Temporal queries (`--features history`)
 

@@ -1,7 +1,8 @@
 ---
 title: "SPEC-038: RSS / Atom feeds and scoped wiki subscriptions for zetl"
-version: 0.1.1-strawman
-status: strawman
+version: 1.0.0
+status: implemented
+implemented-date: 2026-05-08
 date: 2026-05-06
 audience: agent, human
 parent: null
