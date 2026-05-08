@@ -11,8 +11,16 @@ pub fn serialise_atom(items: &[FeedItem], config: &FeedConfig) -> String {
     let mut out = String::with_capacity(8192);
     out.push_str(r#"<?xml version="1.0" encoding="UTF-8"?>"#);
     out.push('\n');
+    // Atom 1.0 uses XML's `xml:lang` attribute on the root for the
+    // human-readable language hint; emit it inline rather than abusing
+    // `<rights>` for it.
+    let lang_attr = config
+        .language
+        .as_deref()
+        .map(|l| format!(r#" xml:lang="{}""#, escape_attr(l)))
+        .unwrap_or_default();
     out.push_str(&format!(
-        r#"<feed xmlns="http://www.w3.org/2005/Atom" xmlns:_zetl="{ZETL_NS}">"#
+        r#"<feed xmlns="http://www.w3.org/2005/Atom" xmlns:_zetl="{ZETL_NS}"{lang_attr}>"#
     ));
     out.push('\n');
     push_text(&mut out, "  ", "title", &config.title);
@@ -32,9 +40,6 @@ pub fn serialise_atom(items: &[FeedItem], config: &FeedConfig) -> String {
         escape_attr(&self_url)
     ));
     out.push('\n');
-    if let Some(lang) = &config.language {
-        push_text(&mut out, "  ", "rights", &format!("language: {lang}"));
-    }
     if let Some(c) = &config.copyright {
         push_text(&mut out, "  ", "rights", c);
     }
