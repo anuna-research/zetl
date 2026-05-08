@@ -47,6 +47,10 @@
   })();
   </script>
   {% block head %}{% endblock %}
+  {# SPEC-038 feed discovery — emitted only when [feed] is configured. #}
+  {% for tag in vault.feed_discovery %}
+  {{ tag | safe }}
+  {% endfor %}
   <link rel="preload" href="{{ root_path }}_static/shell.css" as="style">
   <link rel="stylesheet" href="{{ root_path }}_static/shell.css">
   {# Child templates can still inject per-page CSS via the `styles` block. #}

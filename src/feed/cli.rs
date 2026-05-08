@@ -1,5 +1,20 @@
 //! `zetl feed` subcommand surface per CON-3801 + CON-3806.
 //!
+//! Naming clarification: SPEC-038 uses the word "feed" on three axes:
+//!
+//!   * **outbound publishing** — `[feed]` config + `dist/feed.xml`
+//!     emitted by `zetl build`. There is no `zetl feed publish` CLI;
+//!     the build pipeline handles it automatically.
+//!   * **inbound subscriptions** — `[[subscriptions]]` config + items
+//!     ingested into `.zetl/feeds/<sub-id>/inbox/`. THIS is what every
+//!     subcommand below operates on. (The dir name `.zetl/feeds/`
+//!     also reflects this — it stores INBOUND state.)
+//!   * **per-page opt-in** — `frontmatter.feed: true` flags a page
+//!     for inclusion in the OUTBOUND root feed.
+//!
+//! `zetl feed pull|list|status|validate|forget` are all inbound-side
+//! commands; per-subcommand help text below makes that explicit.
+//!
 //! This module exposes the clap argument types only. The actual
 //! handlers live in the shell (`src/main.rs`); each subcommand
 //! reduces to a one-liner that calls into one of the leaf modules:
@@ -13,16 +28,25 @@ use clap::{Args, Subcommand};
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum FeedCommand {
-    /// Fetch one or more subscribed feeds (or all if no ids given).
+    /// (inbound) Fetch one or more subscribed upstream feeds and ingest
+    /// their items into `.zetl/feeds/<sub-id>/inbox/`. Outbound feed
+    /// publishing happens automatically inside `zetl build` and has no
+    /// dedicated subcommand.
     Pull(FeedPullArgs),
-    /// Show all subscriptions in tabular form.
+    /// (inbound) Show all configured `[[subscriptions]]` in tabular
+    /// form with last-success / last-error / item-count columns.
     List(FeedListArgs),
-    /// Show detailed status for a single subscription.
+    /// (inbound) Show detailed status for a single subscription:
+    /// dedup-state size, retention policy, recent error log lines.
     Status(FeedStatusArgs),
-    /// Validate a feed file or stdin against the per-format strict
-    /// parsers.
+    /// (inbound + outbound) Validate a feed file or stdin against the
+    /// per-format strict parsers. Used to QA both upstream feeds
+    /// before subscribing AND your own published feeds before deploy.
     Validate(FeedValidateArgs),
-    /// Erase items from an inbox / archive plus mint tombstone records.
+    /// (inbound) Erase items from a subscription's inbox / archive,
+    /// minting tombstone records that block re-import on subsequent
+    /// pulls. Does NOT remove anything from your own published feed —
+    /// for that, edit / delete the source page and rebuild.
     Forget(FeedForgetArgs),
 }
 

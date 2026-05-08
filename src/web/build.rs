@@ -14,6 +14,53 @@ use crate::web::html::{html_escape, urlencoding};
 use crate::web::markdown;
 use crate::web::VaultData;
 
+/// Build SPEC-038 `<link rel="alternate">` tags for the root + scoped
+/// feeds advertised by the `[feed]` section. Mirrors
+/// [`crate::feed::build::discovery_tags`] but consumes the parsed
+/// config-lens directly so we don't have to build a full
+/// [`crate::feed::types::FeedConfig`] just to emit the tags.
+fn build_feed_discovery_tags(
+    feed: &crate::feed::config::FeedSection,
+    base_url: &str,
+    title: &str,
+) -> Vec<String> {
+    let base = base_url.trim_end_matches('/');
+    let paths = feed.paths.as_ref();
+    let rss_path = paths
+        .and_then(|p| p.rss.clone())
+        .unwrap_or_else(|| crate::feed::build::DEFAULT_RSS_PATH.to_string());
+    let atom_path = paths
+        .and_then(|p| p.atom.clone())
+        .unwrap_or_else(|| crate::feed::build::DEFAULT_ATOM_PATH.to_string());
+    let json_path = paths
+        .and_then(|p| p.jsonfeed.clone())
+        .unwrap_or_else(|| crate::feed::build::DEFAULT_JSONFEED_PATH.to_string());
+    let title_attr = title.replace('&', "&amp;").replace('"', "&quot;");
+    let mut out = vec![
+        format!(
+            r#"<link rel="alternate" type="application/rss+xml" title="{title_attr} (RSS)" href="{base}{rss_path}" />"#
+        ),
+        format!(
+            r#"<link rel="alternate" type="application/atom+xml" title="{title_attr} (Atom)" href="{base}{atom_path}" />"#
+        ),
+    ];
+    if feed.enable_json.unwrap_or(false) {
+        out.push(format!(
+            r#"<link rel="alternate" type="application/feed+json" title="{title_attr} (JSON Feed)" href="{base}{json_path}" />"#
+        ));
+    }
+    // Per-scope feeds get their own discovery tags so feed readers
+    // surface them alongside the root.
+    for scope in &feed.scopes {
+        out.push(format!(
+            r#"<link rel="alternate" type="application/atom+xml" title="{title_attr} ({scope_title})" href="{base}{scope_path}" />"#,
+            scope_title = scope.title.replace('&', "&amp;").replace('"', "&quot;"),
+            scope_path = scope.path,
+        ));
+    }
+    out
+}
+
 /// Strip YAML frontmatter (--- ... ---) from fountain file content.
 pub fn strip_fountain_frontmatter(content: &str) -> String {
     let trimmed = content.trim_start();
@@ -482,6 +529,21 @@ pub fn build_static(
     #[allow(unused_mut)]
     let mut vault_ctx = build_vault_context(data, &vault_name);
     vault_ctx.site_url = site_url.clone();
+    // ── SPEC-038 feed-discovery `<link rel="alternate">` tags ─────
+    // Populated only when `[feed]` is configured AND `base_url` is
+    // set (REQ-3809 self-publication safety). Failure to parse is
+    // non-fatal — operators see the parse error elsewhere via the
+    // feed-validate path; we just don't inject the tags.
+    let config_path = vault_root.join(".zetl/config.toml");
+    if let Ok(config_body) = std::fs::read_to_string(&config_path) {
+        if let Ok(lens) = crate::feed::config::parse_config(&config_body) {
+            if let Some(feed) = lens.feed.as_ref() {
+                if let (Some(base_url), Some(title)) = (feed.base_url.as_deref(), feed.title.as_deref()) {
+                    vault_ctx.feed_discovery = build_feed_discovery_tags(feed, base_url, title);
+                }
+            }
+        }
+    }
     #[cfg(feature = "history")]
     {
         // OBS-013: time vault history context build.

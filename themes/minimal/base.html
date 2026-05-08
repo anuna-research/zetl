@@ -7,6 +7,10 @@
   <script type="application/json" id="zetl-search-index">{{ search_index | safe }}</script>
   {% if bm25_index %}<script type="application/json" id="zetl-bm25-index">{{ bm25_index | safe }}</script>{% endif %}
   {% block head %}{% endblock %}
+  {# SPEC-038 feed discovery — emitted only when [feed] is configured. #}
+  {% for tag in vault.feed_discovery %}
+  {{ tag | safe }}
+  {% endfor %}
   <style>
     /* ── Reset */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

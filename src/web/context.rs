@@ -37,6 +37,12 @@ pub struct VaultContext {
     /// unset — templates treat it as "use root-relative URLs".
     #[serde(default)]
     pub site_url: String,
+    /// Pre-rendered `<link rel="alternate">` HTML strings for the
+    /// configured root + scoped feeds (SPEC-038 REQ-3801). Empty when
+    /// `[feed]` is not configured. Themes splice this into `<head>`
+    /// via `{{ vault.feed_discovery | join(safe='') | safe }}`.
+    #[serde(default)]
+    pub feed_discovery: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -275,6 +281,7 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
         history: serde_json::Value::Null,
         semantic_available: false,
         site_url: String::new(),
+        feed_discovery: Vec::new(),
     }
 }
 

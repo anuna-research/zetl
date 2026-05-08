@@ -9,6 +9,10 @@
   <link href="https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
   {% block head %}{% endblock %}
+  {# SPEC-038 feed discovery — emitted only when [feed] is configured. #}
+  {% for tag in vault.feed_discovery %}
+  {{ tag | safe }}
+  {% endfor %}
   <style>
     /* ── Docs layout */
     .docs-layout { display: flex; min-height: 100vh; }

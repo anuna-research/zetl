@@ -30,7 +30,56 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 - **Custom themes** — override Minijinja templates and static assets via `.zetl/themes/`, with full access to frontmatter and vault context
 - **RSS / Atom / JSON Feed** — `zetl build` and `zetl serve` emit byte-deterministic RSS 2.0 + Atom 1.0 feeds (and opt-in JSON Feed v1.1) discoverable via `<link rel="alternate">`. Configure scoped feeds (`[[feed.scopes]]`), capability-cohort feeds (`[[capability_cohorts]]`), and inbound subscriptions (`[[subscriptions]]`) in `.zetl/config.toml`; `zetl feed pull|list|status|validate|forget` covers the operator surface. SSRF-, XXE-, and decompression-bomb-safe by construction; Creative-Commons-aware republication with private-by-default + license-driven eligibility (CC0 → full, CC-BY-SA → compatible-vault gate, CC-BY-ND → excerpt-only, Unknown → default-deny). Per-subscription retention with archive-not-delete default and tombstone-backed `forget` to block re-import after explicit erasure.
 
-  > Republication of any third-party feed has legal consequences. The pure-core eligibility table mirrors the major Creative Commons clauses, but operators are responsible for verifying their use case with their own legal counsel — particularly around `i_have_permission=true` and CC-BY-NC `is_commercial=false` declarations.
+  > **Build determinism note:** the `zetl feed pull` command writes ingested upstream items into `.zetl/feeds/<sub-id>/inbox/` as Markdown files; `zetl build` then reads those files like any other vault page. The subsequent build is fully offline and deterministic. **Build remains network-free** — pull is a separate ceremony, not a build step. Operators who want reproducible CI builds should run `zetl feed pull` in a controlled step ahead of `zetl build`, or pin the inbox snapshot in version control.
+
+  > **Republication legal posture:** the pure-core eligibility table mirrors the major Creative Commons clauses, but operators carry full legal responsibility for compliance with each upstream feed's license. Mark `i_have_permission = true` only when the operator has explicit out-of-band permission from the upstream rights-holder; mark `[wiki].is_commercial = false` only when the receiving vault is genuinely non-commercial. The eligibility table is a defence in depth, not legal advice — verify your use case with counsel before republishing third-party content under any of the CC-BY-NC / CC-BY-SA / Unknown branches.
+
+  <details>
+  <summary>Anatomy of <code>[feed]</code> config (5 sections)</summary>
+
+  ```toml
+  # ── outbound publishing ──────────────────────────────────────
+  [feed]                          # root feed: dist/feed.xml + dist/atom.xml
+  base_url = "https://yourwiki.example"
+  title = "Your wiki"
+  enable_json = true              # opt-in dist/feed.json (ADR-3801)
+
+  [[feed.scopes]]                 # one entry per Hugo's-scoped subscription:
+  id = "blog"                     #   per-scope feed at the configured path
+  title = "Blog"
+  path = "/blog/feed.xml"
+  select = "frontmatter"          # or { folder = "blog/" } / { tag = "..." } / { spl = "..." }
+
+  [feed.changelog]                # AST-backed changelog feed (REQ-3816)
+  path = "/changelog.xml"
+  archive_path = "/changelog/archives"
+  archive_size = 1000
+
+  # ── outbound capability-cohort feeds ─────────────────────────
+  [[capability_cohorts]]          # one entry per cohort with feed_enabled
+  id = "research-team"            #   feed at /caps/<token>/feed.xml
+  token = "<base32, ≥128-bit entropy — disjoint from SPEC-034 grants>"
+  select = ["research/**"]
+  feed_enabled = true
+
+  # ── inbound subscriptions (ingestion + republication) ────────
+  [[subscriptions]]               # one entry per upstream feed
+  id = "upstream"
+  source = "https://upstream.example/feed.xml"
+  retention = "90d"               # or "last-100" or "forever"
+  republish = true                # opt-in republication
+  republish_mode = "excerpt"      # or "full" — eligibility may downgrade
+  excerpt_words = 200             # bounded [50, 500]
+
+  # ── receiving-vault context (read by the eligibility table) ──
+  [wiki]
+  self_license = "CC-BY-SA-4.0"   # SPDX; gates CC-BY-SA full-republish
+  is_commercial = false           # gates CC-BY-NC full-republish
+  ```
+
+  Credentials live separately in `.zetl/credentials.toml` (mode 0600, gitignored), keyed by subscription `id` — the inbound fetcher refuses to load them from `.zetl/config.toml` per REQ-3825.
+
+  </details>
 
 ### Temporal queries (`--features history`)
 

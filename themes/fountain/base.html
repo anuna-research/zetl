@@ -897,6 +897,10 @@
     {% block styles %}{% endblock %}
   </style>
   {% block head %}{% endblock %}
+  {# SPEC-038 feed discovery — emitted only when [feed] is configured. #}
+  {% for tag in vault.feed_discovery %}
+  {{ tag | safe }}
+  {% endfor %}
 </head>
 <body>
 
