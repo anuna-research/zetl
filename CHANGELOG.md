@@ -9,6 +9,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Webmention support (SPEC-039 v0.1.0-strawman, pragmatic v1).** Bi-directional
+  link federation primitive that complements SPEC-038 RSS:
+  - **Receive** — `POST /webmention` endpoint registered on `zetl serve`
+    when `[webmention].enabled = true`. The pipeline fetches the source
+    via the SPEC-038 SSRF-safe transport, verifies the source HTML
+    contains a link to the target (REQ-3903), and runs the verified
+    mention through a hybrid defeasible-rule moderation gate
+    (allowlist / denylist / "already-linked" auto-accept with default
+    queue). Accepted mentions land in
+    `.zetl/webmentions/received.jsonl`; queued mentions land in
+    `queue.jsonl`.
+  - **Send** — `zetl build` walks the rendered output for external
+    links, computes the idempotency diff against
+    `.zetl/webmentions/sent.jsonl` (keyed on source/target/content-hash),
+    discovers each target's webmention endpoint via Link header / HTML
+    `<link>` / `<a>`, and POSTs the new + changed pairs. Removed links
+    re-POST so the receiver re-fetches and tombstones (REQ-3907). Zero
+    POSTs on a no-change rebuild (REQ-3906).
+  - **Discovery** — `<link rel="webmention" href="...">` is emitted in
+    `<head>` on every published page across the default, docs, minimal,
+    and fountain themes (REQ-3901).
+  - **Oracle resistance** — the receive handler returns the same
+    response shape (status + body length) for public, private,
+    capability-protected, and non-existent target paths (REQ-3909);
+    capability tokens are never echoed back. Paths that fail
+    verification still return 202 Accepted to deny the existence
+    oracle.
+  - **Threat model** — SSRF on source-fetch is blocked by SPEC-038's
+    shared `feed::fetch` primitives (RFC 1918 / link-local / loopback
+    / 6598 / scheme allowlist); replay collapses to the `(source,
+    target)` dedup key; rate limiting per source-host (60/min) +
+    global cap (1000/min); 1 MiB body cap on the verification fetch
+    (T1, T2, T3, T7, T8, T9 mitigated).
+  - **CLI** — `zetl webmention list | accept | reject | status` for
+    inspecting the queue and managing the live edge set. `--json`
+    output for scripting.
+  - **Storage** — central JSONL at `.zetl/webmentions/` (received /
+    sent / queue) per ADR-3904. Append-only with tombstone records;
+    compaction is documented future work.
+  - **ADR resolutions baked into v1** (default-leaning, since DESIGN-039
+    Tier 2 review hasn't run): all four flows in scope; static-build
+    receive deferred to a webmention.io-style relay recipe; hybrid
+    defeasible moderation; central JSONL storage; URL-only identity
+    (h-card / WebFinger deferred to v2); persisted JSONL idempotency
+    log. SPEC-039 stays at `status: strawman` — this implementation is
+    pragmatic, not USDD-Tier-2-approved.
+  - Plan: `plans/IMPL-039-webmention.spl`.
+
 - **RSS / Atom / JSON Feed support (SPEC-038 v1.0.0).** Pure-core
   serialisers in `src/feed/` produce standards-conformant RSS 2.0,
   Atom 1.0, and (opt-in) JSON Feed v1.1 outputs from a unified

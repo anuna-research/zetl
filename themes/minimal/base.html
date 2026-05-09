@@ -11,6 +11,10 @@
   {% for tag in vault.feed_discovery %}
   {{ tag | safe }}
   {% endfor %}
+  {# SPEC-039 webmention discovery — REQ-3901. #}
+  {% if vault.webmention_endpoint %}
+  <link rel="webmention" href="{{ vault.webmention_endpoint }}">
+  {% endif %}
   <style>
     .zetl-feed-subscribe { margin: 2rem auto; max-width: 60ch; padding: 0.75rem 1rem; border-top: 1px solid #ddd; font-size: 0.875rem; color: #555; }
     .zetl-feed-subscribe a { margin-right: 0.5rem; color: inherit; }

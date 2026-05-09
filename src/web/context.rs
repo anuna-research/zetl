@@ -57,6 +57,13 @@ pub struct VaultContext {
     /// configured; defaults are `/feed.xml`, `/atom.xml`, `/feed.json`.
     #[serde(default)]
     pub feed_paths: FeedPathsContext,
+    /// Absolute URL of this vault's webmention endpoint (SPEC-039
+    /// REQ-3901). `null` when `[webmention]` is disabled / absent so
+    /// the theme's `{% if vault.webmention_endpoint %}` guard renders
+    /// no link tag. Always serialised (no `skip_serializing_if`) so
+    /// minijinja's strict mode accepts the lookup.
+    #[serde(default)]
+    pub webmention_endpoint: Option<String>,
 }
 
 #[derive(Serialize, Default, Clone, Debug)]
@@ -305,6 +312,7 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
         feed_discovery: Vec::new(),
         feed_json_enabled: false,
         feed_paths: FeedPathsContext::default(),
+        webmention_endpoint: None,
     }
 }
 

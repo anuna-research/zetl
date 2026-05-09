@@ -132,10 +132,41 @@ pub(crate) fn populate_feed_discovery_from_disk(
     let Ok(body) = std::fs::read_to_string(&cfg_path) else {
         return;
     };
-    let Ok(lens) = crate::feed::config::parse_config(&body) else {
+    if let Ok(lens) = crate::feed::config::parse_config(&body) {
+        let _ = populate_feed_discovery(vault_ctx, &lens);
+    }
+    populate_webmention_endpoint(vault_ctx, &body);
+}
+
+/// Populate `vault_ctx.webmention_endpoint` from the `[webmention]`
+/// table per SPEC-039 REQ-3901. Falls back silently when the table is
+/// absent, disabled, or malformed.
+pub(crate) fn populate_webmention_endpoint(
+    vault_ctx: &mut crate::web::context::VaultContext,
+    config_body: &str,
+) {
+    let Ok(cfg) = crate::webmention::config::WebmentionConfig::from_str(config_body) else {
         return;
     };
-    let _ = populate_feed_discovery(vault_ctx, &lens);
+    if !cfg.enabled || !cfg.receive_enabled {
+        return;
+    }
+    // Site URL is the operator-configured base. We read it from
+    // `vault_ctx.site_url` which `populate_feed_discovery_from_disk`
+    // does NOT set — a side-by-side helper does. The
+    // discovery <link> only emits when site_url is populated; for serve
+    // mode we resolve relatively to the request host instead, but the
+    // template can fall back gracefully (vault.webmention_endpoint
+    // empty -> no link emitted).
+    let base = vault_ctx.site_url.trim_end_matches('/');
+    if base.is_empty() {
+        // Fall back to a path-only value. The handler in serve mode is
+        // hosted at this path, so a relative <link href="/webmention">
+        // is still valid per the W3C REC.
+        vault_ctx.webmention_endpoint = Some(cfg.endpoint_path.clone());
+    } else {
+        vault_ctx.webmention_endpoint = Some(format!("{base}{}", cfg.endpoint_path));
+    }
 }
 
 /// Owned per-page data for the SPEC-038 feed pipeline. Lives at the
@@ -475,6 +506,114 @@ fn needs_full_population(lens: &crate::feed::config::FeedConfigLens) -> bool {
 /// Returns `Ok(None)` when the [feed] section is absent, disabled,
 /// or has no `base_url` — REQ-3809 self-publication safety. Returns
 /// `Err` only for hard fatal cases (the pure pipeline asserts).
+/// SPEC-039 outbound webmention emission. Walks `dist/` for rendered
+/// `.html` files, extracts external links, computes the idempotency
+/// diff against `.zetl/webmentions/sent.jsonl`, and POSTs new + changed
+/// pairs. No-op when `[webmention]` is absent / disabled / send_enabled
+/// = false.
+pub(crate) fn emit_outbound_webmentions(
+    dist_dir: &Path,
+    vault_root: &Path,
+    verbose: bool,
+) -> Result<()> {
+    use crate::webmention::config::WebmentionConfig;
+    use crate::webmention::send::{compute_send_plan, execute_send_plan_with_poster};
+    use crate::webmention::transport::{UreqTransport, UreqWebmentionPoster};
+    use url::Url;
+
+    let cfg_path = vault_root.join(".zetl").join("config.toml");
+    let body = match std::fs::read_to_string(&cfg_path) {
+        Ok(s) => s,
+        Err(_) => return Ok(()),
+    };
+    let cfg = WebmentionConfig::from_str(&body).map_err(|e| anyhow::anyhow!("{e}"))?;
+    if !cfg.enabled || !cfg.send_enabled {
+        return Ok(());
+    }
+
+    let base_url = match parse_feed_base_url(&body) {
+        Some(u) => u,
+        None => {
+            if verbose {
+                eprintln!(
+                    "[zetl] webmention: skipping send — [feed].base_url is required to compute external-link origin"
+                );
+            }
+            return Ok(());
+        }
+    };
+    let base = Url::parse(&base_url)?;
+
+    let mut pages = Vec::new();
+    walk_html(dist_dir, dist_dir, &base, &mut pages)?;
+    if pages.is_empty() {
+        return Ok(());
+    }
+
+    let previous_log = crate::webmention::persist::load_sent_log(vault_root).unwrap_or_default();
+    let plan = compute_send_plan(&pages, &previous_log, &base);
+    if plan.to_send.is_empty() && plan.to_resend_for_removal.is_empty() {
+        if verbose {
+            eprintln!("[zetl] webmention: 0 outbound POSTs (idempotency log up to date)");
+        }
+        return Ok(());
+    }
+
+    let transport = UreqTransport::new();
+    let poster = UreqWebmentionPoster::new();
+    let stats = execute_send_plan_with_poster(&plan, &transport, &poster, vault_root);
+    if verbose {
+        eprintln!(
+            "[zetl] webmention: sent={} removed={} endpoint_not_found={} failed={}",
+            stats.sent, stats.removed, stats.endpoint_not_found, stats.failed,
+        );
+    }
+    Ok(())
+}
+
+fn parse_feed_base_url(config_body: &str) -> Option<String> {
+    let lens = crate::feed::config::parse_config(config_body).ok()?;
+    lens.feed?.base_url
+}
+
+fn walk_html(
+    root: &Path,
+    dir: &Path,
+    base: &url::Url,
+    out: &mut Vec<crate::webmention::send::RenderedPage>,
+) -> Result<()> {
+    use std::fs;
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return Ok(()),
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            walk_html(root, &path, base, out)?;
+        } else if path.extension().and_then(|e| e.to_str()) == Some("html") {
+            let rel = match path.strip_prefix(root) {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            let rel_str = rel.to_string_lossy().replace('\\', "/");
+            let url = match base.join(&rel_str) {
+                Ok(u) => u,
+                Err(_) => continue,
+            };
+            let body = match fs::read_to_string(&path) {
+                Ok(b) => b,
+                Err(_) => continue,
+            };
+            out.push(crate::webmention::send::RenderedPage {
+                source_page_url: url,
+                rendered_html: body,
+            });
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn emit_outbound_feeds(
     lens: &crate::feed::config::FeedConfigLens,
     data: &VaultData,
@@ -1568,6 +1707,21 @@ pub fn build_static(
             }
         }
     }
+    // ── SPEC-039 webmention outbound (REQ-3906 + REQ-3907) ────────────
+    // Walk the rendered output, compute the idempotency diff against
+    // .zetl/webmentions/sent.jsonl, and POST the new/changed external
+    // links. Failed POSTs do NOT enter the log so they're retried on
+    // the next build. A vault that has not opted in via [webmention]
+    // pays no cost: `emit_outbound_webmentions` short-circuits when the
+    // config is absent / disabled.
+    if let Err(e) = emit_outbound_webmentions(out, vault_root, verbose) {
+        // Send failures are non-fatal — log and continue. The build
+        // succeeded; webmentions are best-effort.
+        if verbose {
+            eprintln!("[zetl] webmention: outbound send error: {e}");
+        }
+    }
+
     // Cloudflare Pages / Netlify-style _headers: long-cache hashed static assets and JSON indexes.
     let headers = "/_static/*\n  Cache-Control: public, max-age=31536000, immutable\n\n/*.json\n  Cache-Control: public, max-age=3600\n";
     if !out.join("_headers").exists() {

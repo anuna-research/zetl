@@ -30,3 +30,4 @@ pub mod user;
 pub mod vcs;
 pub mod view;
 pub mod web;
+pub mod webmention;

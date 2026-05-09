@@ -5403,6 +5403,129 @@ fn cmd_feed_not_yet_wired(name: &str, why: &str) -> Result<()> {
     std::process::exit(2);
 }
 
+// ─── SPEC-039 webmention CLI ──────────────────────────────────────────
+
+fn cmd_webmention(cli: &Cli, command: &zetl::webmention::cli::WebmentionCommand) -> Result<()> {
+    use zetl::webmention::cli::WebmentionCommand;
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    match command {
+        WebmentionCommand::List(args) => cmd_webmention_list(&vault_root, args),
+        WebmentionCommand::Accept(args) => cmd_webmention_accept(&vault_root, args),
+        WebmentionCommand::Reject(args) => cmd_webmention_reject(&vault_root, args),
+        WebmentionCommand::Send(args) => cmd_webmention_send(&vault_root, args),
+        WebmentionCommand::Status(args) => cmd_webmention_status(&vault_root, args),
+    }
+}
+
+fn cmd_webmention_list(
+    vault_root: &Path,
+    args: &zetl::webmention::cli::WebmentionListArgs,
+) -> Result<()> {
+    let queue = zetl::webmention::persist::load_queue(vault_root)?;
+    let edges = zetl::webmention::persist::load_external_edges(vault_root)?;
+
+    let show_queued = args.queued || !args.accepted;
+    let show_accepted = args.accepted || !args.queued;
+
+    if args.json {
+        let body = serde_json::json!({
+            "queued": if show_queued { serde_json::to_value(&queue)? } else { serde_json::Value::Null },
+            "accepted": if show_accepted { serde_json::to_value(&edges)? } else { serde_json::Value::Null },
+        });
+        println!("{}", serde_json::to_string_pretty(&body)?);
+        return Ok(());
+    }
+
+    if show_queued {
+        println!("queued ({}):", queue.len());
+        for m in &queue {
+            println!("  {} -> {}", m.source, m.target);
+        }
+    }
+    if show_accepted {
+        println!("accepted ({}):", edges.len());
+        for e in &edges {
+            println!(
+                "  {} -> {}  (last_seen={})",
+                e.source, e.target, e.last_seen
+            );
+        }
+    }
+    Ok(())
+}
+
+fn cmd_webmention_accept(
+    vault_root: &Path,
+    args: &zetl::webmention::cli::WebmentionDecisionArgs,
+) -> Result<()> {
+    let now = zetl::webmention::types::now_epoch();
+    zetl::webmention::persist::append_external_edge(
+        vault_root,
+        &zetl::webmention::types::ExternalEdge {
+            source: args.source.clone(),
+            target: args.target.clone(),
+            accepted_at: now,
+            last_seen: now,
+            source_title: None,
+            tombstoned: false,
+        },
+    )?;
+    println!("accepted: {} -> {}", args.source, args.target);
+    Ok(())
+}
+
+fn cmd_webmention_reject(
+    vault_root: &Path,
+    args: &zetl::webmention::cli::WebmentionDecisionArgs,
+) -> Result<()> {
+    let now = zetl::webmention::types::now_epoch();
+    zetl::webmention::persist::tombstone_external_edge(
+        vault_root,
+        &args.source,
+        &args.target,
+        now,
+    )?;
+    println!("rejected (tombstoned): {} -> {}", args.source, args.target);
+    Ok(())
+}
+
+fn cmd_webmention_send(
+    _vault_root: &Path,
+    _args: &zetl::webmention::cli::WebmentionSendArgs,
+) -> Result<()> {
+    eprintln!(
+        "[zetl] webmention send: not yet wired — needs the build pipeline's rendered-pages \
+         set (which is computed inside cmd_build); see plans/IMPL-039-webmention.spl \
+         task-send-build-hook for follow-up. Today, run `zetl build` to trigger sends."
+    );
+    std::process::exit(2);
+}
+
+fn cmd_webmention_status(
+    vault_root: &Path,
+    args: &zetl::webmention::cli::WebmentionStatusArgs,
+) -> Result<()> {
+    let queue = zetl::webmention::persist::load_queue(vault_root)?;
+    let edges = zetl::webmention::persist::load_external_edges(vault_root)?;
+    let sent = zetl::webmention::persist::load_sent_log(vault_root)?;
+
+    if args.json {
+        let body = serde_json::json!({
+            "queue_depth": queue.len(),
+            "accepted": edges.len(),
+            "sent": sent.len(),
+        });
+        println!("{}", serde_json::to_string_pretty(&body)?);
+        return Ok(());
+    }
+    println!("webmention status:");
+    println!("  queue_depth: {}", queue.len());
+    println!("  accepted:    {}", edges.len());
+    println!("  sent:        {}", sent.len());
+    Ok(())
+}
+
 fn cmd_feed_validate(cli: &Cli, args: &zetl::feed::cli::FeedValidateArgs) -> Result<()> {
     use std::io::Read;
     let _ = cli;
@@ -11415,6 +11538,7 @@ fn main() -> anyhow::Result<()> {
             EcosystemCommand::Check { theme, json } => cmd_ecosystem_check(&cli, theme, *json),
         },
         Command::Feed { command } => cmd_feed(&cli, command),
+        Command::Webmention { command } => cmd_webmention(&cli, command),
         Command::Ast { command } => {
             use zetl::cli::AstCommand;
             match command {

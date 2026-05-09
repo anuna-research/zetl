@@ -43,6 +43,75 @@ use self::rate_limit::AuthRateLimiters;
 use self::session::SessionStore;
 use crate::user::recovery::RecoveryChallengeStore;
 
+/// Build the SPEC-039 `POST /webmention` sub-router. Reads
+/// `[webmention]` from `.zetl/config.toml` at startup and registers
+/// the configured `endpoint_path`. Returns an empty router (no routes)
+/// when the table is absent / disabled — so production vaults that
+/// haven't opted in pay no runtime surface.
+fn build_webmention_router(vault_root: Arc<PathBuf>) -> Router {
+    let cfg_path = vault_root.join(".zetl").join("config.toml");
+    let body = match std::fs::read_to_string(&cfg_path) {
+        Ok(s) => s,
+        Err(_) => return Router::new(),
+    };
+    let cfg = match crate::webmention::config::WebmentionConfig::from_str(&body) {
+        Ok(c) => c,
+        Err(_) => return Router::new(),
+    };
+    if !cfg.enabled || !cfg.receive_enabled {
+        return Router::new();
+    }
+
+    // Vault host: read from [feed].base_url if present (we share the
+    // operator's notion of "this vault"); fall back to a permissive
+    // empty-host that fails closed.
+    let vault_host = parse_vault_host(&body).unwrap_or_default();
+    if vault_host.is_empty() {
+        eprintln!(
+            "warn: [webmention] enabled but [feed].base_url is unset; \
+             POST /webmention will reject all targets until a base_url \
+             is configured (REQ-3902 target-host check)."
+        );
+    }
+
+    let deps = Arc::new(crate::webmention::receive::ReceiveDeps {
+        vault_root: vault_root.as_ref().clone(),
+        vault_host,
+        allowlist_domains: cfg.allowlist_domains.iter().cloned().collect(),
+        denylist_domains: cfg.denylist_domains.iter().cloned().collect(),
+        // Computed lazily by the build pipeline; for v1 the vault
+        // operator populates allowlist_domains explicitly.
+        vault_outbound_domains: std::collections::HashSet::new(),
+        default_decision: cfg.default_decision,
+    });
+
+    let transport: Arc<dyn crate::feed::fetch::HttpTransport + Send + Sync> =
+        Arc::new(crate::webmention::transport::UreqTransport::new());
+    let rate_limiter = Arc::new(crate::webmention::receive::RateLimiter::new(
+        cfg.rate_limit_per_source_host_per_minute,
+        cfg.rate_limit_global_per_minute,
+    ));
+    let wm_state = crate::webmention::receive::WebmentionState {
+        deps,
+        transport,
+        rate_limiter,
+    };
+    Router::new()
+        .route(
+            &cfg.endpoint_path,
+            post(crate::webmention::receive::webmention_endpoint_handler),
+        )
+        .with_state(wm_state)
+}
+
+fn parse_vault_host(config_body: &str) -> Option<String> {
+    let lens = crate::feed::config::parse_config(config_body).ok()?;
+    let base = lens.feed?.base_url?;
+    url::Url::parse(&base)
+        .ok()
+        .and_then(|u| u.host_str().map(|s| s.to_string()))
+}
+
 /// Snapshot of vault data that can be swapped after re-indexing.
 pub struct VaultData {
     pub files: Vec<ParsedFile>,
@@ -501,12 +570,19 @@ pub async fn run(
     // ── Public asset routes (not gated by collab_gate — ACL checked inside handler)
     let asset_routes = Router::new().route("/assets/{*path}", get(routes::serve_asset_handler));
 
+    // ── Webmention receiver (SPEC-039 REQ-3902). Has its own state and
+    //    is intentionally NOT behind `csrf_guard` / `collab_gate`: the
+    //    W3C REC mandates external clients POST without our session
+    //    machinery.
+    let webmention_router = build_webmention_router(state.vault_root.clone());
+
     let app = Router::new()
         .merge(auth_routes)
         .merge(ws_routes)
         .merge(asset_routes)
         .merge(content_routes)
         .with_state(state)
+        .merge(webmention_router)
         .layer(middleware::map_response(|mut resp: axum::response::Response| async {
             // Only set CSP if the handler didn't already set one (e.g. the editor).
             resp.headers_mut().entry(header::CONTENT_SECURITY_POLICY).or_insert(

@@ -1368,6 +1368,7 @@ mod tests {
             feed_discovery: Vec::new(),
             feed_json_enabled: false,
             feed_paths: Default::default(),
+            webmention_endpoint: None,
         }
     }
 
@@ -1458,6 +1459,7 @@ mod tests {
             feed_discovery: Vec::new(),
             feed_json_enabled: false,
             feed_paths: Default::default(),
+            webmention_endpoint: None,
         }
     }
 
@@ -1650,6 +1652,7 @@ mod tests {
             feed_discovery: Vec::new(),
             feed_json_enabled: false,
             feed_paths: Default::default(),
+            webmention_endpoint: None,
         };
         let idx = build_search_index(&vault);
         assert!(idx.contains(r#"\"hello\""#));
@@ -2407,6 +2410,7 @@ mod tests {
             feed_discovery: Vec::new(),
             feed_json_enabled: false,
             feed_paths: Default::default(),
+            webmention_endpoint: None,
         }
     }
 
@@ -2523,6 +2527,7 @@ mod tests {
             feed_discovery: Vec::new(),
             feed_json_enabled: false,
             feed_paths: Default::default(),
+            webmention_endpoint: None,
         };
         let html = render_graph_partial(&vault);
         assert!(

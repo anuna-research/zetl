@@ -454,6 +454,15 @@ pub enum Command {
         command: crate::feed::cli::FeedCommand,
     },
 
+    /// Manage incoming webmentions and outbound mention state.
+    #[command(
+        after_help = "Examples:\n  zetl webmention list                List queued + accepted mentions\n  zetl webmention status              Show counters\n  zetl webmention accept <s> <t>      Promote a queued mention"
+    )]
+    Webmention {
+        #[command(subcommand)]
+        command: crate::webmention::cli::WebmentionCommand,
+    },
+
     /// Inspect the zetl-ext AST for a page or diff two AST documents
     #[command(
         after_help = "Examples:\n  zetl ast sample notes/page.md                  Print canonical AST JSON\n  zetl ast sample notes/page.md --stage pre-parse  Print raw markdown input\n  zetl ast diff before.json after.json           Tree diff of two AST files"

@@ -51,6 +51,10 @@
   {% for tag in vault.feed_discovery %}
   {{ tag | safe }}
   {% endfor %}
+  {# SPEC-039 webmention discovery — REQ-3901. #}
+  {% if vault.webmention_endpoint %}
+  <link rel="webmention" href="{{ vault.webmention_endpoint }}">
+  {% endif %}
   <link rel="preload" href="{{ root_path }}_static/shell.css" as="style">
   <link rel="stylesheet" href="{{ root_path }}_static/shell.css">
   {# Child templates can still inject per-page CSS via the `styles` block. #}

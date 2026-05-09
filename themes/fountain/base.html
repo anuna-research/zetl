@@ -901,6 +901,10 @@
   {% for tag in vault.feed_discovery %}
   {{ tag | safe }}
   {% endfor %}
+  {# SPEC-039 webmention discovery — REQ-3901. #}
+  {% if vault.webmention_endpoint %}
+  <link rel="webmention" href="{{ vault.webmention_endpoint }}">
+  {% endif %}
 </head>
 <body>
 
