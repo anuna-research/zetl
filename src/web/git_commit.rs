@@ -163,11 +163,11 @@ fn force_add_to_index(
         None => git_path.to_path_buf(),
     };
     let data = std::fs::read(&abs_path).map_err(|e| {
-        git2::Error::from_str(&format!("force_add: failed to read {:?}: {e}", abs_path))
+        git2::Error::from_str(&format!("force_add: failed to read {abs_path:?}: {e}"))
     })?;
     let oid = repo.blob(&data)?;
     let meta = std::fs::metadata(&abs_path).map_err(|e| {
-        git2::Error::from_str(&format!("force_add: failed to stat {:?}: {e}", abs_path))
+        git2::Error::from_str(&format!("force_add: failed to stat {abs_path:?}: {e}"))
     })?;
     let mtime = meta
         .modified()

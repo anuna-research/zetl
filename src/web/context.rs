@@ -37,6 +37,33 @@ pub struct VaultContext {
     /// unset — templates treat it as "use root-relative URLs".
     #[serde(default)]
     pub site_url: String,
+    /// Pre-rendered `<link rel="alternate">` HTML strings for the
+    /// configured root + scoped feeds (SPEC-038 REQ-3801). Empty when
+    /// `[feed]` is not configured. Themes splice this into `<head>`
+    /// via `{{ vault.feed_discovery | join(safe='') | safe }}`.
+    #[serde(default)]
+    pub feed_discovery: Vec<String>,
+    /// True when `[feed].enable_json = true`; gates the human-clickable
+    /// "JSON Feed" affordance in the theme. Themes that just use
+    /// `feed_discovery | length > 2` to detect JSON Feed support are
+    /// wrong (scoped feeds also extend that list), so this flag is the
+    /// authoritative source of truth.
+    #[serde(default)]
+    pub feed_json_enabled: bool,
+    /// URL paths the theme should link to for human-clickable
+    /// subscribe affordances. Honours `[feed.paths]` overrides so a
+    /// vault that remaps the RSS output (e.g. `rss = "/rss.xml"`)
+    /// renders a working link. Empty struct when `[feed]` is not
+    /// configured; defaults are `/feed.xml`, `/atom.xml`, `/feed.json`.
+    #[serde(default)]
+    pub feed_paths: FeedPathsContext,
+}
+
+#[derive(Serialize, Default, Clone, Debug)]
+pub struct FeedPathsContext {
+    pub rss: String,
+    pub atom: String,
+    pub jsonfeed: String,
 }
 
 #[derive(Serialize)]
@@ -275,6 +302,9 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
         history: serde_json::Value::Null,
         semantic_available: false,
         site_url: String::new(),
+        feed_discovery: Vec::new(),
+        feed_json_enabled: false,
+        feed_paths: FeedPathsContext::default(),
     }
 }
 

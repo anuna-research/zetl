@@ -9,6 +9,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **RSS / Atom / JSON Feed support (SPEC-038 v1.0.0).** Pure-core
+  serialisers in `src/feed/` produce standards-conformant RSS 2.0,
+  Atom 1.0, and (opt-in) JSON Feed v1.1 outputs from a unified
+  `FeedItem` projection of the vault snapshot. Supported surfaces:
+  - **Outbound build mode** emits `dist/feed.xml`, `dist/atom.xml`, and
+    optionally `dist/feed.json`; pages get `<link rel="alternate">`
+    discovery tags. Determinism is byte-stable across rebuilds (NFR-3804
+    + NFR-3805) — same vault produces byte-identical feed bytes.
+  - **Outbound serve mode** exposes `GET /feed.xml`, `/atom.xml`, and
+    `/feed.json` with collab-mode `no-store` vs public `max-age=300`
+    cache controls.
+  - **Hugo's scoped subscriptions** — public catalog at
+    `/.well-known/zetl-subscriptions.json` advertising every
+    `[[feed.scopes]]`; per-scope feeds at the configured paths;
+    AST-backed changelog feed with monotonic sequence numbers and
+    sealed archive ranges (REQ-3816 / REQ-3817).
+  - **Capability cohort feeds** — opt-in per-cohort feeds at
+    `/caps/<token>/feed.xml`, never advertised in the public catalog,
+    with token-leak audit (REQ-3829..REQ-3831 + NFR-3809).
+  - **Inbound feed pull** — SSRF-safe (RFC 1918 / link-local /
+    loopback / multicast / RFC 6598 / file:// / data:// rejected at
+    every redirect hop), XXE-safe (DOCTYPE + ENTITY rejection),
+    decompression-bomb-safe (1 MiB cap), conditional-request
+    (If-Modified-Since / If-None-Match) honouring; first-seen identity
+    dedup over GUID + canonical-link + content-fingerprint (REQ-3812).
+  - **Inbound authentication** (Basic / Bearer / query-param) reading
+    from `.zetl/credentials.toml` (mode-0600 enforced; credentials
+    never accepted in `.zetl/config.toml`); cross-origin redirect
+    drops credentials (REQ-3826); persistent 401/403 enters suspended
+    state until operator action (REQ-3828).
+  - **Creative-Commons-aware republication** (REQ-3818..REQ-3823 +
+    ADR-3809). Per-license eligibility table (CC0 → full, CC-BY →
+    full/excerpt by operator choice, CC-BY-SA → compatible-vault gate,
+    CC-BY-NC → non-commercial-vault gate, CC-BY-ND → excerpt-only,
+    Unknown → default-deny unless `i_have_permission=true`).
+    Attribution preservation enforced at build time; retraction
+    propagates from source to local + republished feeds.
+  - **Per-subscription retention** with archive-not-delete default
+    (ADR-3812); explicit erasure via
+    `zetl feed forget <sub-id> <pattern>` mints tombstone records that
+    block re-import on subsequent fetches (REQ-3834 / T22).
+  - **CLI surface** — `zetl feed pull|list|status|validate|forget`
+    with consistent `--json` autodetection and exit codes matching
+    the rest of zetl.
+  - **Observability** — `zetl_feed_*` Prometheus-style counters and
+    `zetl_feed_build_duration_seconds` histogram, with bounded
+    cardinality (subscription_id / cohort_id from config; license /
+    decision / action / reason from closed enums; never `page_slug`
+    as a label). Cohort token labels enforce REQ-3831's never-leak
+    invariant.
+
+  Tracked in plan `IMPL-038` (33 tasks); follow-up wires landed under
+  `IMPL-038-wires` (5 tasks: outbound emission into `zetl build`, CLI
+  surface attach, fail-loud config validation, theme Subscribe
+  affordance, end-to-end playtest). 2,169 lib + 24 integration tests
+  cover per-format determinism, cross-format equivalence, threat-model
+  corpus (T1..T22), the CC eligibility matrix, RFC 4287 §4.1.1
+  feed-author conformance, and JSON Feed v1.1 minimum-required-fields.
+
+  Operator how-to: [`user-guide/reading/Feeds.md`](user-guide/reading/Feeds.md).
+  Reference spec: `specs/SPEC-038-rss-support.md`. CLI surface in v1.0:
+  `zetl feed validate` (offline strict-parser smoke test) is fully
+  wired; `pull|list|status|forget` exit non-zero with structured
+  "not yet wired" stubs pointing at the deferred shell-side work.
+
 - **Capability-URL distribution (SPEC-034 v0.4.0).** A new
   `zetl build --capability` build mode encrypts every page with
   [`age`](https://age-encryption.org) and signs the resulting envelope

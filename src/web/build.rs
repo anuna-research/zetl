@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use petgraph::visit::EdgeRef;
@@ -13,6 +13,687 @@ use crate::web::engine::{
 use crate::web::html::{html_escape, urlencoding};
 use crate::web::markdown;
 use crate::web::VaultData;
+
+/// Build SPEC-038 `<link rel="alternate">` tags for the root + scoped
+/// feeds advertised by the `[feed]` section. Mirrors
+/// [`crate::feed::build::discovery_tags`] but consumes the parsed
+/// config-lens directly so we don't have to build a full
+/// [`crate::feed::types::FeedConfig`] just to emit the tags.
+pub(crate) fn build_feed_discovery_tags(
+    feed: &crate::feed::config::FeedSection,
+    base_url: &str,
+    title: &str,
+) -> Vec<String> {
+    let base = base_url.trim_end_matches('/');
+    let paths = feed.paths.as_ref();
+    let rss_path = paths
+        .and_then(|p| p.rss.clone())
+        .unwrap_or_else(|| crate::feed::build::DEFAULT_RSS_PATH.to_string());
+    let atom_path = paths
+        .and_then(|p| p.atom.clone())
+        .unwrap_or_else(|| crate::feed::build::DEFAULT_ATOM_PATH.to_string());
+    let json_path = paths
+        .and_then(|p| p.jsonfeed.clone())
+        .unwrap_or_else(|| crate::feed::build::DEFAULT_JSONFEED_PATH.to_string());
+    let title_attr = title.replace('&', "&amp;").replace('"', "&quot;");
+    let mut out = vec![
+        format!(
+            r#"<link rel="alternate" type="application/rss+xml" title="{title_attr} (RSS)" href="{base}{rss_path}" />"#
+        ),
+        format!(
+            r#"<link rel="alternate" type="application/atom+xml" title="{title_attr} (Atom)" href="{base}{atom_path}" />"#
+        ),
+    ];
+    if feed.enable_json.unwrap_or(false) {
+        out.push(format!(
+            r#"<link rel="alternate" type="application/feed+json" title="{title_attr} (JSON Feed)" href="{base}{json_path}" />"#
+        ));
+    }
+    // Per-scope feeds get their own discovery tags so feed readers
+    // surface them alongside the root.
+    for scope in &feed.scopes {
+        out.push(format!(
+            r#"<link rel="alternate" type="application/atom+xml" title="{title_attr} ({scope_title})" href="{base}{scope_path}" />"#,
+            scope_title = scope.title.replace('&', "&amp;").replace('"', "&quot;"),
+            scope_path = scope.path,
+        ));
+    }
+    out
+}
+
+/// Populate `vault_ctx.feed_discovery` from the parsed `[feed]`
+/// section. Used by both build and serve modes so rendered pages
+/// always carry the correct `<link rel="alternate">` tags. Returns
+/// `Ok(())` on success; `Err` only when `[feed]` is configured but
+/// `base_url` is missing (REQ-3809). Call sites in serve mode are OK
+/// to ignore that error and render without discovery tags.
+pub(crate) fn populate_feed_discovery(
+    vault_ctx: &mut crate::web::context::VaultContext,
+    lens: &crate::feed::config::FeedConfigLens,
+) -> Result<()> {
+    let Some(feed) = lens.feed.as_ref() else {
+        return Ok(());
+    };
+    if matches!(feed.enabled, Some(false)) {
+        return Ok(());
+    }
+    let Some(base_url) = feed.base_url.as_deref() else {
+        anyhow::bail!(
+            "[zetl] feed-config: [feed] is configured but base_url is missing (REQ-3809)"
+        );
+    };
+    let title = feed.title.as_deref().unwrap_or("Untitled feed");
+    vault_ctx.feed_discovery = build_feed_discovery_tags(feed, base_url, title);
+    vault_ctx.feed_json_enabled = feed.enable_json.unwrap_or(false);
+    vault_ctx.feed_paths = feed_paths_context(feed);
+    Ok(())
+}
+
+/// Build the [`crate::web::context::FeedPathsContext`] for the
+/// supplied `[feed]` section. Resolves each format against
+/// `[feed.paths]` overrides, falling back to the per-format defaults.
+///
+/// Paths are stored *without* the leading `/` so theme templates can
+/// concatenate them onto `{{ root_path }}` (which itself ends with a
+/// `/`) and produce a working link in both build mode (relative,
+/// `../`-style root_path) and serve mode (`/` root_path).
+pub(crate) fn feed_paths_context(
+    feed: &crate::feed::config::FeedSection,
+) -> crate::web::context::FeedPathsContext {
+    let cfg_paths = feed.paths.as_ref();
+    let strip_leading_slash = |s: String| -> String { s.trim_start_matches('/').to_string() };
+    crate::web::context::FeedPathsContext {
+        rss: strip_leading_slash(
+            cfg_paths
+                .and_then(|p| p.rss.clone())
+                .unwrap_or_else(|| crate::feed::build::DEFAULT_RSS_PATH.to_string()),
+        ),
+        atom: strip_leading_slash(
+            cfg_paths
+                .and_then(|p| p.atom.clone())
+                .unwrap_or_else(|| crate::feed::build::DEFAULT_ATOM_PATH.to_string()),
+        ),
+        jsonfeed: strip_leading_slash(
+            cfg_paths
+                .and_then(|p| p.jsonfeed.clone())
+                .unwrap_or_else(|| crate::feed::build::DEFAULT_JSONFEED_PATH.to_string()),
+        ),
+    }
+}
+
+/// Read `.zetl/config.toml` and populate `vault_ctx.feed_discovery`.
+/// Convenience wrapper used by serve-mode handlers; silently ignores
+/// missing config + parse errors (the page should still render).
+pub(crate) fn populate_feed_discovery_from_disk(
+    vault_ctx: &mut crate::web::context::VaultContext,
+    vault_root: &Path,
+) {
+    let cfg_path = vault_root.join(".zetl").join("config.toml");
+    let Ok(body) = std::fs::read_to_string(&cfg_path) else {
+        return;
+    };
+    let Ok(lens) = crate::feed::config::parse_config(&body) else {
+        return;
+    };
+    let _ = populate_feed_discovery(vault_ctx, &lens);
+}
+
+/// Owned per-page data for the SPEC-038 feed pipeline. Lives at the
+/// caller; [`page_views_from_owned`] borrows from this Vec to satisfy
+/// `feed::select::PageView<'a>` lifetimes.
+pub(crate) struct OwnedFeedPage {
+    pub(crate) slug: String,
+    pub(crate) path: PathBuf,
+    pub(crate) tags: Vec<String>,
+    pub(crate) item: crate::feed::types::FeedItem,
+    pub(crate) frontmatter_feed_optin: bool,
+}
+
+/// Build the page set the feed pipeline operates on. Reads each page
+/// from disk; for pages that did not opt in via frontmatter `feed:
+/// true`, only synthesises a stub `FeedItem` unless `populate_all` is
+/// set (scoped/cohort feed families need full items for non-opt-in
+/// pages so their `select` rules can match).
+///
+/// Returns `None` when `[feed]` is absent / disabled / missing
+/// `base_url`.
+pub(crate) fn build_owned_pages(
+    lens: &crate::feed::config::FeedConfigLens,
+    data: &VaultData,
+    vault_root: &Path,
+) -> Result<Option<Vec<OwnedFeedPage>>> {
+    use crate::feed::types::{FeedItem, SourceMetadata};
+    use crate::web::markdown::parse_frontmatter;
+
+    let Some(feed) = lens.feed.as_ref() else {
+        return Ok(None);
+    };
+    if matches!(feed.enabled, Some(false)) {
+        return Ok(None);
+    }
+    let Some(base_url) = feed.base_url.as_deref() else {
+        return Ok(None);
+    };
+    let populate_all = needs_full_population(lens);
+    let base_url_trimmed = base_url.trim_end_matches('/');
+    // REQ-3809: refuse malformed/relative base URLs at config-resolution
+    // time. Previously a relative string like `example.com` silently
+    // fell back to `https://example.invalid/` for the tag-URI namespace
+    // while emitted item URLs still used the (broken) base — readers
+    // and downstream dedup then saw the wrong identity. Hard-fail
+    // instead so the operator notices.
+    let id_namespace = url::Url::parse(base_url_trimmed).map_err(|e| {
+        anyhow::anyhow!(
+            "[zetl] feed-config: [feed].base_url={base_url:?} is not a valid absolute URL ({e}). \
+             Set base_url to a fully-qualified http(s) URL like \"https://example.com\"."
+        )
+    })?;
+    if !matches!(id_namespace.scheme(), "http" | "https") {
+        anyhow::bail!(
+            "[zetl] feed-config: [feed].base_url={base_url:?} must use http or https \
+             (got scheme {:?})",
+            id_namespace.scheme()
+        );
+    }
+    if id_namespace.host_str().is_none() {
+        anyhow::bail!("[zetl] feed-config: [feed].base_url={base_url:?} has no host component");
+    }
+    let render_root = format!("{base_url_trimmed}/");
+
+    let mut owned: Vec<OwnedFeedPage> = Vec::with_capacity(data.files.len());
+    // Track slugs we've already emitted so two files producing the
+    // same path-derived slug (`Foo.md` + `Foo.fountain`, `Foo Bar.md`
+    // + `Foo-Bar.md`, or case-only differences on a case-sensitive
+    // filesystem) don't both land in the feed with the same id/url —
+    // that would confuse reader dedup and break GUID stability. The
+    // first file at a slug wins; subsequent collisions warn loudly so
+    // the operator can rename one. `data.files` iteration order is
+    // stable across builds (scanner sorts by path), so which file
+    // wins is deterministic.
+    let mut seen_slugs: std::collections::HashMap<String, std::path::PathBuf> =
+        std::collections::HashMap::new();
+    for parsed in &data.files {
+        let abs_path = vault_root.join(&parsed.path);
+        // Path-derived slug per file. The vault-wide `page_slug_map` is
+        // keyed by `page_name` and only retains one entry when two
+        // pages share a name (e.g. `blog/Index.md` + `notes/Index.md`),
+        // which would otherwise collapse both into a single feed item
+        // with the same id/url. The static-site emitter uses
+        // path-derived slugs for these collisions, so the feed must too.
+        let slug = page_slug_from_path(&parsed.path);
+        if let Some(existing_path) = seen_slugs.get(&slug) {
+            eprintln!(
+                "[zetl] feed: slug collision — {existing} and {dup} both resolve to slug {slug:?}; \
+                 keeping the first, skipping {dup}. Rename one file (e.g. add a folder prefix) \
+                 to disambiguate.",
+                existing = existing_path.display(),
+                dup = parsed.path.display(),
+            );
+            continue;
+        }
+        seen_slugs.insert(slug.clone(), parsed.path.clone());
+        let body = std::fs::read_to_string(&abs_path).unwrap_or_default();
+        let opted_in = matches!(scan_frontmatter_feed_optin(&body), Some(true));
+        if !opted_in && !populate_all {
+            owned.push(OwnedFeedPage {
+                slug: slug.clone(),
+                path: parsed.path.clone(),
+                tags: Vec::new(),
+                item: FeedItem {
+                    id: format!("urn:zetl:{slug}"),
+                    title: String::new(),
+                    url: String::new(),
+                    date_published: String::new(),
+                    date_modified: None,
+                    summary: None,
+                    content_html: None,
+                    author: None,
+                    tags: Vec::new(),
+                    license: None,
+                    source_metadata: SourceMetadata::default(),
+                },
+                frontmatter_feed_optin: false,
+            });
+            continue;
+        }
+        let frontmatter = parse_frontmatter(&body);
+        let title = frontmatter
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| parsed.page_name.clone());
+        // Deterministic dates only: feed bodies must be byte-identical
+        // for the same vault content across machines and clean
+        // checkouts, so filesystem mtime is not an acceptable fallback
+        // (it varies with checkout time). When an opted-in page lacks
+        // a frontmatter date, fall through to a stable epoch placeholder
+        // and warn the operator — the warning is the loud signal so
+        // they can add `published:`/`date:`/`created:`.
+        let date_published = match frontmatter_date(&frontmatter) {
+            Some(d) => d,
+            None => {
+                if opted_in {
+                    eprintln!(
+                        "[zetl] feed: page {slug:?} opted in (feed: true) but \
+                         has no `published:` / `date:` / `created:` frontmatter; \
+                         emitting epoch placeholder to keep the feed deterministic"
+                    );
+                }
+                "1970-01-01T00:00:00Z".to_string()
+            }
+        };
+        let mut tags: Vec<String> = frontmatter
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|t| t.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        tags.sort();
+        tags.dedup();
+        let url = format!(
+            "{base_url_trimmed}/{}",
+            slug.split('/')
+                .map(percent_encode_segment)
+                .collect::<Vec<_>>()
+                .join("/")
+        );
+        let id = crate::feed::item_id::item_id(&slug, &id_namespace, 2026)
+            .unwrap_or_else(|_| format!("urn:zetl:{slug}"));
+        let summary = crate::web::markdown::extract_description(&body, &frontmatter);
+        let summary = if summary.is_empty() {
+            None
+        } else {
+            Some(summary.chars().take(400).collect::<String>())
+        };
+        let content_html = {
+            let mut rendered = crate::web::markdown::render_to_html(
+                &body,
+                &data.page_slug_map,
+                &render_root,
+                "index.html",
+            );
+            const MAX_BYTES: usize = 65_536;
+            if rendered.is_empty() {
+                None
+            } else if rendered.len() > MAX_BYTES {
+                let mut cut = MAX_BYTES;
+                while cut > 0 && !rendered.is_char_boundary(cut) {
+                    cut -= 1;
+                }
+                rendered.truncate(cut);
+                rendered.push_str(
+                    "\n<!-- content truncated for feed; visit the page URL for the full body -->\n",
+                );
+                Some(rendered)
+            } else {
+                Some(rendered)
+            }
+        };
+        let item = FeedItem {
+            id,
+            title,
+            url,
+            date_published,
+            date_modified: None,
+            summary,
+            content_html,
+            author: None,
+            tags: tags.clone(),
+            license: None,
+            source_metadata: SourceMetadata {
+                source_path: Some(parsed.path.clone()),
+                object_id: Some(slug.clone()),
+                content_hash: parsed
+                    .file_merkle
+                    .as_ref()
+                    .map(|m| crate::feed::xml::hex_encode(&m.root_hash)),
+                ..Default::default()
+            },
+        };
+        owned.push(OwnedFeedPage {
+            slug,
+            path: parsed.path.clone(),
+            tags,
+            item,
+            frontmatter_feed_optin: opted_in,
+        });
+    }
+    Ok(Some(owned))
+}
+
+/// Borrow [`OwnedFeedPage`]s as [`feed::select::PageView`]s. Caller
+/// owns the `Vec<OwnedFeedPage>`; returned references live as long as
+/// the input slice.
+pub(crate) fn page_views_from_owned(
+    owned: &[OwnedFeedPage],
+) -> Vec<crate::feed::select::PageView<'_>> {
+    owned
+        .iter()
+        .map(|o| crate::feed::select::PageView {
+            slug: &o.slug,
+            path: &o.path,
+            frontmatter_feed_optin: o.frontmatter_feed_optin,
+            tags: &o.tags,
+            matches_spl_query: false,
+            item: o.item.clone(),
+        })
+        .collect()
+}
+
+/// Reject path-traversal in a feed output path before joining onto
+/// `dist/`. Operator-supplied feed config (`[feed].paths`,
+/// `[[feed.scopes]].path`) and cap-cohort tokens flow through here, so
+/// a hostile vault config containing `../foo.xml` (or even just a
+/// percent-encoded variant) must not be allowed to write outside
+/// `dist`. Pure: returns the cleaned slash-stripped relative path
+/// (suitable for joining onto `out`) or an error describing the
+/// violation.
+fn sanitise_feed_rel_path(rel: &str) -> Result<PathBuf> {
+    if rel.is_empty() {
+        anyhow::bail!("empty feed output path");
+    }
+    if rel.contains('\0') {
+        anyhow::bail!("feed output path contains NUL byte");
+    }
+    // Reject percent-encoded traversal segments — feed paths are
+    // operator-supplied and easy to mis-author; we want a hard refusal
+    // rather than relying on the URL-decoder upstream.
+    let lower = rel.to_ascii_lowercase();
+    if lower.contains("%2e%2e") || lower.contains("%2f") || lower.contains("%5c") {
+        anyhow::bail!("feed output path contains percent-encoded separator/traversal");
+    }
+    // Backslash is a path separator on Windows; banning it on every
+    // platform makes the validator portable and removes one ambiguity.
+    if rel.contains('\\') {
+        anyhow::bail!("feed output path contains backslash");
+    }
+    // Strip *exactly one* leading slash. A path with two or more
+    // leading slashes (e.g. `//etc/passwd`) is malformed — accept the
+    // single-slash convention used by configured feed paths
+    // (`/feed.xml`) but refuse anything else.
+    let trimmed = if let Some(rest) = rel.strip_prefix('/') {
+        if rest.starts_with('/') {
+            anyhow::bail!("feed output path has multiple leading slashes ({rel:?})");
+        }
+        rest
+    } else {
+        rel
+    };
+    let mut cleaned = PathBuf::new();
+    for segment in trimmed.split('/') {
+        if segment.is_empty() {
+            anyhow::bail!("feed output path contains empty segment ({rel:?})");
+        }
+        if segment == "." || segment == ".." {
+            anyhow::bail!("feed output path contains traversal segment {segment:?}");
+        }
+        cleaned.push(segment);
+    }
+    if cleaned.as_os_str().is_empty() {
+        anyhow::bail!("feed output path resolved to empty path");
+    }
+    Ok(cleaned)
+}
+
+/// Combined emission set for the SPEC-038 outbound feed families:
+/// the root feed, every `[[feed.scopes]]` entry, the
+/// `/.well-known/zetl-subscriptions.json` catalog, and every
+/// `[[capability_cohorts]]` with `feed_enabled = true`.
+pub(crate) struct OutboundEmission {
+    pub(crate) files: Vec<(String, Vec<u8>)>,
+    pub(crate) root_stats: crate::feed::build::BuildStats,
+    pub(crate) scoped_count: usize,
+    pub(crate) cohort_count: usize,
+    pub(crate) catalog_emitted: bool,
+}
+
+/// True iff any scoped/cohort feed family needs `FeedItem`s for
+/// non-opt-in pages. Scopes that select via `folder`/`tag`/`spl` are
+/// authoritative (independent of frontmatter `feed: true`); cohort
+/// feeds select via `cohort.select` glob, also independent of opt-in.
+fn needs_full_population(lens: &crate::feed::config::FeedConfigLens) -> bool {
+    use crate::feed::config::SelectionRuleWire;
+    if let Some(feed) = lens.feed.as_ref() {
+        for scope in &feed.scopes {
+            if matches!(&scope.select, SelectionRuleWire::Detailed(_)) {
+                return true;
+            }
+        }
+    }
+    lens.capability_cohorts.iter().any(|c| c.feed_enabled)
+}
+
+/// SPEC-038 outbound feed emission helper. Walks the parsed vault,
+/// synthesises a [`feed::types::FeedItem`] per page that opted in via
+/// `frontmatter.feed: true` (or every page when scoped/cohort feeds
+/// require it), runs the pure-core feed pipelines (root + scoped +
+/// catalog + cohort), and returns the combined file set.
+///
+/// Returns `Ok(None)` when the [feed] section is absent, disabled,
+/// or has no `base_url` — REQ-3809 self-publication safety. Returns
+/// `Err` only for hard fatal cases (the pure pipeline asserts).
+pub(crate) fn emit_outbound_feeds(
+    lens: &crate::feed::config::FeedConfigLens,
+    data: &VaultData,
+    vault_root: &Path,
+    verbose: bool,
+) -> Result<Option<OutboundEmission>> {
+    use crate::feed::build::emit_root_feed;
+    use crate::feed::cap_feed::emit_cohort_feeds;
+    use crate::feed::scoped::{emit_catalog, emit_scoped_feeds};
+    use crate::feed::select::PageView;
+    use crate::feed::types::SelectionRule;
+
+    let Some(feed) = lens.feed.as_ref() else {
+        return Ok(None);
+    };
+    let walk_start = std::time::Instant::now();
+    let Some(owned) = build_owned_pages(lens, data, vault_root)? else {
+        return Ok(None);
+    };
+    let optin_count = owned.iter().filter(|o| o.frontmatter_feed_optin).count();
+    let pages = page_views_from_owned(&owned);
+
+    // Public visibility: exclude cap-protected pages per SPEC-038
+    // REQ-3829. The cap-protection check is delegated to feed::cap_feed.
+    let visibility: Box<dyn Fn(&PageView<'_>) -> bool> =
+        Box::new(crate::feed::cap_feed::public_visibility());
+    let rule = SelectionRule::FrontmatterOptIn;
+
+    if verbose {
+        eprintln!(
+            "[zetl] feed-perf: walk={}ms pages={} optin={}",
+            walk_start.elapsed().as_millis(),
+            data.files.len(),
+            optin_count,
+        );
+    }
+    let root_emission = emit_root_feed(lens, &pages, &visibility, &rule)?;
+    let mut combined: Vec<(String, Vec<u8>)> = root_emission.files;
+
+    // ── per-scope feeds (REQ-3813..REQ-3815) ─────────────────────────
+    // Build a SPL resolver: opens the on-disk Tantivy index lazily and
+    // returns the slug set matching each scope's `select.spl` query.
+    // Falls back to "no match" with a warning when the index isn't
+    // available — the caller can still build a vault with SPL scopes
+    // configured, they just emit empty feeds + a build-time warning.
+    let spl_index = match crate::search_index::SearchIndex::open(vault_root) {
+        Ok(opt) => opt,
+        Err(e) => {
+            eprintln!(
+                "[zetl] feed: failed to open search index for SPL scopes \
+                 ({e}); SPL scopes will select zero pages"
+            );
+            None
+        }
+    };
+    let slug_by_path: std::collections::HashMap<String, String> = data
+        .files
+        .iter()
+        .map(|f| {
+            (
+                f.path.to_string_lossy().to_string(),
+                data.page_slug_map
+                    .get(&f.page_name)
+                    .cloned()
+                    .unwrap_or_else(|| f.page_name.clone()),
+            )
+        })
+        .collect();
+    let resolver_closure = |query: &str| -> std::collections::HashSet<String> {
+        let Some(idx) = spl_index.as_ref() else {
+            return std::collections::HashSet::new();
+        };
+        match idx.query(query, 10_000) {
+            Ok(hits) => hits
+                .into_iter()
+                .filter_map(|h| slug_by_path.get(&h.path).cloned())
+                .collect(),
+            Err(e) => {
+                eprintln!("[zetl] feed: SPL query {query:?} failed against the search index: {e}");
+                std::collections::HashSet::new()
+            }
+        }
+    };
+    let resolver: &crate::feed::scoped::SplResolver<'_> = &resolver_closure;
+    let scoped = emit_scoped_feeds(lens, &pages, &visibility, Some(resolver))?;
+    let scoped_count = scoped.len();
+    for em in scoped {
+        combined.extend(em.files);
+    }
+
+    // ── /.well-known/zetl-subscriptions.json catalog (REQ-3813) ──────
+    let mut catalog_emitted = false;
+    if !feed.scopes.is_empty() {
+        let identity = build_wiki_identity(lens);
+        let (catalog_path, catalog_body) = emit_catalog(lens, &identity)?;
+        combined.push((catalog_path, catalog_body));
+        catalog_emitted = true;
+    }
+
+    // ── per-cohort feeds (REQ-3829, NFR-3809) ────────────────────────
+    // Build mode emits cohort feeds for every `feed_enabled = true`
+    // cohort. The token segment in the URL gates access; we use a
+    // permissive ACL here because per-request ACL doesn't apply at
+    // build time (the static body is what each cap holder fetches).
+    let cohort_acl = |_cohort_id: &str, _p: &PageView<'_>| true;
+    let cohort_emissions = emit_cohort_feeds(lens, &pages, &cohort_acl)?;
+    let cohort_count = cohort_emissions.len();
+    for em in cohort_emissions {
+        combined.extend(em.files);
+    }
+
+    Ok(Some(OutboundEmission {
+        files: combined,
+        root_stats: root_emission.stats,
+        scoped_count,
+        cohort_count,
+        catalog_emitted,
+    }))
+}
+
+/// Build a [`crate::feed::scoped::WikiIdentity`] from `lens.wiki`. The
+/// `[wiki]` section's `id`, `canonical_repo`, and `title` keys
+/// round-trip via the `extras` catch-all (see `WikiSection::extras`).
+fn build_wiki_identity(
+    lens: &crate::feed::config::FeedConfigLens,
+) -> crate::feed::scoped::WikiIdentity {
+    let Some(wiki) = lens.wiki.as_ref() else {
+        return crate::feed::scoped::WikiIdentity::default();
+    };
+    let extra_str = |k: &str| {
+        wiki.extras
+            .get(k)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    };
+    crate::feed::scoped::WikiIdentity {
+        id: extra_str("id"),
+        canonical_repo: extra_str("canonical_repo"),
+        title: extra_str("title"),
+    }
+}
+
+fn frontmatter_date(fm: &serde_json::Value) -> Option<String> {
+    for key in &["published", "date", "created"] {
+        let Some(v) = fm.get(key) else {
+            continue;
+        };
+        if v.is_null() {
+            continue;
+        }
+        // Coerce: prefer `as_str` (handles quoted YAML strings); fall
+        // back to JSON stringification (handles unquoted YAML dates
+        // like `date: 2026-04-15` that serde_yaml_ng has decoded
+        // into a timestamp-shaped value).
+        let raw = v
+            .as_str()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| v.to_string().trim_matches('"').to_string());
+        if raw.is_empty() {
+            continue;
+        }
+        // Bare date YYYY-MM-DD → RFC 3339 midnight UTC.
+        if raw.len() == 10 && raw.as_bytes()[4] == b'-' && raw.as_bytes()[7] == b'-' {
+            return Some(format!("{raw}T00:00:00Z"));
+        }
+        return Some(raw);
+    }
+    None
+}
+
+/// Byte-scan a file body for `feed: <bool>` inside the YAML
+/// frontmatter block. Returns:
+///   * `Some(true)`  — `feed: true` is set in frontmatter
+///   * `Some(false)` — `feed: false` is explicitly set
+///   * `None`        — no `feed:` key found, or no frontmatter
+///
+/// The vast majority of vault pages won't opt in. Returning early
+/// from a byte-scan avoids a full `serde_yaml` parse for every page;
+/// on a 1009-page benchmark this dropped YAML cost from 3 ms to 0 ms.
+/// The full YAML parser only runs on pages this scan flags
+/// `Some(true)`.
+#[doc(hidden)]
+pub fn scan_frontmatter_feed_optin(prelude: &str) -> Option<bool> {
+    let trimmed = prelude.trim_start();
+    if !trimmed.starts_with("---") {
+        return None;
+    }
+    let after_first = &trimmed[3..];
+    let close = after_first.find("\n---")?;
+    let frontmatter_block = &after_first[..close];
+    // Walk lines looking for `feed:`. Whitespace-tolerant; doesn't
+    // handle nested mappings (zetl frontmatter is flat by convention).
+    for line in frontmatter_block.lines() {
+        let stripped = line.trim_start();
+        if let Some(rest) = stripped.strip_prefix("feed:") {
+            let value = rest.trim();
+            return match value {
+                "true" => Some(true),
+                "false" => Some(false),
+                _ => None, // unknown shape: be conservative
+            };
+        }
+    }
+    None
+}
+
+fn percent_encode_segment(s: &str) -> String {
+    use std::fmt::Write;
+    let mut out = String::with_capacity(s.len());
+    for b in s.as_bytes() {
+        match *b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*b as char)
+            }
+            other => write!(out, "%{other:02X}").expect("write to String never fails"),
+        }
+    }
+    out
+}
 
 /// Strip YAML frontmatter (--- ... ---) from fountain file content.
 pub fn strip_fountain_frontmatter(content: &str) -> String {
@@ -482,6 +1163,64 @@ pub fn build_static(
     #[allow(unused_mut)]
     let mut vault_ctx = build_vault_context(data, &vault_name);
     vault_ctx.site_url = site_url.clone();
+    // ── SPEC-038 feed setup: discovery tags + body emission ──────
+    //
+    // Hard-fatal classes (cohort token below NFR-3809 floor; [feed]
+    // configured but missing base_url per REQ-3809 self-publication
+    // safety; duplicate ids; etc.) bubble up from
+    // [`crate::feed::config::parse_config`] and fail the build with
+    // a non-zero exit code. Soft-fatal classes (e.g. unknown TOML
+    // keys — `deny_unknown_fields` rejects, surfaced as `Toml(...)`)
+    // also fail the build because typos are the only signal an
+    // operator gets that they've misconfigured something.
+    //
+    // The only non-fatal case is "no config.toml at all" — vaults
+    // without `[feed]` deserve to build silently.
+    let config_path = vault_root.join(".zetl/config.toml");
+    let feed_setup = match std::fs::read_to_string(&config_path) {
+        Ok(body) => match crate::feed::config::parse_config(&body) {
+            Ok(lens) => Some(lens),
+            Err(crate::feed::config::FeedConfigError::Toml(msg)) => {
+                // Toml errors are usually typos. Hard-fail with a clear
+                // pointer to the file + the exact message.
+                anyhow::bail!(
+                    "[zetl] feed-config: {} (REQ-3809 / NFR-3807): {msg}",
+                    config_path.display(),
+                );
+            }
+            Err(other) => {
+                // Validation errors (cohort entropy, retention, mode,
+                // license, max_items, archive_size, scope/sub id
+                // collisions, no-permission republish) all reach here.
+                anyhow::bail!(
+                    "[zetl] feed-config: {} (REQ-3809 / NFR-3807 / NFR-3809): {other}",
+                    config_path.display(),
+                );
+            }
+        },
+        Err(_) => None, // No .zetl/config.toml -> no feed setup. Fine.
+    };
+    if let Some(lens) = feed_setup.as_ref() {
+        if let Some(feed) = lens.feed.as_ref() {
+            // `enabled = false` is an explicit operator opt-out: skip
+            // discovery-tag injection AND the later emit_outbound_feeds
+            // call so the build doesn't fail with BuildError::Disabled.
+            if !matches!(feed.enabled, Some(false)) {
+                // [feed] is configured but base_url is the only required
+                // outbound field. Missing it is REQ-3809 self-publication
+                // safety: hard-fail.
+                let base_url = feed.base_url.as_deref().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "[zetl] feed-config: [feed] is configured but base_url is missing (REQ-3809)"
+                    )
+                })?;
+                let title = feed.title.as_deref().unwrap_or("Untitled feed");
+                vault_ctx.feed_discovery = build_feed_discovery_tags(feed, base_url, title);
+                vault_ctx.feed_json_enabled = feed.enable_json.unwrap_or(false);
+                vault_ctx.feed_paths = feed_paths_context(feed);
+            }
+        }
+    }
     #[cfg(feature = "history")]
     {
         // OBS-013: time vault history context build.
@@ -788,6 +1527,47 @@ pub fn build_static(
         .context("writing sitemap.xml")?;
     std::fs::write(out.join("llms.txt"), build_llms_txt(&vault_ctx, "build"))
         .context("writing llms.txt")?;
+
+    // ── SPEC-038 feed bodies (REQ-3801 + REQ-3808 + REQ-3809) ─────
+    // Emit dist/feed.xml + dist/atom.xml + (optional) dist/feed.json
+    // backing the rel=alternate discovery tags injected into <head>.
+    // Feeds are only emitted when [feed] is configured AND base_url
+    // is set; otherwise the discovery tags would advertise URLs that
+    // 404 (the bug this branch fixes).
+    if let Some(lens) = feed_setup.as_ref() {
+        if let Some(emission) = emit_outbound_feeds(lens, data, vault_root, verbose)? {
+            for (rel_path, body) in &emission.files {
+                let safe_rel = sanitise_feed_rel_path(rel_path)
+                    .with_context(|| format!("rejecting unsafe feed output path {rel_path:?}"))?;
+                let target = out.join(&safe_rel);
+                // Defence-in-depth: confirm the resolved target stays
+                // inside `out` even after path joining.
+                if !target.starts_with(out) {
+                    anyhow::bail!(
+                        "feed output path {rel_path:?} escapes dist directory {}",
+                        out.display()
+                    );
+                }
+                if let Some(parent) = target.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&target, body)
+                    .with_context(|| format!("writing feed body {}", target.display()))?;
+            }
+            if verbose {
+                eprintln!(
+                    "[zetl] feed: emitted {} file(s); items_selected={} items_emitted={} scopes={} cohorts={} catalog={} root_duration_ms={}",
+                    emission.files.len(),
+                    emission.root_stats.items_selected,
+                    emission.root_stats.items_emitted,
+                    emission.scoped_count,
+                    emission.cohort_count,
+                    emission.catalog_emitted,
+                    emission.root_stats.duration.as_millis(),
+                );
+            }
+        }
+    }
     // Cloudflare Pages / Netlify-style _headers: long-cache hashed static assets and JSON indexes.
     let headers = "/_static/*\n  Cache-Control: public, max-age=31536000, immutable\n\n/*.json\n  Cache-Control: public, max-age=3600\n";
     if !out.join("_headers").exists() {
@@ -1223,6 +2003,213 @@ fn build_transclusion_cards(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sanitise_feed_rel_path_accepts_clean_paths() {
+        let p = sanitise_feed_rel_path("/feed.xml").unwrap();
+        assert_eq!(p, PathBuf::from("feed.xml"));
+        let p = sanitise_feed_rel_path("/atom.xml").unwrap();
+        assert_eq!(p, PathBuf::from("atom.xml"));
+        let p = sanitise_feed_rel_path("/feeds/news/atom.xml").unwrap();
+        assert_eq!(p, PathBuf::from("feeds").join("news").join("atom.xml"));
+        let p = sanitise_feed_rel_path("feeds/cohort-abc.xml").unwrap();
+        assert_eq!(p, PathBuf::from("feeds").join("cohort-abc.xml"));
+    }
+
+    #[test]
+    fn sanitise_feed_rel_path_rejects_traversal_and_junk() {
+        for bad in [
+            "",
+            "../feed.xml",
+            "/../feed.xml",
+            "/feeds/../../feed.xml",
+            "/./feed.xml",
+            "/feeds//atom.xml",
+            "//etc/passwd",
+            "/feeds/\0nul.xml",
+            "feed%2e%2e/x.xml",
+            "feed%2Fxxx.xml",
+            "feed%5Cxxx.xml",
+            "feeds\\windows.xml",
+        ] {
+            assert!(
+                sanitise_feed_rel_path(bad).is_err(),
+                "expected reject: {bad:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn build_owned_pages_skips_duplicate_slug_collisions() {
+        // Two real files producing the same path-derived slug must
+        // not both land in the feed (they would share id + url and
+        // break GUID-based dedup in feed readers). The first one
+        // wins; the second is skipped with a warning.
+        use crate::types::ParsedFile;
+        use std::time::SystemTime;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let vault_root = tmp.path();
+        // `Foo.md` and `Foo.fountain` both produce slug "foo".
+        std::fs::write(
+            vault_root.join("Foo.md"),
+            "---\nfeed: true\npublished: 2026-05-01\n---\n# Markdown body\n",
+        )
+        .unwrap();
+        std::fs::write(
+            vault_root.join("Foo.fountain"),
+            "---\nfeed: true\npublished: 2026-05-02\n---\nINT. ROOM - DAY\n",
+        )
+        .unwrap();
+        let mk_parsed = |rel: &str, name: &str| ParsedFile {
+            path: std::path::PathBuf::from(rel),
+            page_name: name.to_string(),
+            links: Vec::new(),
+            spl_blocks: Vec::new(),
+            diagnostics: Vec::new(),
+            mtime: SystemTime::UNIX_EPOCH,
+            merkle_leaves: Vec::new(),
+            file_merkle: None,
+        };
+        let data = VaultData {
+            files: vec![mk_parsed("Foo.md", "Foo"), mk_parsed("Foo.fountain", "Foo")],
+            graph: crate::graph::LinkGraph {
+                graph: petgraph::graph::DiGraph::new(),
+                node_map: HashMap::new(),
+                resolved: HashSet::new(),
+            },
+            page_names: vec!["Foo".to_string()],
+            resolved: HashSet::new(),
+            page_slug_map: {
+                let mut m = HashMap::new();
+                m.insert("Foo".to_string(), "foo".to_string());
+                m
+            },
+            page_slug_map_lower: {
+                let mut m = HashMap::new();
+                m.insert("foo".to_string(), "foo".to_string());
+                m
+            },
+            collision_names: HashSet::new(),
+        };
+        let lens = crate::feed::config::parse_config(
+            r#"
+            [feed]
+            base_url = "https://example.com"
+            title = "T"
+            description = "d"
+        "#,
+        )
+        .unwrap();
+
+        let owned = build_owned_pages(&lens, &data, vault_root)
+            .unwrap()
+            .expect("feed configured");
+        // Despite two source files with the same slug, only one feed
+        // entry survives — the first by iteration order (Foo.md).
+        let with_slug_foo: Vec<_> = owned.iter().filter(|o| o.slug == "foo").collect();
+        assert_eq!(
+            with_slug_foo.len(),
+            1,
+            "expected exactly one entry for slug 'foo', got {}",
+            with_slug_foo.len()
+        );
+        assert_eq!(with_slug_foo[0].path, std::path::PathBuf::from("Foo.md"));
+    }
+
+    #[test]
+    fn build_owned_pages_rejects_invalid_base_url() {
+        // Relative / non-http(s) base URLs must hard-fail rather than
+        // silently fall back to https://example.invalid/ for the
+        // tag-URI namespace while emitted item URLs use the broken
+        // base. Reviewer flagged the silent-fallback path as the
+        // dedup-corruption hazard.
+        use crate::types::ParsedFile;
+        use std::time::SystemTime;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let data = VaultData {
+            files: vec![ParsedFile {
+                path: std::path::PathBuf::from("Hello.md"),
+                page_name: "Hello".to_string(),
+                links: Vec::new(),
+                spl_blocks: Vec::new(),
+                diagnostics: Vec::new(),
+                mtime: SystemTime::UNIX_EPOCH,
+                merkle_leaves: Vec::new(),
+                file_merkle: None,
+            }],
+            graph: crate::graph::LinkGraph {
+                graph: petgraph::graph::DiGraph::new(),
+                node_map: HashMap::new(),
+                resolved: HashSet::new(),
+            },
+            page_names: vec!["Hello".to_string()],
+            resolved: HashSet::new(),
+            page_slug_map: HashMap::new(),
+            page_slug_map_lower: HashMap::new(),
+            collision_names: HashSet::new(),
+        };
+
+        for bad in [
+            "example.com",       // missing scheme
+            "ftp://example.com", // wrong scheme
+            "not a url",         // unparseable
+        ] {
+            let lens = crate::feed::config::parse_config(&format!(
+                r#"
+                [feed]
+                base_url = "{bad}"
+                title = "T"
+                description = "d"
+            "#
+            ))
+            .unwrap();
+            assert!(
+                build_owned_pages(&lens, &data, tmp.path()).is_err(),
+                "expected reject: {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn feed_paths_context_strips_leading_slash() {
+        // Default (no [feed.paths] override).
+        let lens = crate::feed::config::parse_config(
+            r#"
+            [feed]
+            base_url = "https://example.com"
+            title = "T"
+            description = "d"
+        "#,
+        )
+        .unwrap();
+        let ctx = feed_paths_context(lens.feed.as_ref().unwrap());
+        assert_eq!(ctx.rss, "feed.xml");
+        assert_eq!(ctx.atom, "atom.xml");
+        assert_eq!(ctx.jsonfeed, "feed.json");
+
+        // Operator override: should also be slash-stripped so theme
+        // templates can concatenate onto `{{ root_path }}` without
+        // producing `//`.
+        let lens = crate::feed::config::parse_config(
+            r#"
+            [feed]
+            base_url = "https://example.com"
+            title = "T"
+            description = "d"
+            [feed.paths]
+            rss = "/rss.xml"
+            atom = "/feeds/main.atom"
+        "#,
+        )
+        .unwrap();
+        let ctx = feed_paths_context(lens.feed.as_ref().unwrap());
+        assert_eq!(ctx.rss, "rss.xml");
+        assert_eq!(ctx.atom, "feeds/main.atom");
+        // Unconfigured format still uses the default.
+        assert_eq!(ctx.jsonfeed, "feed.json");
+    }
 
     #[test]
     fn user_theme_without_on_disk_dirs_ships_bundled_default() {

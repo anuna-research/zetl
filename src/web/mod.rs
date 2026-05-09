@@ -424,6 +424,10 @@ pub async fn run(
         .route("/pages.json", get(routes::pages_json_handler))
         .route("/sitemap.xml", get(routes::sitemap_handler))
         .route("/llms.txt", get(routes::llms_txt_handler))
+        // SPEC-038 outbound feeds (REQ-3801): RSS 2.0 + Atom 1.0 + optional JSON Feed v1.1.
+        .route("/feed.xml", get(routes::feed_xml_handler))
+        .route("/atom.xml", get(routes::atom_xml_handler))
+        .route("/feed.json", get(routes::feed_json_handler))
         .route("/_graph", get(routes::vault_graph_handler))
         .route("/api/index", post(routes::api_index_handler))
         .route("/_me", get(routes::dashboard_handler))

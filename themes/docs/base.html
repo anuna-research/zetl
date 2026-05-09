@@ -9,6 +9,10 @@
   <link href="https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
   {% block head %}{% endblock %}
+  {# SPEC-038 feed discovery — emitted only when [feed] is configured. #}
+  {% for tag in vault.feed_discovery %}
+  {{ tag | safe }}
+  {% endfor %}
   <style>
     /* ── Docs layout */
     .docs-layout { display: flex; min-height: 100vh; }
@@ -450,6 +454,16 @@
   {% include "_graph_vendor.html" ignore missing %}
 
   {% block scripts %}{% endblock %}
+
+  {# SPEC-038 human-clickable feed affordance. #}
+  {% if vault.feed_discovery %}
+  <aside class="zetl-feed-subscribe" role="complementary" aria-label="Subscribe to feed" style="margin: 2rem 1rem; padding: 0.75rem 1rem; border-top: 1px solid rgba(0,0,0,0.1); font-size: 0.85rem; color: #555;">
+    <span style="margin-right: 0.5rem;">Subscribe:</span>
+    <a href="{{ root_path }}{{ vault.feed_paths.rss }}" rel="alternate" type="application/rss+xml" style="margin-right: 0.5rem;">RSS</a>
+    <a href="{{ root_path }}{{ vault.feed_paths.atom }}" rel="alternate" type="application/atom+xml" style="margin-right: 0.5rem;">Atom</a>
+    {% if vault.feed_json_enabled %}<a href="{{ root_path }}{{ vault.feed_paths.jsonfeed }}" rel="alternate" type="application/feed+json">JSON Feed</a>{% endif %}
+  </aside>
+  {% endif %}
 
 </body>
 </html>

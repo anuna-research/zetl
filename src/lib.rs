@@ -8,6 +8,7 @@ pub mod crdt;
 pub mod drift;
 pub mod ecosystems;
 pub mod extensions;
+pub mod feed;
 pub mod graph;
 #[cfg(feature = "history")]
 pub mod history;

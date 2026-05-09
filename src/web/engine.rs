@@ -1365,6 +1365,9 @@ mod tests {
             history: serde_json::Value::Null,
             semantic_available: false,
             site_url: String::new(),
+            feed_discovery: Vec::new(),
+            feed_json_enabled: false,
+            feed_paths: Default::default(),
         }
     }
 
@@ -1452,6 +1455,9 @@ mod tests {
             history: rich_vault_history(),
             semantic_available: false,
             site_url: "https://example.test".to_string(),
+            feed_discovery: Vec::new(),
+            feed_json_enabled: false,
+            feed_paths: Default::default(),
         }
     }
 
@@ -1641,6 +1647,9 @@ mod tests {
             history: serde_json::Value::Null,
             semantic_available: false,
             site_url: String::new(),
+            feed_discovery: Vec::new(),
+            feed_json_enabled: false,
+            feed_paths: Default::default(),
         };
         let idx = build_search_index(&vault);
         assert!(idx.contains(r#"\"hello\""#));
@@ -2395,6 +2404,9 @@ mod tests {
             history: serde_json::Value::Null,
             semantic_available: false,
             site_url: String::new(),
+            feed_discovery: Vec::new(),
+            feed_json_enabled: false,
+            feed_paths: Default::default(),
         }
     }
 
@@ -2508,6 +2520,9 @@ mod tests {
             history: serde_json::Value::Null,
             semantic_available: false,
             site_url: String::new(),
+            feed_discovery: Vec::new(),
+            feed_json_enabled: false,
+            feed_paths: Default::default(),
         };
         let html = render_graph_partial(&vault);
         assert!(

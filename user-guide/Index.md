@@ -172,7 +172,7 @@ Or open the folder in Obsidian, Logseq, Foam, or Dendron — wikilinks work ever
 - [[Searching]] · [[Backlinks]] · [[Similar Pages]] · [[Following Links]] · [[Finding Orphans and Dead Links]]
 
 ### Reading & rendering
-- [[Terminal Viewer]] · [[Web Server]] · [[Static Site Export]] · [[Customising the Look]]
+- [[Terminal Viewer]] · [[Web Server]] · [[Static Site Export]] · [[Feeds|Feeds (RSS, Atom, JSON Feed)]] · [[Customising the Look]]
 
 ### Vault history — requires `--features history`
 - [[Time Travel]] · [[Watching for Changes]] · [[Page History]] · [[Snapshots Under the Hood]]

@@ -7,6 +7,14 @@
   <script type="application/json" id="zetl-search-index">{{ search_index | safe }}</script>
   {% if bm25_index %}<script type="application/json" id="zetl-bm25-index">{{ bm25_index | safe }}</script>{% endif %}
   {% block head %}{% endblock %}
+  {# SPEC-038 feed discovery — emitted only when [feed] is configured. #}
+  {% for tag in vault.feed_discovery %}
+  {{ tag | safe }}
+  {% endfor %}
+  <style>
+    .zetl-feed-subscribe { margin: 2rem auto; max-width: 60ch; padding: 0.75rem 1rem; border-top: 1px solid #ddd; font-size: 0.875rem; color: #555; }
+    .zetl-feed-subscribe a { margin-right: 0.5rem; color: inherit; }
+  </style>
   <style>
     /* ── Reset */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -757,6 +765,16 @@
   })();
   </script>
   {% block scripts %}{% endblock %}
+
+  {# SPEC-038 human-clickable feed affordance. #}
+  {% if vault.feed_discovery %}
+  <aside class="zetl-feed-subscribe" role="complementary" aria-label="Subscribe to feed">
+    <span>Subscribe:</span>
+    <a href="{{ root_path }}{{ vault.feed_paths.rss }}" rel="alternate" type="application/rss+xml">RSS</a>
+    <a href="{{ root_path }}{{ vault.feed_paths.atom }}" rel="alternate" type="application/atom+xml">Atom</a>
+    {% if vault.feed_json_enabled %}<a href="{{ root_path }}{{ vault.feed_paths.jsonfeed }}" rel="alternate" type="application/feed+json">JSON Feed</a>{% endif %}
+  </aside>
+  {% endif %}
 
 </body>
 </html>

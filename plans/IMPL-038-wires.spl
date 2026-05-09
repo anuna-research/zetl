@@ -1,0 +1,191 @@
+; =============================================================================
+; IMPL-038 Wires — fix-up plan for 4 bugs found during playtest of PR #40
+; =============================================================================
+;
+; The original IMPL-038 plan landed the pure-core feed module + serialisers +
+; tests, but the four "wire" tasks (build-outbound / cli-surface / observability /
+; theme integration) were deferred. A subsequent commit on PR #40 added the
+; HTML <link rel="alternate"> discovery wire on its own — which made one bug
+; visibly worse: discovery tags now point at URLs that 404.
+;
+; This plan addresses the 4 user-facing bugs an ar-crawl playtest surfaced.
+
+(meta plan
+  (id "IMPL-038-wires")
+  (title "IMPL-038 wires — fix bugs from PR-#40 playtest")
+  (status "active")
+  (created "2026-05-08")
+  (description "Four wire-up tasks to make SPEC-038 feeds usable end-to-end: emit feed bodies in zetl build, attach the zetl feed CLI subcommand, fail-loud on feed config errors, and surface a human-clickable feed affordance in bundled themes."))
+
+; --- AGENTS ---
+(given agent-claude-available)
+
+; --- TASKS ---
+(given task-emit-feed-bodies)
+(given task-cli-feed-attach)
+(given task-fail-loud-config-errors)
+(given task-theme-feed-link)
+(given task-playtest-verify)
+
+; --- TASK METADATA ---
+
+(meta task-emit-feed-bodies
+  (description "Wire feed::build::emit_root_feed into web::build::build_static so zetl build actually emits dist/feed.xml + dist/atom.xml + (optional) dist/feed.json. Currently the discovery tags point at URLs that return HTTP 404. Read .zetl/config.toml feed lens, build PageView list from the existing scanner output, run the pure pipeline, write each (path, bytes) pair under out_dir.")
+  (acceptance "After zetl build against a vault with [feed] configured, dist/feed.xml + dist/atom.xml exist and parse with zero errors via xmllint or feed-rs strict mode. With [feed] enable_json=true, dist/feed.json also exists and parses as valid JSON. Visiting the URLs the discovery tags advertise returns HTTP 200 with the correct Content-Type. Build is byte-deterministic across re-runs (NFR-3804). cargo test --lib still green; no regressions.")
+  (trace "REQ-3801 + REQ-3808 + REQ-3809 + OBS-3801 + OBS-3802 in SPEC-038; bug #1 from PR-#40 playtest"))
+
+(meta task-cli-feed-attach
+  (description "Attach FeedCommand to the top-level Command enum in src/cli.rs and add handlers in src/main.rs. The FeedCommand variants (Pull, List, Status, Validate, Forget) are already typed in src/feed/cli.rs but are unreachable from the binary. For v1, every handler can produce a structured 'not yet wired' error referencing the deferred shell-side work — the goal is that `zetl feed --help` works and `zetl feed pull` produces a clear error rather than `unrecognized subcommand 'feed'`. Validate is the lowest-friction one to fully wire (it's offline, just runs a parser). Pull / List / Status / Forget can ship as 'not implemented' stubs that exit non-zero with a structured message naming the deferred work.")
+  (acceptance "`zetl --help` lists `feed` in the subcommand index. `zetl feed --help` lists pull / list / status / validate / forget. `zetl feed validate <path>` runs the per-format strict parser end-to-end. The remaining four subcommands exit non-zero with a structured error referencing the wire-up follow-up. README reflects the v1 surface accurately. cargo test --lib still green.")
+  (trace "CON-3801 + CON-3806 in SPEC-038; bug #2 from PR-#40 playtest"))
+
+(meta task-fail-loud-config-errors
+  (description "The discovery-tags wire in web::build::build_static currently uses `if let Ok(...)` chains that silently swallow every feed-config error class — typo in [feed], weak cohort token (NFR-3809), invalid retention string, etc. Operator deploys broken config and gets zero feedback. Fix: surface every FeedConfigError as a stderr warn-line at build time (matching the SPEC-034 / SPEC-033 stderr convention). Hard-fatal classes (cohort token below 128-bit floor, missing base_url when feed is otherwise configured, etc.) should be surfaced as hard errors that fail the build with a non-zero exit, not warnings. Soft-fatal classes (typo in unknown key) can warn and skip feed setup but allow the rest of the build to proceed.")
+  (acceptance "zetl build against a vault with a typo'd [feed] key emits a [zetl] feed-config: <message> stderr line and skips feed setup (rest of build proceeds). zetl build with a weak cohort token (under NFR-3809 entropy floor) exits non-zero with a structured error citing NFR-3809. zetl build with [feed] but no base_url exits non-zero citing REQ-3809. The error messages are byte-stable so CI grep can target them. cargo test --lib still green.")
+  (trace "NFR-3807 + NFR-3809 + REQ-3809 in SPEC-038; bug #3 from PR-#40 playtest"))
+
+(meta task-theme-feed-link
+  (description "Out of 87 anchors on a demo-vault index page, zero advertise the feed to a human reader. The bundled themes (default / minimal / docs / fountain) emit the rel=alternate <link> tags but no human-clickable affordance — RSS / Atom badges, a 'Subscribe' link in the footer, etc. Add a small, theme-appropriate feed-link surface to each bundled theme that renders only when vault.feed_discovery is non-empty. For default/docs/minimal: a small 'Subscribe (RSS / Atom)' link in the page footer. For fountain (typography-first theme): a per-page rel=alternate-shaped sidebar entry rather than a footer link. Don't add JS; pure HTML+CSS. The link should not collide with existing footer / sidebar UI.")
+  (acceptance "Each bundled theme renders a human-clickable feed link visible to a sighted reader on the index page when [feed] is configured. The link does NOT render when vault.feed_discovery is empty (no surprise UI for non-feed vaults). All four theme.css files compile with no minijinja runtime errors. ar-crawl interactive playtest verifies a real user can click from the index to /feed.xml without view-source / browser extensions. cargo test --lib still green.")
+  (trace "REQ-3801 user-facing-discovery aspect; bug #4 from PR-#40 playtest"))
+
+(meta task-playtest-verify
+  (description "Re-run the ar-crawl interactive playtest from a fresh-user perspective and confirm the four bugs are fixed: (1) /feed.xml returns 200 with valid RSS body when [feed] configured, (2) zetl feed --help works, (3) typo'd [feed] config produces a clear stderr line, (4) human reader can click from index to feed. Capture a final screenshot of the working UX. Update PR #40 with the playtest evidence.")
+  (acceptance "ar-crawl session demonstrates all four bugs are fixed end-to-end. PR #40 receives a follow-up comment with the playtest evidence. No new bugs surfaced.")
+  (trace "Verification step for the four wire-bugs"))
+
+; --- DEPENDENCIES ---
+; All four fix tasks are independent root tasks; verify depends on all four.
+(given no-deps-emit-feed-bodies)
+(given no-deps-cli-feed-attach)
+(given no-deps-fail-loud-config-errors)
+(given no-deps-theme-feed-link)
+
+; --- READINESS RULES ---
+(normally r-ready-emit-feed-bodies
+  (and task-emit-feed-bodies no-deps-emit-feed-bodies)
+  ready-emit-feed-bodies)
+
+(normally r-ready-cli-feed-attach
+  (and task-cli-feed-attach no-deps-cli-feed-attach)
+  ready-cli-feed-attach)
+
+(normally r-ready-fail-loud-config-errors
+  (and task-fail-loud-config-errors no-deps-fail-loud-config-errors)
+  ready-fail-loud-config-errors)
+
+(normally r-ready-theme-feed-link
+  (and task-theme-feed-link no-deps-theme-feed-link)
+  ready-theme-feed-link)
+
+(normally r-ready-playtest-verify
+  (and task-playtest-verify
+       completed-emit-feed-bodies
+       completed-cli-feed-attach
+       completed-fail-loud-config-errors
+       completed-theme-feed-link)
+  ready-playtest-verify)
+
+; --- ASSIGNMENT RULES ---
+(normally r-assign-emit-feed-bodies
+  (and ready-emit-feed-bodies agent-claude-available)
+  assign-to-emit-feed-bodies-claude)
+
+(normally r-assign-cli-feed-attach
+  (and ready-cli-feed-attach agent-claude-available)
+  assign-to-cli-feed-attach-claude)
+
+(normally r-assign-fail-loud-config-errors
+  (and ready-fail-loud-config-errors agent-claude-available)
+  assign-to-fail-loud-config-errors-claude)
+
+(normally r-assign-theme-feed-link
+  (and ready-theme-feed-link agent-claude-available)
+  assign-to-theme-feed-link-claude)
+
+(normally r-assign-playtest-verify
+  (and ready-playtest-verify agent-claude-available)
+  assign-to-playtest-verify-claude)
+
+(claims agent:claude
+  :at "2026-05-08T10:40:38Z"
+  (given claim-v1-emit-feed-bodies)
+  (normally r-cl-state-v1-emit-feed-bodies claim-v1-emit-feed-bodies state-claimed-v1-emit-feed-bodies)
+  (normally r-cl-chain-v1-emit-feed-bodies state-claimed-v1-emit-feed-bodies claimed-emit-feed-bodies)
+)
+
+;; Propagation rules: failures in 'emit-feed-bodies' block downstream tasks
+(normally r-propagate-playtest-verify-from-emit-feed-bodies-failed failed-emit-feed-bodies upstream-blocked-playtest-verify)
+(normally r-propagate-playtest-verify-from-emit-feed-bodies-permanently-failed permanently-failed-emit-feed-bodies upstream-blocked-playtest-verify)
+(normally r-propagate-playtest-verify-from-emit-feed-bodies-stale-v1 stale-v1-emit-feed-bodies upstream-blocked-playtest-verify)
+(normally r-propagate-playtest-verify-from-emit-feed-bodies-timeout-v1 timeout-v1-emit-feed-bodies upstream-blocked-playtest-verify)
+(normally r-propagate-playtest-verify-from-emit-feed-bodies-blocked upstream-blocked-emit-feed-bodies upstream-blocked-playtest-verify)
+
+(claims agent:claude
+  :at "2026-05-08T10:45:22Z"
+  (given completed-emit-feed-bodies))
+
+(claims agent:claude
+  :at "2026-05-08T10:45:25Z"
+  (given claim-v1-cli-feed-attach)
+  (normally r-cl-state-v1-cli-feed-attach claim-v1-cli-feed-attach state-claimed-v1-cli-feed-attach)
+  (normally r-cl-chain-v1-cli-feed-attach state-claimed-v1-cli-feed-attach claimed-cli-feed-attach)
+)
+
+;; Propagation rules: failures in 'cli-feed-attach' block downstream tasks
+(normally r-propagate-playtest-verify-from-cli-feed-attach-failed failed-cli-feed-attach upstream-blocked-playtest-verify)
+(normally r-propagate-playtest-verify-from-cli-feed-attach-permanently-failed permanently-failed-cli-feed-attach upstream-blocked-playtest-verify)
+(normally r-propagate-playtest-verify-from-cli-feed-attach-stale-v1 stale-v1-cli-feed-attach upstream-blocked-playtest-verify)
+(normally r-propagate-playtest-verify-from-cli-feed-attach-timeout-v1 timeout-v1-cli-feed-attach upstream-blocked-playtest-verify)
+(normally r-propagate-playtest-verify-from-cli-feed-attach-blocked upstream-blocked-cli-feed-attach upstream-blocked-playtest-verify)
+
+(claims agent:claude
+  :at "2026-05-08T10:49:08Z"
+  (given completed-cli-feed-attach))
+
+(claims agent:claude
+  :at "2026-05-08T10:49:12Z"
+  (given claim-v1-fail-loud-config-errors)
+  (normally r-cl-state-v1-fail-loud-config-errors claim-v1-fail-loud-config-errors state-claimed-v1-fail-loud-config-errors)
+  (normally r-cl-chain-v1-fail-loud-config-errors state-claimed-v1-fail-loud-config-errors claimed-fail-loud-config-errors)
+)
+
+;; Propagation rules: failures in 'fail-loud-config-errors' block downstream tasks
+(normally r-propagate-playtest-verify-from-fail-loud-config-errors-failed failed-fail-loud-config-errors upstream-blocked-playtest-verify)
+(normally r-propagate-playtest-verify-from-fail-loud-config-errors-permanently-failed permanently-failed-fail-loud-config-errors upstream-blocked-playtest-verify)
+(normally r-propagate-playtest-verify-from-fail-loud-config-errors-stale-v1 stale-v1-fail-loud-config-errors upstream-blocked-playtest-verify)
+(normally r-propagate-playtest-verify-from-fail-loud-config-errors-timeout-v1 timeout-v1-fail-loud-config-errors upstream-blocked-playtest-verify)
+(normally r-propagate-playtest-verify-from-fail-loud-config-errors-blocked upstream-blocked-fail-loud-config-errors upstream-blocked-playtest-verify)
+
+(claims agent:claude
+  :at "2026-05-08T10:50:57Z"
+  (given completed-fail-loud-config-errors))
+
+(claims agent:claude
+  :at "2026-05-08T10:50:57Z"
+  (given claim-v1-theme-feed-link)
+  (normally r-cl-state-v1-theme-feed-link claim-v1-theme-feed-link state-claimed-v1-theme-feed-link)
+  (normally r-cl-chain-v1-theme-feed-link state-claimed-v1-theme-feed-link claimed-theme-feed-link)
+)
+
+;; Propagation rules: failures in 'theme-feed-link' block downstream tasks
+(normally r-propagate-playtest-verify-from-theme-feed-link-failed failed-theme-feed-link upstream-blocked-playtest-verify)
+(normally r-propagate-playtest-verify-from-theme-feed-link-permanently-failed permanently-failed-theme-feed-link upstream-blocked-playtest-verify)
+(normally r-propagate-playtest-verify-from-theme-feed-link-stale-v1 stale-v1-theme-feed-link upstream-blocked-playtest-verify)
+(normally r-propagate-playtest-verify-from-theme-feed-link-timeout-v1 timeout-v1-theme-feed-link upstream-blocked-playtest-verify)
+(normally r-propagate-playtest-verify-from-theme-feed-link-blocked upstream-blocked-theme-feed-link upstream-blocked-playtest-verify)
+
+(claims agent:claude
+  :at "2026-05-08T10:53:15Z"
+  (given completed-theme-feed-link))
+
+(claims agent:claude
+  :at "2026-05-08T10:53:21Z"
+  (given claim-v1-playtest-verify)
+  (normally r-cl-state-v1-playtest-verify claim-v1-playtest-verify state-claimed-v1-playtest-verify)
+  (normally r-cl-chain-v1-playtest-verify state-claimed-v1-playtest-verify claimed-playtest-verify)
+)
+
+(claims agent:claude
+  :at "2026-05-08T10:54:46Z"
+  (given completed-playtest-verify))
