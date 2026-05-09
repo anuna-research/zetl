@@ -5471,7 +5471,17 @@ fn cmd_webmention_accept(
             tombstoned: false,
         },
     )?;
-    println!("accepted: {} -> {}", args.source, args.target);
+    // Dequeue: a moderator decision settles the queued row. Atomic
+    // rewrite of queue.jsonl filters the entry so subsequent
+    // `webmention list` no longer surfaces it as pending.
+    let removed =
+        zetl::webmention::persist::remove_from_queue(vault_root, &args.source, &args.target)?;
+    println!(
+        "accepted: {} -> {}{}",
+        args.source,
+        args.target,
+        if removed > 0 { " (dequeued)" } else { "" }
+    );
     Ok(())
 }
 
@@ -5486,7 +5496,14 @@ fn cmd_webmention_reject(
         &args.target,
         now,
     )?;
-    println!("rejected (tombstoned): {} -> {}", args.source, args.target);
+    let removed =
+        zetl::webmention::persist::remove_from_queue(vault_root, &args.source, &args.target)?;
+    println!(
+        "rejected (tombstoned): {} -> {}{}",
+        args.source,
+        args.target,
+        if removed > 0 { " (dequeued)" } else { "" }
+    );
     Ok(())
 }
 

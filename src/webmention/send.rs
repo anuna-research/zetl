@@ -170,6 +170,13 @@ fn header_pairs(resp: &FetchResponse) -> Vec<(String, String)> {
     if let Some(lm) = &resp.last_modified {
         out.push(("Last-Modified".to_string(), lm.clone()));
     }
+    // SPEC-039 REQ-3908: Link headers carry the preferred webmention
+    // endpoint advertisement. Surface them so
+    // `core::discover::discover_endpoint` can pick header-preference
+    // matches before falling back to HTML parsing.
+    for value in &resp.link_headers {
+        out.push(("Link".to_string(), value.clone()));
+    }
     out
 }
 
@@ -288,11 +295,18 @@ mod tests {
 
     impl HttpTransport for StaticTransport {
         fn fetch(&self, request: &FetchRequest) -> Result<FetchResponse, FetchError> {
+            let link_headers: Vec<String> = self
+                .headers
+                .iter()
+                .filter(|(k, _)| k.eq_ignore_ascii_case("link"))
+                .map(|(_, v)| v.clone())
+                .collect();
             Ok(FetchResponse {
                 status: 200,
                 body: self.body.clone(),
                 last_modified: None,
                 etag: None,
+                link_headers,
                 content_type: self.headers.iter().find_map(|(k, v)| {
                     if k.eq_ignore_ascii_case("content-type") {
                         Some(v.clone())

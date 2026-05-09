@@ -44,6 +44,17 @@ fn deps_for(vault: &Path, host: &str) -> ReceiveDeps {
 struct StaticTransport {
     body: Vec<u8>,
     content_type: Option<String>,
+    link_headers: Vec<String>,
+}
+
+impl Default for StaticTransport {
+    fn default() -> Self {
+        Self {
+            body: Vec::new(),
+            content_type: Some("text/html".into()),
+            link_headers: Vec::new(),
+        }
+    }
 }
 
 impl HttpTransport for StaticTransport {
@@ -54,6 +65,7 @@ impl HttpTransport for StaticTransport {
             last_modified: None,
             etag: None,
             content_type: self.content_type.clone(),
+            link_headers: self.link_headers.clone(),
             final_url: request.url.clone(),
         })
     }
@@ -67,7 +79,7 @@ fn hp_3901_first_mention_from_stranger_is_queued() {
     let deps = deps_for(dir.path(), "me.example");
     let transport = StaticTransport {
         body: r#"<a href="https://me.example/p">link to me</a>"#.into(),
-        content_type: Some("text/html".into()),
+        ..StaticTransport::default()
     };
     let mention = IncomingMention {
         source: "https://stranger.example/post".into(),
@@ -88,7 +100,7 @@ fn hp_3905_federation_peer_already_linked_auto_accepts() {
         .insert("peer.example".to_string());
     let transport = StaticTransport {
         body: r#"<a href="https://me.example/p">link</a>"#.into(),
-        content_type: Some("text/html".into()),
+        ..StaticTransport::default()
     };
     let mention = IncomingMention {
         source: "https://peer.example/their-post".into(),
@@ -109,7 +121,7 @@ fn hp_3906_spam_no_link_in_source_rejected_at_verify() {
     let deps = deps_for(dir.path(), "me.example");
     let transport = StaticTransport {
         body: r#"<p>this page links to nothing</p>"#.into(),
-        content_type: Some("text/html".into()),
+        ..StaticTransport::default()
     };
     let mention = IncomingMention {
         source: "https://spammer.example/fake".into(),
@@ -139,30 +151,49 @@ fn t1_ssrf_source_localhost_rejected_before_fetch() {
 }
 
 #[test]
-fn t8_capability_url_target_does_not_leak_token_in_body() {
-    // REQ-3909: the response body for any POST must not echo the
-    // capability token. We assert the oracle-resistant body is a fixed
-    // string.
+fn t8_capability_url_target_refuses_persistence_silently() {
+    // REQ-3909 / T8: a webmention POST aimed at /caps/<token>/page
+    // must NOT persist the token to disk anywhere — not in
+    // received.jsonl, not in queue.jsonl, not in any log line. The
+    // pipeline collapses into the Denied outcome (handler returns
+    // oracle-resistant 202) and the source is never even fetched.
+    //
+    // Important: we use a transport whose body WOULD verify (contains
+    // a link to the capability URL) so the test isolates the behavior
+    // change to capability-target refusal, not link-absence.
     let dir = TempDir::new().unwrap();
-    let deps = deps_for(dir.path(), "me.example");
+    let mut deps = deps_for(dir.path(), "me.example");
+    deps.allowlist_domains.insert("friend.example".to_string());
+    let body = r#"<a href="https://me.example/caps/SECRET-TOKEN-1234/page">link</a>"#;
     let transport = StaticTransport {
-        body: r#"<p>nope</p>"#.into(),
-        content_type: Some("text/html".into()),
+        body: body.into(),
+        ..StaticTransport::default()
     };
     let mention = IncomingMention {
-        source: "https://stranger.example/post".into(),
+        source: "https://friend.example/post".into(),
         target: "https://me.example/caps/SECRET-TOKEN-1234/page".into(),
         received_at: 0,
     };
-    // The pipeline does NOT echo the target back; the persisted log
-    // entry on Deny / Unverified does not include any partial token
-    // since denied paths don't persist (only counters / log lines).
     let outcome = process_incoming(mention, &deps, &transport).unwrap();
-    // Unverified (no link in source) — but importantly, no persistence
-    // touched anything resembling the token.
-    assert_eq!(outcome, ReceiveOutcome::Unverified);
+    assert_eq!(outcome, ReceiveOutcome::Denied);
+
+    // No persistence whatsoever.
     assert!(load_queue(dir.path()).unwrap().is_empty());
     assert!(load_external_edges(dir.path()).unwrap().is_empty());
+    // The on-disk JSONL files must not contain "SECRET-TOKEN-1234"
+    // anywhere — even queued / errored entries are not allowed to
+    // mention a capability token.
+    let webmentions_dir = dir.path().join(".zetl/webmentions");
+    if webmentions_dir.is_dir() {
+        for entry in std::fs::read_dir(&webmentions_dir).unwrap().flatten() {
+            let body = std::fs::read_to_string(entry.path()).unwrap_or_default();
+            assert!(
+                !body.contains("SECRET-TOKEN-1234"),
+                "capability token leaked into {}",
+                entry.path().display()
+            );
+        }
+    }
 }
 
 #[test]
@@ -270,7 +301,7 @@ fn end_to_end_send_records_sent_log() {
     let dir = TempDir::new().unwrap();
     let transport = StaticTransport {
         body: br#"<head><link rel="webmention" href="https://t.example/wm"></head>"#.to_vec(),
-        content_type: Some("text/html".into()),
+        ..StaticTransport::default()
     };
     let poster = RecordingPoster {
         posted: std::sync::Mutex::new(Vec::new()),
@@ -290,6 +321,37 @@ fn end_to_end_send_records_sent_log() {
     let log = load_sent_log(dir.path()).unwrap();
     assert_eq!(log.len(), 1);
     assert_eq!(log[0].response_status, 201);
+}
+
+#[test]
+fn end_to_end_send_uses_link_header_when_html_has_no_endpoint() {
+    // Regression for the bug where header_pairs() dropped Link headers,
+    // making endpoint discovery via header impossible. The HTML body
+    // here advertises NO webmention endpoint; the only signal is the
+    // Link header.
+    let dir = TempDir::new().unwrap();
+    let transport = StaticTransport {
+        body: br#"<html><body>just a page</body></html>"#.to_vec(),
+        link_headers: vec![r#"<https://t.example/wm>; rel="webmention""#.to_string()],
+        ..StaticTransport::default()
+    };
+    let poster = RecordingPoster {
+        posted: std::sync::Mutex::new(Vec::new()),
+        status: 201,
+    };
+    let plan = idempotency_diff(
+        &[OutboundMention {
+            source_page_url: "https://me.example/p".into(),
+            target_url: "https://t.example/post".into(),
+            content_hash: "h".into(),
+        }],
+        &[],
+    );
+    let stats = execute_send_plan_with_poster(&plan, &transport, &poster, dir.path());
+    assert_eq!(stats.sent, 1, "Link header should drive endpoint discovery");
+    assert_eq!(stats.endpoint_not_found, 0);
+    let posted = poster.posted.lock().unwrap();
+    assert_eq!(posted[0].0, "https://t.example/wm");
 }
 
 #[test]
@@ -333,7 +395,7 @@ async fn webmention_handler_returns_oracle_resistant_status() {
     let deps = Arc::new(deps_for(dir.path(), "me.example"));
     let transport: Arc<dyn HttpTransport + Send + Sync> = Arc::new(StaticTransport {
         body: b"".to_vec(),
-        content_type: Some("text/html".into()),
+        ..StaticTransport::default()
     });
     let rate_limiter = Arc::new(RateLimiter::new(60, 1000));
     let state = WebmentionState {

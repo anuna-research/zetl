@@ -263,6 +263,12 @@ pub struct FetchResponse {
     pub last_modified: Option<String>,
     pub etag: Option<String>,
     pub content_type: Option<String>,
+    /// All `Link:` response headers, in receipt order. Used by SPEC-039
+    /// webmention endpoint discovery (REQ-3908) where the header form
+    /// takes precedence over `<link>` / `<a>` in HTML. Each value is the
+    /// raw header string (multiple comma-separated entries inside one
+    /// header are allowed and the parser handles them).
+    pub link_headers: Vec<String>,
     /// The final URL after following any redirect chain; used by the
     /// auth layer to decide whether to drop credentials.
     pub final_url: Url,

@@ -30,11 +30,18 @@ pub enum VerifyResult {
 
 /// Walk `source_html` and decide whether it links to `target`.
 ///
+/// `source_url` is the URL the HTML was fetched from. It is used as the
+/// base for resolving relative `href` values in the source page —
+/// **NOT** the target. Resolving relatives against the target would
+/// allow an external page on `https://attacker.example` to verify
+/// `<a href="/p">` as a link to `https://victim.example/p` even though
+/// the link actually points back to the attacker's origin.
+///
 /// Match semantics: scheme + host + path + query + fragment must all
 /// equal after URL normalisation. This is intentionally strict — `http`
 /// vs `https` and trailing-slash differences count as MISMATCH per the
 /// W3C REC's "the source MUST contain a link to the target".
-pub fn verify_link_present(source_html: &str, target: &Url) -> VerifyResult {
+pub fn verify_link_present(source_html: &str, source_url: &Url, target: &Url) -> VerifyResult {
     let canonical_target = canonicalise(target);
     let bytes = source_html.as_bytes();
 
@@ -52,7 +59,7 @@ pub fn verify_link_present(source_html: &str, target: &Url) -> VerifyResult {
                         .map(|p| i + 4 + p + 3)
                         .unwrap_or(bytes.len());
                     let body = &source_html[i + 4..end.saturating_sub(3).max(i + 4)];
-                    if scan_attr_values_for_target(body, &canonical_target, target) {
+                    if scan_attr_values_for_target(body, &canonical_target, source_url) {
                         found_in_comment = true;
                     }
                     i = end;
@@ -71,7 +78,7 @@ pub fn verify_link_present(source_html: &str, target: &Url) -> VerifyResult {
                             .map(|p| i + p + 1)
                             .unwrap_or(close);
                         let body = &source_html[inner_start..close];
-                        if scan_attr_values_for_target(body, &canonical_target, target) {
+                        if scan_attr_values_for_target(body, &canonical_target, source_url) {
                             found_in_script = true;
                         }
                         i = close + b"</script>".len();
@@ -88,7 +95,7 @@ pub fn verify_link_present(source_html: &str, target: &Url) -> VerifyResult {
                             .map(|p| i + p + 1)
                             .unwrap_or(close);
                         let body = &source_html[inner_start..close];
-                        if scan_attr_values_for_target(body, &canonical_target, target) {
+                        if scan_attr_values_for_target(body, &canonical_target, source_url) {
                             found_in_script = true; // collapse style into script bucket
                         }
                         i = close + b"</style>".len();
@@ -100,7 +107,7 @@ pub fn verify_link_present(source_html: &str, target: &Url) -> VerifyResult {
                     if let Some(close) = find_subseq(&bytes[i..], b">").map(|p| i + p) {
                         let tag_body = &source_html[i + 1..close];
                         if is_link_carrying_tag(tag_body)
-                            && scan_attr_values_for_target(tag_body, &canonical_target, target)
+                            && scan_attr_values_for_target(tag_body, &canonical_target, source_url)
                         {
                             return VerifyResult::Found;
                         }
@@ -160,8 +167,11 @@ fn is_link_carrying_tag(tag_body: &str) -> bool {
 }
 
 /// Walk attribute values inside a tag body / generic block and return
-/// `true` if any value canonicalises to the same URL as `target`.
-fn scan_attr_values_for_target(block: &str, canonical_target: &str, target: &Url) -> bool {
+/// `true` if any value canonicalises to the same URL as `canonical_target`.
+///
+/// `base` is the URL relative-href values resolve against — that's the
+/// SOURCE URL, never the target. See [`verify_link_present`] for why.
+fn scan_attr_values_for_target(block: &str, canonical_target: &str, base: &Url) -> bool {
     let bytes = block.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
@@ -185,7 +195,7 @@ fn scan_attr_values_for_target(block: &str, canonical_target: &str, target: &Url
             let resolved = if let Ok(u) = Url::parse(raw) {
                 Some(u)
             } else {
-                target.join(raw).ok()
+                base.join(raw).ok()
             };
             if let Some(u) = resolved {
                 if canonicalise(&u) == canonical_target {
@@ -272,8 +282,15 @@ pub(crate) fn canonicalise(url: &Url) -> String {
 mod tests {
     use super::*;
 
-    fn target(s: &str) -> Url {
+    fn url(s: &str) -> Url {
         Url::parse(s).unwrap()
+    }
+
+    /// Default source URL for tests — the page that supposedly links
+    /// to the target. Different origin from the target so any relative
+    /// href resolves to the source's origin and would NOT match.
+    fn src() -> Url {
+        url("https://source.example/post")
     }
 
     #[test]
@@ -282,7 +299,7 @@ mod tests {
             <p>see <a href="https://victim.example/post">post</a></p>
         </body></html>"#;
         assert_eq!(
-            verify_link_present(html, &target("https://victim.example/post")),
+            verify_link_present(html, &src(), &url("https://victim.example/post")),
             VerifyResult::Found
         );
     }
@@ -291,7 +308,7 @@ mod tests {
     fn missing_link_returns_not_found() {
         let html = r#"<a href="https://other.example/x">x</a>"#;
         assert_eq!(
-            verify_link_present(html, &target("https://victim.example/post")),
+            verify_link_present(html, &src(), &url("https://victim.example/post")),
             VerifyResult::NotFound
         );
     }
@@ -300,17 +317,16 @@ mod tests {
     fn link_inside_script_does_not_satisfy() {
         let html = r#"<script>var u = "https://victim.example/post";</script>"#;
         assert_eq!(
-            verify_link_present(html, &target("https://victim.example/post")),
+            verify_link_present(html, &src(), &url("https://victim.example/post")),
             VerifyResult::NotFound
         );
     }
 
     #[test]
     fn href_inside_script_tag_attributes() {
-        // <a href> inside a <script> body still does not count.
         let html =
             r#"<script>document.write('<a href="https://victim.example/post">x</a>');</script>"#;
-        let r = verify_link_present(html, &target("https://victim.example/post"));
+        let r = verify_link_present(html, &src(), &url("https://victim.example/post"));
         assert!(matches!(
             r,
             VerifyResult::FoundOnlyInScript | VerifyResult::NotFound
@@ -320,7 +336,7 @@ mod tests {
     #[test]
     fn link_inside_html_comment_does_not_satisfy() {
         let html = r#"<!-- <a href="https://victim.example/post">x</a> --> <p>hi</p>"#;
-        let r = verify_link_present(html, &target("https://victim.example/post"));
+        let r = verify_link_present(html, &src(), &url("https://victim.example/post"));
         assert!(matches!(
             r,
             VerifyResult::FoundOnlyInComment | VerifyResult::NotFound
@@ -331,7 +347,7 @@ mod tests {
     fn link_in_img_src_satisfies() {
         let html = r#"<img src="https://victim.example/pic.jpg">"#;
         assert_eq!(
-            verify_link_present(html, &target("https://victim.example/pic.jpg")),
+            verify_link_present(html, &src(), &url("https://victim.example/pic.jpg")),
             VerifyResult::Found
         );
     }
@@ -340,7 +356,7 @@ mod tests {
     fn link_in_link_tag_satisfies() {
         let html = r#"<head><link rel="related" href="https://victim.example/post"></head>"#;
         assert_eq!(
-            verify_link_present(html, &target("https://victim.example/post")),
+            verify_link_present(html, &src(), &url("https://victim.example/post")),
             VerifyResult::Found
         );
     }
@@ -349,7 +365,7 @@ mod tests {
     fn trailing_slash_is_a_mismatch() {
         let html = r#"<a href="https://victim.example/post/">x</a>"#;
         assert_eq!(
-            verify_link_present(html, &target("https://victim.example/post")),
+            verify_link_present(html, &src(), &url("https://victim.example/post")),
             VerifyResult::NotFound
         );
     }
@@ -358,7 +374,7 @@ mod tests {
     fn http_vs_https_is_a_mismatch() {
         let html = r#"<a href="http://victim.example/post">x</a>"#;
         assert_eq!(
-            verify_link_present(html, &target("https://victim.example/post")),
+            verify_link_present(html, &src(), &url("https://victim.example/post")),
             VerifyResult::NotFound
         );
     }
@@ -367,21 +383,38 @@ mod tests {
     fn host_case_is_canonicalised() {
         let html = r#"<a href="https://VICTIM.EXAMPLE/post">x</a>"#;
         assert_eq!(
-            verify_link_present(html, &target("https://victim.example/post")),
+            verify_link_present(html, &src(), &url("https://victim.example/post")),
             VerifyResult::Found
         );
     }
 
     #[test]
-    fn relative_href_resolves_against_target_origin() {
-        // A link "/post" on a same-origin page should resolve to the target.
-        // We use the target's origin as the base for relative resolution; in
-        // practice the receiver knows the source URL too — but since the only
-        // resolved-against-target case that matters is "same origin", this
-        // matches.
+    fn relative_href_resolves_against_source_not_target() {
+        // Security: <a href="/post"> on https://attacker.example must
+        // resolve to https://attacker.example/post, NOT to
+        // https://victim.example/post — otherwise an attacker can forge
+        // verification of any path on any victim host.
         let html = r#"<a href="/post">x</a>"#;
         assert_eq!(
-            verify_link_present(html, &target("https://victim.example/post")),
+            verify_link_present(
+                html,
+                &url("https://attacker.example/page"),
+                &url("https://victim.example/post"),
+            ),
+            VerifyResult::NotFound
+        );
+    }
+
+    #[test]
+    fn relative_href_resolves_correctly_when_source_is_target_origin() {
+        // Same source + target origin: <a href="/post"> verifies.
+        let html = r#"<a href="/post">x</a>"#;
+        assert_eq!(
+            verify_link_present(
+                html,
+                &url("https://victim.example/index"),
+                &url("https://victim.example/post"),
+            ),
             VerifyResult::Found
         );
     }
@@ -391,7 +424,7 @@ mod tests {
         let html =
             r#"<a class="x" id="y" rel="nofollow" href="https://victim.example/post">link</a>"#;
         assert_eq!(
-            verify_link_present(html, &target("https://victim.example/post")),
+            verify_link_present(html, &src(), &url("https://victim.example/post")),
             VerifyResult::Found
         );
     }
@@ -400,7 +433,7 @@ mod tests {
     fn unquoted_href() {
         let html = r#"<a href=https://victim.example/post>x</a>"#;
         assert_eq!(
-            verify_link_present(html, &target("https://victim.example/post")),
+            verify_link_present(html, &src(), &url("https://victim.example/post")),
             VerifyResult::Found
         );
     }
@@ -409,7 +442,7 @@ mod tests {
     fn single_quoted_href() {
         let html = r#"<a href='https://victim.example/post'>x</a>"#;
         assert_eq!(
-            verify_link_present(html, &target("https://victim.example/post")),
+            verify_link_present(html, &src(), &url("https://victim.example/post")),
             VerifyResult::Found
         );
     }

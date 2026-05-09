@@ -1360,6 +1360,12 @@ pub fn build_static(
             }
         }
     }
+    // SPEC-039 REQ-3901 — populate the webmention discovery endpoint
+    // from `[webmention]` so build-mode pages emit
+    // `<link rel="webmention" href="...">` in <head>.
+    if let Ok(body) = std::fs::read_to_string(&config_path) {
+        populate_webmention_endpoint(&mut vault_ctx, &body);
+    }
     #[cfg(feature = "history")]
     {
         // OBS-013: time vault history context build.

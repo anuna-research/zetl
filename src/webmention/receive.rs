@@ -90,6 +90,17 @@ pub fn process_incoming(
         ));
     }
 
+    // T8: capability-URL targets carry a high-entropy token in their
+    // path (per SPEC-034 `/caps/<token>/...`). Persisting that token in
+    // received.jsonl or queue.jsonl would leak it through
+    // `webmention list --json` and any backup of the vault. We refuse
+    // before fetching: the response shape collapses into the oracle-
+    // resistant 202 path via `Denied`, so a probing client cannot
+    // distinguish capability targets from public targets either.
+    if is_capability_target(&target) {
+        return Ok(ReceiveOutcome::Denied);
+    }
+
     // Fetch source.
     let html = match fetch_source(&source, transport) {
         Ok(s) => s,
@@ -99,7 +110,7 @@ pub fn process_incoming(
             return Ok(ReceiveOutcome::Unverified);
         }
     };
-    let result = verify_link_present(&html, &target);
+    let result = verify_link_present(&html, &source, &target);
     if !matches!(result, VerifyResult::Found) {
         return Ok(ReceiveOutcome::Unverified);
     }
@@ -159,6 +170,25 @@ fn persist_decision(
         }
     }
     Ok(())
+}
+
+/// True iff `target`'s path matches the SPEC-034 capability URL shape
+/// — `/caps/<token>/<rest>`. Conservative: any path beginning with
+/// `/caps/` AND having at least one further segment is treated as a
+/// capability URL. Operators who serve a non-capability page at
+/// `/caps/...` for some unrelated reason will see those mentions
+/// dropped silently in v1; the trade-off is documented per T8.
+fn is_capability_target(target: &Url) -> bool {
+    let path = target.path();
+    let stripped = match path.strip_prefix("/caps/") {
+        Some(rest) => rest,
+        None => return false,
+    };
+    // Require at least one path segment after `/caps/<token>`. We don't
+    // verify token entropy here — that's an operator concern; for
+    // refusal-of-persistence we treat the entire `/caps/` namespace as
+    // sensitive.
+    !stripped.is_empty() && stripped.contains('/')
 }
 
 /// Source-fetch shell. Reuses [`crate::feed::fetch`] primitives for
@@ -328,6 +358,7 @@ mod tests {
                 last_modified: None,
                 etag: None,
                 content_type: Some("text/html".into()),
+                link_headers: Vec::new(),
                 final_url: request.url.clone(),
             })
         }

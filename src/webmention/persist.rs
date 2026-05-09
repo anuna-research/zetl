@@ -59,6 +59,46 @@ pub fn load_queue(vault_root: &Path) -> std::io::Result<Vec<IncomingMention>> {
     read_jsonl(&vault_dir(vault_root).join(QUEUE_FILE))
 }
 
+/// Remove every queue entry whose `(source, target)` matches the given
+/// pair. Atomic write-to-tempfile + rename so a crash mid-rewrite leaves
+/// the original file intact. Used by the moderator-decision CLI path
+/// (`zetl webmention accept|reject`) to dequeue a decided mention so it
+/// stops surfacing in `zetl webmention list`.
+pub fn remove_from_queue(vault_root: &Path, source: &str, target: &str) -> std::io::Result<usize> {
+    use std::io::Write;
+    let queue_path = vault_dir(vault_root).join(QUEUE_FILE);
+    let entries: Vec<IncomingMention> = read_jsonl(&queue_path)?;
+    let before = entries.len();
+    let kept: Vec<IncomingMention> = entries
+        .into_iter()
+        .filter(|m| !(m.source == source && m.target == target))
+        .collect();
+    let removed = before - kept.len();
+    if removed == 0 {
+        return Ok(0);
+    }
+    if !queue_path.exists() {
+        return Ok(0);
+    }
+    let parent = queue_path
+        .parent()
+        .ok_or_else(|| std::io::Error::other("queue path has no parent"))?;
+    std::fs::create_dir_all(parent)?;
+    let tmp = parent.join(format!("{QUEUE_FILE}.tmp"));
+    {
+        let mut f = std::fs::File::create(&tmp)?;
+        for m in &kept {
+            let line = serde_json::to_string(m)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            f.write_all(line.as_bytes())?;
+            f.write_all(b"\n")?;
+        }
+        f.sync_data()?;
+    }
+    std::fs::rename(&tmp, &queue_path)?;
+    Ok(removed)
+}
+
 /// Append a successful POST record to the sender's idempotency log.
 pub fn append_sent_record(vault_root: &Path, record: &SentRecord) -> std::io::Result<()> {
     append_jsonl(&vault_dir(vault_root).join(SENT_FILE), record)
@@ -115,6 +155,29 @@ mod tests {
             .unwrap();
         let live = load_external_edges(dir.path()).unwrap();
         assert!(live.is_empty());
+    }
+
+    #[test]
+    fn remove_from_queue_atomically_filters_decided_entries() {
+        let dir = tempdir().unwrap();
+        let m1 = crate::webmention::types::IncomingMention {
+            source: "https://a.example/x".into(),
+            target: "https://me.example/p".into(),
+            received_at: 1,
+        };
+        let m2 = crate::webmention::types::IncomingMention {
+            source: "https://b.example/y".into(),
+            target: "https://me.example/p".into(),
+            received_at: 2,
+        };
+        append_queue(dir.path(), &m1).unwrap();
+        append_queue(dir.path(), &m2).unwrap();
+        let removed =
+            remove_from_queue(dir.path(), "https://a.example/x", "https://me.example/p").unwrap();
+        assert_eq!(removed, 1);
+        let remaining = load_queue(dir.path()).unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].source, "https://b.example/y");
     }
 
     #[test]
