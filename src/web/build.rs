@@ -201,6 +201,17 @@ pub(crate) fn build_owned_pages(
     let render_root = format!("{base_url_trimmed}/");
 
     let mut owned: Vec<OwnedFeedPage> = Vec::with_capacity(data.files.len());
+    // Track slugs we've already emitted so two files producing the
+    // same path-derived slug (`Foo.md` + `Foo.fountain`, `Foo Bar.md`
+    // + `Foo-Bar.md`, or case-only differences on a case-sensitive
+    // filesystem) don't both land in the feed with the same id/url —
+    // that would confuse reader dedup and break GUID stability. The
+    // first file at a slug wins; subsequent collisions warn loudly so
+    // the operator can rename one. `data.files` iteration order is
+    // stable across builds (scanner sorts by path), so which file
+    // wins is deterministic.
+    let mut seen_slugs: std::collections::HashMap<String, std::path::PathBuf> =
+        std::collections::HashMap::new();
     for parsed in &data.files {
         let abs_path = vault_root.join(&parsed.path);
         // Path-derived slug per file. The vault-wide `page_slug_map` is
@@ -210,6 +221,17 @@ pub(crate) fn build_owned_pages(
         // with the same id/url. The static-site emitter uses
         // path-derived slugs for these collisions, so the feed must too.
         let slug = page_slug_from_path(&parsed.path);
+        if let Some(existing_path) = seen_slugs.get(&slug) {
+            eprintln!(
+                "[zetl] feed: slug collision — {existing} and {dup} both resolve to slug {slug:?}; \
+                 keeping the first, skipping {dup}. Rename one file (e.g. add a folder prefix) \
+                 to disambiguate.",
+                existing = existing_path.display(),
+                dup = parsed.path.display(),
+            );
+            continue;
+        }
+        seen_slugs.insert(slug.clone(), parsed.path.clone());
         let body = std::fs::read_to_string(&abs_path).unwrap_or_default();
         let opted_in = matches!(scan_frontmatter_feed_optin(&body), Some(true));
         if !opted_in && !populate_all {
@@ -2013,6 +2035,139 @@ mod tests {
             assert!(
                 sanitise_feed_rel_path(bad).is_err(),
                 "expected reject: {bad:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn build_owned_pages_skips_duplicate_slug_collisions() {
+        // Two real files producing the same path-derived slug must
+        // not both land in the feed (they would share id + url and
+        // break GUID-based dedup in feed readers). The first one
+        // wins; the second is skipped with a warning.
+        use crate::types::ParsedFile;
+        use std::time::SystemTime;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let vault_root = tmp.path();
+        // `Foo.md` and `Foo.fountain` both produce slug "foo".
+        std::fs::write(
+            vault_root.join("Foo.md"),
+            "---\nfeed: true\npublished: 2026-05-01\n---\n# Markdown body\n",
+        )
+        .unwrap();
+        std::fs::write(
+            vault_root.join("Foo.fountain"),
+            "---\nfeed: true\npublished: 2026-05-02\n---\nINT. ROOM - DAY\n",
+        )
+        .unwrap();
+        let mk_parsed = |rel: &str, name: &str| ParsedFile {
+            path: std::path::PathBuf::from(rel),
+            page_name: name.to_string(),
+            links: Vec::new(),
+            spl_blocks: Vec::new(),
+            diagnostics: Vec::new(),
+            mtime: SystemTime::UNIX_EPOCH,
+            merkle_leaves: Vec::new(),
+            file_merkle: None,
+        };
+        let data = VaultData {
+            files: vec![mk_parsed("Foo.md", "Foo"), mk_parsed("Foo.fountain", "Foo")],
+            graph: crate::graph::LinkGraph {
+                graph: petgraph::graph::DiGraph::new(),
+                node_map: HashMap::new(),
+                resolved: HashSet::new(),
+            },
+            page_names: vec!["Foo".to_string()],
+            resolved: HashSet::new(),
+            page_slug_map: {
+                let mut m = HashMap::new();
+                m.insert("Foo".to_string(), "foo".to_string());
+                m
+            },
+            page_slug_map_lower: {
+                let mut m = HashMap::new();
+                m.insert("foo".to_string(), "foo".to_string());
+                m
+            },
+            collision_names: HashSet::new(),
+        };
+        let lens = crate::feed::config::parse_config(
+            r#"
+            [feed]
+            base_url = "https://example.com"
+            title = "T"
+            description = "d"
+        "#,
+        )
+        .unwrap();
+
+        let owned = build_owned_pages(&lens, &data, vault_root)
+            .unwrap()
+            .expect("feed configured");
+        // Despite two source files with the same slug, only one feed
+        // entry survives — the first by iteration order (Foo.md).
+        let with_slug_foo: Vec<_> = owned.iter().filter(|o| o.slug == "foo").collect();
+        assert_eq!(
+            with_slug_foo.len(),
+            1,
+            "expected exactly one entry for slug 'foo', got {}",
+            with_slug_foo.len()
+        );
+        assert_eq!(with_slug_foo[0].path, std::path::PathBuf::from("Foo.md"));
+    }
+
+    #[test]
+    fn build_owned_pages_rejects_invalid_base_url() {
+        // Relative / non-http(s) base URLs must hard-fail rather than
+        // silently fall back to https://example.invalid/ for the
+        // tag-URI namespace while emitted item URLs use the broken
+        // base. Reviewer flagged the silent-fallback path as the
+        // dedup-corruption hazard.
+        use crate::types::ParsedFile;
+        use std::time::SystemTime;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let data = VaultData {
+            files: vec![ParsedFile {
+                path: std::path::PathBuf::from("Hello.md"),
+                page_name: "Hello".to_string(),
+                links: Vec::new(),
+                spl_blocks: Vec::new(),
+                diagnostics: Vec::new(),
+                mtime: SystemTime::UNIX_EPOCH,
+                merkle_leaves: Vec::new(),
+                file_merkle: None,
+            }],
+            graph: crate::graph::LinkGraph {
+                graph: petgraph::graph::DiGraph::new(),
+                node_map: HashMap::new(),
+                resolved: HashSet::new(),
+            },
+            page_names: vec!["Hello".to_string()],
+            resolved: HashSet::new(),
+            page_slug_map: HashMap::new(),
+            page_slug_map_lower: HashMap::new(),
+            collision_names: HashSet::new(),
+        };
+
+        for bad in [
+            "example.com",       // missing scheme
+            "ftp://example.com", // wrong scheme
+            "not a url",         // unparseable
+        ] {
+            let lens = crate::feed::config::parse_config(&format!(
+                r#"
+                [feed]
+                base_url = "{bad}"
+                title = "T"
+                description = "d"
+            "#
+            ))
+            .unwrap();
+            assert!(
+                build_owned_pages(&lens, &data, tmp.path()).is_err(),
+                "expected reject: {bad:?}"
             );
         }
     }

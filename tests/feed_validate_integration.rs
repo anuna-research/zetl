@@ -45,9 +45,9 @@ fn jsonfeed_validator_rejects_item_without_id() {
 #[test]
 fn jsonfeed_validator_rejects_item_without_content() {
     let body = r#"{"version":"https://jsonfeed.org/version/1.1","title":"X","items":[{"id":"1"}]}"#;
-    run_validate(body)
-        .failure()
-        .stderr(predicate::str::contains("content_html").or(predicate::str::contains("content_text")));
+    run_validate(body).failure().stderr(
+        predicate::str::contains("content_html").or(predicate::str::contains("content_text")),
+    );
 }
 
 #[test]
