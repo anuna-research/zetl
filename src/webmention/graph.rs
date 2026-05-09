@@ -37,6 +37,7 @@ mod tests {
             accepted_at: 1,
             last_seen: 1,
             source_title: None,
+            rationale: None,
             tombstoned: false,
         }
     }

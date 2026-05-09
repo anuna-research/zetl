@@ -85,6 +85,7 @@ fn hp_3901_first_mention_from_stranger_is_queued() {
         source: "https://stranger.example/post".into(),
         target: "https://me.example/p".into(),
         received_at: 0,
+        ..Default::default()
     };
     let outcome = process_incoming(mention, &deps, &transport).unwrap();
     assert_eq!(outcome, ReceiveOutcome::Queued);
@@ -106,6 +107,7 @@ fn hp_3905_federation_peer_already_linked_auto_accepts() {
         source: "https://peer.example/their-post".into(),
         target: "https://me.example/p".into(),
         received_at: 0,
+        ..Default::default()
     };
     let outcome = process_incoming(mention, &deps, &transport).unwrap();
     assert_eq!(outcome, ReceiveOutcome::Accepted);
@@ -127,6 +129,7 @@ fn hp_3906_spam_no_link_in_source_rejected_at_verify() {
         source: "https://spammer.example/fake".into(),
         target: "https://me.example/p".into(),
         received_at: 0,
+        ..Default::default()
     };
     let outcome = process_incoming(mention, &deps, &transport).unwrap();
     assert_eq!(outcome, ReceiveOutcome::Unverified);
@@ -173,6 +176,7 @@ fn t8_capability_url_target_refuses_persistence_silently() {
         source: "https://friend.example/post".into(),
         target: "https://me.example/caps/SECRET-TOKEN-1234/page".into(),
         received_at: 0,
+        ..Default::default()
     };
     let outcome = process_incoming(mention, &deps, &transport).unwrap();
     assert_eq!(outcome, ReceiveOutcome::Denied);
@@ -220,6 +224,7 @@ fn replay_attack_same_source_target_does_not_duplicate_edge() {
         accepted_at: 1,
         last_seen: 1,
         source_title: None,
+        rationale: None,
         tombstoned: false,
     };
     let edge2 = ExternalEdge {
@@ -321,6 +326,59 @@ fn end_to_end_send_records_sent_log() {
     let log = load_sent_log(dir.path()).unwrap();
     assert_eq!(log.len(), 1);
     assert_eq!(log[0].response_status, 201);
+}
+
+#[test]
+fn moderation_rationale_persists_to_queue_for_default_queue() {
+    // The user-facing fix: `webmention list` must show WHY a mention is
+    // queued. The rationale is computed in the pure moderate() and
+    // persisted via the receive pipeline. Older queue.jsonl rows
+    // without rationale still round-trip thanks to serde defaults.
+    let dir = TempDir::new().unwrap();
+    let deps = deps_for(dir.path(), "me.example");
+    let transport = StaticTransport {
+        body: r#"<html><head><title>Stranger's Blog</title></head>
+                 <body><a href="https://me.example/p">link</a></body></html>"#
+            .into(),
+        ..StaticTransport::default()
+    };
+    let mention = IncomingMention {
+        source: "https://stranger.example/post".into(),
+        target: "https://me.example/p".into(),
+        received_at: 0,
+        ..Default::default()
+    };
+    let outcome = process_incoming(mention, &deps, &transport).unwrap();
+    assert_eq!(outcome, ReceiveOutcome::Queued);
+    let queue = load_queue(dir.path()).unwrap();
+    assert_eq!(queue.len(), 1);
+    assert_eq!(queue[0].rationale.as_deref(), Some("default-queue"));
+    assert_eq!(queue[0].source_title.as_deref(), Some("Stranger's Blog"));
+}
+
+#[test]
+fn moderation_rationale_persists_to_received_for_already_linked() {
+    let dir = TempDir::new().unwrap();
+    let mut deps = deps_for(dir.path(), "me.example");
+    deps.vault_outbound_domains
+        .insert("peer.example".to_string());
+    let transport = StaticTransport {
+        body: r#"<html><head><title>Peer Vault</title></head>
+                 <body><a href="https://me.example/p">link</a></body></html>"#
+            .into(),
+        ..StaticTransport::default()
+    };
+    let mention = IncomingMention {
+        source: "https://peer.example/post".into(),
+        target: "https://me.example/p".into(),
+        received_at: 0,
+        ..Default::default()
+    };
+    process_incoming(mention, &deps, &transport).unwrap();
+    let edges = load_external_edges(dir.path()).unwrap();
+    assert_eq!(edges.len(), 1);
+    assert_eq!(edges[0].rationale.as_deref(), Some("already-linked"));
+    assert_eq!(edges[0].source_title.as_deref(), Some("Peer Vault"));
 }
 
 #[test]

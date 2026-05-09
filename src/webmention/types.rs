@@ -17,11 +17,24 @@ pub type EpochSecs = u64;
 /// A POST /webmention request after parsing + structural validation but
 /// before source-fetch / verification. The receive handler constructs
 /// this; the pipeline consumes it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `rationale` and `source_title` are populated by the receive pipeline
+/// when the mention reaches the queue (post-verify, post-moderate). They
+/// are `Option<...>` with serde default so older `queue.jsonl` rows
+/// written before this field existed still round-trip.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct IncomingMention {
     pub source: String,
     pub target: String,
     pub received_at: EpochSecs,
+    /// Rule that caused this to be queued (e.g. `default-queue`).
+    /// Surfaced by `zetl webmention list` so moderators can answer
+    /// "why is this pending?" without re-running the rule engine.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rationale: Option<String>,
+    /// HTML <title> of the source page, extracted at verify time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_title: Option<String>,
 }
 
 /// Post-verification, pre-moderation. The pure verifier produces this
@@ -66,6 +79,11 @@ pub struct ExternalEdge {
     /// Best-effort, set when the source page provided one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_title: Option<String>,
+    /// Moderation rule that fired (`already-linked` / `allowlist` /
+    /// `default-accept` / manual `moderator-accept`). Optional for
+    /// backward-compat with older logs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rationale: Option<String>,
     /// `true` when the edge has been removed (the source page no longer
     /// links to the target — REQ-3911). Tombstones live in the same file
     /// as live edges so the read path can fold them in a single pass.
@@ -158,6 +176,7 @@ mod tests {
             accepted_at: 1_700_000_000,
             last_seen: 1_700_000_000,
             source_title: None,
+            rationale: None,
             tombstoned: false,
         };
         let json = serde_json::to_string(&edge).unwrap();

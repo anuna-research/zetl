@@ -56,9 +56,18 @@ pub enum ModerationDefault {
 
 #[derive(Debug, thiserror::Error)]
 pub enum WebmentionConfigError {
-    #[error("invalid value for [webmention].{key}: {reason}")]
+    #[error(
+        "invalid value for [webmention].{key} in .zetl/config.toml: {reason}\n\
+         hint: see `zetl webmention --help` or specs/SPEC-039 §CON-3905 for the table schema"
+    )]
     Invalid { key: &'static str, reason: String },
-    #[error("toml parse error: {0}")]
+    #[error(
+        "couldn't parse [webmention] section: {0}\n\
+         hint: every key under [webmention] must be one of \
+         enabled, receive_enabled, send_enabled, endpoint_path, default_decision, \
+         allowlist_domains, denylist_domains, rate_limit_per_source_host_per_minute, \
+         rate_limit_global_per_minute, max_body_bytes_override"
+    )]
     Toml(String),
 }
 

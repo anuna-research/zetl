@@ -562,7 +562,11 @@ pub(crate) fn emit_outbound_webmentions(
     let transport = UreqTransport::new();
     let poster = UreqWebmentionPoster::new();
     let stats = execute_send_plan_with_poster(&plan, &transport, &poster, vault_root);
-    if verbose {
+    // Always print a summary when something was actually attempted —
+    // operators need to know that the build POSTed externally without
+    // having to remember --verbose. Verbose users get the same line.
+    let total_attempted = stats.sent + stats.removed + stats.endpoint_not_found + stats.failed;
+    if total_attempted > 0 || verbose {
         eprintln!(
             "[zetl] webmention: sent={} removed={} endpoint_not_found={} failed={}",
             stats.sent, stats.removed, stats.endpoint_not_found, stats.failed,

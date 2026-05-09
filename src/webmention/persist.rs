@@ -45,6 +45,7 @@ pub fn tombstone_external_edge(
         accepted_at: last_seen,
         last_seen,
         source_title: None,
+        rationale: None,
         tombstoned: true,
     };
     append_external_edge(vault_root, &edge)
@@ -121,6 +122,7 @@ mod tests {
             accepted_at: t,
             last_seen: t,
             source_title: None,
+            rationale: None,
             tombstoned,
         }
     }
@@ -164,11 +166,13 @@ mod tests {
             source: "https://a.example/x".into(),
             target: "https://me.example/p".into(),
             received_at: 1,
+            ..Default::default()
         };
         let m2 = crate::webmention::types::IncomingMention {
             source: "https://b.example/y".into(),
             target: "https://me.example/p".into(),
             received_at: 2,
+            ..Default::default()
         };
         append_queue(dir.path(), &m1).unwrap();
         append_queue(dir.path(), &m2).unwrap();

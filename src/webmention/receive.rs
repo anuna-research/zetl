@@ -119,6 +119,8 @@ pub fn process_incoming(
     hasher.update(html.as_bytes());
     let hash = hasher.finalize().to_hex().to_string();
 
+    let source_title = extract_html_title(&html);
+
     let verified = VerifiedMention {
         source: mention.source.clone(),
         target: mention.target.clone(),
@@ -134,7 +136,11 @@ pub fn process_incoming(
     };
     let decision = moderate(&verified, &ctx);
 
-    persist_decision(deps, &mention, &decision)?;
+    let mut enriched = mention.clone();
+    enriched.rationale = Some(decision.rationale.clone());
+    enriched.source_title = source_title.clone();
+
+    persist_decision(deps, &enriched, &decision, source_title)?;
     match decision.kind {
         ModerationKind::Accept => Ok(ReceiveOutcome::Accepted),
         ModerationKind::Queue => Ok(ReceiveOutcome::Queued),
@@ -142,10 +148,28 @@ pub fn process_incoming(
     }
 }
 
+/// Best-effort extractor for the source page's `<title>...</title>`.
+/// Tolerant of malformed HTML; bounded to the first 256 chars after
+/// trimming. Returns `None` when no title is found or the title is
+/// empty / whitespace-only.
+fn extract_html_title(html: &str) -> Option<String> {
+    let lower = html.to_ascii_lowercase();
+    let start = lower.find("<title")?;
+    let after_open = lower[start..].find('>').map(|p| start + p + 1)?;
+    let end_rel = lower[after_open..].find("</title>")?;
+    let raw = html.get(after_open..after_open + end_rel)?;
+    let collapsed: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        return None;
+    }
+    Some(collapsed.chars().take(256).collect())
+}
+
 fn persist_decision(
     deps: &ReceiveDeps,
     mention: &IncomingMention,
     decision: &ModerationDecision,
+    source_title: Option<String>,
 ) -> Result<(), WebmentionError> {
     match decision.kind {
         ModerationKind::Accept => {
@@ -157,7 +181,8 @@ fn persist_decision(
                     target: mention.target.clone(),
                     accepted_at: now,
                     last_seen: now,
-                    source_title: None,
+                    source_title,
+                    rationale: Some(decision.rationale.clone()),
                     tombstoned: false,
                 },
             )?;
@@ -254,6 +279,7 @@ pub async fn webmention_endpoint_handler(
         source: form.source.clone(),
         target: form.target.clone(),
         received_at: now_epoch(),
+        ..Default::default()
     };
 
     // Run the pipeline on a blocking task — verification fetches the
@@ -388,6 +414,7 @@ mod tests {
             source: "https://peer.example/post".into(),
             target: "https://me.example/p".into(),
             received_at: 0,
+            ..Default::default()
         };
         let outcome = process_incoming(mention, &deps, &transport).unwrap();
         assert_eq!(outcome, ReceiveOutcome::Accepted);
@@ -404,6 +431,7 @@ mod tests {
             source: "https://stranger.example/post".into(),
             target: "https://me.example/p".into(),
             received_at: 0,
+            ..Default::default()
         };
         let outcome = process_incoming(mention, &deps, &transport).unwrap();
         assert_eq!(outcome, ReceiveOutcome::Queued);
@@ -420,6 +448,7 @@ mod tests {
             source: "https://stranger.example/post".into(),
             target: "https://me.example/p".into(),
             received_at: 0,
+            ..Default::default()
         };
         let outcome = process_incoming(mention, &deps, &transport).unwrap();
         assert_eq!(outcome, ReceiveOutcome::Unverified);
@@ -434,6 +463,7 @@ mod tests {
             source: "https://stranger.example/post".into(),
             target: "https://other-vault.example/p".into(),
             received_at: 0,
+            ..Default::default()
         };
         let err = process_incoming(mention, &deps, &transport).unwrap_err();
         assert!(matches!(err, WebmentionError::BadInput(_)));
@@ -448,6 +478,7 @@ mod tests {
             source: "https://me.example/p".into(),
             target: "https://me.example/p".into(),
             received_at: 0,
+            ..Default::default()
         };
         let err = process_incoming(mention, &deps, &transport).unwrap_err();
         assert!(matches!(err, WebmentionError::BadInput(_)));

@@ -34,16 +34,27 @@ pub struct WebmentionListArgs {
 
 #[derive(Args, Debug, Clone)]
 pub struct WebmentionDecisionArgs {
-    /// Source URL (the page that links to you).
-    pub source: String,
-    /// Target URL (your page that's being linked).
-    pub target: String,
+    /// Either a numeric index from the most recent `webmention list`
+    /// (1-based), OR the source URL of the queued mention. When numeric,
+    /// `target` MUST be omitted.
+    pub source_or_index: String,
+    /// Target URL (required iff `source_or_index` is a URL).
+    pub target: Option<String>,
 }
 
 #[derive(Args, Debug, Clone)]
 pub struct WebmentionSendArgs {
-    /// Page slug or URL whose outbound mentions to re-send.
-    pub page: String,
+    /// Path to the rendered HTML file or `dist/` root to scan. When a
+    /// directory, every `*.html` under it is processed.
+    pub path: std::path::PathBuf,
+    /// Show what would be POSTed without actually issuing the requests.
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Vault base URL — required so external-link extraction can
+    /// distinguish self-links from external. Falls back to
+    /// `[feed].base_url` from `.zetl/config.toml` when omitted.
+    #[arg(long)]
+    pub base_url: Option<String>,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -83,7 +94,7 @@ mod tests {
     }
 
     #[test]
-    fn accept_requires_source_and_target() {
+    fn accept_takes_source_and_target_urls() {
         let cli = Wrapper::try_parse_from([
             "zetl",
             "accept",
@@ -93,8 +104,20 @@ mod tests {
         .unwrap();
         match cli.command {
             WebmentionCommand::Accept(args) => {
-                assert_eq!(args.source, "https://a.example/");
-                assert_eq!(args.target, "https://me.example/p");
+                assert_eq!(args.source_or_index, "https://a.example/");
+                assert_eq!(args.target.as_deref(), Some("https://me.example/p"));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn accept_takes_numeric_index() {
+        let cli = Wrapper::try_parse_from(["zetl", "accept", "3"]).unwrap();
+        match cli.command {
+            WebmentionCommand::Accept(args) => {
+                assert_eq!(args.source_or_index, "3");
+                assert!(args.target.is_none());
             }
             _ => panic!(),
         }

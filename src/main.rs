@@ -1469,8 +1469,20 @@ fn cmd_backlinks(
         is_embed: bool,
         context: Option<String>,
         hop: usize,
+        /// `true` for SPEC-039 webmentions; `false` for vault-internal
+        /// backlinks. Lets the renderer prefix external rows with a
+        /// glyph and skip the line/context columns that don't apply.
+        #[serde(default, skip_serializing_if = "is_false_bl")]
+        external: bool,
+        /// The source page's <title>, when available — webmentions only.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source_title: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         conclusions: Option<Vec<PageConclusionEntry>>,
+    }
+
+    fn is_false_bl(b: &bool) -> bool {
+        !*b
     }
 
     let mut entries: Vec<BacklinkEntry> = Vec::new();
@@ -1528,12 +1540,44 @@ fn cmd_backlinks(
                 is_embed: bl.is_embed,
                 context: ctx,
                 hop: current_depth + 1,
+                external: false,
+                source_title: None,
                 conclusions,
             });
 
             if !visited.contains(&bl.source) {
                 visited.insert(bl.source.clone());
                 queue.push_back((bl.source.clone(), current_depth + 1));
+            }
+        }
+    }
+
+    // SPEC-039 webmentions — merge external mentions targeting the
+    // resolved page's published URL. Vault publishing conventions vary
+    // (slug.html / slug/ / slug); we try the three common shapes and
+    // accept any external edge whose target matches one of them.
+    if let Some(candidates) =
+        webmention_target_candidates(&pipeline.vault_root, &pipeline.files, &resolved_page)
+    {
+        if let Ok(all_external) =
+            zetl::webmention::persist::load_external_edges(&pipeline.vault_root)
+        {
+            for edge in all_external {
+                if !candidates.contains(&edge.target) {
+                    continue;
+                }
+                entries.push(BacklinkEntry {
+                    source: edge.source.clone(),
+                    target: candidates[0].clone(),
+                    line: 0,
+                    alias: edge.source_title.clone(),
+                    is_embed: false,
+                    context: edge.rationale.clone(),
+                    hop: 1,
+                    external: true,
+                    source_title: edge.source_title.clone(),
+                    conclusions: None,
+                });
             }
         }
     }
@@ -1567,10 +1611,27 @@ fn cmd_backlinks(
             }
             table.set_header(headers);
             for entry in &output.backlinks {
+                // External webmentions get a glyph + the source title
+                // appended; line is always 0 for them so we render "—".
+                let source_cell = if entry.external {
+                    let title = entry
+                        .source_title
+                        .as_deref()
+                        .map(|t| format!(" \"{t}\""))
+                        .unwrap_or_default();
+                    format!("🌐 {}{}", entry.source, title)
+                } else {
+                    entry.source.clone()
+                };
+                let line_cell = if entry.external {
+                    "—".to_string()
+                } else {
+                    entry.line.to_string()
+                };
                 let mut row = vec![
                     Cell::new(entry.hop),
-                    Cell::new(&entry.source),
-                    Cell::new(entry.line),
+                    Cell::new(&source_cell),
+                    Cell::new(line_cell),
                 ];
                 if context > 0 {
                     row.push(Cell::new(entry.context.as_deref().unwrap_or("")));
@@ -1590,8 +1651,12 @@ fn cmd_backlinks(
                 }
                 table.add_row(row);
             }
+            let external_count = output.backlinks.iter().filter(|e| e.external).count();
             println!("Backlinks to '{}':", output.page);
             println!("{table}");
+            if external_count > 0 {
+                println!("({external_count} from external sites — SPEC-039 webmention)");
+            }
         }
     }
 
@@ -5439,47 +5504,162 @@ fn cmd_webmention_list(
 
     if show_queued {
         println!("queued ({}):", queue.len());
-        for m in &queue {
-            println!("  {} -> {}", m.source, m.target);
+        if queue.is_empty() {
+            println!("  (none)");
+        }
+        for (i, m) in queue.iter().enumerate() {
+            let title = m
+                .source_title
+                .as_deref()
+                .map(|t| format!(" \"{t}\""))
+                .unwrap_or_default();
+            let rationale = m
+                .rationale
+                .as_deref()
+                .map(|r| format!(" [{r}]"))
+                .unwrap_or_default();
+            println!(
+                "  [{}] {} → {}{}{}",
+                i + 1,
+                m.source,
+                m.target,
+                title,
+                rationale,
+            );
+            println!("       received: {}", format_epoch(m.received_at));
+        }
+        if !queue.is_empty() {
+            println!("\n  Tip: `zetl webmention accept N` / `reject N` to decide by index.");
         }
     }
     if show_accepted {
-        println!("accepted ({}):", edges.len());
+        println!("\naccepted ({}):", edges.len());
+        if edges.is_empty() {
+            println!("  (none)");
+        }
         for e in &edges {
-            println!(
-                "  {} -> {}  (last_seen={})",
-                e.source, e.target, e.last_seen
-            );
+            let title = e
+                .source_title
+                .as_deref()
+                .map(|t| format!(" \"{t}\""))
+                .unwrap_or_default();
+            let rationale = e
+                .rationale
+                .as_deref()
+                .map(|r| format!(" [{r}]"))
+                .unwrap_or_default();
+            println!("  {} → {}{}{}", e.source, e.target, title, rationale);
+            println!("       last seen: {}", format_epoch(e.last_seen));
         }
     }
     Ok(())
+}
+
+/// Compute the candidate published URLs for a vault page, used to match
+/// SPEC-039 external mentions against the resolved page in
+/// `cmd_backlinks`. Returns three URL shapes (`base/slug`,
+/// `base/slug.html`, `base/slug/`) so vaults using any of the common
+/// publishing conventions match. Returns `None` when `[feed].base_url`
+/// is unset — without a base URL there is no way to compute the
+/// published URL.
+fn webmention_target_candidates(
+    vault_root: &Path,
+    files: &[zetl::types::ParsedFile],
+    page_name: &str,
+) -> Option<Vec<String>> {
+    let cfg_path = vault_root.join(".zetl/config.toml");
+    let body = std::fs::read_to_string(&cfg_path).ok()?;
+    let lens = zetl::feed::config::parse_config(&body).ok()?;
+    let base = lens.feed?.base_url?;
+    let base = base.trim_end_matches('/').to_string();
+    let (slug_map, _) = zetl::web::build_slug_map(files);
+    let slug = slug_map.get(page_name)?.clone();
+    Some(vec![
+        format!("{base}/{slug}"),
+        format!("{base}/{slug}.html"),
+        format!("{base}/{slug}/"),
+    ])
+}
+
+/// Format epoch seconds as a human-readable UTC datetime — no chrono
+/// dep; reuses the existing [`days_to_ymd`] helper.
+fn format_epoch(secs: u64) -> String {
+    if secs == 0 {
+        return "—".to_string();
+    }
+    let days = secs / 86_400;
+    let seconds_of_day = secs % 86_400;
+    let (h, rem) = (seconds_of_day / 3600, seconds_of_day % 3600);
+    let (m, _s) = (rem / 60, rem % 60);
+    let (y, mo, d) = days_to_ymd(days);
+    format!("{y:04}-{mo:02}-{d:02} {h:02}:{m:02} UTC")
+}
+
+/// Resolve a `source_or_index` arg against the current queue. If the
+/// arg parses as a positive integer, treat it as a 1-based index into
+/// the queue order shown by `webmention list`. Otherwise treat it as
+/// a source URL and require `target` alongside.
+fn resolve_decision_target(
+    vault_root: &Path,
+    args: &zetl::webmention::cli::WebmentionDecisionArgs,
+) -> Result<(String, String)> {
+    if let Ok(idx) = args.source_or_index.parse::<usize>() {
+        if args.target.is_some() {
+            anyhow::bail!(
+                "got numeric index but also a target URL — pass either `<n>` or `<source> <target>`, not both"
+            );
+        }
+        if idx == 0 {
+            anyhow::bail!("queue index must be 1-based");
+        }
+        let queue = zetl::webmention::persist::load_queue(vault_root)?;
+        let entry = queue.get(idx - 1).ok_or_else(|| {
+            anyhow::anyhow!(
+                "queue index {idx} out of range (queue depth: {})",
+                queue.len()
+            )
+        })?;
+        return Ok((entry.source.clone(), entry.target.clone()));
+    }
+    let target = args.target.clone().ok_or_else(|| {
+        anyhow::anyhow!(
+            "expected `<source-url> <target-url>` or `<queue-index>`; got just `{}`",
+            args.source_or_index
+        )
+    })?;
+    Ok((args.source_or_index.clone(), target))
 }
 
 fn cmd_webmention_accept(
     vault_root: &Path,
     args: &zetl::webmention::cli::WebmentionDecisionArgs,
 ) -> Result<()> {
+    let (source, target) = resolve_decision_target(vault_root, args)?;
+    // Carry the queued mention's source_title forward when promoting,
+    // so the accepted-edges view doesn't suddenly lose context.
+    let queued = zetl::webmention::persist::load_queue(vault_root)?;
+    let source_title = queued
+        .iter()
+        .find(|m| m.source == source && m.target == target)
+        .and_then(|m| m.source_title.clone());
     let now = zetl::webmention::types::now_epoch();
     zetl::webmention::persist::append_external_edge(
         vault_root,
         &zetl::webmention::types::ExternalEdge {
-            source: args.source.clone(),
-            target: args.target.clone(),
+            source: source.clone(),
+            target: target.clone(),
             accepted_at: now,
             last_seen: now,
-            source_title: None,
+            source_title,
+            rationale: Some("moderator-accept".to_string()),
             tombstoned: false,
         },
     )?;
-    // Dequeue: a moderator decision settles the queued row. Atomic
-    // rewrite of queue.jsonl filters the entry so subsequent
-    // `webmention list` no longer surfaces it as pending.
-    let removed =
-        zetl::webmention::persist::remove_from_queue(vault_root, &args.source, &args.target)?;
+    let removed = zetl::webmention::persist::remove_from_queue(vault_root, &source, &target)?;
     println!(
-        "accepted: {} -> {}{}",
-        args.source,
-        args.target,
+        "accepted: {} → {}{}",
+        source,
+        target,
         if removed > 0 { " (dequeued)" } else { "" }
     );
     Ok(())
@@ -5489,34 +5669,162 @@ fn cmd_webmention_reject(
     vault_root: &Path,
     args: &zetl::webmention::cli::WebmentionDecisionArgs,
 ) -> Result<()> {
+    let (source, target) = resolve_decision_target(vault_root, args)?;
     let now = zetl::webmention::types::now_epoch();
-    zetl::webmention::persist::tombstone_external_edge(
-        vault_root,
-        &args.source,
-        &args.target,
-        now,
-    )?;
-    let removed =
-        zetl::webmention::persist::remove_from_queue(vault_root, &args.source, &args.target)?;
+    zetl::webmention::persist::tombstone_external_edge(vault_root, &source, &target, now)?;
+    let removed = zetl::webmention::persist::remove_from_queue(vault_root, &source, &target)?;
     println!(
-        "rejected (tombstoned): {} -> {}{}",
-        args.source,
-        args.target,
+        "rejected (tombstoned): {} → {}{}",
+        source,
+        target,
         if removed > 0 { " (dequeued)" } else { "" }
     );
     Ok(())
 }
 
 fn cmd_webmention_send(
-    _vault_root: &Path,
-    _args: &zetl::webmention::cli::WebmentionSendArgs,
+    vault_root: &Path,
+    args: &zetl::webmention::cli::WebmentionSendArgs,
 ) -> Result<()> {
-    eprintln!(
-        "[zetl] webmention send: not yet wired — needs the build pipeline's rendered-pages \
-         set (which is computed inside cmd_build); see plans/IMPL-039-webmention.spl \
-         task-send-build-hook for follow-up. Today, run `zetl build` to trigger sends."
+    use url::Url;
+    use zetl::webmention::send::{compute_send_plan, execute_send_plan_with_poster, RenderedPage};
+
+    // Resolve the base URL: --base-url overrides, then [feed].base_url
+    // from .zetl/config.toml.
+    let base_url_str = if let Some(b) = &args.base_url {
+        b.clone()
+    } else {
+        let cfg_path = vault_root.join(".zetl/config.toml");
+        let body = std::fs::read_to_string(&cfg_path).with_context(|| {
+            format!(
+                "couldn't read {} — pass --base-url=https://your.example to override",
+                cfg_path.display()
+            )
+        })?;
+        zetl::feed::config::parse_config(&body)
+            .ok()
+            .and_then(|lens| lens.feed.and_then(|f| f.base_url))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "[feed].base_url is unset in .zetl/config.toml — pass --base-url=https://your.example to override"
+                )
+            })?
+    };
+    let base = Url::parse(&base_url_str)
+        .with_context(|| format!("base url is not a valid URL: {base_url_str}"))?;
+
+    // Walk the path argument: file or directory.
+    let mut pages: Vec<RenderedPage> = Vec::new();
+    let path = &args.path;
+    if path.is_file() {
+        let body =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        // The page URL is base + path-component if we can't infer it; for
+        // a single-file send we use the base URL itself as a placeholder
+        // — the receiver uses the source URL only for display.
+        pages.push(RenderedPage {
+            source_page_url: base.clone(),
+            rendered_html: body,
+        });
+    } else if path.is_dir() {
+        walk_html_for_send(path, path, &base, &mut pages);
+    } else {
+        anyhow::bail!("path is neither a file nor a directory: {}", path.display());
+    }
+    if pages.is_empty() {
+        println!("no rendered HTML found under {}", path.display());
+        return Ok(());
+    }
+
+    let previous_log = zetl::webmention::persist::load_sent_log(vault_root).unwrap_or_default();
+    let plan = compute_send_plan(&pages, &previous_log, &base);
+
+    println!(
+        "send plan: {} new/changed, {} removal{}",
+        plan.to_send.len(),
+        plan.to_resend_for_removal.len(),
+        if plan.to_send.len() + plan.to_resend_for_removal.len() == 1 {
+            ""
+        } else {
+            "s"
+        }
     );
-    std::process::exit(2);
+    for m in &plan.to_send {
+        println!("  → POST {} (source: {})", m.target_url, m.source_page_url);
+    }
+    for m in &plan.to_resend_for_removal {
+        println!(
+            "  ✗ POST {} (removal — source: {})",
+            m.target_url, m.source_page_url
+        );
+    }
+
+    if args.dry_run {
+        println!("\n--dry-run: nothing sent.");
+        return Ok(());
+    }
+    if plan.to_send.is_empty() && plan.to_resend_for_removal.is_empty() {
+        return Ok(());
+    }
+
+    let transport = zetl::webmention::transport::UreqTransport::new();
+    let poster = zetl::webmention::transport::UreqWebmentionPoster::new();
+    let stats = execute_send_plan_with_poster(&plan, &transport, &poster, vault_root);
+    println!(
+        "\nresults: sent={} removed={} endpoint_not_found={} failed={}",
+        stats.sent, stats.removed, stats.endpoint_not_found, stats.failed,
+    );
+    if stats.endpoint_not_found > 0 {
+        println!(
+            "  ↳ {} target(s) had no rel=\"webmention\" endpoint advertised — \
+             not a zetl bug; those sites just don't accept webmentions.",
+            stats.endpoint_not_found,
+        );
+    }
+    if stats.failed > 0 {
+        println!(
+            "  ↳ {} POST(s) failed at the network layer (SSRF guard refused, \
+             timeout, 4xx/5xx response). Re-run with `RUST_LOG=zetl=debug` for \
+             detail. Failed POSTs are NOT recorded; the next build will retry.",
+            stats.failed,
+        );
+    }
+    Ok(())
+}
+
+fn walk_html_for_send(
+    root: &Path,
+    dir: &Path,
+    base: &url::Url,
+    out: &mut Vec<zetl::webmention::send::RenderedPage>,
+) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            walk_html_for_send(root, &path, base, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("html") {
+            let rel = match path.strip_prefix(root) {
+                Ok(r) => r.to_string_lossy().replace('\\', "/"),
+                Err(_) => continue,
+            };
+            let url = match base.join(&rel) {
+                Ok(u) => u,
+                Err(_) => continue,
+            };
+            let body = match std::fs::read_to_string(&path) {
+                Ok(b) => b,
+                Err(_) => continue,
+            };
+            out.push(zetl::webmention::send::RenderedPage {
+                source_page_url: url,
+                rendered_html: body,
+            });
+        }
+    }
 }
 
 fn cmd_webmention_status(
