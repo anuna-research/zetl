@@ -1,0 +1,369 @@
+;; IMPL-039: Implementation plan for SPEC-039 — Webmention support
+;;
+;; Implements SPEC-039's webmention surface as a sibling to SPEC-038's RSS
+;; federation primitive. Receive (server endpoint), Send (build/serve hook),
+;; Discovery (rel=webmention emission), and Idempotency (sender-side log).
+;;
+;; ADR resolutions (default-leaning, pragmatic — see SPEC-039 §1.4):
+;;   - ADR-3901 (flow coverage):   ALL FOUR — receive, send, discovery,
+;;                                  idempotency. The strawman default.
+;;   - ADR-3902 (static receive):  DEFERRED via recipe — `zetl serve` hosts
+;;                                  the endpoint; static-build users follow
+;;                                  a documented webmention.io recipe later.
+;;   - ADR-3903 (moderation):      HYBRID defeasible-rule. Bundled rule set:
+;;                                  auto-accept already-linked domains;
+;;                                  queue unknowns; deny blocklist. Rules
+;;                                  expressed as SPL when the `reason`
+;;                                  feature is enabled; pure-Rust fallback
+;;                                  decisions when it's not.
+;;   - ADR-3904 (storage model):   CENTRAL JSONL — `.zetl/webmentions/`
+;;                                  with `received.jsonl` (verified +
+;;                                  moderated edges) and `sent.jsonl`
+;;                                  (idempotency log).
+;;   - ADR-3905 (identity):        URL-ONLY for v1. h-card + WebFinger
+;;                                  deferred to v2.
+;;   - ADR-3906 (idempotency):     PERSISTED JSONL log keyed on
+;;                                  (source, target, content-hash). No
+;;                                  retention compaction in v1 (NFR-3907
+;;                                  documents future strategy).
+;;
+;; Architecture (per SPEC-039 §9 Purity Boundary Map):
+;;   - Pure core (`webmention::core`): verify, moderate, idempotency_diff,
+;;     extract_external_links, discover_endpoint, parse_payload.
+;;   - Effectful shell (`webmention::shell`): receive (Axum handler),
+;;     fetch_source (reuses SPEC-038's SSRF-safe fetcher), send (outbound
+;;     POST), persist (JSONL writers), discovery emission (Build + Serve
+;;     <head> injection).
+;;
+;; Dependency rule: shell -> core. Pure modules MUST NOT import tokio,
+;; axum, http clients, or fs writes. Shared with SPEC-038: `feed::fetch`
+;; SSRF/scheme/size primitives; `cap::sanitiser` for any e-content
+;; surfaced in the moderation queue UI.
+
+(meta plan
+  (id "IMPL-039")
+  (title "Webmention support — implementation")
+  (version "0.1.0")
+  (status "draft")
+  (created "2026-05-09")
+  (author "agent:claude")
+  (spec "SPEC-039")
+  (description "Implementation plan for SPEC-039 (status=strawman). Pragmatic execution: default-leaning ADR resolutions are baked into this plan rather than waiting on DESIGN-039's research arc. All four flows (receive, send, discovery, idempotency) in scope; static-build receive deferred to a documented recipe (webmention.io). Pure core covers verification, moderation, idempotency diff, link extraction, endpoint discovery. Shell covers the Axum POST /webmention handler, the build/serve outbound sender, JSONL persistence, and rel=webmention emission in rendered HTML. SSRF-safe fetcher and HTML sanitiser are shared with SPEC-038 — no re-implementation. Moderation is a hybrid defeasible-rule gate: bundled defaults (auto-accept already-linked, queue unknown, deny blocklist) backed by SPL when the `reason` feature is on and a pure-Rust fallback otherwise. Storage is central JSONL at .zetl/webmentions/{received,sent}.jsonl. Identity is URL-only in v1. Idempotency is a persisted JSONL log keyed on (source, target, content-hash). Test surface covers REQ-3901..REQ-3914, the relevant webmention.rocks subset, and the threat-model matrix (SSRF, oracle-resistance for capability-URL probes, replay)."))
+
+;; -- Agents --------------------------------------------
+(given agent-claude-available)
+
+;; -- Tasks ---------------------------------------------
+
+;; Phase 0: foundational types + config + storage layout
+(given task-types)
+(given task-config)
+(given task-storage)
+
+;; Phase 1: pure core
+(given task-core-verify)
+(given task-core-extract-links)
+(given task-core-discover-endpoint)
+(given task-core-idempotency-diff)
+(given task-core-moderate)
+
+;; Phase 2: persistence + storage shell
+(given task-persist-received)
+(given task-persist-sent)
+(given task-graph-integration)
+
+;; Phase 3: receiver shell (zetl serve)
+(given task-receive-handler)
+(given task-receive-fetch)
+(given task-receive-pipeline)
+(given task-receive-oracle-resistance)
+(given task-receive-rate-limit)
+
+;; Phase 4: sender shell (zetl build / zetl serve)
+(given task-send-pipeline)
+(given task-send-build-hook)
+
+;; Phase 5: discovery emission (head + Link header)
+(given task-discovery-build)
+(given task-discovery-serve)
+
+;; Phase 6: CLI + config
+(given task-cli)
+(given task-cli-wiring)
+
+;; Phase 7: tests
+(given task-tests-pure-core)
+(given task-tests-receive-integration)
+(given task-tests-send-integration)
+(given task-tests-threat-model)
+
+;; Phase 8: closeout
+(given task-changelog)
+
+;; -- No-deps markers (Phase 0 root) --------------------
+(given no-deps-types)
+(given no-deps-config)
+(given no-deps-storage)
+
+;; -- Task Metadata -------------------------------------
+
+(meta task-types
+  (description "Define the type lattice in src/webmention/types.rs. Required types: (1) IncomingMention { source: Url, target: Url, received_at: DateTime<Utc> }; (2) VerifiedMention { source: Url, target: Url, verified_at: DateTime<Utc>, source_html_hash: [u8; 32] } -- post-verification, pre-moderation; (3) ModerationDecision::{Accept, Queue, Deny} with rationale: String naming the rule that fired; (4) ExternalEdge { source: Url, target: Url, accepted_at: DateTime<Utc>, last_seen: DateTime<Utc> } -- the link-graph external-backlink record; (5) OutboundMention { source_page_url: Url, target_url: Url, content_hash: [u8; 32] } and SentRecord { source_page_url, target_url, content_hash, sent_at, response_status: u16 }; (6) WebmentionConfig (parsed from .zetl/config.toml [webmention]); (7) error enum WebmentionError covering verify/moderate/persist/send variants. All types: Debug + Clone + serde::{Serialize, Deserialize}. Place at src/webmention/types.rs; create src/webmention/mod.rs with `pub mod types;` plus pub mod stubs for the other phases. The whole crate must continue to compile after adding the module skeleton.")
+  (acceptance "src/webmention/{mod.rs,types.rs} exist; cargo build succeeds; types::IncomingMention / VerifiedMention / ModerationDecision / ExternalEdge / OutboundMention / SentRecord / WebmentionConfig defined with serde derives.")
+  (trace "SPEC-039 §9 boundary types"))
+
+(meta task-config
+  (description "Extend the .zetl/config.toml parser to recognise the [webmention] table. Required keys with deterministic defaults: enabled: bool (default false), receive_enabled: bool (default true when [webmention].enabled is true), send_enabled: bool (default true), endpoint_path: String (default \"/webmention\"), default_decision: \"accept\" | \"queue\" | \"deny\" (default \"queue\"), allowlist_domains: Vec<String> (default empty -- but always-include domains the vault has previously linked TO), denylist_domains: Vec<String> (default empty), max_body_bytes_override: Option<u64> (default None -> reuse SPEC-038's MAX_BODY_BYTES = 1 MiB), rate_limit_per_source_host_per_minute: u32 (default 60 per NFR-3906), rate_limit_global_per_minute: u32 (default 1000 per NFR-3906). Add WebmentionConfig::from_str(toml: &str) -> Result<Self, WebmentionConfigError> in src/webmention/config.rs. Malformed values produce structured errors naming the offending key. Wire into the existing config parsing path so `zetl build` and `zetl serve` see the table.")
+  (acceptance "src/webmention/config.rs parses every documented key with defaults; integration test parses a minimal table and a fully-specified table; malformed default_decision rejects with a clear error.")
+  (trace "CON-3905 in SPEC-039"))
+
+(meta task-storage
+  (description "Define the on-disk storage layout per ADR-3904. Path layout: .zetl/webmentions/received.jsonl (one VerifiedMention-or-ExternalEdge JSON record per line, append-only); .zetl/webmentions/sent.jsonl (one SentRecord per line, append-only); .zetl/webmentions/queue.jsonl (one IncomingMention per line for moderation pending). Provide src/webmention/storage.rs with: pub fn vault_dir(vault_root: &Path) -> PathBuf; pub fn ensure_dir(vault_root: &Path) -> io::Result<PathBuf> (idempotent); pub fn append_jsonl<T: Serialize>(path: &Path, record: &T) -> io::Result<()> (atomic-append: open with O_APPEND, write line, fsync); pub fn read_jsonl<T: DeserializeOwned>(path: &Path) -> io::Result<Vec<T>> (skip and warn on malformed lines, never panic). NO O_TRUNC, NO compaction in v1 (documented future work). Update the .gitignore template to exclude .zetl/webmentions/queue.jsonl by default but include the others (peer-replicable persistence vs ephemeral queue).")
+  (acceptance "src/webmention/storage.rs compiles; unit test writes 3 records to a temp file, reads them back; malformed-line tolerance test asserts a corrupted middle line skips without losing the others.")
+  (trace "CON-3906 + ADR-3904 in SPEC-039"))
+
+(meta task-core-verify
+  (description "Implement the pure verification function per REQ-3903. Signature: pub fn verify_link_present(source_html: &str, target: &Url) -> VerifyResult. Return VerifyResult::{Found, NotFound, FoundOnlyInScript, FoundOnlyInComment}. Walk the HTML for any <a href=\"...\">, <link href=\"...\">, <area href=\"...\">, <img src=\"...\">, <video src/poster=\"...\">, <audio src=\"...\">, <source src=\"...\"> whose URL canonicalises to the target. Match canonically: parse both URLs, normalise scheme casing, compare host case-insensitively, treat http vs https and trailing-slash differences as MISMATCH (per spec strictness). MUST NOT honour links inside <script>, <style>, or HTML comments — these are reported but do not satisfy verification per REQ-3903. Pure: deterministic given (HTML bytes, target URL); no I/O. Use the existing pulldown-cmark dependency and a minimal `scraper`-or-equivalent inline state machine (avoid adding a new HTML parser dep — the html5ever transitive used by ammonia is already available; reuse).")
+  (acceptance "src/webmention/core/verify.rs exports verify_link_present. Tests: positive (link in <a>); negative (no match); negative (link in <script>); negative (link in HTML comment); positive in <link rel=related>; positive in <img src>; equality-of-target with trailing-slash difference returns NotFound; mutation test on the parser kills 90% of mutations.")
+  (trace "REQ-3903 + TEST-3905..TEST-3907 in SPEC-039"))
+
+(meta task-core-extract-links
+  (description "Implement the pure external-link extraction function per the send side. Signature: pub fn extract_external_links(rendered_html: &str, vault_base_url: &Url, source_page_url: &Url) -> Vec<(Url, Url)> -- returning (source_page_url, target_url) tuples for every external link in the rendered output. External = not on the same origin as vault_base_url (use is_cross_origin from feed::fetch). Walk <a href>, <link href>, <area href> in document order; deduplicate; skip mailto:/tel:/javascript: schemes; skip relative links and same-origin links. Pure -- deterministic and idempotent.")
+  (acceptance "src/webmention/core/extract.rs exports extract_external_links. Tests: a page with 3 external links produces 3 tuples; mailto: and tel: skipped; same-origin skipped; relative paths skipped; ordering deterministic.")
+  (trace "Required for REQ-3906 + REQ-3907 in SPEC-039"))
+
+(meta task-core-discover-endpoint
+  (description "Implement the pure endpoint-discovery function per REQ-3908. Signature: pub fn discover_endpoint(headers: &[(String, String)], html_body: Option<&str>, fetched_url: &Url) -> Option<Url>. Algorithm: prefer Link headers with rel=\"webmention\" (case-insensitive, supports rel=\"webmention\" mixed with other rels); fall back to <link rel=\"webmention\" href=\"...\"> in HTML; fall back to <a rel=\"webmention\" href=\"...\">. Resolve relative URLs against fetched_url. First match wins per the W3C REC. Pure.")
+  (acceptance "src/webmention/core/discover.rs exports discover_endpoint. Tests: Link header preferred over <link>; relative href resolved correctly; rel=\"webmention\" works inside `rel=\"author webmention\"`; absent rel returns None; multiple Link headers picked deterministically (first one wins).")
+  (trace "REQ-3908 + TEST-3914 + TEST-3915 in SPEC-039"))
+
+(meta task-core-idempotency-diff
+  (description "Implement the pure idempotency-diff function per REQ-3906. Signature: pub fn idempotency_diff(current: &[OutboundMention], previous_log: &[SentRecord]) -> IdempotencyDiff with fields { to_send: Vec<OutboundMention> (new or content-hash-changed), to_resend_for_removal: Vec<OutboundMention> (in previous_log but absent from current — REQ-3907) }. Match by (source_page_url, target_url) tuple; treat content_hash mismatch as 'send'; treat presence-then-absence as 'resend for removal' (the receiver re-fetches and sees the link is gone). Pure.")
+  (acceptance "src/webmention/core/diff.rs exports idempotency_diff and IdempotencyDiff. Tests: empty current vs non-empty previous yields all-removal; same hash yields no-op; different hash yields to_send; identical builds yield empty diff (the zero-POST property).")
+  (trace "REQ-3906 + REQ-3907 + TEST-3912 + TEST-3913 in SPEC-039"))
+
+(meta task-core-moderate
+  (description "Implement the pure moderation function per REQ-3905 + ADR-3903. Signature: pub fn moderate(mention: &VerifiedMention, ctx: &ModerationContext) -> ModerationDecision. ModerationContext { allowlist_domains: &HashSet<String>, denylist_domains: &HashSet<String>, vault_outbound_domains: &HashSet<String> (domains the vault has previously linked TO -- the 'already-linked' implicit allowlist), default_decision: ModerationDefault }. Rules (in order): (1) source domain in denylist_domains -> Deny rationale=\"denylist\"; (2) source domain in allowlist_domains OR in vault_outbound_domains -> Accept rationale=\"already-linked\" (or \"allowlist\"); (3) otherwise -> default_decision (Queue by default). Domain matching is case-insensitive on the registered name; subdomains do NOT inherit parent allowlist entries (literal match required for v1; document the conservative choice). Pure. The SPL-rule path is OPTIONAL: when feature `reason` is enabled, evaluate via the reason-store (TBD task); the pure-Rust fallback is the canonical behaviour.")
+  (acceptance "src/webmention/core/moderate.rs exports moderate + ModerationContext + ModerationDefault. Tests: blocklist hit; allowlist hit; already-linked hit; default-queue path; default-accept path; default-deny path; case-insensitive domain match; subdomain non-inheritance.")
+  (trace "REQ-3905 + REQ-3913 + ADR-3903 + CON-3907 in SPEC-039"))
+
+(meta task-persist-received
+  (description "Implement the received-edges persistence shell. src/webmention/persist.rs: pub fn append_external_edge(vault_root: &Path, edge: &ExternalEdge) -> io::Result<()>; pub fn load_external_edges(vault_root: &Path) -> io::Result<Vec<ExternalEdge>>; pub fn append_queue(vault_root: &Path, mention: &IncomingMention) -> io::Result<()>; pub fn load_queue(vault_root: &Path) -> io::Result<Vec<IncomingMention>>; pub fn remove_external_edge(vault_root: &Path, source: &Url, target: &Url) -> io::Result<()> (REQ-3911 — append a tombstone record; load filters tombstoned). Use the storage primitives from task-storage.")
+  (acceptance "Round-trip test: append 5 edges, load, assert count and content; tombstone-test: append edge, append tombstone, load returns empty.")
+  (trace "REQ-3910 + REQ-3911 in SPEC-039"))
+
+(meta task-persist-sent
+  (description "Implement the sent-log persistence. src/webmention/persist.rs: pub fn append_sent_record(vault_root: &Path, record: &SentRecord) -> io::Result<()>; pub fn load_sent_log(vault_root: &Path) -> io::Result<Vec<SentRecord>>. Used by the sender to compute the idempotency diff on every build.")
+  (acceptance "Round-trip test passes; concurrent-append safety verified by writing from two threads (open-append-close pattern is OS-atomic for short writes).")
+  (trace "REQ-3906 in SPEC-039"))
+
+(meta task-graph-integration
+  (description "Add external-source-aware backlinks to the existing LinkGraph surface. src/webmention/graph.rs: pub fn external_backlinks(vault_root: &Path, target: &Url) -> Vec<ExternalEdge>. (Lightweight read on every backlink-render call. v1 reads received.jsonl directly; cache layer is future work.) Update src/main.rs cmd_view + the web backlink-panel renderer to surface external mentions distinctly (e.g., '🌐 example.com/post' prefix). The local LinkGraph::EdgeMeta does NOT change in v1 — external mentions are stored separately and merged at the render boundary.")
+  (acceptance "external_backlinks returns the expected set; integration test that simulates a received mention and verifies it shows up under `zetl backlinks <page>` (or equivalent existing command); local backlinks unaffected.")
+  (trace "REQ-3910 + CON-3906 in SPEC-039"))
+
+(meta task-receive-handler
+  (description "Implement the Axum POST /webmention handler in src/webmention/receive.rs. Accept application/x-www-form-urlencoded body with source + target. Validate per REQ-3902: both fields present; both parse as Urls; source != target; both http/https schemes; target host matches the configured vault host. On success: synchronous-mode receiver runs the full pipeline (fetch source, verify, moderate, persist) and returns 201 Created on accept, 202 Accepted on queue, 400 Bad Request on malformed input. Wire into the existing axum Router in src/web/mod.rs at the configured endpoint_path. Bypass CSRF (the W3C REC mandates POSTs from external clients with no token); ACL-bypass justified in code comment.")
+  (acceptance "POST /webmention with valid form returns 201 or 202 per moderation decision; POST with bad form returns 400; POST with target-host-mismatch returns 400; integration test passes.")
+  (trace "REQ-3902 + CON-3901 in SPEC-039"))
+
+(meta task-receive-fetch
+  (description "Implement the source-fetch shell. src/webmention/receive.rs::fetch_source(source: &Url, transport: &dyn HttpTransport) -> Result<String, FetchError>. Reuses crate::feed::fetch primitives: assert_safe_scheme, DNS-resolve via the shell's DNS resolver, assert_public_target on the resolved IPs (SSRF defence T1), 10s timeout, 1 MiB body cap, the same UA string. Decode response body as UTF-8 (lossy on malformed bytes — verification is on link presence, not on display). NO retry on 5xx — if the source is down we record the error and let the sender re-POST later.")
+  (acceptance "fetch_source rejects file:/// + javascript: + private-IP targets; honours the 1 MiB cap; honours the 10s timeout; lossy UTF-8 decoding tolerated; integration test with a mock transport asserts the SSRF rejection path.")
+  (trace "REQ-3903 + T1 + T3 in SPEC-039"))
+
+(meta task-receive-pipeline
+  (description "Wire the full receive pipeline. src/webmention/receive.rs::process_incoming(mention: IncomingMention, deps: &ReceiveDeps) -> Result<ReceiveOutcome, WebmentionError>. ReceiveDeps { vault_root, transport, config, vault_outbound_domains_snapshot }. Steps: (1) fetch source via task-receive-fetch; (2) verify link present via core::verify; (3) construct VerifiedMention; (4) moderate via core::moderate; (5) on Accept -> append_external_edge + return ReceiveOutcome::Accepted; on Queue -> append_queue + return ReceiveOutcome::Queued; on Deny -> emit OBS log line (no persistence) + return ReceiveOutcome::Denied. Return values map to handler HTTP status codes: Accepted=201, Queued=202, Denied=200 (oracle-resistance — same 'best-effort' status as accept), Unverified=400. ALL outcomes record an OBS-3901 counter increment.")
+  (acceptance "End-to-end test: spin up axum, POST a fixture, mock the source-fetch, assert correct status code + persisted edge for each branch.")
+  (trace "REQ-3902 + REQ-3903 + REQ-3905 + OBS-3901 in SPEC-039"))
+
+(meta task-receive-oracle-resistance
+  (description "Implement REQ-3909 oracle-resistance. The endpoint MUST return an indistinguishable response shape for: (a) public published pages, (b) private pages, (c) non-existent slugs, (d) capability-protected URLs. v1 implementation: the endpoint NEVER returns 404 for unknown target URLs — instead it accepts the form, returns 202 Accepted with the same body shape as the accept-path, and silently drops the mention server-side after persistence-decision. Capability tokens (as identified by SPEC-034 path patterns /caps/<token>/...) MUST NOT be echoed in any response body or log line; the OBS log records a redacted form. Document the trade-off in code: this slightly amplifies spam (every POST is 'accepted' from the prober's perspective) in exchange for closing the existence oracle.")
+  (acceptance "Test: POST to /webmention with target=valid-public, target=invalid-slug, target=/caps/<token>/secret all return same status code, same body shape (length distribution within 16 bytes), same headers; capability token never appears in response body or in the log line emitted.")
+  (trace "REQ-3909 + T8 + T9 in SPEC-039"))
+
+(meta task-receive-rate-limit
+  (description "Implement REQ-3912 rate limiting. Reuse the existing tower-http RateLimit layer if present (search for existing rate-limit middleware in src/web first). If not present, add a lightweight in-memory token bucket: per-source-host (60 POSTs/min) + global cap (1000/min). On limit-exceeded return 429 Too Many Requests. Counters stored in a Mutex<HashMap<String, BucketState>>; per-window decay; bounded total size (LRU evict at 10000 distinct hosts). Document that this is server-process-local — multi-process deployments need an external rate-limiter (out of scope for v1).")
+  (acceptance "Test: 61 POSTs from same source-host within 60s — last one returns 429; counter increments + observability log line per rejection.")
+  (trace "REQ-3912 + NFR-3906 in SPEC-039"))
+
+(meta task-send-pipeline
+  (description "Implement the outbound sender pipeline. src/webmention/send.rs::compute_send_plan(rendered_pages: &[RenderedPage], previous_log: &[SentRecord], vault_base_url: &Url) -> SendPlan { to_send: Vec<OutboundMention>, to_resend_for_removal: Vec<OutboundMention> }. Steps: (1) for each rendered page, call core::extract_external_links to get (source, target) pairs; (2) compute content_hash per (source, target) — blake3 of the surrounding paragraph context for changes detection; (3) call core::idempotency_diff against previous_log; (4) return SendPlan. Then src/webmention/send.rs::execute_send_plan(plan: SendPlan, transport: &dyn HttpTransport, vault_root: &Path) -> SendStats: for each OutboundMention, discover endpoint via core::discover_endpoint after a HEAD/GET to target, POST source+target as application/x-www-form-urlencoded, append SentRecord on success. Bounded concurrency (8 concurrent fetches reusing the SPEC-038 primitive). Failed POSTs do NOT enter sent.jsonl — they are retried on the next build. The endpoint discovery uses the same SSRF-safe fetcher.")
+  (acceptance "Pure compute_send_plan tested with property-test (idempotent: two consecutive plans on the same input have empty to_send if the first plan's outputs are recorded). Integration test mocks a target endpoint and asserts the POST body shape.")
+  (trace "REQ-3906 + REQ-3907 + REQ-3908 in SPEC-039"))
+
+(meta task-send-build-hook
+  (description "Wire the sender into zetl build. In src/web/build.rs, after the existing emit_outbound_feeds path, add an emit_outbound_webmentions(vault_root, rendered_pages, config, transport) call gated on [webmention].enabled && [webmention].send_enabled. The build emits a stats line (sent: N, removed: M, skipped: K) but does NOT block on send completion: send is fire-and-forget per-build, with failures counted in OBS metrics and logged. Idempotency diff ensures repeated builds with no content change produce zero POSTs (the user-facing invariant). Provide a --skip-webmentions flag on `zetl build` for test/dev runs.")
+  (acceptance "zetl build on a vault with webmention.enabled=true and external links emits POSTs to mocked targets; second build produces zero POSTs; --skip-webmentions short-circuits the path; stats line printed in build output.")
+  (trace "REQ-3906 in SPEC-039"))
+
+(meta task-discovery-build
+  (description "Emit rel=webmention discovery on every build-rendered page per REQ-3901. In src/web/build.rs, alongside the feed_discovery context injection, add `webmention_endpoint: Option<String>` to PageContext / VaultContext. Compute as `format!(\"{}/webmention\", vault_base_url)` if [webmention].enabled and a vault_base_url is configured. Theme template injection: extend the default Jinja2 head block to emit `<link rel=\"webmention\" href=\"{{ vault.webmention_endpoint }}\">` when the value is Some. Static-build users without a live server: the link still emits with the configured endpoint (which may point at a webmention.io relay per the strawman's static-build recipe).")
+  (acceptance "zetl build on a vault with [webmention].enabled produces HTML pages with the rel=webmention <link> in <head>; absent enabled, no link emitted; integration test asserts the markup.")
+  (trace "REQ-3901 + CON-3902 in SPEC-039"))
+
+(meta task-discovery-serve
+  (description "Emit the rel=webmention HTTP Link header on every served page per REQ-3901. In src/web/mod.rs response middleware, when [webmention].enabled, set `Link: </webmention>; rel=\"webmention\"` (or the configured endpoint_path). This is in addition to the HTML <link> tag from task-discovery-build, per spec — both surfaces emit, header takes precedence in client discovery.")
+  (acceptance "GET / against zetl serve with webmention enabled returns a Link: </webmention>; rel=\"webmention\" header; absent enabled, no header.")
+  (trace "REQ-3901 + CON-3902 in SPEC-039"))
+
+(meta task-cli
+  (description "Define src/webmention/cli.rs WebmentionCommand subcommand surface (clap argument types only — handlers in main.rs). Subcommands: List(WebmentionListArgs) — show queue + recent decisions; Accept { source: String, target: String } — promote a queued mention to accepted (writes a 'manual-accept' SPL fact when reason feature is on); Reject { source: String, target: String } — tombstone; Send { page: String } — manual re-send for a specific page (escape hatch for failed earlier sends); Status — show stats (queue depth, total accepted, total sent, total rejected). Mirror the feed::cli structure (argument types only; handler dispatch in main.rs).")
+  (acceptance "clap parsing of every subcommand verified by unit tests in the same file (mirroring feed::cli::tests pattern); --json flag on List + Status.")
+  (trace "CON-3903 + CON-3908 in SPEC-039"))
+
+(meta task-cli-wiring
+  (description "Wire the new WebmentionCommand into src/cli.rs Command enum and src/main.rs dispatch. Implement each subcommand handler against the persistence + send + moderate primitives. The handlers are ≤ 30 lines each — they parse args, call into webmention::*, and print results.")
+  (acceptance "`zetl webmention list` runs end-to-end on a fresh vault (empty result); `zetl webmention status --json` returns valid JSON; `zetl webmention accept <s> <t>` promotes a queued mention; integration test covers each subcommand on a temp vault.")
+  (trace "CON-3903 in SPEC-039"))
+
+(meta task-tests-pure-core
+  (description "Comprehensive unit tests for the pure-core modules: tests/webmention_pure.rs. Cover REQ-3903 verification (positive, negative-no-link, script-only, comment-only); REQ-3905 moderation (every branch); REQ-3906 idempotency (the zero-POST property as a property test); REQ-3908 endpoint discovery (header preference, fallback, relative URL resolution); core::extract_links (deduplication, scheme filtering). Property tests where applicable.")
+  (acceptance "cargo test --test webmention_pure passes; covers every REQ-#### -> TEST-#### in SPEC-039 §13 that maps to a pure-core function.")
+  (trace "TEST-3905..TEST-3915 in SPEC-039"))
+
+(meta task-tests-receive-integration
+  (description "End-to-end receive tests: tests/webmention_receive.rs. Spin up zetl serve via axum::test, POST fixtures, assert: (HP-3901 first mention from stranger -> queued); (HP-3905 federation peer mention from already-linked domain -> accepted); (HP-3906 spam: source has no link -> 400 unverified); (HP-3908 oracle-resistance: POSTs to public/private/non-existent/capability targets all return same status + body shape); rate-limit (61st POST returns 429); idempotency on receive-side (same source+target POSTed twice updates last-seen rather than duplicating). Use a fake HttpTransport that returns canned source HTML.")
+  (acceptance "cargo test --test webmention_receive passes all happy paths and the threat-model probes.")
+  (trace "HP-3901 + HP-3905 + HP-3906 + HP-3908 + HP-3909 + REQ-3909 + REQ-3911 + REQ-3912 in SPEC-039"))
+
+(meta task-tests-send-integration
+  (description "End-to-end send tests: tests/webmention_send.rs. Build a temp vault with external links, run the send pipeline against a mock target endpoint, assert: (HP-3902 first publish sends one POST per external link, idempotency log records); (HP-3903 second build with no changes sends zero POSTs); (HP-3904 link removal sends a re-POST); endpoint discovery preference (Link header beats <link> tag); failed POSTs don't enter sent.jsonl. Pure compute_send_plan tested separately as a property test.")
+  (acceptance "cargo test --test webmention_send passes; the zero-POST property holds across 100 random vault inputs.")
+  (trace "HP-3902 + HP-3903 + HP-3904 + REQ-3906 + REQ-3907 + REQ-3908 in SPEC-039"))
+
+(meta task-tests-threat-model
+  (description "Threat-model focused tests: tests/webmention_threat.rs. Cover T1 (SSRF: POST with source pointing to 127.0.0.1 / RFC1918 — fetch_source rejects); T2 (rate limit covered by receive integration); T3 (HTML parser: POST with source returning a 10 MB HTML body — body cap rejects before parse); T6 (re-verification finds link absent — edge tombstoned); T7 (replay: identical (source, target) POSTed twice yields update not duplicate); T8/T9 (oracle-resistance covered by receive integration). T11 (idempotency-log torn write: simulate write-of-half-line, assert load_sent_log skips and warns).")
+  (acceptance "cargo test --test webmention_threat passes every probe; SSRF probe asserts the fetch is refused before the request leaves the process.")
+  (trace "T1, T3, T6, T7, T8, T9, T11 in SPEC-039 §11"))
+
+(meta task-changelog
+  (description "Update CHANGELOG.md with an entry under the next minor-version heading: feat(spec-039): webmention support — recv (POST /webmention with verification + hybrid-defeasible moderation + oracle-resistant response), send (build/serve hook with persisted JSONL idempotency log), discovery (rel=webmention Link header + HTML link tag). Note ADR-#### resolutions baked into v1 and the deferred items (h-card, WebFinger, static-build receive-via-relay recipe). Mark IMPL-039 phase as 'implemented' in the spec frontmatter (status=implementing -> implemented). Note that SPEC-039 stays at status=strawman because DESIGN-039 was not executed — implementation is pragmatic, not USDD-Tier-2-approved. Run cargo fmt + cargo clippy --all-targets + cargo test before commit.")
+  (acceptance "CHANGELOG.md entry; cargo fmt clean; cargo clippy --all-targets clean (no new warnings); cargo test green.")
+  (trace "USDD Phase 3 closeout"))
+
+;; -- Readiness Rules (DAG) -----------------------------
+
+;; Phase 0
+(normally r-ready-types (and task-types no-deps-types) ready-types)
+(normally r-ready-config (and task-config no-deps-config) ready-config)
+(normally r-ready-storage (and task-storage no-deps-storage) ready-storage)
+
+;; Phase 1: pure core after types
+(normally r-ready-core-verify (and task-core-verify completed-types) ready-core-verify)
+(normally r-ready-core-extract-links (and task-core-extract-links completed-types) ready-core-extract-links)
+(normally r-ready-core-discover-endpoint (and task-core-discover-endpoint completed-types) ready-core-discover-endpoint)
+(normally r-ready-core-idempotency-diff (and task-core-idempotency-diff completed-types) ready-core-idempotency-diff)
+(normally r-ready-core-moderate (and task-core-moderate completed-types) ready-core-moderate)
+
+;; Phase 2: persistence after types + storage
+(normally r-ready-persist-received (and task-persist-received completed-types completed-storage) ready-persist-received)
+(normally r-ready-persist-sent (and task-persist-sent completed-types completed-storage) ready-persist-sent)
+(normally r-ready-graph-integration (and task-graph-integration completed-persist-received) ready-graph-integration)
+
+;; Phase 3: receiver after pure-core verify + moderate + persist + config
+(normally r-ready-receive-fetch (and task-receive-fetch completed-types completed-config) ready-receive-fetch)
+(normally r-ready-receive-pipeline
+  (and task-receive-pipeline
+       completed-core-verify
+       completed-core-moderate
+       completed-persist-received
+       completed-receive-fetch)
+  ready-receive-pipeline)
+(normally r-ready-receive-handler (and task-receive-handler completed-receive-pipeline) ready-receive-handler)
+(normally r-ready-receive-oracle-resistance (and task-receive-oracle-resistance completed-receive-handler) ready-receive-oracle-resistance)
+(normally r-ready-receive-rate-limit (and task-receive-rate-limit completed-receive-handler) ready-receive-rate-limit)
+
+;; Phase 4: sender after pure-core extract + diff + discover + persist-sent
+(normally r-ready-send-pipeline
+  (and task-send-pipeline
+       completed-core-extract-links
+       completed-core-idempotency-diff
+       completed-core-discover-endpoint
+       completed-persist-sent)
+  ready-send-pipeline)
+(normally r-ready-send-build-hook (and task-send-build-hook completed-send-pipeline) ready-send-build-hook)
+
+;; Phase 5: discovery emission after config
+(normally r-ready-discovery-build (and task-discovery-build completed-config) ready-discovery-build)
+(normally r-ready-discovery-serve (and task-discovery-serve completed-config) ready-discovery-serve)
+
+;; Phase 6: CLI after persistence + send-pipeline + moderate
+(normally r-ready-cli (and task-cli completed-types) ready-cli)
+(normally r-ready-cli-wiring
+  (and task-cli-wiring
+       completed-cli
+       completed-persist-received
+       completed-persist-sent
+       completed-core-moderate
+       completed-send-pipeline)
+  ready-cli-wiring)
+
+;; Phase 7: tests after the implementations they cover
+(normally r-ready-tests-pure-core
+  (and task-tests-pure-core
+       completed-core-verify
+       completed-core-extract-links
+       completed-core-discover-endpoint
+       completed-core-idempotency-diff
+       completed-core-moderate)
+  ready-tests-pure-core)
+(normally r-ready-tests-receive-integration
+  (and task-tests-receive-integration
+       completed-receive-handler
+       completed-receive-oracle-resistance
+       completed-receive-rate-limit)
+  ready-tests-receive-integration)
+(normally r-ready-tests-send-integration
+  (and task-tests-send-integration
+       completed-send-build-hook
+       completed-discovery-build)
+  ready-tests-send-integration)
+(normally r-ready-tests-threat-model
+  (and task-tests-threat-model
+       completed-receive-pipeline
+       completed-persist-sent)
+  ready-tests-threat-model)
+
+;; Phase 8: closeout after every test green
+(normally r-ready-changelog
+  (and task-changelog
+       completed-tests-pure-core
+       completed-tests-receive-integration
+       completed-tests-send-integration
+       completed-tests-threat-model
+       completed-cli-wiring
+       completed-discovery-build
+       completed-discovery-serve
+       completed-graph-integration)
+  ready-changelog)
+
+;; -- Assignment Rules ----------------------------------
+
+(normally r-assign-types (and ready-types agent-claude-available) assign-to-types-claude)
+(normally r-assign-config (and ready-config agent-claude-available) assign-to-config-claude)
+(normally r-assign-storage (and ready-storage agent-claude-available) assign-to-storage-claude)
+(normally r-assign-core-verify (and ready-core-verify agent-claude-available) assign-to-core-verify-claude)
+(normally r-assign-core-extract-links (and ready-core-extract-links agent-claude-available) assign-to-core-extract-links-claude)
+(normally r-assign-core-discover-endpoint (and ready-core-discover-endpoint agent-claude-available) assign-to-core-discover-endpoint-claude)
+(normally r-assign-core-idempotency-diff (and ready-core-idempotency-diff agent-claude-available) assign-to-core-idempotency-diff-claude)
+(normally r-assign-core-moderate (and ready-core-moderate agent-claude-available) assign-to-core-moderate-claude)
+(normally r-assign-persist-received (and ready-persist-received agent-claude-available) assign-to-persist-received-claude)
+(normally r-assign-persist-sent (and ready-persist-sent agent-claude-available) assign-to-persist-sent-claude)
+(normally r-assign-graph-integration (and ready-graph-integration agent-claude-available) assign-to-graph-integration-claude)
+(normally r-assign-receive-fetch (and ready-receive-fetch agent-claude-available) assign-to-receive-fetch-claude)
+(normally r-assign-receive-pipeline (and ready-receive-pipeline agent-claude-available) assign-to-receive-pipeline-claude)
+(normally r-assign-receive-handler (and ready-receive-handler agent-claude-available) assign-to-receive-handler-claude)
+(normally r-assign-receive-oracle-resistance (and ready-receive-oracle-resistance agent-claude-available) assign-to-receive-oracle-resistance-claude)
+(normally r-assign-receive-rate-limit (and ready-receive-rate-limit agent-claude-available) assign-to-receive-rate-limit-claude)
+(normally r-assign-send-pipeline (and ready-send-pipeline agent-claude-available) assign-to-send-pipeline-claude)
+(normally r-assign-send-build-hook (and ready-send-build-hook agent-claude-available) assign-to-send-build-hook-claude)
+(normally r-assign-discovery-build (and ready-discovery-build agent-claude-available) assign-to-discovery-build-claude)
+(normally r-assign-discovery-serve (and ready-discovery-serve agent-claude-available) assign-to-discovery-serve-claude)
+(normally r-assign-cli (and ready-cli agent-claude-available) assign-to-cli-claude)
+(normally r-assign-cli-wiring (and ready-cli-wiring agent-claude-available) assign-to-cli-wiring-claude)
+(normally r-assign-tests-pure-core (and ready-tests-pure-core agent-claude-available) assign-to-tests-pure-core-claude)
+(normally r-assign-tests-receive-integration (and ready-tests-receive-integration agent-claude-available) assign-to-tests-receive-integration-claude)
+(normally r-assign-tests-send-integration (and ready-tests-send-integration agent-claude-available) assign-to-tests-send-integration-claude)
+(normally r-assign-tests-threat-model (and ready-tests-threat-model agent-claude-available) assign-to-tests-threat-model-claude)
+(normally r-assign-changelog (and ready-changelog agent-claude-available) assign-to-changelog-claude)
