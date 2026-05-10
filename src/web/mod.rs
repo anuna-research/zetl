@@ -548,6 +548,109 @@ pub async fn run(
     Ok(())
 }
 
+/// SPEC-040 REQ-4004: convenience entry-point that builds a minimal
+/// `WebState` for embedded use (the Tauri Mobile shell, plus any
+/// other in-process embedder that wants the full serve UI without
+/// CLI plumbing) and hands it to [`run`].
+///
+/// Defaults applied:
+///
+/// - `collab = false`, `tls = false`, `trust_proxy = false`
+/// - `passkey_mgr = None` (single-user; no WebAuthn)
+/// - `git_commit_lock = None` (auto-commit disabled; mobile commits via
+///   the explicit capture / save paths in subsequent slices)
+/// - `public_dir = None`
+/// - `scan_options = ScanOptions::default()`
+/// - `theme = "default"` (override post-construction if needed)
+/// - asset limits at the same defaults the CLI uses unless caller
+///   overrides via env vars (left untouched for now)
+///
+/// Gated to `feature = "mobile"` so non-mobile builds don't pull
+/// in the extra public surface unintentionally.
+#[cfg(feature = "mobile")]
+pub async fn launch_default(
+    vault_root: std::path::PathBuf,
+    bind_addr: &str,
+    port: u16,
+) -> anyhow::Result<()> {
+    use std::sync::Arc;
+    use std::sync::RwLock;
+
+    // Make sure the working tree directory exists. On first run before
+    // onboarding clones a remote, it may not yet — the embedded server
+    // still needs to start so the user can reach /_mobile/onboarding.
+    let _ = std::fs::create_dir_all(&vault_root);
+
+    // Index the vault (may be empty on first run).
+    let data = match reindex(&vault_root) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("[zetl-mobile] vault reindex on launch failed: {e:?}; starting with empty data");
+            VaultData {
+                files: Vec::new(),
+                graph: LinkGraph::build(&[], &HashMap::new()),
+                page_names: Vec::new(),
+                resolved: HashSet::new(),
+                page_slug_map: HashMap::new(),
+                page_slug_map_lower: HashMap::new(),
+                collision_names: HashSet::new(),
+            }
+        }
+    };
+
+    // SearchIndex::build accepts an empty file list and yields a usable
+    // (empty) index. Treat any failure here as fatal — without an index
+    // we cannot serve search requests.
+    let search_index = SearchIndex::build(&vault_root, &data.files)
+        .map_err(|e| anyhow::anyhow!("search index build failed: {e:?}"))?;
+
+    let theme = "default";
+    let engine = engine::TemplateEngine::new(&vault_root, theme, false, false);
+
+    let vault_root_arc = Arc::new(vault_root);
+
+    let state = WebState {
+        data: Arc::new(RwLock::new(data)),
+        crdt_store: ws::CrdtDocStore::new(vault_root_arc.clone()),
+        vault_root: vault_root_arc.clone(),
+        search_index: Arc::new(search_index),
+        engine: Arc::new(engine),
+        theme: theme.to_string(),
+        verbose: false,
+        collab: false,
+        tls: false,
+        trust_proxy: false,
+        sessions: session::SessionStore::new(),
+        recovery_challenges: Arc::new(crate::user::recovery::RecoveryChallengeStore::new()),
+        mnemonic_shown: Arc::new(Mutex::new(HashSet::new())),
+        bootstrap_used: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        rate_limiters: rate_limit::AuthRateLimiters::new(),
+        #[cfg(feature = "reason")]
+        acl_cache: Arc::new(Mutex::new(AclCache::new())),
+        git_commit_lock: None,
+        ws_hub: ws::WsHub::new(),
+        ticket_store: ws::TicketStore::new(),
+        wal_store: Arc::new(wal::WalStore::new(&vault_root_arc)),
+        pending_writes: fs_watch::PendingWrites::new(),
+        passkey_mgr: None,
+        public_dir: None,
+        scan_options: crate::scanner::ScanOptions::default(),
+        #[cfg(feature = "semantic")]
+        vector_index: None,
+        asset_storage: crate::assets::store::StorageCounterGuard::new(0),
+        asset_max_file_bytes: 10 * 1024 * 1024,
+        asset_max_total_bytes: 100 * 1024 * 1024,
+    };
+
+    run(
+        state,
+        port,
+        bind_addr,
+        std::time::Duration::from_secs(60),
+    )
+    .await
+}
+
 /// ETag + conditional-GET middleware for text/html responses.
 ///
 /// Computes a weak ETag as the first 16 hex chars of blake3 over the
