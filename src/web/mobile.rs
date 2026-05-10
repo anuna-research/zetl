@@ -43,8 +43,13 @@ where
         .route("/_mobile/onboarding", get(onboarding_handler))
         .route("/_mobile/onboarding/seed", post(onboarding_seed_handler))
         .route("/_mobile/onboarding/clone", post(onboarding_clone_handler))
-        .route("/_mobile/capture", get(capture_handler))
+        .route(
+            "/_mobile/capture",
+            get(capture_handler).post(capture_post_handler),
+        )
         .route("/_mobile/sync", get(sync_handler))
+        .route("/_mobile/sync/pull", post(sync_pull_handler))
+        .route("/_mobile/sync/push", post(sync_push_handler))
 }
 
 // ── /_mobile/onboarding ───────────────────────────────────────────────────────
@@ -57,6 +62,16 @@ struct SeedForm {
 #[derive(Deserialize)]
 struct CloneForm {
     remote_url: String,
+}
+
+#[derive(Deserialize)]
+struct CaptureForm {
+    /// Optional explicit title; when empty, auto-titled from the
+    /// first meaningful line of content or `Inbox YYYY-MM-DD-HHMM`.
+    #[serde(default)]
+    title: String,
+    /// Markdown body. Written verbatim to the new file.
+    content: String,
 }
 
 /// `GET /_mobile/onboarding` — guided seed-import + remote-URL +
@@ -132,16 +147,144 @@ async fn onboarding_clone_handler(Form(form): Form<CloneForm>) -> Response {
     }
 }
 
-// ── /_mobile/capture (placeholder) ────────────────────────────────────────────
+// ── /_mobile/capture ──────────────────────────────────────────────────────────
 
+/// `GET /_mobile/capture` — quick-capture form (FAB target + share
+/// extension landing). Renders the same form on every visit; future
+/// share-extension intake will pass payload as a query string and
+/// pre-populate the form.
 async fn capture_handler() -> Response {
-    Html(MOBILE_PLACEHOLDER_CAPTURE).into_response()
+    Html(render_capture_form(None, "", "")).into_response()
 }
 
-// ── /_mobile/sync (placeholder) ───────────────────────────────────────────────
+/// `POST /_mobile/capture` — write a new note + commit, then redirect
+/// to the new page. Best-effort push runs in the background on
+/// success; offline → commit stays in local repo, retried on next
+/// online event (REQ-4010).
+async fn capture_post_handler(Form(form): Form<CaptureForm>) -> Response {
+    let vault_root = match crate::mobile_state::vault_root() {
+        Some(p) => p,
+        None => {
+            return Html(render_capture_form(
+                Some("vault root not registered — Tauri shell did not initialise"),
+                &form.title,
+                &form.content,
+            ))
+            .into_response();
+        }
+    };
 
+    // Filesystem + git work is blocking; offload from the request task.
+    let title = form.title.clone();
+    let content = form.content.clone();
+    let root = vault_root.clone();
+    let outcome = tokio::task::spawn_blocking(move || {
+        crate::mobile_capture::capture(
+            &root,
+            &title,
+            &content,
+            crate::mobile_capture::SystemNow::real(),
+        )
+    })
+    .await;
+
+    match outcome {
+        Ok(Ok(o)) => {
+            // Best-effort push: spawn-blocking-and-forget so the redirect
+            // doesn't wait on network. Failures are logged and surface
+            // through /_mobile/sync's pending count once that ships.
+            let push_root = vault_root.clone();
+            tokio::task::spawn_blocking(move || {
+                if let Err(e) = crate::mobile_git::push(&push_root) {
+                    eprintln!("[zetl-mobile] best-effort push failed: {e:#}");
+                }
+            });
+            // url-encode the slug for the redirect target.
+            let encoded = urlencoding::encode(&o.slug).into_owned();
+            Redirect::to(&format!("/{encoded}")).into_response()
+        }
+        Ok(Err(e)) => Html(render_capture_form(
+            Some(&format!("{e:#}")),
+            &form.title,
+            &form.content,
+        ))
+        .into_response(),
+        Err(join_err) => Html(render_capture_form(
+            Some(&format!("capture task panicked: {join_err}")),
+            &form.title,
+            &form.content,
+        ))
+        .into_response(),
+    }
+}
+
+// ── /_mobile/sync ─────────────────────────────────────────────────────────────
+
+/// `GET /_mobile/sync` — sync status + manual pull/push buttons.
 async fn sync_handler() -> Response {
-    Html(MOBILE_PLACEHOLDER_SYNC).into_response()
+    Html(render_sync_page(None)).into_response()
+}
+
+/// `POST /_mobile/sync/pull` — invoke FF-only pull, then redirect
+/// back to `/_mobile/sync` with status or conflict notice.
+async fn sync_pull_handler() -> Response {
+    let vault_root = match crate::mobile_state::vault_root() {
+        Some(p) => p,
+        None => {
+            return Html(render_sync_page(Some(SyncMsg::Error(
+                "vault root not registered — Tauri shell did not initialise".to_string(),
+            ))))
+            .into_response()
+        }
+    };
+
+    let outcome =
+        tokio::task::spawn_blocking(move || crate::mobile_git::pull_ff_only(&vault_root)).await;
+
+    let msg = match outcome {
+        Ok(Ok(crate::mobile_git::PullOutcome::UpToDate)) => {
+            SyncMsg::Ok("Already up to date.".into())
+        }
+        Ok(Ok(crate::mobile_git::PullOutcome::FastForwarded { from, to })) => SyncMsg::Ok(format!(
+            "Fast-forwarded {} → {}",
+            &from[..8.min(from.len())],
+            &to[..8.min(to.len())]
+        )),
+        Ok(Ok(crate::mobile_git::PullOutcome::Conflict)) => SyncMsg::Conflict,
+        Ok(Err(e)) => SyncMsg::Error(format!("{e:#}")),
+        Err(join_err) => SyncMsg::Error(format!("pull task panicked: {join_err}")),
+    };
+
+    Html(render_sync_page(Some(msg))).into_response()
+}
+
+/// `POST /_mobile/sync/push` — invoke push, redirect back with status.
+async fn sync_push_handler() -> Response {
+    let vault_root = match crate::mobile_state::vault_root() {
+        Some(p) => p,
+        None => {
+            return Html(render_sync_page(Some(SyncMsg::Error(
+                "vault root not registered — Tauri shell did not initialise".to_string(),
+            ))))
+            .into_response()
+        }
+    };
+
+    let outcome = tokio::task::spawn_blocking(move || crate::mobile_git::push(&vault_root)).await;
+
+    let msg = match outcome {
+        Ok(Ok(())) => SyncMsg::Ok("Pushed.".into()),
+        Ok(Err(e)) => SyncMsg::Error(format!("{e:#}")),
+        Err(join_err) => SyncMsg::Error(format!("push task panicked: {join_err}")),
+    };
+
+    Html(render_sync_page(Some(msg))).into_response()
+}
+
+enum SyncMsg {
+    Ok(String),
+    Conflict,
+    Error(String),
 }
 
 // ── HTML rendering helpers ────────────────────────────────────────────────────
@@ -224,18 +367,89 @@ fn html_escape(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-const MOBILE_PLACEHOLDER_CAPTURE: &str = "\
-<!DOCTYPE html><html><head><meta charset=\"utf-8\">\
-<title>zetl mobile · capture</title></head>\
-<body data-zetl-mobile-route=\"capture\">\
-<h1>zetl mobile · capture</h1>\
-<p>Placeholder. Capture form lands with POST /_mobile/capture.</p>\
-</body></html>";
+fn render_capture_form(error: Option<&str>, title_prefill: &str, body_prefill: &str) -> String {
+    let error_block = match error {
+        Some(msg) => format!(
+            r#"<div data-zetl-mobile-error="capture" style="color:#b00;background:#fee;padding:0.75em;border-radius:6px;margin-bottom:1em;">Error: {}</div>"#,
+            html_escape(msg)
+        ),
+        None => String::new(),
+    };
+    format!(
+        r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>zetl mobile · capture</title>
+<style>
+  body {{ font-family: system-ui, sans-serif; max-width: 30em; margin: 0 auto; padding: 1.5em; }}
+  input[type="text"] {{ width: 100%; font-size: 1rem; padding: 0.6em; box-sizing: border-box; margin-bottom: 0.6em; }}
+  textarea {{ width: 100%; min-height: 12em; font-family: ui-monospace, monospace; font-size: 1rem; padding: 0.6em; box-sizing: border-box; }}
+  button {{ width: 100%; padding: 0.8em; font-size: 1rem; margin-top: 0.6em; }}
+  h1 {{ font-size: 1.2rem; margin: 0 0 1rem; }}
+  .hint {{ font-size: 0.85em; opacity: 0.65; margin-top: 0.2em; }}
+  .links {{ font-size: 0.85em; opacity: 0.7; margin-top: 1.5em; display: flex; gap: 1em; }}
+  .links a {{ color: inherit; }}
+</style></head>
+<body data-zetl-mobile-route="capture">
+<h1>Capture</h1>
+{error_block}
+<form method="post" action="/_mobile/capture">
+  <input type="text" name="title" placeholder="Title (optional — auto from first line / timestamp)" value="{title_val}" autocomplete="off" autocapitalize="sentences" autocorrect="off" spellcheck="false">
+  <textarea name="content" placeholder="Markdown — [[wikilinks]] welcome" required autofocus>{body_val}</textarea>
+  <div class="hint">Saved as <code>&lt;title&gt;.md</code> in the vault root, committed locally, pushed if online.</div>
+  <button type="submit">Save</button>
+</form>
+<div class="links"><a href="/">Pages</a> · <a href="/_mobile/sync">Sync</a></div>
+</body></html>"#,
+        title_val = html_escape(title_prefill),
+        body_val = html_escape(body_prefill),
+    )
+}
 
-const MOBILE_PLACEHOLDER_SYNC: &str = "\
-<!DOCTYPE html><html><head><meta charset=\"utf-8\">\
-<title>zetl mobile · sync</title></head>\
-<body data-zetl-mobile-route=\"sync\">\
-<h1>zetl mobile · sync</h1>\
-<p>Placeholder. Sync status + pull/push controls land with git module.</p>\
-</body></html>";
+fn render_sync_page(msg: Option<SyncMsg>) -> String {
+    let banner = match msg {
+        Some(SyncMsg::Ok(text)) => format!(
+            r#"<div data-zetl-mobile-sync="ok" style="color:#063;background:#efe;padding:0.7em;border-radius:6px;margin-bottom:1em;">{}</div>"#,
+            html_escape(&text)
+        ),
+        Some(SyncMsg::Conflict) => format!(
+            r#"<div data-zetl-mobile-sync="conflict" style="color:#b00;background:#fee;padding:0.7em;border-radius:6px;margin-bottom:1em;">{}</div>"#,
+            "Remote diverged from local — resolve on desktop, then pull again. Push is blocked until the next fast-forward pull succeeds."
+        ),
+        Some(SyncMsg::Error(text)) => format!(
+            r#"<div data-zetl-mobile-sync="error" style="color:#b00;background:#fee;padding:0.7em;border-radius:6px;margin-bottom:1em;">Error: {}</div>"#,
+            html_escape(&text)
+        ),
+        None => String::new(),
+    };
+
+    let key_loaded = crate::mobile_state::global().is_loaded();
+    let key_block = if key_loaded {
+        r#"<p class="hint">SSH key loaded.</p>"#.to_string()
+    } else {
+        r#"<p class="hint" data-zetl-mobile-keystore="empty">No SSH key in keystore — visit <a href="/_mobile/onboarding">onboarding</a> to paste your seed.</p>"#
+            .to_string()
+    };
+
+    format!(
+        r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>zetl mobile · sync</title>
+<style>
+  body {{ font-family: system-ui, sans-serif; max-width: 30em; margin: 0 auto; padding: 1.5em; }}
+  button {{ width: 100%; padding: 0.8em; font-size: 1rem; margin-top: 0.6em; }}
+  h1 {{ font-size: 1.2rem; margin: 0 0 1rem; }}
+  .hint {{ font-size: 0.85em; opacity: 0.7; }}
+  .links {{ font-size: 0.85em; opacity: 0.7; margin-top: 1.5em; display: flex; gap: 1em; }}
+  .links a {{ color: inherit; }}
+  form {{ display: inline; }}
+</style></head>
+<body data-zetl-mobile-route="sync">
+<h1>Sync</h1>
+{banner}
+{key_block}
+<form method="post" action="/_mobile/sync/pull"><button type="submit">Pull (fast-forward only)</button></form>
+<form method="post" action="/_mobile/sync/push"><button type="submit">Push</button></form>
+<div class="links"><a href="/">Pages</a> · <a href="/_mobile/capture">Capture</a> · <a href="/_mobile/onboarding">Onboarding</a></div>
+</body></html>"#,
+    )
+}

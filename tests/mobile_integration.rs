@@ -12,6 +12,12 @@
 //! held for the duration of each test that touches the keystore.
 
 #![cfg(feature = "mobile")]
+// Each #[tokio::test] gets its own current-thread runtime; STATE_LOCK
+// serialises tests that touch the global keystore. Holding the
+// std::sync::Mutex guard across .await is safe here because no other
+// task on the same thread can yield in between, and concurrent tests
+// run on separate OS threads with separate runtimes.
+#![allow(clippy::await_holding_lock)]
 
 use std::sync::Mutex;
 
@@ -182,5 +188,99 @@ async fn onboarding_clone_post_without_seed_routes_back_to_seed_step() {
     assert!(
         body.contains("data-zetl-mobile-route=\"onboarding\""),
         "expected onboarding marker regardless of branch; body={body}"
+    );
+}
+
+// ── Capture POST flow ─────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn capture_get_renders_form() {
+    let app = router();
+    let (status, body) = get(&app, "/_mobile/capture").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("data-zetl-mobile-route=\"capture\""));
+    assert!(
+        body.contains("<textarea"),
+        "expected capture textarea; body={body}"
+    );
+}
+
+#[tokio::test]
+async fn capture_post_writes_file_commits_and_redirects() {
+    let _g = STATE_LOCK.lock().unwrap();
+
+    let vault = tempfile::tempdir().unwrap();
+    git2::Repository::init(vault.path()).unwrap();
+    zetl::mobile_state::set_vault_root(vault.path().to_path_buf());
+
+    let app = router();
+    let form_body = format!(
+        "title={}&content={}",
+        urlencoding::encode("Coffee notes"),
+        urlencoding::encode("Some content\n")
+    );
+    let (status, location, _body) = post_form(&app, "/_mobile/capture", &form_body).await;
+    assert!(
+        matches!(
+            status,
+            StatusCode::SEE_OTHER | StatusCode::TEMPORARY_REDIRECT | StatusCode::FOUND
+        ),
+        "expected redirect after successful capture, got {status}"
+    );
+    let loc = location.expect("redirect should set Location header");
+    assert_eq!(loc, "/Coffee%20notes");
+    let written = std::fs::read_to_string(vault.path().join("Coffee notes.md")).unwrap();
+    assert_eq!(written, "Some content\n");
+}
+
+#[tokio::test]
+async fn capture_post_with_no_vault_root_renders_error() {
+    let _g = STATE_LOCK.lock().unwrap();
+
+    // Set then immediately clear the vault root for this test by
+    // pointing it at a non-existent path. The capture handler will
+    // call mobile_capture::capture which errors on non-dir vault.
+    let nonexistent = std::path::PathBuf::from("/this/path/should/not/exist/zetl-test");
+    zetl::mobile_state::set_vault_root(nonexistent);
+
+    let app = router();
+    let form_body = "title=&content=hello";
+    let (status, _location, body) = post_form(&app, "/_mobile/capture", form_body).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("data-zetl-mobile-error=\"capture\""),
+        "expected capture error block; body={body}"
+    );
+}
+
+// ── Sync controls ─────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn sync_get_renders_buttons() {
+    let app = router();
+    let (status, body) = get(&app, "/_mobile/sync").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("data-zetl-mobile-route=\"sync\""));
+    assert!(body.contains("Pull"));
+    assert!(body.contains("Push"));
+}
+
+#[tokio::test]
+async fn sync_pull_without_vault_root_renders_error() {
+    let _g = STATE_LOCK.lock().unwrap();
+
+    // Force the vault_root cell to None by setting to an empty path
+    // and relying on the handler's error branch. We cannot reset the
+    // OnceLock-backed Mutex contents to None from a public API; use
+    // a fresh tempdir path that exists but has no git repo.
+    let dir = tempfile::tempdir().unwrap();
+    zetl::mobile_state::set_vault_root(dir.path().to_path_buf());
+
+    let app = router();
+    let (status, _location, body) = post_form(&app, "/_mobile/sync/pull", "").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("data-zetl-mobile-sync=\"error\""),
+        "expected sync error block for non-git directory; body={body}"
     );
 }

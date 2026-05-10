@@ -99,29 +99,31 @@ pub fn global() -> &'static KeyStore {
 
 /// Process-wide vault root, registered by the Tauri shell at launch
 /// before the embedded serve task spawns. Onboarding handlers read
-/// this to know where to clone into; capture / save handlers will use
-/// it as the working-tree root.
+/// this to know where to clone into; capture / save handlers use it
+/// as the working-tree root.
 ///
-/// Stored as a `OnceLock` rather than a `Mutex` because a single
-/// device app session uses one vault for its lifetime — switching
-/// vaults requires restarting the app.
-fn vault_root_cell() -> &'static OnceLock<PathBuf> {
-    static CELL: OnceLock<PathBuf> = OnceLock::new();
-    &CELL
+/// Stored behind a `Mutex` rather than a `OnceLock` to keep
+/// integration tests flexible — production code sets the root once
+/// at startup, but tests need to swap it per scenario without
+/// restarting the process.
+fn vault_root_cell() -> &'static Mutex<Option<PathBuf>> {
+    static CELL: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
+    CELL.get_or_init(|| Mutex::new(None))
 }
 
 /// Register the vault root for this process. Called by the Tauri
-/// shell from its `setup()` hook. Subsequent calls are no-ops — the
-/// initial value wins.
+/// shell from its `setup()` hook. Overwrites any previous value.
 pub fn set_vault_root(path: PathBuf) {
-    let _ = vault_root_cell().set(path);
+    if let Ok(mut g) = vault_root_cell().lock() {
+        *g = Some(path);
+    }
 }
 
 /// Vault root, if registered. Returns `None` outside of a Tauri shell
 /// context (e.g. from in-process unit tests that exercise the
-/// `/_mobile/*` handlers without a real shell).
+/// `/_mobile/*` handlers without configuring a vault first).
 pub fn vault_root() -> Option<PathBuf> {
-    vault_root_cell().get().cloned()
+    vault_root_cell().lock().ok().and_then(|g| g.clone())
 }
 
 /// Format an ed25519 public key as the standard `ssh-ed25519 AAAA…
