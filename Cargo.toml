@@ -37,7 +37,11 @@ collab = []
 # (onboarding, capture, sync) consumed by the Tauri Mobile shell when
 # zetl serve is embedded as the mobile UI host. Off by default — desktop
 # serve never registers these routes.
-mobile = []
+#
+# Activates the `ssh` feature on git2 so the mobile_git module's clone
+# / pull / push paths can authenticate against the user's git remote
+# via the BIP39-derived ed25519 key (REQ-4003).
+mobile = ["git2/ssh"]
 # SPEC-033 per-ecosystem feature flags (REQ-3301, NFR-3304). Each flag
 # gates one ecosystem's adapter + translator code at compile time so a
 # minimal zetl build can drop whole ecosystems. `src/ecosystems/` holds
