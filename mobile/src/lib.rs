@@ -22,14 +22,25 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_setup())
         .setup(|app| {
+            let app_data_dir = resolve_app_data_dir(app);
             let vault_root = resolve_vault_root(app);
             let bind_addr = "127.0.0.1".to_string();
             let port: u16 = 23423; // matches tauri.conf.json devUrl
 
-            // Register the vault root before the serve task spawns so
-            // the /_mobile/onboarding handlers can read it from
-            // mobile_state::vault_root() without needing WebState plumbing.
+            // Register both roots before the serve task spawns so the
+            // /_mobile/* handlers can read them from mobile_state.
+            zetl::mobile_state::set_app_data_dir(app_data_dir.clone());
             zetl::mobile_state::set_vault_root(vault_root.clone());
+
+            // Best-effort restore of a previously-persisted SSH key so
+            // the user does not re-enter their seed every launch.
+            // Failures are logged but never block startup — the
+            // onboarding wizard can still recover.
+            match zetl::mobile_state::global().restore(&app_data_dir) {
+                Ok(true) => tracing::info!("restored SSH key from app data dir"),
+                Ok(false) => tracing::info!("no persisted SSH key — onboarding required"),
+                Err(e) => tracing::warn!("ssh key restore failed: {e:#}"),
+            }
 
             tauri::async_runtime::spawn(async move {
                 if let Err(e) =
@@ -45,21 +56,27 @@ pub fn run() {
         .expect("error while running zetl-mobile");
 }
 
-/// On iOS and Android the app data directory is provided by the OS
-/// and lives under the Tauri app's resolver. On desktop we use the
-/// dev fallback at `$HOME/.zetl-mobile/vault` so the dev shell has a
-/// stable place to clone the vault during local iteration.
-fn resolve_vault_root(app: &mut tauri::App) -> PathBuf {
+/// Resolve the platform-appropriate app-data directory. Used for the
+/// vault working tree (under `vault/`) and the persisted SSH key
+/// (`ssh_key.json`).
+fn resolve_app_data_dir(app: &mut tauri::App) -> PathBuf {
     use tauri::Manager;
 
     if let Ok(dir) = app.path().app_data_dir() {
-        let p = dir.join("vault");
-        let _ = std::fs::create_dir_all(&p);
-        return p;
+        let _ = std::fs::create_dir_all(&dir);
+        return dir;
     }
 
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let p = PathBuf::from(home).join(".zetl-mobile").join("vault");
+    let p = PathBuf::from(home).join(".zetl-mobile");
+    let _ = std::fs::create_dir_all(&p);
+    p
+}
+
+/// Vault working-tree root, a subdirectory of the app data dir so
+/// onboarding has a stable place to clone into.
+fn resolve_vault_root(app: &mut tauri::App) -> PathBuf {
+    let p = resolve_app_data_dir(app).join("vault");
     let _ = std::fs::create_dir_all(&p);
     p
 }

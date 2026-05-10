@@ -89,11 +89,21 @@ async fn onboarding_handler() -> Response {
 }
 
 /// `POST /_mobile/onboarding/seed` — accept a 12-word BIP39 mnemonic,
-/// derive the ed25519 SSH key, store it in the process keystore.
+/// derive the ed25519 SSH key, store it in the process keystore, and
+/// persist it to disk so the user does not re-enter the seed on
+/// future launches. Seed-persistence failures do not block the flow;
+/// they are logged and the user proceeds with the in-memory key.
 async fn onboarding_seed_handler(Form(form): Form<SeedForm>) -> Response {
     let keystore = crate::mobile_state::global();
     match keystore.import_mnemonic(form.mnemonic.trim()) {
-        Ok(_) => Redirect::to("/_mobile/onboarding").into_response(),
+        Ok(_) => {
+            if let Some(dir) = crate::mobile_state::app_data_dir() {
+                if let Err(e) = keystore.persist(&dir) {
+                    eprintln!("[zetl-mobile] persist ssh key failed: {e:#}");
+                }
+            }
+            Redirect::to("/_mobile/onboarding").into_response()
+        }
         Err(e) => Html(render_step_seed(Some(&format!("{e:#}")))).into_response(),
     }
 }

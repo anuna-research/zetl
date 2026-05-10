@@ -6,11 +6,23 @@
 //! `/_mobile/*` route handlers in `web::mobile` can import them
 //! without a circular dependency back into `zetl-mobile`.
 //!
-//! v0.1-strawman scope: an in-memory `KeyStore` for the SSH key
-//! derived from the user's BIP39 seed. Persistent storage in the
-//! platform secure element ([[iOS Keychain]] / [[Android Keystore]])
-//! is the next slice; until that ships, the user re-enters the seed
-//! each launch.
+//! v0.1-strawman scope:
+//!
+//! - `KeyStore` — in-memory SSH keypair derived from a BIP39 seed
+//!   (REQ-4003).
+//! - Filesystem persistence at `{app_data_dir}/ssh_key.json` so the
+//!   user does not re-enter the seed on every launch. The seed
+//!   phrase itself is never written to disk; only the derived
+//!   ed25519 keypair (priv_pem + pub_openssh) is persisted.
+//! - Process-wide vault root + app data dir registered by the Tauri
+//!   shell's `setup()` hook.
+//!
+//! v0.1 explicitly does **not** use the platform secure element
+//! ([[iOS Keychain]] / [[Android Keystore]]). The persisted key file
+//! is written with `0o600` permissions on Unix and lives inside the
+//! Tauri-allocated app data directory, which is sandboxed on iOS and
+//! Android. Moving to a real keychain is the next-but-one slice and
+//! happens behind the same `KeyStore` API — no caller changes.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -86,6 +98,82 @@ impl KeyStore {
     pub fn is_loaded(&self) -> bool {
         self.0.lock().ok().is_some_and(|g| g.is_some())
     }
+
+    /// Write the in-memory keypair to `{app_data_dir}/ssh_key.json`
+    /// with `0o600` permissions on Unix. Caller is the onboarding
+    /// POST handler, immediately after a successful
+    /// [`import_mnemonic`]. Returns `Ok(())` even if the file mode
+    /// chmod fails on platforms that don't support it (Windows).
+    pub fn persist(&self, app_data_dir: &std::path::Path) -> Result<()> {
+        let guard = self.0.lock().expect("KeyStore mutex poisoned");
+        let stored = guard
+            .as_ref()
+            .context("no key to persist; call import_mnemonic first")?;
+
+        std::fs::create_dir_all(app_data_dir)
+            .with_context(|| format!("create {}", app_data_dir.display()))?;
+
+        let path = app_data_dir.join("ssh_key.json");
+        let body = serde_json::json!({
+            "schema": "zetl-mobile/ssh_key.v1",
+            "pub_openssh": stored.pub_openssh,
+            "priv_pem": stored.priv_pem,
+        });
+        let json = serde_json::to_string(&body).context("serialise key json")?;
+
+        // Atomic write so a crash mid-persist never leaves the file
+        // half-written. Same idiom as mobile_capture::write_atomic.
+        let tmp = path.with_extension("json.tmp");
+        std::fs::write(&tmp, json.as_bytes())
+            .with_context(|| format!("write {}", tmp.display()))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))
+                .with_context(|| format!("chmod 600 {}", tmp.display()))?;
+        }
+        std::fs::rename(&tmp, &path).with_context(|| format!("rename → {}", path.display()))?;
+        Ok(())
+    }
+
+    /// Try to restore a previously-persisted keypair from
+    /// `{app_data_dir}/ssh_key.json`. Returns `Ok(true)` if a key was
+    /// loaded, `Ok(false)` if the file did not exist (fresh install).
+    /// Errors only on parse failure of an existing file — that's an
+    /// actionable corruption case worth surfacing.
+    pub fn restore(&self, app_data_dir: &std::path::Path) -> Result<bool> {
+        let path = app_data_dir.join("ssh_key.json");
+        if !path.exists() {
+            return Ok(false);
+        }
+        let raw =
+            std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+        let v: serde_json::Value =
+            serde_json::from_str(&raw).with_context(|| format!("parse {}", path.display()))?;
+        let pub_openssh = v["pub_openssh"]
+            .as_str()
+            .context("ssh_key.json missing pub_openssh")?
+            .to_string();
+        let priv_pem = v["priv_pem"]
+            .as_str()
+            .context("ssh_key.json missing priv_pem")?
+            .to_string();
+
+        let mut guard = self.0.lock().expect("KeyStore mutex poisoned");
+        *guard = Some(StoredKey {
+            pub_openssh,
+            priv_pem,
+        });
+        Ok(true)
+    }
+
+    /// Forget any in-memory key. Used by tests to start from a clean
+    /// slate; not currently exposed in the UI.
+    pub fn clear(&self) {
+        if let Ok(mut g) = self.0.lock() {
+            *g = None;
+        }
+    }
 }
 
 /// Process-wide singleton. The first caller (typically the Tauri
@@ -124,6 +212,24 @@ pub fn set_vault_root(path: PathBuf) {
 /// `/_mobile/*` handlers without configuring a vault first).
 pub fn vault_root() -> Option<PathBuf> {
     vault_root_cell().lock().ok().and_then(|g| g.clone())
+}
+
+/// Process-wide app-data dir — typically `~/Library/Application Support/io.anuna.zetl.mobile`
+/// on macOS, the corresponding sandboxed location on iOS / Android.
+/// Used by [`KeyStore::persist`] and [`KeyStore::restore`].
+fn app_data_dir_cell() -> &'static Mutex<Option<PathBuf>> {
+    static CELL: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
+    CELL.get_or_init(|| Mutex::new(None))
+}
+
+pub fn set_app_data_dir(path: PathBuf) {
+    if let Ok(mut g) = app_data_dir_cell().lock() {
+        *g = Some(path);
+    }
+}
+
+pub fn app_data_dir() -> Option<PathBuf> {
+    app_data_dir_cell().lock().ok().and_then(|g| g.clone())
 }
 
 /// Format an ed25519 public key as the standard `ssh-ed25519 AAAA…
@@ -180,5 +286,66 @@ mod tests {
         let line_a = a.import_mnemonic(FIXTURE_MNEMONIC).unwrap();
         let line_b = b.import_mnemonic(FIXTURE_MNEMONIC).unwrap();
         assert_eq!(line_a, line_b, "same seed must yield same pubkey");
+    }
+
+    #[test]
+    fn persist_then_restore_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let original_pub = {
+            let store = KeyStore::new();
+            let pub_line = store.import_mnemonic(FIXTURE_MNEMONIC).unwrap();
+            store.persist(dir.path()).unwrap();
+            pub_line
+        };
+
+        // Fresh KeyStore — no key in memory.
+        let store = KeyStore::new();
+        assert!(!store.is_loaded());
+
+        let loaded = store.restore(dir.path()).unwrap();
+        assert!(loaded);
+        assert!(store.is_loaded());
+        assert_eq!(store.pub_openssh().as_deref(), Some(original_pub.as_str()));
+    }
+
+    #[test]
+    fn restore_on_fresh_install_is_ok_false() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = KeyStore::new();
+        let loaded = store.restore(dir.path()).unwrap();
+        assert!(!loaded);
+        assert!(!store.is_loaded());
+    }
+
+    #[test]
+    fn restore_on_corrupted_file_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("ssh_key.json"), b"{not json")
+            .unwrap();
+        let store = KeyStore::new();
+        let res = store.restore(dir.path());
+        assert!(res.is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn persisted_file_is_mode_600() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let store = KeyStore::new();
+        store.import_mnemonic(FIXTURE_MNEMONIC).unwrap();
+        store.persist(dir.path()).unwrap();
+        let meta = std::fs::metadata(dir.path().join("ssh_key.json")).unwrap();
+        let mode = meta.permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "ssh_key.json must be 0600, got {mode:o}");
+    }
+
+    #[test]
+    fn clear_drops_in_memory_key() {
+        let store = KeyStore::new();
+        store.import_mnemonic(FIXTURE_MNEMONIC).unwrap();
+        assert!(store.is_loaded());
+        store.clear();
+        assert!(!store.is_loaded());
     }
 }
