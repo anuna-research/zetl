@@ -26,6 +26,11 @@ pub fn run() {
             let bind_addr = "127.0.0.1".to_string();
             let port: u16 = 23423; // matches tauri.conf.json devUrl
 
+            // Register the vault root before the serve task spawns so
+            // the /_mobile/onboarding handlers can read it from
+            // mobile_state::vault_root() without needing WebState plumbing.
+            zetl::mobile_state::set_vault_root(vault_root.clone());
+
             tauri::async_runtime::spawn(async move {
                 if let Err(e) =
                     serve_lifecycle::spawn_embedded_serve(vault_root, bind_addr, port).await

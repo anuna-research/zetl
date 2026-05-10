@@ -17,8 +17,7 @@ use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
 use git2::{
-    build::RepoBuilder, Cred, FetchOptions, MergeAnalysis, PushOptions, RemoteCallbacks,
-    Repository,
+    build::RepoBuilder, Cred, FetchOptions, MergeAnalysis, PushOptions, RemoteCallbacks, Repository,
 };
 
 /// Outcome of a `pull` attempt.
@@ -144,13 +143,9 @@ fn ssh_callbacks() -> RemoteCallbacks<'static> {
     let mut cb = RemoteCallbacks::new();
     cb.credentials(|_url, username_from_url, _allowed| {
         let username = username_from_url.unwrap_or("git");
-        let priv_pem = crate::mobile_state::global()
-            .priv_pem()
-            .ok_or_else(|| {
-                git2::Error::from_str(
-                    "no SSH key in keystore — onboard first via /_mobile/onboarding",
-                )
-            })?;
+        let priv_pem = crate::mobile_state::global().priv_pem().ok_or_else(|| {
+            git2::Error::from_str("no SSH key in keystore — onboard first via /_mobile/onboarding")
+        })?;
         Cred::ssh_key_from_memory(username, None, &priv_pem, None)
     });
     cb

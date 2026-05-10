@@ -12,6 +12,7 @@
 //! is the next slice; until that ships, the user re-enters the seed
 //! each launch.
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::{Context, Result};
@@ -94,6 +95,33 @@ impl KeyStore {
 pub fn global() -> &'static KeyStore {
     static INSTANCE: OnceLock<KeyStore> = OnceLock::new();
     INSTANCE.get_or_init(KeyStore::new)
+}
+
+/// Process-wide vault root, registered by the Tauri shell at launch
+/// before the embedded serve task spawns. Onboarding handlers read
+/// this to know where to clone into; capture / save handlers will use
+/// it as the working-tree root.
+///
+/// Stored as a `OnceLock` rather than a `Mutex` because a single
+/// device app session uses one vault for its lifetime — switching
+/// vaults requires restarting the app.
+fn vault_root_cell() -> &'static OnceLock<PathBuf> {
+    static CELL: OnceLock<PathBuf> = OnceLock::new();
+    &CELL
+}
+
+/// Register the vault root for this process. Called by the Tauri
+/// shell from its `setup()` hook. Subsequent calls are no-ops — the
+/// initial value wins.
+pub fn set_vault_root(path: PathBuf) {
+    let _ = vault_root_cell().set(path);
+}
+
+/// Vault root, if registered. Returns `None` outside of a Tauri shell
+/// context (e.g. from in-process unit tests that exercise the
+/// `/_mobile/*` handlers without a real shell).
+pub fn vault_root() -> Option<PathBuf> {
+    vault_root_cell().get().cloned()
 }
 
 /// Format an ed25519 public key as the standard `ssh-ed25519 AAAA…
