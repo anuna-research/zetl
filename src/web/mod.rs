@@ -7,6 +7,8 @@ pub mod git_commit;
 pub mod git_poll;
 pub mod html;
 pub mod markdown;
+#[cfg(feature = "mobile")]
+pub mod mobile;
 pub mod og;
 pub mod rate_limit;
 pub mod robots;
@@ -505,7 +507,15 @@ pub async fn run(
         .merge(auth_routes)
         .merge(ws_routes)
         .merge(asset_routes)
-        .merge(content_routes)
+        .merge(content_routes);
+
+    // SPEC-040 REQ-4005 / CON-4004: mobile-specific routes for the Tauri
+    // Mobile shell. Not behind collab_gate / csrf_guard — mobile is
+    // single-user and the embedded server binds to loopback only.
+    #[cfg(feature = "mobile")]
+    let app = app.merge(mobile::router());
+
+    let app = app
         .with_state(state)
         .layer(middleware::map_response(|mut resp: axum::response::Response| async {
             // Only set CSP if the handler didn't already set one (e.g. the editor).
