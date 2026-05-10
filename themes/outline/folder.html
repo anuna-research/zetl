@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}{{ folder.name }} - zetl{% endblock %}
+{% block chrome_title %}{{ folder.name }}{% endblock %}
+
+{% block content %}
+<main class="main-content">
+  <nav class="breadcrumbs" aria-label="Breadcrumbs">
+    <ul>
+      <li><a href="{{ root_path }}{{ index_file }}">{{ vault.name }}</a></li>
+      {%- for crumb in folder.breadcrumbs %}
+      <li><a href="{{ root_path }}{{ crumb.slug | safe }}/{{ index_file }}">{{ crumb.title }}</a></li>
+      {%- endfor %}
+      <li>{{ folder.name }}</li>
+    </ul>
+  </nav>
+
+  <h1 class="section-title">{{ folder.name }}</h1>
+  <div class="stats-line">
+    <span>{{ folder.total_pages }} pages</span>
+    <span>{{ folder.subfolders | length }} folders</span>
+  </div>
+
+  <div class="outline-toolbar">
+    <input id="folder-filter" class="outline-filter" type="search" placeholder="Filter this folder..." autocomplete="off">
+    <button class="icon-btn" type="button" onclick="openSearch()">Search</button>
+  </div>
+
+  <ul class="outline-list" id="folder-list">
+    {% for sub in folder.subfolders %}
+    <li>
+      <a href="{{ root_path }}{{ sub.slug | safe }}/{{ index_file }}" data-folder-row>
+        <span>{{ sub.name }}/</span>
+        <span class="meta">{{ sub.page_count }} pages</span>
+      </a>
+    </li>
+    {% endfor %}
+    {% for page in folder.pages %}
+    <li>
+      <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}" data-folder-row>
+        <span>{{ page.title }}</span>
+        <span class="meta">{{ page.outlink_count }} out / {{ page.backlink_count }} in</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var input = document.getElementById('folder-filter');
+  var rows = Array.prototype.slice.call(document.querySelectorAll('[data-folder-row]'));
+  if (!input) return;
+  input.addEventListener('input', function(){
+    var q = input.value.trim().toLowerCase();
+    rows.forEach(function(row){
+      row.parentElement.hidden = q && row.textContent.toLowerCase().indexOf(q) === -1;
+    });
+  });
+})();
+</script>
+{% endblock %}

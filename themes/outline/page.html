@@ -1,0 +1,451 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page.title }} - zetl{% endblock %}
+{% block chrome_title %}{{ page.title }}{% endblock %}
+
+{% block topbar_actions %}
+{% if mode == "serve" and page.raw_escaped %}
+<button class="icon-btn" type="button" onclick="toggleEdit()" aria-label="Edit"><span class="btn-text">Edit</span></button>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+{% if page.transclusion_cards %}
+<div class="page-with-panel">
+  <main class="main-content-wide">
+{% else %}
+  <main class="main-content-wide">
+{% endif %}
+    <nav class="breadcrumbs" aria-label="Breadcrumbs">
+      <ul>
+        <li><a href="{{ root_path }}{{ index_file }}">{{ vault.name }}</a></li>
+        {%- for crumb in page.breadcrumbs %}
+        <li><a href="{{ root_path }}{{ crumb.slug | safe }}/{{ index_file }}">{{ crumb.title }}</a></li>
+        {%- endfor %}
+        <li>{{ page.title }}</li>
+      </ul>
+    </nav>
+
+    {% if mode == "serve" %}<div id="view-mode"{% if page.is_new %} style="display:none"{% endif %}>{% endif %}
+      <div class="outline-toolbar" id="outline-toolbar">
+        <input id="outline-filter" class="outline-filter" type="search" placeholder="Filter this page..." autocomplete="off">
+        <button id="outline-collapse" class="icon-btn" type="button" aria-label="Collapse all" title="Collapse all">Collapse</button>
+        <button id="outline-expand" class="icon-btn" type="button" aria-label="Expand all" title="Expand all">Expand</button>
+        <button id="outline-board-toggle" class="icon-btn" type="button" aria-label="Board view" title="Board view">Board</button>
+        {% if mode == "serve" and page.raw_escaped %}
+        <a href="{{ root_path }}_graph?focus={{ page.slug | safe }}&amp;depth=2" data-zetl-spa="off" class="icon-btn" title="Graph">Graph</a>
+        {% endif %}
+      </div>
+      <div id="outline-crumbs" class="outline-crumbs" aria-live="polite"></div>
+      <div id="outline-board" class="outline-board-view" hidden></div>
+      <article id="outline-document" class="prose outline-document">{{ page.content_html | safe }}</article>
+
+      {%- if page.history and page.history.last_changed %}
+      {%- set latest = page.history.recent_changes[0] if page.history.recent_changes else none %}
+      {%- set co_authors = latest.co_authors if (latest and latest.co_authors) else [] %}
+      <footer class="stats-line page-history-meta" aria-label="Page history metadata">
+        <span>Last changed <time datetime="{{ page.history.last_changed }}">{{ page.history.last_changed[:10] }}</time>
+          {%- if latest and latest.author_name %} by <span class="page-history-author">{{ latest.author_name }}</span>
+            {%- if co_authors | length == 1 %} and <span class="page-history-coauthors">{{ co_authors[0][0] }}</span>
+            {%- elif co_authors | length > 1 %} and <span class="page-history-coauthors">{{ co_authors | length }} others</span>
+            {%- endif -%}
+          {%- endif -%}
+        </span>
+        {%- if page.history.stable_days is number and page.history.stable_days > 0 %}
+        <span>stable {{ page.history.stable_days | humanise_days }}</span>
+        {%- endif %}
+        <span><a href="{{ root_path }}{{ page.slug | safe }}/_history{% if mode == 'build' %}.html{% endif %}">history</a></span>
+      </footer>
+      {%- endif %}
+
+      {% if page.backlinks %}
+      <section class="backlinks" aria-labelledby="backlinks-heading">
+        <h2 id="backlinks-heading">Backlinks</h2>
+        <ul>
+          {%- for bl in page.backlinks %}
+          <li>
+            <a href="{{ root_path }}{{ bl.slug | safe }}/{{ index_file }}#line-{{ bl.line }}">{{ bl.title }}</a>
+            {%- if bl.count and bl.count > 1 %}
+            <span class="line-num" aria-label="{{ bl.count }} references">x{{ bl.count }}</span>
+            {%- endif %}
+          </li>
+          {%- endfor %}
+        </ul>
+      </section>
+      {% endif %}
+    {% if mode == "serve" %}</div>{% endif %}
+
+    {% if mode == "serve" and page.raw_escaped %}
+    <div id="edit-mode"{% if not page.is_new %} style="display:none"{% endif %}>
+      {%- if page.is_new %}
+      <div class="new-page-notice" role="status" aria-live="polite">
+        <strong>This page does not exist yet.</strong>
+        <span>Save to create it, or
+          {%- if page.breadcrumbs %}
+            <a href="{{ root_path }}{{ page.breadcrumbs[-1].slug | safe }}/{{ index_file }}">go back to {{ page.breadcrumbs[-1].title }}</a>.
+          {%- else %}
+            <a href="{{ root_path }}{{ index_file }}">go back to {{ vault.name }}</a>.
+          {%- endif %}
+        </span>
+      </div>
+      {%- endif %}
+      <div class="edit-actions">
+        <button onclick="saveEdit()" class="icon-btn" type="button">Save</button>
+        <button onclick="toggleEdit()" class="icon-btn" type="button">Cancel</button>
+      </div>
+      <textarea id="editor" class="edit-textarea">{{ page.raw_escaped | safe }}</textarea>
+    </div>
+    {% endif %}
+  </main>
+
+  {% if page.transclusion_cards %}
+  <aside class="transclusion-panel">
+    <h2 class="tp-header">Linked pages</h2>
+    {{ page.transclusion_cards | safe }}
+  </aside>
+</div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  function ready(fn) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
+    else fn();
+  }
+  function esc(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function headingLevel(el) {
+    return parseInt(el.tagName.slice(1), 10);
+  }
+  function plainText(el) {
+    return String(el.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+  function ensureId(el, i) {
+    if (el.id) return el.id;
+    var base = plainText(el).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || ('outline-' + i);
+    var id = base;
+    var n = 2;
+    while (document.getElementById(id)) id = base + '-' + n++;
+    el.id = id;
+    return id;
+  }
+  function sectionElements(heading) {
+    var out = [];
+    var lvl = headingLevel(heading);
+    var node = heading.nextElementSibling;
+    while (node) {
+      if (/^H[1-6]$/.test(node.tagName) && headingLevel(node) <= lvl) break;
+      out.push(node);
+      node = node.nextElementSibling;
+    }
+    return out;
+  }
+  function ancestorHeadings(heading) {
+    var ancestors = [];
+    var lvl = headingLevel(heading);
+    var node = heading.previousElementSibling;
+    while (node) {
+      if (/^H[1-6]$/.test(node.tagName)) {
+        var nodeLevel = headingLevel(node);
+        if (nodeLevel < lvl) {
+          ancestors.unshift(node);
+          lvl = nodeLevel;
+        }
+      }
+      node = node.previousElementSibling;
+    }
+    return ancestors;
+  }
+  function nearestHeading(block) {
+    if (/^H[1-6]$/.test(block.tagName)) return block;
+    var node = block.previousElementSibling;
+    while (node) {
+      if (/^H[1-6]$/.test(node.tagName)) return node;
+      node = node.previousElementSibling;
+    }
+    return null;
+  }
+  function directBlocks(article) {
+    return Array.prototype.slice.call(article.children).filter(function(el){
+      return !el.matches('script,style');
+    });
+  }
+  function markOutlineBlocks(article) {
+    article.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,blockquote,pre,table').forEach(function(el){
+      el.classList.add('outline-block');
+    });
+  }
+  function wrapInlineTags(article) {
+    var walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT, {
+      acceptNode: function(node) {
+        var parent = node.parentElement;
+        if (!parent || parent.closest('a,code,pre,script,style,button')) return NodeFilter.FILTER_REJECT;
+        return /(^|\s)#[A-Za-z0-9][A-Za-z0-9_/-]*/.test(node.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      }
+    });
+    var nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(function(textNode){
+      var text = textNode.nodeValue;
+      var frag = document.createDocumentFragment();
+      var last = 0;
+      text.replace(/(^|\s)#([A-Za-z0-9][A-Za-z0-9_/-]*)/g, function(match, lead, tag, offset){
+        frag.appendChild(document.createTextNode(text.slice(last, offset) + lead));
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'tag-chip';
+        btn.dataset.tag = '#' + tag;
+        btn.textContent = '#' + tag;
+        frag.appendChild(btn);
+        last = offset + match.length;
+        return match;
+      });
+      frag.appendChild(document.createTextNode(text.slice(last)));
+      textNode.parentNode.replaceChild(frag, textNode);
+    });
+  }
+  function setCollapsed(heading, collapsed) {
+    var id = heading.dataset.outlineId;
+    heading.classList.toggle('outline-open', !collapsed);
+    heading.classList.toggle('outline-folded', collapsed);
+    sectionElements(heading).forEach(function(el){
+      if (collapsed) {
+        if (!el.dataset.outlineFoldedBy) {
+          el.dataset.outlineFoldedBy = id;
+          el.classList.add('outline-hidden');
+        }
+      } else if (el.dataset.outlineFoldedBy === id) {
+        delete el.dataset.outlineFoldedBy;
+        el.classList.remove('outline-hidden');
+      }
+    });
+  }
+  function setupHeadings(article) {
+    var headings = Array.prototype.slice.call(article.querySelectorAll('h1,h2,h3,h4,h5,h6'));
+    headings.forEach(function(h, i){
+      ensureId(h, i);
+      h.dataset.outlineId = h.id;
+      h.classList.add('outline-heading', 'outline-open');
+      if (h.querySelector(':scope > .node-toggle')) return;
+      var toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'node-toggle';
+      toggle.setAttribute('aria-label', 'Toggle section');
+      toggle.addEventListener('click', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        setCollapsed(h, h.classList.contains('outline-open'));
+      });
+      var zoom = document.createElement('button');
+      zoom.type = 'button';
+      zoom.className = 'node-zoom';
+      zoom.setAttribute('aria-label', 'Zoom section');
+      zoom.addEventListener('click', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        zoomToHeading(article, h);
+      });
+      h.insertBefore(toggle, h.firstChild);
+      h.appendChild(zoom);
+    });
+  }
+  function zoomToHeading(article, heading) {
+    var visible = new Set([heading]);
+    sectionElements(heading).forEach(function(el){ visible.add(el); });
+    directBlocks(article).forEach(function(el){
+      el.classList.toggle('zoom-hidden', !visible.has(el));
+    });
+    var crumbs = document.getElementById('outline-crumbs');
+    if (crumbs) {
+      var parts = ancestorHeadings(heading).concat([heading]);
+      crumbs.innerHTML = '<button type="button" data-reset-zoom>All</button>' + parts.map(function(h){
+        return '<span>' + esc(plainText(h).replace(/^Toggle section\s*/, '').trim()) + '</span>';
+      }).join('');
+      crumbs.classList.add('active');
+      crumbs.querySelector('[data-reset-zoom]').addEventListener('click', function(){ resetZoom(article); });
+    }
+    heading.scrollIntoView({ block: 'start' });
+  }
+  function resetZoom(article) {
+    directBlocks(article).forEach(function(el){ el.classList.remove('zoom-hidden'); });
+    var crumbs = document.getElementById('outline-crumbs');
+    if (crumbs) {
+      crumbs.classList.remove('active');
+      crumbs.innerHTML = '';
+    }
+  }
+  function filterArticle(article, query) {
+    var q = query.trim().toLowerCase();
+    var blocks = Array.prototype.slice.call(article.querySelectorAll('.outline-block'));
+    blocks.forEach(function(el){
+      el.classList.remove('filter-hidden', 'filter-hit');
+    });
+    if (!q) return;
+    var visible = new Set();
+    blocks.forEach(function(el){
+      var match = plainText(el).toLowerCase().indexOf(q) !== -1;
+      if (!match) return;
+      visible.add(el);
+      el.classList.add('filter-hit');
+      var h = nearestHeading(el);
+      if (h) {
+        visible.add(h);
+        ancestorHeadings(h).forEach(function(a){ visible.add(a); });
+      }
+      if (/^H[1-6]$/.test(el.tagName)) {
+        sectionElements(el).forEach(function(child){
+          if (plainText(child).toLowerCase().indexOf(q) !== -1) visible.add(child);
+        });
+      }
+      var liParent = el.parentElement && el.parentElement.closest('li');
+      while (liParent && article.contains(liParent)) {
+        visible.add(liParent);
+        liParent = liParent.parentElement && liParent.parentElement.closest('li');
+      }
+    });
+    blocks.forEach(function(el){
+      el.classList.toggle('filter-hidden', !visible.has(el));
+    });
+  }
+  function buildBoard(article, board) {
+    var headings = Array.prototype.slice.call(article.querySelectorAll('h2,h3'));
+    var preferred = /^(todo|to do|doing|in progress|done|backlog|blocked|review|waiting|next)$/i;
+    var columns = headings.filter(function(h){ return preferred.test(plainText(h)); });
+    if (!columns.length) columns = headings.filter(function(h){ return h.tagName === 'H2'; });
+    board.innerHTML = '';
+    columns.slice(0, 8).forEach(function(h){
+      var column = document.createElement('section');
+      column.className = 'board-column';
+      var title = document.createElement('h2');
+      title.textContent = plainText(h);
+      var items = document.createElement('div');
+      items.className = 'board-items';
+      sectionElements(h).forEach(function(el){
+        if (/^H[1-6]$/.test(el.tagName) && headingLevel(el) <= headingLevel(h)) return;
+        if (/^H[1-6]$/.test(el.tagName)) return;
+        items.appendChild(el.cloneNode(true));
+      });
+      if (!items.children.length) {
+        var empty = document.createElement('p');
+        empty.textContent = 'No items';
+        items.appendChild(empty);
+      }
+      column.appendChild(title);
+      column.appendChild(items);
+      board.appendChild(column);
+    });
+    return board.children.length > 0;
+  }
+  function setupBoard(article) {
+    var board = document.getElementById('outline-board');
+    var toggle = document.getElementById('outline-board-toggle');
+    if (!board || !toggle) return;
+    var active = false;
+    toggle.addEventListener('click', function(){
+      if (!active) {
+        if (!buildBoard(article, board)) return;
+        board.hidden = false;
+        article.hidden = true;
+        active = true;
+        toggle.classList.add('active');
+      } else {
+        board.hidden = true;
+        article.hidden = false;
+        active = false;
+        toggle.classList.remove('active');
+      }
+    });
+  }
+  function enhancePage() {
+    var article = document.getElementById('outline-document');
+    if (!article || article.dataset.outlineEnhanced) return;
+    article.dataset.outlineEnhanced = 'true';
+    markOutlineBlocks(article);
+    wrapInlineTags(article);
+    setupHeadings(article);
+    setupBoard(article);
+    var filter = document.getElementById('outline-filter');
+    if (filter) filter.addEventListener('input', function(){ filterArticle(article, filter.value); });
+    document.querySelectorAll('.tag-chip').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        if (!filter) return;
+        filter.value = btn.dataset.tag || btn.textContent;
+        filterArticle(article, filter.value);
+        filter.focus();
+      });
+    });
+    var collapse = document.getElementById('outline-collapse');
+    var expand = document.getElementById('outline-expand');
+    if (collapse) collapse.addEventListener('click', function(){
+      article.querySelectorAll('.outline-heading').forEach(function(h){ if (headingLevel(h) > 1) setCollapsed(h, true); });
+    });
+    if (expand) expand.addEventListener('click', function(){
+      article.querySelectorAll('.outline-heading').forEach(function(h){ setCollapsed(h, false); });
+    });
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape') resetZoom(article);
+      if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && document.activeElement && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) {
+        e.preventDefault();
+        if (filter) filter.focus();
+      }
+    });
+  }
+  function setupTransclusionHover() {
+    var cards = document.querySelectorAll('.transclusion-card');
+    cards.forEach(function(card){
+      var href = card.dataset.targetHref;
+      card.addEventListener('mouseenter', function(){
+        card.classList.add('tc-active');
+        document.querySelectorAll('a.wikilink[href="' + href + '"]').forEach(function(link){ link.classList.add('wl-active'); });
+      });
+      card.addEventListener('mouseleave', function(){
+        card.classList.remove('tc-active');
+        document.querySelectorAll('a.wl-active').forEach(function(link){ link.classList.remove('wl-active'); });
+      });
+    });
+    document.querySelectorAll('a.wikilink').forEach(function(link){
+      var href = link.getAttribute('href');
+      link.addEventListener('mouseenter', function(){
+        var card = document.querySelector('.transclusion-card[data-target-href="' + href + '"]');
+        if (card) card.classList.add('tc-active');
+      });
+      link.addEventListener('mouseleave', function(){
+        document.querySelectorAll('.transclusion-card.tc-active').forEach(function(card){ card.classList.remove('tc-active'); });
+      });
+    });
+  }
+  ready(function(){
+    enhancePage();
+    setupTransclusionHover();
+  });
+})();
+</script>
+{% if mode == "serve" %}
+<script>
+function toggleEdit() {
+  var vm = document.getElementById('view-mode');
+  var em = document.getElementById('edit-mode');
+  if (!vm || !em) return;
+  if (em.style.display === 'none') {
+    em.style.display = 'block';
+    vm.style.display = 'none';
+  } else {
+    em.style.display = 'none';
+    vm.style.display = 'block';
+  }
+}
+async function saveEdit() {
+  var content = document.getElementById('editor').value;
+  var csrf = document.cookie.split(';').map(function(c){ return c.trim(); }).find(function(c){ return c.startsWith('zetl_csrf='); });
+  var headers = { 'Content-Type': 'text/plain; charset=utf-8' };
+  if (csrf) headers['X-CSRF-Token'] = csrf.split('=')[1];
+  var res = await fetch(window.location.pathname, { method: 'PUT', headers: headers, body: content });
+  if (res.ok) window.location.href = window.location.pathname + '?t=' + Date.now();
+  else alert('Save failed: ' + res.status);
+}
+</script>
+{% endif %}
+{% endblock %}
