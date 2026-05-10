@@ -4,12 +4,30 @@ Tauri Mobile shell for [SPEC-040](../specs/SPEC-040-zetl-mobile.md) —
 embeds `zetl serve` (single-user) inside an iOS / Android app and
 serves the existing web UI through a WebView.
 
-> **Status:** v0.1.0-strawman. The Rust shell boots, embeds serve
-> via `zetl::web::launch_default`, and the WebView loads pages from
-> the embedded server. Onboarding (BIP39 seed → SSH key derivation
-> → git clone), capture / save / push, and share-extension intake
-> are scaffolded as `/_mobile/*` routes but the POST handlers are
-> not yet wired — see SPEC-040 §1.5 and the open ADR-* items.
+> **Status:** v0.1.0-strawman. Working today, end to end on the
+> desktop dev shell:
+>
+> - Tauri shell boots → embeds `zetl serve` → WebView loads it.
+> - Onboarding wizard: paste BIP39 seed → derive ed25519 SSH key →
+>   user adds pubkey to git host → paste remote URL → clone runs
+>   → vault populated. SSH key is persisted to
+>   `{app_data_dir}/ssh_key.json` (0o600 on Unix) so subsequent
+>   launches skip the seed step.
+> - Capture: `/_mobile/capture` form writes atomically + commits +
+>   best-effort pushes. Auto-titles fall back to first-line or
+>   `Inbox YYYY-MM-DD-HHMM`.
+> - Sync: `/_mobile/sync` has manual Pull (FF-only) and Push
+>   buttons. Non-FF pull surfaces a "resolve on desktop" conflict
+>   banner.
+> - Read / edit: delegated to the existing serve UI verbatim —
+>   themes, [[wikilinks]], backlinks, transclusion, CodeMirror 6
+>   editor, search, graph (collapsed below the responsive
+>   breakpoint).
+>
+> **Still TODO** before full SPEC-040 v0.1 acceptance: real
+> Minijinja templates for `/_mobile/*` (currently inline HTML);
+> platform secure-element key storage (currently JSON file);
+> iOS Share Extension + Android share-target intake (REQ-4007).
 
 ## Architecture
 
@@ -114,32 +132,42 @@ cargo tauri ios build
 
 ## Known limitations (v0.1-strawman)
 
-- **No onboarding wiring.** `/_mobile/onboarding` returns a placeholder
-  page; the BIP39 → SSH-key → keychain → git-clone path is the next
-  scheduled slice.
 - **No share-extension targets.** iOS Share Extension and Android
-  `ACTION_SEND` activity stubs are not yet present.
-- **No git pull/push.** `/_mobile/sync` is a placeholder.
-- **No keychain glue.** SSH key storage relies on the platform secure
-  element, which lands with the keys module.
-- **Empty vault on first run.** Until clone is wired, the page list is
-  empty. The embedded server still starts and the WebView still loads
-  it — useful for verifying the pipeline.
+  `ACTION_SEND` activity stubs are not yet present, so "share to zetl
+  mobile" from another app does nothing. Capture is FAB-only.
+- **No platform secure-element key storage.** The persisted SSH key
+  is a plaintext JSON file in the app data dir (0o600 on Unix). iOS
+  and Android sandbox app data per-app, but a jailbroken / rooted
+  device + forensics would surface the key. iOS Keychain / Android
+  Keystore integration is the next slice.
+- **Inline HTML for /_mobile/* routes.** The onboarding, capture,
+  and sync pages are inline `format!()`-built HTML rather than
+  rendered through the active Minijinja theme. They work but don't
+  pick up theme typography / colour overrides.
 - **Hardcoded port 23423.** Loopback-bound. A future slice can
   randomize the port and pass it to the WebView via a Tauri command
   rather than `tauri.conf.json` `devUrl`.
+- **Empty vault until onboarding completes.** Fresh install with no
+  cloned vault → empty page list. The user navigates to
+  `/_mobile/onboarding` to clone.
 
 ## Implementation map (SPEC-040 trace)
 
-| Component              | File                           | Status                           |
-| ---------------------- | ------------------------------ | -------------------------------- |
-| Tauri shell entry      | `src/lib.rs`                   | ✅ Boots, spawns serve            |
-| Embed lifecycle        | `src/serve_lifecycle.rs`       | ✅ Calls launch_default           |
-| WebView loader         | `dist/index.html`              | ✅ Polls + redirects              |
-| `/_mobile/onboarding`  | `../src/web/mobile.rs`         | 🟡 GET placeholder; POST pending  |
-| `/_mobile/capture`     | `../src/web/mobile.rs`         | 🟡 GET placeholder; POST pending  |
-| `/_mobile/sync`        | `../src/web/mobile.rs`         | 🟡 GET placeholder; POST pending  |
-| Keys (`BIP39`→ed25519) | not yet                        | ⬜ Reuses `zetl derive-ssh-key`   |
-| Git ops (clone/pull/push) | not yet                     | ⬜ git2-rs wrapper                |
-| Keychain bridge        | not yet                        | ⬜ Tauri plugin                   |
-| Share-ext intake       | not yet                        | ⬜ iOS/Android platform glue      |
+| Component                | File                            | Status                       |
+| ------------------------ | ------------------------------- | ---------------------------- |
+| Tauri shell entry        | `src/lib.rs`                    | ✅ Boots, spawns serve        |
+| Embed lifecycle          | `src/serve_lifecycle.rs`        | ✅ Calls launch_default       |
+| WebView loader           | `dist/index.html`               | ✅ Polls + redirects          |
+| Keys (BIP39→ed25519)     | `../src/mobile_state.rs`        | ✅ In-memory + JSON persist   |
+| Git ops (clone/pull/push)| `../src/mobile_git.rs`          | ✅ git2-rs + SSH callback     |
+| Capture (write+commit)   | `../src/mobile_capture.rs`      | ✅ Atomic write + auto-title  |
+| `/_mobile/onboarding`    | `../src/web/mobile.rs`          | ✅ Two-step wizard            |
+| `/_mobile/capture`       | `../src/web/mobile.rs`          | ✅ GET form + POST handler    |
+| `/_mobile/sync`          | `../src/web/mobile.rs`          | ✅ Pull/Push buttons          |
+| Keychain (platform)      | not yet                         | ⬜ iOS/Android secure-element |
+| Share-ext intake         | not yet                         | ⬜ iOS/Android platform glue  |
+| Minijinja templates      | not yet                         | ⬜ Theme-aware /_mobile/*     |
+
+**Test counts:** 19 unit (`cargo test --features mobile --lib mobile_`)
++ 12 integration (`cargo test --features mobile --test mobile_integration`)
++ 4 existing-route tests = **35 passing** on this branch.
