@@ -1,0 +1,36 @@
+[package]
+name = "zetl-mobile"
+version = "0.1.0-strawman"
+edition = "2021"
+description = "zetl mobile — basic local-first phone app (SPEC-040)"
+license = "AGPL-3.0-or-later"
+publish = false
+
+# Tauri Mobile build targets both a desktop binary (the dev shell) and
+# iOS / Android via cargo-tauri's mobile subcommands. The lib crate is
+# the entry point shared across all targets; the bin crate is the
+# desktop launcher that just calls into the lib.
+[lib]
+name = "zetl_mobile_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "zetl-mobile"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+
+# Depend on the parent zetl crate as a library, with the mobile feature
+# enabled so the /_mobile/* routes register and any future mobile-only
+# code paths are compiled in.
+zetl = { path = "..", default-features = false, features = ["mobile"] }

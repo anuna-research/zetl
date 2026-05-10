@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>zetl mobile</title>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; background: #fff; color: #111; font-family: system-ui, -apple-system, sans-serif; }
+    @media (prefers-color-scheme: dark) { html, body { background: #111; color: #eee; } }
+    .loader { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 1rem; padding: 1rem; text-align: center; }
+    .loader h1 { margin: 0; font-weight: 500; font-size: 1.05rem; opacity: 0.8; }
+    .loader p { margin: 0; font-size: 0.9rem; opacity: 0.55; max-width: 28em; line-height: 1.45; }
+    .spinner { width: 2rem; height: 2rem; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; opacity: 0.5; animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="loader">
+    <div class="spinner"></div>
+    <h1>zetl mobile</h1>
+    <p>Loading the embedded server…</p>
+  </div>
+
+  <script>
+    // The Tauri shell spawns an embedded zetl serve at this URL on
+    // startup (SPEC-040 REQ-4004). We poll until it's reachable, then
+    // navigate the WebView to it. This is the v0.1 strawman approach;
+    // a future slice can replace the polling loop with a programmatic
+    // WebView URL set from the Rust setup() hook.
+    const target = "http://127.0.0.1:23423/";
+
+    async function probe() {
+      try {
+        const r = await fetch(target, { method: "GET", cache: "no-store" });
+        if (r.ok || r.status === 401 || r.status === 403) return true;
+      } catch (_) {}
+      return false;
+    }
+
+    (async () => {
+      for (let i = 0; i < 60; i++) {
+        if (await probe()) {
+          window.location.replace(target);
+          return;
+        }
+        await new Promise(r => setTimeout(r, 250));
+      }
+      document.querySelector(".loader p").textContent =
+        "Could not reach the embedded server after 15s. Check Diagnostics.";
+    })();
+  </script>
+</body>
+</html>

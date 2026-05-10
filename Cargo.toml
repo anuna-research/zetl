@@ -14,7 +14,7 @@ readme = "README.md"
 # diamond-types-spike is an IMPL-029 phase-0 spike that pins its own deps
 # and must stay standalone.
 [workspace]
-members = ["tools/zetl-ast-reference-gen", "tools/xtask"]
+members = ["tools/zetl-ast-reference-gen", "tools/xtask", "mobile"]
 exclude = ["tools/diamond-types-spike"]
 
 [profile.release]
