@@ -50,6 +50,21 @@ if ! grep -q 'networkSecurityConfig' "$MANIFEST"; then
   perl -i -pe 's|(android:usesCleartextTraffic="\$\{usesCleartextTraffic\}")|android:networkSecurityConfig="\@xml/network_security_config"\n        $1|' "$MANIFEST"
 fi
 
+# ── RustWebView.kt: allow mixed content ──────────────────────────────────────
+# Tauri loads the WebView from `https://tauri.localhost/` (the bundled
+# dist/) and then we navigate it programmatically to
+# `http://127.0.0.1:23423/_mobile/...`. The HTTPS → HTTP hop is treated
+# as mixed content by Android WebView, which defaults to
+# `MIXED_CONTENT_NEVER_ALLOW` on API 21+ — the resulting error
+# surfaces as `net::ERR_CLEARTEXT_NOT_PERMITTED` even when NSC
+# explicitly allows cleartext for 127.0.0.1. Flip the WebView to
+# `MIXED_CONTENT_ALWAYS_ALLOW`. NSC still scopes the cleartext reach
+# to loopback, so this only opens HTTP for `127.0.0.1` / `localhost`.
+WEBVIEW="$ANDROID_PROJECT/app/src/main/java/io/anuna/zetl/mobile/generated/RustWebView.kt"
+if [ -f "$WEBVIEW" ] && ! grep -q 'mixedContentMode' "$WEBVIEW"; then
+  perl -i -pe 's|(settings\.javaScriptEnabled = true)|$1\n        settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW|' "$WEBVIEW"
+fi
+
 # ── build.gradle.kts: flip release usesCleartextTraffic to "true" ────────────
 # Some Android WebView versions consult the manifest's
 # `usesCleartextTraffic` flag *before* falling through to the
