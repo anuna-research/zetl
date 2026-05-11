@@ -10,8 +10,10 @@
     .loader { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 1rem; padding: 1rem; text-align: center; }
     .loader h1 { margin: 0; font-weight: 500; font-size: 1.05rem; opacity: 0.8; }
     .loader p { margin: 0; font-size: 0.9rem; opacity: 0.55; max-width: 28em; line-height: 1.45; }
+    .loader p.err { color: #b00; opacity: 1; }
     .spinner { width: 2rem; height: 2rem; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; opacity: 0.5; animation: spin 0.9s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    a { color: inherit; }
   </style>
 </head>
 <body>
@@ -22,42 +24,32 @@
   </div>
 
   <script>
-    // The Tauri shell spawns an embedded zetl serve at this URL on
-    // startup (SPEC-040 REQ-4004). We poll the onboarding route until
-    // it's reachable, then send the WebView there — the onboarding
-    // handler routes the user to step 1, step 2, or redirects to /
-    // depending on the keystore + vault state, so this single entry
-    // point covers fresh-install, partial-onboarding, and
-    // already-set-up cases.
-    const probeUrl = "http://127.0.0.1:23423/_mobile/onboarding";
+    // The Tauri WebView is at `tauri://localhost` origin; the embedded
+    // serve listens on `http://127.0.0.1:23423`. fetch() between these
+    // origins is CORS-blocked by default, but a top-level navigation
+    // (window.location.replace) is NOT subject to CORS — that's how
+    // we hop into the embedded serve's UI. The serve typically binds
+    // within ~1s of the shell launching; the small delay below lets
+    // it come up before we navigate.
+    //
+    // /_mobile/vaults is the safe entry point: it renders content in
+    // every state (empty vault list with "Add one" CTA on fresh
+    // install, or the picker with the active+other vaults if anything
+    // has been cloned). From there the user reaches /, capture, sync,
+    // onboarding etc. via in-page links.
+    const target = "http://127.0.0.1:23423/_mobile/vaults";
 
-    async function probe() {
-      try {
-        const r = await fetch(probeUrl, {
-          method: "GET",
-          cache: "no-store",
-          redirect: "manual",
-        });
-        // Any of these status codes mean the server is up and
-        // responsive: a normal render (200), a redirect to /
-        // (3xx — onboarding already complete), or an auth-style
-        // 401/403 (won't happen on /_mobile but cheap to check).
-        if (r.status >= 200 && r.status < 500) return true;
-      } catch (_) {}
-      return false;
-    }
+    function go() { window.location.replace(target); }
 
-    (async () => {
-      for (let i = 0; i < 60; i++) {
-        if (await probe()) {
-          window.location.replace(probeUrl);
-          return;
-        }
-        await new Promise(r => setTimeout(r, 250));
-      }
-      document.querySelector(".loader p").textContent =
-        "Could not reach the embedded server after 15s. Check Diagnostics.";
-    })();
+    // Most launches: server is up within ~800ms. Generous safety
+    // margin keeps the WebView from racing the embedded serve.
+    setTimeout(go, 1200);
   </script>
+
+  <noscript>
+    <div class="loader">
+      <p class="err">JavaScript is required. Open <a href="http://127.0.0.1:23423/_mobile/vaults">/_mobile/vaults</a> manually.</p>
+    </div>
+  </noscript>
 </body>
 </html>

@@ -25,7 +25,7 @@ pub fn run() {
             let app_data_dir = resolve_app_data_dir(app);
             let vault_root = resolve_vault_root(app);
             let bind_addr = "127.0.0.1".to_string();
-            let port: u16 = 23423; // matches tauri.conf.json devUrl
+            let port: u16 = 23423;
 
             // Register both roots before the serve task spawns so the
             // /_mobile/* handlers can read them from mobile_state.
@@ -33,26 +33,15 @@ pub fn run() {
             zetl::mobile_state::set_vault_root(vault_root.clone());
 
             // Migrate any legacy single-vault layout into the multi-
-            // vault `vaults/<label>/` structure (idempotent — no-op on
-            // fresh install or already-multi-vault). After this call,
-            // `vault_root` is a symlink (or doesn't exist yet) and
-            // `vaults_dir` is populated.
+            // vault `vaults/<label>/` structure (idempotent).
             if let Err(e) =
                 zetl::mobile_state::migrate_single_vault_layout(&app_data_dir)
             {
                 tracing::warn!("vault layout migration failed: {e:#}");
             }
 
-            // Restore previously-persisted SSH key if present; otherwise
-            // auto-generate a fresh per-device keypair so the user is
-            // never asked to paste a seed phrase by default. The
-            // generated key is immediately persisted so subsequent
-            // launches reuse the same device identity.
-            //
-            // BIP39 seed import remains available via
-            // POST /_mobile/onboarding/seed for users who want their
-            // phone to share an identity with a desktop they already
-            // provisioned via `zetl derive-ssh-key --mnemonic`.
+            // Restore previously-persisted SSH key if present;
+            // otherwise auto-generate a fresh per-device keypair.
             let keystore = zetl::mobile_state::global();
             match keystore.restore(&app_data_dir) {
                 Ok(true) => tracing::info!("restored SSH key from app data dir"),
@@ -75,6 +64,45 @@ pub fn run() {
                     tracing::error!("embedded zetl serve failed: {e:?}");
                 }
             });
+
+            // Bypass the bundled dist/index.html entirely: as soon as
+            // the embedded serve is reachable, navigate the main
+            // WebView directly at /_mobile/vaults via Tauri's
+            // programmatic navigate() API. This avoids the
+            // tauri://localhost → http://127.0.0.1 fetch-CORS dance
+            // that left the WebView stuck on a loading screen.
+            //
+            // The poll loop is generous: server typically binds in
+            // <1s but we keep retrying for 30s in case the host is
+            // slow on app cold-start.
+            use tauri::Manager;
+            if let Some(window) = app.get_webview_window("main") {
+                tauri::async_runtime::spawn(async move {
+                    let target = "http://127.0.0.1:23423/_mobile/vaults";
+                    let mut tries = 0;
+                    loop {
+                        if std::net::TcpStream::connect_timeout(
+                            &"127.0.0.1:23423".parse().unwrap(),
+                            std::time::Duration::from_millis(500),
+                        )
+                        .is_ok()
+                        {
+                            if let Ok(url) = target.parse() {
+                                let _ = window.navigate(url);
+                            }
+                            break;
+                        }
+                        tries += 1;
+                        if tries > 60 {
+                            tracing::error!(
+                                "embedded serve not reachable after 30s — WebView stuck"
+                            );
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    }
+                });
+            }
 
             Ok(())
         })
