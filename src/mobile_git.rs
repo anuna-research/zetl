@@ -300,39 +300,43 @@ fn require_keystore_loaded() -> Result<()> {
 /// errors out with `error loading known_hosts; class=Ssh (23)` before
 /// our `certificate_check` callback even gets to override it.
 ///
-/// Ensure an empty `known_hosts` exists under the app data dir and
-/// point `$HOME` at that dir. The empty file means TOFU still happens
-/// in our certificate_check callback (every host is "unknown" → we
-/// accept on first sight), but libssh2's init step succeeds.
+/// libgit2's SSH transport behaviour:
+///
+/// - If `$HOME/.ssh/known_hosts` does NOT exist, `git_sysdir_find_global_file`
+///   returns `GIT_ENOTFOUND` and the SSH transport skips the read.
+///   Host verification then falls through to our `certificate_check`
+///   callback (which accepts TOFU).
+/// - If the file DOES exist but `libssh2_knownhost_readfile` fails on it
+///   (e.g., for an empty file libssh2 quirkily returns negative with an
+///   empty error message), the transport aborts with
+///   `error loading known_hosts; class=Ssh (23)` and our callback never
+///   fires.
+///
+/// First-pass fix created an empty file; that tripped the second case
+/// on Android. Inverting: guarantee the file does NOT exist so libgit2
+/// skips known_hosts entirely. Set `$HOME` to a real directory so other
+/// libgit2 features that need a home (global config search, etc.) keep
+/// working.
 pub fn ensure_known_hosts_file() {
     let Some(app_data) = crate::mobile_state::app_data_dir() else {
         return;
     };
     let ssh_dir = app_data.join(".ssh");
     let known_hosts = ssh_dir.join("known_hosts");
-    if !known_hosts.exists() {
-        if let Err(e) = std::fs::create_dir_all(&ssh_dir) {
-            eprintln!("[zetl-mobile] mkdir {} failed: {e:#}", ssh_dir.display());
-            return;
-        }
-        if let Err(e) = std::fs::write(&known_hosts, b"") {
-            eprintln!(
-                "[zetl-mobile] write empty known_hosts {} failed: {e:#}",
-                known_hosts.display()
-            );
-            return;
-        }
-    }
-    // Point HOME at app_data so libssh2 looks at our empty file.
-    // Idempotent — only sets if libssh2 would otherwise miss it.
-    // SAFETY: setting an environment variable touches process-wide
-    // state and is technically unsound if another thread is also
-    // reading the environment concurrently. In practice every clone /
-    // pull / push goes through this path before any other thread
-    // touches HOME, and the value is stable across the process'
-    // lifetime — call it before spawning any task that reads HOME.
+    // ENOENT on either of these is the goal — ignore errors.
+    let _ = std::fs::remove_file(&known_hosts);
+    let _ = std::fs::remove_dir(&ssh_dir);
+
+    // Set HOME so libgit2's homedir resolution succeeds. Finding no
+    // .ssh dir yields ENOTFOUND, libgit2 skips known_hosts, the SSH
+    // handshake proceeds, and our certificate_check callback accepts
+    // on first sight.
+    //
+    // SAFETY: `std::env::set_var` is technically unsound in 2024
+    // edition because libc setenv isn't thread-safe — but this runs
+    // from the Tauri setup() hook before any other thread touches
+    // HOME and before libgit2 has cached its homedir.
     if std::env::var_os("HOME").as_deref() != Some(app_data.as_os_str()) {
-        // unsafe in 2024 edition; the parent crate is on 2021.
         std::env::set_var("HOME", &app_data);
     }
 }
