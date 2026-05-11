@@ -496,6 +496,42 @@ async fn vaults_remove_wipes_local_dir_but_preserves_keystore() {
 }
 
 #[tokio::test]
+async fn vaults_remove_rejects_traversal_labels() {
+    let _g = STATE_LOCK.lock().unwrap();
+
+    // POST a label containing `..` to confirm the allow-list check
+    // blocks the remove before remove_dir_all can escape `vaults/`.
+    let tmp = tempfile::tempdir().unwrap();
+    let app_data = tmp.path().join("app-data");
+    let vaults = app_data.join("vaults");
+    std::fs::create_dir_all(vaults.join("alpha")).unwrap();
+    git2::Repository::init(vaults.join("alpha")).unwrap();
+    // Sibling dir that an attacker would try to wipe via `../sibling`.
+    let sibling = app_data.join("sibling");
+    std::fs::create_dir_all(&sibling).unwrap();
+    std::fs::write(sibling.join("important.txt"), b"do not delete").unwrap();
+    zetl::mobile_state::set_app_data_dir(app_data.clone());
+    zetl::mobile_state::set_vault_root(app_data.join("vault"));
+
+    let app = router();
+    let (status, _location, body) =
+        post_form(&app, "/_mobile/vaults/remove", "label=..%2Fsibling").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("data-zetl-mobile-vaults-msg=\"error\""),
+        "traversal label should produce an error banner; body={body}"
+    );
+    assert!(
+        sibling.join("important.txt").exists(),
+        "sibling dir must be untouched after traversal attempt"
+    );
+    assert!(
+        vaults.join("alpha").exists(),
+        "legitimate vault must also be untouched"
+    );
+}
+
+#[tokio::test]
 async fn vaults_remove_active_vault_promotes_another_or_clears_symlink() {
     let _g = STATE_LOCK.lock().unwrap();
 

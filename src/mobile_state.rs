@@ -869,7 +869,15 @@ pub fn set_vault_data_handle(handle: Arc<std::sync::RwLock<crate::web::VaultData
 }
 
 /// Re-scan the active vault and swap the embedded serve's
-/// `VaultData` in place. Returns the new page count on success.
+/// `VaultData` in place. Also rebuilds the on-disk Tantivy index so
+/// `/api/search` reflects the post-pull / post-capture state — the
+/// `Arc<SearchIndex>` already held by `WebState` re-reads the new
+/// commit thanks to tantivy's `ReloadPolicy::OnCommitWithDelay`. The
+/// cross-vault swap case (active vault changed to a different label)
+/// is not fully covered by this — the in-memory index instance was
+/// opened against the previous directory; queries may surface stale
+/// hits until the process restarts. Treated as a known limitation for
+/// the v0.1 mobile slice. Returns the new page count on success.
 pub fn trigger_reindex() -> Result<usize> {
     let handle = {
         let guard = vault_data_handle_cell().lock().expect("handle mutex");
@@ -880,6 +888,15 @@ pub fn trigger_reindex() -> Result<usize> {
     let vault_root = vault_root().context("vault_root not registered")?;
     let new = crate::web::reindex(&vault_root).context("reindex failed")?;
     let count = new.page_names.len();
+
+    // Rebuild the on-disk Tantivy index so /api/search reflects the
+    // current page set. Failures are logged but non-fatal — the page
+    // list is the primary signal; stale search is a degraded but
+    // recoverable state (next save / fs-watch cycle rebuilds it).
+    if let Err(e) = crate::search_index::SearchIndex::build(&vault_root, &new.files) {
+        eprintln!("[zetl-mobile] post-reindex search index rebuild failed: {e:#}");
+    }
+
     let mut w = handle.write().expect("vault data rwlock");
     *w = new;
     Ok(count)

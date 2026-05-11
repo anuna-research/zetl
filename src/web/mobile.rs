@@ -478,6 +478,14 @@ async fn capture_post_handler(Form(form): Form<CaptureForm>) -> Response {
 
     match outcome {
         Ok(Ok(o)) => {
+            // Refresh the embedded serve's snapshot before we redirect
+            // to the new page — page_handler reads from in-memory
+            // VaultData, so without this the immediate GET would render
+            // the "page does not exist yet" edit state until the async
+            // fs-watcher catches up.
+            if let Err(e) = crate::mobile_state::trigger_reindex() {
+                eprintln!("[zetl-mobile] post-capture reindex failed: {e:#}");
+            }
             // Best-effort push: spawn-blocking-and-forget so the redirect
             // doesn't wait on network. Failures are logged and surface
             // through /_mobile/sync's pending count once that ships.
@@ -533,12 +541,25 @@ async fn sync_pull_handler() -> Response {
         Ok(Ok(crate::mobile_git::PullOutcome::UpToDate)) => {
             SyncMsg::Ok("Already up to date.".into())
         }
-        Ok(Ok(crate::mobile_git::PullOutcome::FastForwarded { from, to })) => SyncMsg::Ok(format!(
-            "Fast-forwarded {} → {}",
-            &from[..8.min(from.len())],
-            &to[..8.min(to.len())]
-        )),
+        Ok(Ok(crate::mobile_git::PullOutcome::FastForwarded { from, to })) => {
+            // The FF checkout changed files on disk. Refresh the
+            // embedded serve's in-memory VaultData (page list, link
+            // graph, search index) so the next render reflects what
+            // the user just pulled — otherwise the UI continues to
+            // show the pre-pull vault until a watcher event fires.
+            if let Err(e) = crate::mobile_state::trigger_reindex() {
+                eprintln!("[zetl-mobile] post-pull reindex failed: {e:#}");
+            }
+            SyncMsg::Ok(format!(
+                "Fast-forwarded {} → {}",
+                &from[..8.min(from.len())],
+                &to[..8.min(to.len())]
+            ))
+        }
         Ok(Ok(crate::mobile_git::PullOutcome::Conflict)) => SyncMsg::Conflict,
+        Ok(Ok(crate::mobile_git::PullOutcome::DirtyWorktree)) => SyncMsg::Error(
+            "Local vault has uncommitted changes — pull would overwrite them. Commit or discard the edits, then pull again.".into(),
+        ),
         Ok(Err(e)) => SyncMsg::Error(format!("{e:#}")),
         Err(join_err) => SyncMsg::Error(format!("pull task panicked: {join_err}")),
     };
@@ -682,6 +703,19 @@ async fn vaults_remove_handler(Form(form): Form<RemoveForm>) -> Response {
         return Html(render_vaults_page(Some(VaultsMsg::Error(
             "remove label is empty".into(),
         ))))
+        .into_response();
+    }
+
+    // Allow-list the label against the known vaults set so a crafted
+    // POST cannot escape the `vaults/` prefix via `../` and trigger a
+    // remove_dir_all on an arbitrary directory the app user can write.
+    let known: bool = crate::mobile_state::list_vaults()
+        .iter()
+        .any(|v| v.label == label);
+    if !known {
+        return Html(render_vaults_page(Some(VaultsMsg::Error(format!(
+            "vault '{label}' is not in the local store"
+        )))))
         .into_response();
     }
 

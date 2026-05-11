@@ -246,19 +246,49 @@ fn write_atomic(target: &Path, bytes: &[u8]) -> Result<()> {
 }
 
 /// Stage one path and create a single-parent commit. Initialises a
-/// fresh repository at `vault_root` if none is present yet (e.g. the
-/// user is capturing before onboarding clones a remote — rare but
-/// legal). Returns the commit's 40-char hex id.
+/// fresh repository at `vault_root` if no `.git` is found anywhere in
+/// or above `vault_root` (e.g. the user is capturing before onboarding
+/// clones a remote — rare but legal). Returns the commit's 40-char hex
+/// id.
+///
+/// `Repository::discover` is used so the SPEC-040 vault-subpath flow
+/// works: when the active vault is `vaults/<label>/notes/`, discover
+/// walks up to `vaults/<label>/.git` and we commit against the real
+/// repo (with origin) rather than initialising a nested repo with no
+/// remote — which would silently break push.
 fn git_commit_one_file(vault_root: &Path, rel_path: &str, slug: &str) -> Result<String> {
-    let repo = match Repository::open(vault_root) {
+    let repo = match Repository::discover(vault_root) {
         Ok(r) => r,
         Err(_) => Repository::init(vault_root)
             .with_context(|| format!("git init {} for first capture", vault_root.display()))?,
     };
 
+    // `rel_path` is relative to `vault_root`. When `vault_root` is a
+    // subpath below the repo root, translate to a path relative to the
+    // repo working dir so `index.add_path` resolves correctly. Both
+    // paths are canonicalised so symlink-resolved repo workdirs (e.g.
+    // macOS `/private/var` vs `/var/folders/...`) don't trip
+    // strip_prefix on otherwise-identical locations.
+    let abs_path = vault_root.join(rel_path);
+    let workdir = repo.workdir().context("repo has no working tree")?;
+    let workdir_canon = workdir
+        .canonicalize()
+        .unwrap_or_else(|_| workdir.to_path_buf());
+    let abs_canon = abs_path.canonicalize().unwrap_or_else(|_| abs_path.clone());
+    let repo_rel = abs_canon
+        .strip_prefix(&workdir_canon)
+        .with_context(|| {
+            format!(
+                "{} not under repo workdir {}",
+                abs_canon.display(),
+                workdir_canon.display()
+            )
+        })?
+        .to_path_buf();
+
     let mut idx = repo.index().context("open git index")?;
-    idx.add_path(Path::new(rel_path))
-        .with_context(|| format!("git add {rel_path}"))?;
+    idx.add_path(&repo_rel)
+        .with_context(|| format!("git add {}", repo_rel.display()))?;
     idx.write().context("write index")?;
     let tree_id = idx.write_tree().context("write tree")?;
     let tree = repo.find_tree(tree_id).context("find tree")?;

@@ -33,6 +33,10 @@ pub enum PullOutcome {
     /// blocked until the user resolves on desktop and the next pull
     /// is fast-forward (per [[ADR-4004]]).
     Conflict,
+    /// Uncommitted local edits would be overwritten by the fast-forward
+    /// checkout. The pull is refused — the caller surfaces this as an
+    /// actionable error rather than silently clobbering the changes.
+    DirtyWorktree,
 }
 
 /// Clone a remote vault into `into`. Authenticates per protocol:
@@ -137,6 +141,15 @@ pub fn pull_ff_only(repo_path: &Path) -> Result<PullOutcome> {
     if analysis.contains(MergeAnalysis::ANALYSIS_UP_TO_DATE) {
         Ok(PullOutcome::UpToDate)
     } else if analysis.contains(MergeAnalysis::ANALYSIS_FASTFORWARD) {
+        // Refuse to fast-forward over uncommitted edits — `force()`
+        // would silently overwrite them. The mobile WebView edit path
+        // and the desktop serve writing to the same working tree can
+        // both leave files dirty between commits, so this is a real
+        // concern, not just a theoretical one.
+        if worktree_is_dirty(&repo)? {
+            return Ok(PullOutcome::DirtyWorktree);
+        }
+
         let head_before = repo
             .head()
             .ok()
@@ -145,12 +158,13 @@ pub fn pull_ff_only(repo_path: &Path) -> Result<PullOutcome> {
             .unwrap_or_else(|| "<none>".into());
 
         // Resolve the local branch ref the FETCH_HEAD points at and
-        // fast-forward it to the fetched commit.
+        // fast-forward it to the fetched commit. `safe()` aborts on
+        // any conflict instead of silently clobbering.
         let head_ref_name = repo.head()?.name().unwrap_or("HEAD").to_string();
         let mut head_ref = repo.find_reference(&head_ref_name)?;
         head_ref.set_target(fetch_commit.id(), "ff-pull from /_mobile/sync")?;
         repo.set_head(&head_ref_name)?;
-        repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))?;
+        repo.checkout_head(Some(git2::build::CheckoutBuilder::new().safe()))?;
 
         Ok(PullOutcome::FastForwarded {
             from: head_before,
@@ -159,6 +173,21 @@ pub fn pull_ff_only(repo_path: &Path) -> Result<PullOutcome> {
     } else {
         Ok(PullOutcome::Conflict)
     }
+}
+
+/// True if the working tree or the index has any pending non-ignored
+/// changes that a fast-forward checkout could overwrite. Untracked
+/// files are *not* counted as dirty (they wouldn't be touched by a
+/// fast-forward) so the user can still pull while drafting new notes.
+fn worktree_is_dirty(repo: &Repository) -> Result<bool> {
+    let mut opts = git2::StatusOptions::new();
+    opts.include_ignored(false)
+        .include_untracked(false)
+        .recurse_untracked_dirs(false);
+    let statuses = repo
+        .statuses(Some(&mut opts))
+        .context("git status failed")?;
+    Ok(statuses.iter().any(|s| !s.status().is_empty()))
 }
 
 /// Push the active branch to `origin`. Returns `Ok(())` only on a
