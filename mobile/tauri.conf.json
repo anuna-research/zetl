@@ -5,7 +5,7 @@
   "identifier": "io.anuna.zetl.mobile",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://127.0.0.1:23423"
+    "devUrl": "http://127.0.0.1:23423/_mobile/onboarding"
   },
   "app": {
     "windows": [
