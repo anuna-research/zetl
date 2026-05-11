@@ -376,7 +376,7 @@ fn render_step_clone(pub_line: &str, error: Option<&str>) -> String {
 <p class="copy"><button type="button" onclick="navigator.clipboard.writeText(document.querySelector('[data-zetl-mobile-pubkey]').textContent).then(() =&gt; {{ this.textContent = 'Copied'; }})">Copy public key</button></p>
 {error_block}
 <form method="post" action="/_mobile/onboarding/clone">
-  <input type="url" name="remote_url" placeholder="git@codeberg.org:you/your-vault.git" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required>
+  <input type="url" name="remote_url" placeholder="git@codeberg.org:you/your-vault.git  or  https://codeberg.org/you/your-vault.git" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required>
   <button type="submit">Clone vault →</button>
 </form>
 </body></html>"#,

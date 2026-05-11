@@ -38,10 +38,12 @@ collab = []
 # zetl serve is embedded as the mobile UI host. Off by default — desktop
 # serve never registers these routes.
 #
-# Activates the `ssh` feature on git2 so the mobile_git module's clone
-# / pull / push paths can authenticate against the user's git remote
-# via the BIP39-derived ed25519 key (REQ-4003).
-mobile = ["git2/ssh"]
+# Activates `ssh` (BIP39-derived ed25519 key auth — REQ-4003) and
+# `https` (anonymous public-repo clones for users who don't want to
+# set up SSH keys; private HTTPS via PAT is a follow-up) features on
+# git2 so the mobile_git module's clone / pull / push paths can reach
+# both kinds of git remote.
+mobile = ["git2/ssh", "git2/https"]
 # SPEC-033 per-ecosystem feature flags (REQ-3301, NFR-3304). Each flag
 # gates one ecosystem's adapter + translator code at compile time so a
 # minimal zetl build can drop whole ecosystems. `src/ecosystems/` holds
