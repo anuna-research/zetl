@@ -347,10 +347,12 @@ mobile-wipe:
 # shims that openssl-sys's vendored build needs. See mobile/README.md
 # §Android for the prerequisite install commands.
 mobile-android-init:
-	bash -c '. mobile/scripts/android-env.sh && cd mobile && cargo tauri android init'
+	bash -c '. mobile/scripts/android-env.sh && cd mobile && cargo tauri android init' && \
+	  bash mobile/scripts/patch-android-project.sh
 
 mobile-android-dev:
-	bash -c '. mobile/scripts/android-env.sh && cd mobile && cargo tauri android dev'
+	bash mobile/scripts/patch-android-project.sh && \
+	  bash -c '. mobile/scripts/android-env.sh && cd mobile && cargo tauri android dev'
 
 # Default: arm64 release APK (covers >95% of modern devices, smallest
 # universal bundle). Override TARGET=universal for all four ABIs.
@@ -363,10 +365,12 @@ mobile-android-dev:
 # `gen/android/app/build.gradle.kts`.
 TARGET ?= aarch64
 mobile-android-build:
-	bash -c '. mobile/scripts/android-env.sh && cd mobile && cargo tauri android build --apk --target $(TARGET) && $(MAKE) -C .. mobile-android-sign'
+	bash mobile/scripts/patch-android-project.sh && \
+	  bash -c '. mobile/scripts/android-env.sh && cd mobile && cargo tauri android build --apk --target $(TARGET) && $(MAKE) -C .. mobile-android-sign'
 
 mobile-android-build-debug:
-	bash -c '. mobile/scripts/android-env.sh && cd mobile && cargo tauri android build --apk --debug --target $(TARGET)'
+	bash mobile/scripts/patch-android-project.sh && \
+	  bash -c '. mobile/scripts/android-env.sh && cd mobile && cargo tauri android build --apk --debug --target $(TARGET)'
 
 # Sign the most recent release APK with the Android debug keystore.
 # Creates the keystore on first use. Output: zetl-mobile-release.apk

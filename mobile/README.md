@@ -275,6 +275,14 @@ with a release signing config and skip `mobile-android-sign`.
 3. **JDK pinning** — Gradle 8.14.3 (current Tauri scaffold) rejects
    class file major version 69 (Java 25). The env script forces
    `JAVA_HOME` to `openjdk@17` when one is installed.
+4. **Cleartext loopback** — Android 9+ blocks cleartext HTTP by
+   default, which would kill the embedded `zetl serve` at
+   `http://127.0.0.1:23423` with `net::ERR_CLEARTEXT_NOT_PERMITTED`.
+   `mobile/scripts/patch-android-project.sh` (called from
+   `mobile-android-build` and `mobile-android-init`) drops a
+   `network_security_config.xml` that allows cleartext for `127.0.0.1`
+   / `localhost` only and wires it into the manifest. All other hosts
+   still require TLS.
 
 ### Size budgets (current)
 
