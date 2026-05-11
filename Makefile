@@ -7,7 +7,7 @@ BASHCOMPDIR ?= $(PREFIX)/share/bash-completion/completions
 ZSHCOMPDIR  ?= $(PREFIX)/share/zsh/site-functions
 FISHCOMPDIR ?= $(PREFIX)/share/fish/vendor_completions.d
 
-.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build nfr-gates nfr-gates-strict nfr-gates-033 nfr-gates-033-strict check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts eco-features-check eco-matrix-check translator-roundtrip audit-corpus dist dist-macos-arm64 dist-macos-x86_64 dist-windows dist-metadata dist-upload dist-clean help
+.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build nfr-gates nfr-gates-strict nfr-gates-033 nfr-gates-033-strict check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts eco-features-check eco-matrix-check translator-roundtrip audit-corpus dist dist-macos-arm64 dist-macos-x86_64 dist-windows dist-metadata dist-upload dist-clean help mobile-build mobile-run mobile-test mobile-clean mobile-wipe mobile-android-init mobile-android-dev mobile-android-build mobile-ios-init mobile-ios-dev mobile-ios-build
 
 all: build
 
@@ -305,6 +305,61 @@ doc:
 doc-open:
 	cargo doc --no-deps --open
 
+# ─── SPEC-040 mobile (Tauri Mobile) ─────────────────────────────────────────
+#
+# `mobile-run` is the fastest iteration loop: builds the desktop dev shell
+# of the Tauri Mobile project and runs it. Window opens; embedded zetl serve
+# boots on 127.0.0.1:23423; WebView lands on /_mobile/onboarding.
+#
+# `mobile-wipe` clears the app's data directory so you can re-test the
+# fresh-install onboarding flow without manually rm-ing platform-specific
+# paths. Use before `mobile-run` to start clean.
+#
+# Android + iOS targets wrap `cargo tauri android` / `ios` subcommands —
+# the cargo-tauri-cli must be on PATH, plus Android NDK/SDK or Xcode
+# respectively. The `init` targets are one-time and generate
+# `mobile/gen/{android,apple}/` (gitignored).
+
+# Best-guess app data dir per platform. macOS default below; override on
+# Linux / Windows by passing MOBILE_APP_DATA=... to mobile-wipe.
+MOBILE_APP_DATA ?= $(HOME)/Library/Application Support/io.anuna.zetl.mobile
+
+mobile-build:
+	cargo build --release -p zetl-mobile
+
+mobile-run:
+	cargo run --release -p zetl-mobile
+
+mobile-test:
+	cargo test --features mobile --lib mobile_
+	cargo test --features mobile --test mobile_integration
+
+mobile-clean:
+	cargo clean -p zetl-mobile
+
+mobile-wipe:
+	@echo "Wiping $(MOBILE_APP_DATA)/"
+	@rm -rf "$(MOBILE_APP_DATA)"
+	@echo "Done — next launch starts at /_mobile/onboarding step 1."
+
+mobile-android-init:
+	cd mobile && cargo tauri android init
+
+mobile-android-dev:
+	cd mobile && cargo tauri android dev
+
+mobile-android-build:
+	cd mobile && cargo tauri android build
+
+mobile-ios-init:
+	cd mobile && cargo tauri ios init
+
+mobile-ios-dev:
+	cd mobile && cargo tauri ios dev
+
+mobile-ios-build:
+	cd mobile && cargo tauri ios build
+
 help:
 	@echo "zetl - Bi-directional wikilink graph CLI"
 	@echo ""
@@ -347,6 +402,20 @@ help:
 	@echo "  make dist-upload  - Upload dist-release/ to R2 via wrangler"
 	@echo "  make dist-clean   - Remove dist-release/"
 	@echo ""
+	@echo "SPEC-040 mobile (Tauri Mobile):"
+	@echo "  make mobile-build         - Build the desktop dev shell"
+	@echo "  make mobile-run           - Build + run desktop dev shell (opens window)"
+	@echo "  make mobile-test          - Run mobile unit + integration tests"
+	@echo "  make mobile-clean         - cargo clean -p zetl-mobile (forces dist/ rebundle)"
+	@echo "  make mobile-wipe          - Wipe app data dir so onboarding restarts fresh"
+	@echo "  make mobile-android-init  - One-time: cargo tauri android init"
+	@echo "  make mobile-android-dev   - Build+run debug APK on emulator/device"
+	@echo "  make mobile-android-build - Build release APK"
+	@echo "  make mobile-ios-init      - One-time: cargo tauri ios init"
+	@echo "  make mobile-ios-dev       - Build+run on simulator/device"
+	@echo "  make mobile-ios-build     - Build release IPA"
+	@echo ""
 	@echo "Options:"
 	@echo "  PREFIX=<path>     - Install prefix (default: ~/.local)"
 	@echo "  VERSION=<ver>     - Version for release target (e.g. VERSION=0.1.1)"
+	@echo "  MOBILE_APP_DATA=<path> - Override app data dir for mobile-wipe (macOS default shown)"

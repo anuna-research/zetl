@@ -365,6 +365,62 @@ async fn end_to_end_clone_via_onboarding_handlers() {
 }
 
 #[tokio::test]
+async fn reset_clears_keystore_wipes_vault_and_redirects_to_onboarding() {
+    let _g = STATE_LOCK.lock().unwrap();
+
+    // Set up the same state as a successful end-to-end clone:
+    // - keystore loaded
+    // - vault dir with a .git directory and a file
+    // - app_data_dir containing a persisted ssh_key.json
+    let tmp = tempfile::tempdir().unwrap();
+    let app_data = tmp.path().join("app-data");
+    let vault = app_data.join("vault");
+    std::fs::create_dir_all(&vault).unwrap();
+    git2::Repository::init(&vault).unwrap();
+    std::fs::write(vault.join("Welcome.md"), "# Welcome\n").unwrap();
+    std::fs::write(app_data.join("ssh_key.json"), r#"{}"#).unwrap();
+    zetl::mobile_state::set_app_data_dir(app_data.clone());
+    zetl::mobile_state::set_vault_root(vault.clone());
+    zetl::mobile_state::global()
+        .import_mnemonic(FIXTURE_MNEMONIC)
+        .unwrap();
+    assert!(zetl::mobile_state::global().is_loaded());
+
+    let app = router();
+    let (status, location, _body) = post_form(&app, "/_mobile/reset", "").await;
+    assert!(
+        matches!(
+            status,
+            StatusCode::SEE_OTHER | StatusCode::TEMPORARY_REDIRECT | StatusCode::FOUND
+        ),
+        "reset POST should redirect; got {status}"
+    );
+    assert_eq!(location.as_deref(), Some("/_mobile/onboarding"));
+
+    // Vault working tree wiped (but the dir itself is recreated empty so
+    // the embedded serve can keep serving with an empty page list).
+    assert!(vault.exists(), "vault dir should be recreated empty");
+    assert!(
+        !vault.join("Welcome.md").exists(),
+        "vault content should be wiped"
+    );
+    assert!(
+        !vault.join(".git").exists(),
+        ".git should be wiped"
+    );
+
+    // Persisted ssh_key.json removed; keystore cleared.
+    assert!(
+        !app_data.join("ssh_key.json").exists(),
+        "persisted ssh_key.json should be removed"
+    );
+    assert!(
+        !zetl::mobile_state::global().is_loaded(),
+        "in-memory keystore should be cleared"
+    );
+}
+
+#[tokio::test]
 async fn sync_pull_without_vault_root_renders_error() {
     let _g = STATE_LOCK.lock().unwrap();
 

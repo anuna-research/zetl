@@ -50,6 +50,7 @@ where
         .route("/_mobile/sync", get(sync_handler))
         .route("/_mobile/sync/pull", post(sync_pull_handler))
         .route("/_mobile/sync/push", post(sync_push_handler))
+        .route("/_mobile/reset", post(reset_handler))
 }
 
 // ── /_mobile/onboarding ───────────────────────────────────────────────────────
@@ -311,6 +312,46 @@ enum SyncMsg {
     Error(String),
 }
 
+/// `POST /_mobile/reset` — wipe the local vault working tree and
+/// forget the in-memory + on-disk SSH key, then redirect to
+/// `/_mobile/onboarding` so the user can switch to a different
+/// vault. This is the v0.1 stand-in for true multi-vault support
+/// (which is a v0.2 question — vault picker, per-vault working
+/// trees, active-vault selection).
+///
+/// Operates only on directories under the app data dir registered
+/// by the Tauri shell — it does not touch arbitrary paths.
+async fn reset_handler() -> Response {
+    let keystore = crate::mobile_state::global();
+
+    // Best-effort: wipe the vault working tree. If anything fails we
+    // surface the error on the sync page so the user can recover by
+    // hand if needed.
+    if let Some(vault_root) = crate::mobile_state::vault_root() {
+        if vault_root.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&vault_root) {
+                return Html(render_sync_page(Some(SyncMsg::Error(format!(
+                    "wipe vault {}: {e:#}",
+                    vault_root.display()
+                )))))
+                .into_response();
+            }
+        }
+        // Recreate the empty dir so the embedded serve can keep
+        // serving from it (with an empty page list) until clone runs.
+        let _ = std::fs::create_dir_all(&vault_root);
+    }
+
+    // Forget the persisted key + in-memory key.
+    if let Some(app_data) = crate::mobile_state::app_data_dir() {
+        let key_file = app_data.join("ssh_key.json");
+        let _ = std::fs::remove_file(&key_file);
+    }
+    keystore.clear();
+
+    Redirect::to("/_mobile/onboarding").into_response()
+}
+
 // ── HTML rendering helpers ────────────────────────────────────────────────────
 
 fn render_step_seed(error: Option<&str>) -> String {
@@ -473,6 +514,14 @@ fn render_sync_page(msg: Option<SyncMsg>) -> String {
 {key_block}
 <form method="post" action="/_mobile/sync/pull"><button type="submit">Pull (fast-forward only)</button></form>
 <form method="post" action="/_mobile/sync/push"><button type="submit">Push</button></form>
+<hr style="margin:1.6em 0 1em;opacity:0.25;">
+<details>
+  <summary class="hint">Switch to a different vault…</summary>
+  <p class="hint" style="margin-top:0.6em;">v0.1 supports one vault at a time. Reset clears the local working tree <em>and</em> forgets the SSH key, then sends you back to onboarding. <strong>Anything not pushed will be lost.</strong></p>
+  <form method="post" action="/_mobile/reset" onsubmit="return confirm('Wipe the local vault and forget the SSH key? Unpushed changes will be lost.');">
+    <button type="submit" data-zetl-mobile-action="reset" style="background:#fee;color:#b00;border-color:#b00;">Reset and switch vault</button>
+  </form>
+</details>
 <div class="links"><a href="/">Pages</a> · <a href="/_mobile/capture">Capture</a> · <a href="/_mobile/onboarding">Onboarding</a></div>
 </body></html>"#,
     )
