@@ -66,6 +66,10 @@ struct SeedForm {
 #[derive(Deserialize)]
 struct CloneForm {
     remote_url: String,
+    /// Optional personal-access-token for private HTTPS remotes.
+    /// Empty for SSH or public HTTPS.
+    #[serde(default)]
+    pat: String,
 }
 
 #[derive(Deserialize)]
@@ -222,9 +226,18 @@ async fn onboarding_clone_handler(Form(form): Form<CloneForm>) -> Response {
     // duration of the network fetch.
     let clone_target = target_dir.clone();
     let clone_url = remote_url.clone();
-    let clone_result =
-        tokio::task::spawn_blocking(move || crate::mobile_git::clone(&clone_url, &clone_target))
-            .await;
+    let clone_pat: Option<String> = {
+        let trimmed = form.pat.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    };
+    let clone_result = tokio::task::spawn_blocking(move || {
+        crate::mobile_git::clone(&clone_url, &clone_target, clone_pat.as_deref())
+    })
+    .await;
 
     match clone_result {
         Ok(Ok(_repo)) => {
@@ -611,6 +624,15 @@ fn render_step_clone(pub_line: &str, error: Option<&str>) -> String {
 {error_block}
 <form method="post" action="/_mobile/onboarding/clone" data-zetl-busy-label="Cloning…">
   <input type="url" name="remote_url" placeholder="git@codeberg.org:you/your-vault.git  or  https://codeberg.org/you/your-vault.git" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required>
+  <details style="margin-top:0.6em;font-size:0.9em;opacity:0.85;">
+    <summary style="cursor:pointer;">Advanced: private HTTPS (personal access token)</summary>
+    <p style="margin:0.4em 0 0.3em;opacity:0.75;font-size:0.9em;">
+      Only needed for <em>private</em> HTTPS remotes (GitHub / GitLab / Codeberg).
+      Create a PAT with read+write repo scope; we use it once for this clone and
+      never write it to disk. Public repos and SSH URLs ignore this field.
+    </p>
+    <input type="password" name="pat" placeholder="ghp_ / glpat_ / your-pat-here" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+  </details>
   <button type="submit">Clone vault →</button>
 </form>
 

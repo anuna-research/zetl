@@ -35,24 +35,21 @@ pub enum PullOutcome {
     Conflict,
 }
 
-/// Clone a remote vault into `into`. Authenticates over SSH using
-/// the key in [`crate::mobile_state::global()`].
+/// Clone a remote vault into `into`. Authenticates per protocol:
 ///
-/// If `into` exists and is non-empty but contains no `.git` directory
-/// (e.g., the Tauri shell pre-created the vault dir, or macOS dropped
-/// a stray `.DS_Store`, or a prior clone failed partway through), we
-/// wipe its contents before invoking git2 — git2 otherwise refuses
-/// with "exists and is not an empty directory". The presence of
-/// `.git` is treated as a real working tree and refused (the
-/// onboarding handler already redirects to `/` in that case, so we
-/// only see this branch as a defence-in-depth).
-pub fn clone(remote_url: &str, into: &Path) -> Result<Repository> {
+/// - SSH (`git@host:owner/repo.git` or `ssh://...`) → BIP39-derived
+///   ed25519 key from [`crate::mobile_state::global()`].
+/// - HTTPS (`https://...`) → personal access token via `pat`. Pass
+///   `None` for public repos that don't need credentials.
+///
+/// Empty-destination prep + `.git`-already-present refusal as before.
+pub fn clone(remote_url: &str, into: &Path, pat: Option<&str>) -> Result<Repository> {
     require_keystore_loaded()?;
     prepare_clone_destination(into)
         .with_context(|| format!("prepare {} for clone", into.display()))?;
 
     let mut fetch_opts = FetchOptions::new();
-    fetch_opts.remote_callbacks(ssh_callbacks());
+    fetch_opts.remote_callbacks(auth_callbacks(pat));
 
     let mut builder = RepoBuilder::new();
     builder.fetch_options(fetch_opts);
@@ -185,13 +182,45 @@ pub fn push(repo_path: &Path) -> Result<()> {
 }
 
 fn ssh_callbacks() -> RemoteCallbacks<'static> {
+    auth_callbacks(None)
+}
+
+/// Credential callback that handles both SSH (BIP39-derived key) and
+/// HTTPS (personal access token) protocols. `git2` passes a bitmask
+/// `allowed` indicating which credential types it expects; we
+/// produce the matching one.
+fn auth_callbacks(pat: Option<&str>) -> RemoteCallbacks<'static> {
+    let owned_pat: Option<String> = pat.map(String::from);
     let mut cb = RemoteCallbacks::new();
-    cb.credentials(|_url, username_from_url, _allowed| {
-        let username = username_from_url.unwrap_or("git");
-        let priv_pem = crate::mobile_state::global().priv_pem().ok_or_else(|| {
-            git2::Error::from_str("no SSH key in keystore — onboard first via /_mobile/onboarding")
-        })?;
-        Cred::ssh_key_from_memory(username, None, &priv_pem, None)
+    cb.credentials(move |_url, username_from_url, allowed| {
+        // SSH key auth — git2 asks for SSH_KEY when the remote URL is
+        // ssh:// or git@host:...
+        if allowed.contains(git2::CredentialType::SSH_KEY) {
+            let username = username_from_url.unwrap_or("git");
+            let priv_pem = crate::mobile_state::global().priv_pem().ok_or_else(|| {
+                git2::Error::from_str(
+                    "no SSH key in keystore — onboard first via /_mobile/onboarding",
+                )
+            })?;
+            return Cred::ssh_key_from_memory(username, None, &priv_pem, None);
+        }
+        // HTTPS basic / personal-access-token auth — git2 asks for
+        // USER_PASS_PLAINTEXT.
+        if allowed.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
+            let token = owned_pat.as_deref().ok_or_else(|| {
+                git2::Error::from_str(
+                    "private HTTPS clone needs a personal access token \
+                     (paste one in the 'Advanced: private HTTPS' section, \
+                     or use the SSH URL like git@host:owner/repo.git)",
+                )
+            })?;
+            // The PAT is the *password*; the username is conventionally
+            // any non-empty string on GitHub / GitLab / Codeberg.
+            return Cred::userpass_plaintext("zetl-mobile", token);
+        }
+        Err(git2::Error::from_str(&format!(
+            "no supported credential type available (allowed={allowed:?})"
+        )))
     });
     cb
 }
@@ -272,7 +301,7 @@ mod tests {
         let dest = dest_dir.path().join("vault");
         let url = format!("file://{}", bare_path.display());
 
-        let repo = clone(&url, &dest).expect("file:// clone should work without SSH");
+        let repo = clone(&url, &dest, None).expect("file:// clone should work without SSH");
         assert!(repo.find_remote("origin").is_ok());
         assert!(dest.join("README.md").exists());
     }
@@ -284,7 +313,7 @@ mod tests {
         let dest_dir = tempfile::tempdir().unwrap();
         let dest = dest_dir.path().join("vault");
         let url = format!("file://{}", bare_path.display());
-        clone(&url, &dest).unwrap();
+        clone(&url, &dest, None).unwrap();
 
         let outcome = pull_ff_only(&dest).expect("pull on up-to-date repo");
         assert_eq!(outcome, PullOutcome::UpToDate);
