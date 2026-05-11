@@ -54,6 +54,7 @@ where
         .route("/_mobile/vaults", get(vaults_handler))
         .route("/_mobile/vaults/switch", post(vaults_switch_handler))
         .route("/_mobile/vaults/add", get(vaults_add_handler))
+        .route("/_mobile/vaults/remove", post(vaults_remove_handler))
         .route(
             "/_mobile/vaults/pick",
             get(pick_subpath_handler).post(pick_subpath_post_handler),
@@ -569,6 +570,83 @@ async fn vaults_add_handler() -> Response {
 
 enum VaultsMsg {
     Error(String),
+    Ok(String),
+}
+
+#[derive(Deserialize)]
+struct RemoveForm {
+    label: String,
+}
+
+/// `POST /_mobile/vaults/remove` — wipe the local working tree at
+/// `vaults/<label>/`. The git remote is untouched: the user can
+/// re-clone via /_mobile/onboarding?add=1 at any time. If the
+/// removed vault was active, the symlink is cleared too — the
+/// embedded serve will show an empty page list until another vault
+/// is activated or cloned.
+async fn vaults_remove_handler(Form(form): Form<RemoveForm>) -> Response {
+    let label = form.label.trim().to_string();
+    if label.is_empty() {
+        return Html(render_vaults_page(Some(VaultsMsg::Error(
+            "remove label is empty".into(),
+        ))))
+        .into_response();
+    }
+
+    let app_data = match crate::mobile_state::app_data_dir() {
+        Some(p) => p,
+        None => {
+            return Html(render_vaults_page(Some(VaultsMsg::Error(
+                "app_data_dir not registered".into(),
+            ))))
+            .into_response();
+        }
+    };
+
+    let target = app_data.join("vaults").join(&label);
+    if !target.exists() {
+        return Html(render_vaults_page(Some(VaultsMsg::Error(format!(
+            "vault '{label}' does not exist"
+        )))))
+        .into_response();
+    }
+
+    // If this was the active vault, drop the symlink first so we
+    // don't leave a dangling pointer after the dir is gone.
+    let was_active = crate::mobile_state::active_vault_label().as_deref() == Some(label.as_str());
+    if was_active {
+        if let Some(link) = crate::mobile_state::vault_root() {
+            if link.is_symlink() {
+                let _ = std::fs::remove_file(&link);
+            }
+        }
+    }
+
+    if let Err(e) = std::fs::remove_dir_all(&target) {
+        return Html(render_vaults_page(Some(VaultsMsg::Error(format!(
+            "remove vaults/{label}: {e:#}"
+        )))))
+        .into_response();
+    }
+
+    // If the removed vault was active and other vaults remain,
+    // auto-activate one so the embedded serve has somewhere to point.
+    if was_active {
+        let remaining = crate::mobile_state::list_vaults();
+        if let Some(next) = remaining.first() {
+            let _ = crate::mobile_state::set_active_vault(&next.label, None);
+            let _ = crate::mobile_state::trigger_reindex();
+        } else {
+            // No vaults left — embedded serve still runs but with an
+            // empty page list. Trigger reindex to clear stale data.
+            let _ = crate::mobile_state::trigger_reindex();
+        }
+    }
+
+    Html(render_vaults_page(Some(VaultsMsg::Ok(format!(
+        "Removed '{label}' from local storage. The remote is untouched — clone again via Add another vault."
+    )))))
+    .into_response()
 }
 
 /// `POST /_mobile/reset` — multi-vault aware: removes the **active**
@@ -657,8 +735,10 @@ fn render_step_seed(error: Option<&str>) -> String {
   <button type="submit">Derive SSH key →</button>
 </form>
 {back}
+{external_js}
 </body></html>"#,
         back = render_onboarding_back_link(),
+        external_js = MOBILE_EXTERNAL_LINK_JS,
     )
 }
 
@@ -796,9 +876,11 @@ document.querySelectorAll('form[data-zetl-busy-label]').forEach(function(f) {{
   }});
 }});
 </script>
+{external_js}
 </body></html>"#,
         pub = html_escape(pub_line),
         back = render_onboarding_back_link(),
+        external_js = MOBILE_EXTERNAL_LINK_JS,
     )
 }
 
@@ -807,6 +889,40 @@ fn html_escape(s: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+/// JS snippet shared by every `/_mobile/*` page. Intercepts clicks on
+/// `target="_blank"` links and forwards them to the Tauri
+/// `plugin:opener|open_url` IPC command so the OS opens them in the
+/// system browser instead of the Tauri WebView (where the user
+/// would be trapped with no back button).
+///
+/// In a regular browser (e.g. `ar-crawl session` for testing) the
+/// Tauri internals are absent and the click falls through to the
+/// browser's default `_blank` handling.
+const MOBILE_EXTERNAL_LINK_JS: &str = r#"<script>
+document.addEventListener('click', function(e) {
+  var a = e.target.closest('a[target="_blank"]');
+  if (!a) return;
+  if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function') {
+    e.preventDefault();
+    window.__TAURI_INTERNALS__.invoke('plugin:opener|open_url', { url: a.href }).catch(function(err) {
+      console.error('opener invoke failed:', err);
+      window.open(a.href, '_blank');
+    });
+  }
+});
+</script>"#;
+
+/// Standard top-bar for `/_mobile/*` pages with a `← Vaults` back
+/// link. The pages that already have a more specific back affordance
+/// (`/_mobile/capture` has `✕ Cancel`, the picker has `← Back to
+/// Vaults` in the footer) skip this. `/_mobile/vaults` itself is the
+/// destination and renders no back link.
+fn render_topbar_back_to_vaults() -> &'static str {
+    r#"<div data-zetl-mobile-topbar style="display:flex;align-items:center;gap:0.5em;margin-bottom:1em;font-size:0.85em;">
+  <a href="/_mobile/vaults" style="color:inherit;text-decoration:none;padding:0.3em 0.6em;border:1px solid currentColor;border-radius:6px;opacity:0.75;">← Vaults</a>
+</div>"#
 }
 
 fn render_pick_subpath(
@@ -884,9 +1000,11 @@ fn render_pick_subpath(
 <p class="hint">The repo <code>{label}</code> has more than one directory that looks like it could be a zetl vault. Pick the one to use. (Folders with a <code>.zetl/</code> config dir are usually the right choice.)</p>
 {rows}
 <div class="links"><a href="/_mobile/vaults">← Back to Vaults</a></div>
+{external_js}
 </body></html>"#,
         label = html_escape(label),
         rows = rows,
+        external_js = MOBILE_EXTERNAL_LINK_JS,
     )
 }
 
@@ -949,9 +1067,11 @@ fn render_recovery_page() -> String {
 </details>
 
 <div class="links"><a href="/_mobile/vaults">Vaults</a> · <a href="/_mobile/sync">Sync</a> · <a href="/">Pages</a></div>
+{external_js}
 </body></html>"#,
         mnemonic = html_escape(&mnemonic),
         pub_line = html_escape(&pub_line),
+        external_js = MOBILE_EXTERNAL_LINK_JS,
     )
 }
 
@@ -959,6 +1079,10 @@ fn render_vaults_page(msg: Option<VaultsMsg>) -> String {
     let banner = match msg {
         Some(VaultsMsg::Error(text)) => format!(
             r#"<div data-zetl-mobile-vaults-msg="error" style="color:#b00;background:#fee;padding:0.7em;border-radius:6px;margin-bottom:1em;">Error: {}</div>"#,
+            html_escape(&text)
+        ),
+        Some(VaultsMsg::Ok(text)) => format!(
+            r#"<div data-zetl-mobile-vaults-msg="ok" style="color:#063;background:#efe;padding:0.7em;border-radius:6px;margin-bottom:1em;">{}</div>"#,
             html_escape(&text)
         ),
         None => String::new(),
@@ -980,21 +1104,30 @@ fn render_vaults_page(msg: Option<VaultsMsg>) -> String {
                     String::new()
                 } else {
                     format!(
-                        r#"<form method="post" action="/_mobile/vaults/switch" style="display:inline;margin-left:0.6em;">
+                        r#"<form method="post" action="/_mobile/vaults/switch" style="display:inline;margin-left:0.4em;">
   <input type="hidden" name="label" value="{label}">
   <button type="submit" style="width:auto;padding:0.3em 0.7em;font-size:0.85em;">Switch</button>
 </form>"#,
                         label = html_escape(&v.label)
                     )
                 };
+                let remove_form = format!(
+                    r#"<form method="post" action="/_mobile/vaults/remove" style="display:inline;margin-left:0.4em;" onsubmit="return confirm('Remove the local copy of {label_js}? The git remote is NOT affected — you can re-clone any time. Unpushed local changes WILL be lost.');">
+  <input type="hidden" name="label" value="{label}">
+  <button type="submit" data-zetl-mobile-action="remove" style="width:auto;padding:0.3em 0.7em;font-size:0.85em;background:#fee;color:#b00;border-color:#b00;">Remove</button>
+</form>"#,
+                    label = html_escape(&v.label),
+                    label_js = v.label.replace('\\', "\\\\").replace('\'', "\\'"),
+                );
                 format!(
                     r#"<li style="margin:0.6em 0;line-height:1.5;">
-  <strong data-zetl-mobile-vault-label="{label}">{label}</strong> {active_tag}{switch_form}
+  <strong data-zetl-mobile-vault-label="{label}">{label}</strong> {active_tag}{switch_form}{remove_form}
   <br><span style="font-size:0.8em;opacity:0.7;">{remote}</span>
 </li>"#,
                     label = html_escape(&v.label),
                     active_tag = active_tag,
                     switch_form = switch_form,
+                    remove_form = remove_form,
                     remote = html_escape(v.remote_url.as_deref().unwrap_or("(no remote)")),
                 )
             })
@@ -1021,7 +1154,9 @@ fn render_vaults_page(msg: Option<VaultsMsg>) -> String {
 <ul data-zetl-mobile-vaults-list>{rows}</ul>
 <p><a href="/_mobile/onboarding?add=1"><button type="button">+ Add another vault</button></a></p>
 <div class="links"><a href="/">Pages</a> · <a href="/_mobile/sync">Sync</a> · <a href="/_mobile/capture">Capture</a></div>
+{external_js}
 </body></html>"#,
+        external_js = MOBILE_EXTERNAL_LINK_JS,
     )
 }
 
@@ -1063,9 +1198,11 @@ fn render_capture_form(error: Option<&str>, title_prefill: &str, body_prefill: &
   <button type="submit">Save</button>
 </form>
 <div class="links"><a href="/">Pages</a> · <a href="/_mobile/sync">Sync</a> · <a href="/_mobile/vaults">Vaults</a></div>
+{external_js}
 </body></html>"#,
         title_val = html_escape(title_prefill),
         body_val = html_escape(body_prefill),
+        external_js = MOBILE_EXTERNAL_LINK_JS,
     )
 }
 
@@ -1136,6 +1273,7 @@ fn render_sync_page(msg: Option<SyncMsg>) -> String {
   @keyframes zspin {{ to {{ transform: rotate(360deg); }} }}
 </style></head>
 <body data-zetl-mobile-route="sync">
+{topbar}
 <h1>Sync</h1>
 {vault_header}
 {banner}
@@ -1163,6 +1301,9 @@ document.querySelectorAll('form[data-zetl-busy-label]').forEach(function(f) {{
   }});
 }});
 </script>
+{external_js}
 </body></html>"#,
+        topbar = render_topbar_back_to_vaults(),
+        external_js = MOBILE_EXTERNAL_LINK_JS,
     )
 }

@@ -394,6 +394,76 @@ async fn end_to_end_clone_via_onboarding_handlers() {
 }
 
 #[tokio::test]
+async fn vaults_remove_wipes_local_dir_but_preserves_keystore() {
+    let _g = STATE_LOCK.lock().unwrap();
+
+    // Two vaults; remove the inactive one — the active one and the
+    // SSH key must remain.
+    let tmp = tempfile::tempdir().unwrap();
+    let app_data = tmp.path().join("app-data");
+    let vaults = app_data.join("vaults");
+    std::fs::create_dir_all(vaults.join("alpha")).unwrap();
+    git2::Repository::init(vaults.join("alpha")).unwrap();
+    std::fs::create_dir_all(vaults.join("beta")).unwrap();
+    git2::Repository::init(vaults.join("beta")).unwrap();
+    let link = app_data.join("vault");
+    std::os::unix::fs::symlink("vaults/alpha", &link).unwrap();
+    zetl::mobile_state::set_app_data_dir(app_data.clone());
+    zetl::mobile_state::set_vault_root(link.clone());
+    zetl::mobile_state::global()
+        .import_mnemonic(FIXTURE_MNEMONIC)
+        .unwrap();
+
+    let app = router();
+    let (status, _location, body) =
+        post_form(&app, "/_mobile/vaults/remove", "label=beta").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("data-zetl-mobile-vaults-msg=\"ok\""),
+        "expected ok banner; body={body}"
+    );
+
+    assert!(vaults.join("alpha").exists(), "active vault should survive");
+    assert!(!vaults.join("beta").exists(), "removed vault dir gone");
+    assert!(
+        zetl::mobile_state::global().is_loaded(),
+        "keystore should be untouched"
+    );
+    assert!(link.is_symlink(), "active symlink should remain");
+}
+
+#[tokio::test]
+async fn vaults_remove_active_vault_promotes_another_or_clears_symlink() {
+    let _g = STATE_LOCK.lock().unwrap();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let app_data = tmp.path().join("app-data");
+    let vaults = app_data.join("vaults");
+    std::fs::create_dir_all(vaults.join("alpha")).unwrap();
+    git2::Repository::init(vaults.join("alpha")).unwrap();
+    std::fs::create_dir_all(vaults.join("beta")).unwrap();
+    git2::Repository::init(vaults.join("beta")).unwrap();
+    let link = app_data.join("vault");
+    std::os::unix::fs::symlink("vaults/alpha", &link).unwrap();
+    zetl::mobile_state::set_app_data_dir(app_data.clone());
+    zetl::mobile_state::set_vault_root(link.clone());
+    zetl::mobile_state::global()
+        .import_mnemonic(FIXTURE_MNEMONIC)
+        .unwrap();
+
+    let app = router();
+    let (status, _, _body) = post_form(&app, "/_mobile/vaults/remove", "label=alpha").await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Removed vault is gone; the other vault gets auto-promoted.
+    assert!(!vaults.join("alpha").exists());
+    assert!(vaults.join("beta").exists());
+    assert!(link.is_symlink(), "auto-promotion should set symlink");
+    let target = std::fs::read_link(&link).unwrap();
+    assert_eq!(target.to_string_lossy(), "vaults/beta");
+}
+
+#[tokio::test]
 async fn reset_clears_active_vault_keystore_and_redirects() {
     let _g = STATE_LOCK.lock().unwrap();
 
