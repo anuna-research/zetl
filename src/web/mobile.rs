@@ -623,18 +623,64 @@ fn render_step_clone(pub_line: &str, error: Option<&str>) -> String {
 </p>
 {error_block}
 <form method="post" action="/_mobile/onboarding/clone" data-zetl-busy-label="Cloning…">
-  <input type="url" name="remote_url" placeholder="git@codeberg.org:you/your-vault.git  or  https://codeberg.org/you/your-vault.git" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required>
-  <details style="margin-top:0.6em;font-size:0.9em;opacity:0.85;">
+  <input type="text" name="remote_url" id="remote_url" placeholder="git@codeberg.org:you/your-vault.git" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required>
+  <p class="hint" style="font-size:0.85em;opacity:0.7;margin:0.3em 0 0.6em;">
+    <strong>SSH is recommended.</strong> Once you've added the public key above to your git host,
+    SSH URLs like <code>git@github.com:owner/repo.git</code> work for clone and ongoing pull/push
+    with no extra setup. HTTPS URLs of public repos also work; private HTTPS needs a PAT (advanced).
+  </p>
+  <div id="ssh-suggest" data-zetl-suggest hidden style="margin:0.4em 0;padding:0.6em 0.8em;background:#fff8e1;border:1px solid #f0d97c;border-radius:6px;font-size:0.85em;line-height:1.45;">
+    💡 Looks like an HTTPS URL. Want to <button type="button" id="ssh-suggest-apply" style="width:auto;padding:0.15em 0.6em;background:transparent;border:1px solid currentColor;border-radius:4px;cursor:pointer;font-size:0.9em;">use the SSH form</button>
+    instead? It's <code data-zetl-suggest-target></code>
+    — your existing SSH key works.
+  </div>
+  <details style="margin-top:0.6em;font-size:0.85em;opacity:0.75;">
     <summary style="cursor:pointer;">Advanced: private HTTPS (personal access token)</summary>
-    <p style="margin:0.4em 0 0.3em;opacity:0.75;font-size:0.9em;">
-      Only needed for <em>private</em> HTTPS remotes (GitHub / GitLab / Codeberg).
-      Create a PAT with read+write repo scope; we use it once for this clone and
-      never write it to disk. Public repos and SSH URLs ignore this field.
+    <p style="margin:0.4em 0 0.3em;font-size:0.9em;">
+      <strong>Prefer SSH</strong> — it's auto-configured by this app. Only fall back to a PAT if your
+      git host blocks SSH or you have a specific HTTPS-only constraint. The PAT is used once for the
+      clone and never written to disk; pull / push will need it re-entered until v0.1.x adds
+      keychain storage for HTTPS credentials.
     </p>
     <input type="password" name="pat" placeholder="ghp_ / glpat_ / your-pat-here" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
   </details>
   <button type="submit">Clone vault →</button>
 </form>
+<script>
+// Detect HTTPS URLs for known git hosts and offer an SSH-form
+// substitute. Keep it dumb on purpose: a regex with a 4-host whitelist
+// covers GitHub / GitLab / Codeberg / Gitea-self-host patterns.
+(function() {{
+  var input = document.getElementById('remote_url');
+  var box = document.getElementById('ssh-suggest');
+  var slot = document.querySelector('[data-zetl-suggest-target]');
+  var apply = document.getElementById('ssh-suggest-apply');
+  if (!input || !box || !slot || !apply) return;
+  function toSsh(url) {{
+    var m = url.match(/^https?:\/\/([^\/]+)\/([^?#]+?)(?:\.git)?\/?$/);
+    if (!m) return null;
+    var host = m[1], path = m[2];
+    if (host === 'github.com' || host === 'gitlab.com' || host === 'codeberg.org' || /^gitea\./.test(host)) {{
+      return 'git@' + host + ':' + path + '.git';
+    }}
+    return null;
+  }}
+  function refresh() {{
+    var ssh = toSsh(input.value.trim());
+    if (ssh) {{
+      slot.textContent = ssh;
+      box.hidden = false;
+    }} else {{
+      box.hidden = true;
+    }}
+  }}
+  input.addEventListener('input', refresh);
+  apply.addEventListener('click', function() {{
+    var ssh = toSsh(input.value.trim());
+    if (ssh) {{ input.value = ssh; refresh(); }}
+  }});
+}})();
+</script>
 
 <details>
   <summary>Advanced: use my desktop's BIP39 seed phrase instead</summary>
