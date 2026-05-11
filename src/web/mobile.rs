@@ -547,8 +547,22 @@ fn render_step_seed(error: Option<&str>) -> String {
   <textarea name="mnemonic" placeholder="word1 word2 … word12" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required></textarea>
   <button type="submit">Derive SSH key →</button>
 </form>
+{back}
 </body></html>"#,
+        back = render_onboarding_back_link(),
     )
+}
+
+/// Back link rendered in onboarding pages when the user already has
+/// at least one cloned vault — they got to onboarding via "+ Add
+/// another vault" and might want to bail out. Empty string for fresh
+/// installs so we don't show a dangling link to an empty picker.
+fn render_onboarding_back_link() -> String {
+    if crate::mobile_state::list_vaults().is_empty() {
+        String::new()
+    } else {
+        r#"<p style="margin-top:1.5em;font-size:0.9em;"><a href="/_mobile/vaults" style="color:inherit;">← Back to Vaults</a></p>"#.to_string()
+    }
 }
 
 fn render_step_clone(pub_line: &str, error: Option<&str>) -> String {
@@ -600,8 +614,10 @@ fn render_step_clone(pub_line: &str, error: Option<&str>) -> String {
     <button type="submit">Replace key with seed-derived one →</button>
   </form>
 </details>
+{back}
 </body></html>"#,
         pub = html_escape(pub_line),
+        back = render_onboarding_back_link(),
     )
 }
 
