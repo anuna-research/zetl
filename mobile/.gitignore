@@ -4,3 +4,10 @@ gen/
 # Tauri-CLI-generated platform projects (cargo tauri android init / ios init)
 gen/android/
 gen/apple/
+
+# NDK clang shims created by mobile/scripts/android-env.sh
+.android-shims/
+
+# Build outputs from the Android pipeline
+*.apk
+*.aab

@@ -50,7 +50,7 @@ keyring-storage = ["dep:keyring"]
 # git2 so the mobile_git module's clone / pull / push paths can reach
 # both kinds of git remote. Also activates `keyring-storage` so the
 # KeyStore prefers the OS keychain over the JSON file when available.
-mobile = ["git2/ssh", "git2/https", "keyring-storage"]
+mobile = ["git2/ssh", "git2/https", "keyring-storage", "vendored-openssl"]
 # SPEC-033 per-ecosystem feature flags (REQ-3301, NFR-3304). Each flag
 # gates one ecosystem's adapter + translator code at compile time so a
 # minimal zetl build can drop whole ecosystems. `src/ecosystems/` holds

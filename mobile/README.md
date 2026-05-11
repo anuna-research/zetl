@@ -222,33 +222,71 @@ saving anything.
 
 ### Prerequisites
 
-| Tool                   | Purpose                                       |
-| ---------------------- | --------------------------------------------- |
-| Android Studio         | SDK manager, emulator, JDK                    |
-| Android NDK (r25+)     | Native code cross-compile                     |
-| Android SDK (API 33+)  | Runtime                                       |
-| `cargo-tauri` 2.10+    | Already installed (`which cargo-tauri`)       |
-| Rust Android targets   | `rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android` |
+| Tool                          | Purpose                                       | Verified install                                                  |
+| ----------------------------- | --------------------------------------------- | ----------------------------------------------------------------- |
+| Android SDK command-line tools| `sdkmanager`, `adb`                           | `brew install --cask android-commandlinetools`                    |
+| Android NDK                   | Native cross-compile                          | `"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;27.2.12479018'` |
+| Android platform + build-tools| Runtime + APK packaging                       | `sdkmanager 'platforms;android-34' 'build-tools;34.0.0'`          |
+| JDK 17                        | Gradle 8.14 max; JDK 25 is rejected           | `brew install openjdk@17`                                         |
+| `cargo-tauri` 2.10+           | Build driver                                  | Already installed (`which cargo-tauri`)                           |
+| Rust Android targets          | Cross-compile targets                         | Added automatically by `cargo tauri android init`                 |
 
-Set the standard env vars:
+`mobile/scripts/android-env.sh` auto-detects all of the above and is
+sourced by every `make mobile-android-*` recipe — no manual env vars
+needed when the tools are at their default Homebrew locations.
 
-```bash
-export ANDROID_HOME=$HOME/Library/Android/sdk
-export NDK_HOME=$ANDROID_HOME/ndk/<version>
-export PATH="$ANDROID_HOME/platform-tools:$PATH"
-```
-
-### One-time init / dev / build
+#### Accept the SDK licenses (one time)
 
 ```bash
-make mobile-android-init      # one-time: generates mobile/gen/android/
-make mobile-android-dev       # debug build on first emulator/device
-make mobile-android-build     # release APK
+yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
 ```
 
-The default debug-signed APK is fine for sideloading. For Play
-Store distribution, configure
-`gen/android/app/build.gradle.kts` with your signing config.
+### Build
+
+```bash
+make mobile-android-init                    # one-time: generates mobile/gen/android/
+make mobile-android-build                   # arm64 release APK (default)
+make mobile-android-build TARGET=universal  # all four ABIs
+make mobile-android-build-debug             # unstripped debug APK (~400 MB)
+make mobile-android-dev                     # debug build + run on connected device
+```
+
+`mobile-android-build` produces `zetl-mobile-release.apk` at the repo
+root, signed with the Android debug keystore (auto-created on first
+run). The keystore is the standard sideload-test key — fine for `adb
+install` and personal devices. **Without signing, Android 7+ rejects
+the install with "App not installed as a package, appears to be
+invalid"** — that's why the Makefile chains the sign step in.
+
+For Play Store distribution, configure `gen/android/app/build.gradle.kts`
+with a release signing config and skip `mobile-android-sign`.
+
+### Cross-compile quirks the env script handles
+
+1. **`openssl-sys` cross-compile** — the Cargo `mobile` feature enables
+   `vendored-openssl` so both `git2`'s HTTPS path and `webauthn-rs`'s
+   crypto get a statically-linked OpenSSL.
+2. **NDK clang shims** — OpenSSL's vendored `Configure` invokes
+   `<target>-clang` / `<target>-ranlib` *without* an API level, but the
+   NDK ships only API-suffixed binaries. The script symlinks unsuffixed
+   names into `mobile/.android-shims/` (gitignored) and prepends that
+   directory to PATH. The default API level is 24 — override with
+   `ZETL_NDK_API=29 make mobile-android-build`.
+3. **JDK pinning** — Gradle 8.14.3 (current Tauri scaffold) rejects
+   class file major version 69 (Java 25). The env script forces
+   `JAVA_HOME` to `openjdk@17` when one is installed.
+
+### Size budgets (current)
+
+| Build                | Size  | Notes                                            |
+| -------------------- | ----- | ------------------------------------------------ |
+| Debug, universal-arm64 | ~436 MB | Unstripped, debug symbols                      |
+| Release, universal-arm64 | ~27 MB | `strip = true`, `lto = true`, `codegen-units = 1` |
+
+Further reduction would require pruning desktop features from the
+`mobile` Cargo feature set — tantivy, webauthn-rs, the full LSP/MCP
+server, history (`jj-lib`), and ratatui-view are pulled in transitively
+today and aren't all needed on the phone.
 
 ## iOS build
 

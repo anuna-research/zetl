@@ -342,14 +342,52 @@ mobile-wipe:
 	@rm -rf "$(MOBILE_APP_DATA)"
 	@echo "Done — next launch starts at /_mobile/onboarding step 1."
 
+# Android targets source mobile/scripts/android-env.sh, which detects
+# the SDK / NDK / JDK-17 locations and creates the per-repo NDK clang
+# shims that openssl-sys's vendored build needs. See mobile/README.md
+# §Android for the prerequisite install commands.
 mobile-android-init:
-	cd mobile && cargo tauri android init
+	bash -c '. mobile/scripts/android-env.sh && cd mobile && cargo tauri android init'
 
 mobile-android-dev:
-	cd mobile && cargo tauri android dev
+	bash -c '. mobile/scripts/android-env.sh && cd mobile && cargo tauri android dev'
 
+# Default: arm64 release APK (covers >95% of modern devices, smallest
+# universal bundle). Override TARGET=universal for all four ABIs.
+#
+# Always sign the release APK with the standard Android debug
+# keystore — Tauri's release path produces an unsigned APK, which
+# Android 7+ rejects with "App not installed as a package, appears
+# to be invalid". The debug keystore is fine for sideload-testing;
+# Play Store distribution should use a real signing config in
+# `gen/android/app/build.gradle.kts`.
+TARGET ?= aarch64
 mobile-android-build:
-	cd mobile && cargo tauri android build
+	bash -c '. mobile/scripts/android-env.sh && cd mobile && cargo tauri android build --apk --target $(TARGET) && $(MAKE) -C .. mobile-android-sign'
+
+mobile-android-build-debug:
+	bash -c '. mobile/scripts/android-env.sh && cd mobile && cargo tauri android build --apk --debug --target $(TARGET)'
+
+# Sign the most recent release APK with the Android debug keystore.
+# Creates the keystore on first use. Output: zetl-mobile-release.apk
+# at the repo root, ready for `adb install`.
+mobile-android-sign:
+	bash -c '. mobile/scripts/android-env.sh && \
+	  KEYSTORE=$$HOME/.android/debug.keystore && \
+	  if [ ! -f "$$KEYSTORE" ]; then \
+	    mkdir -p "$$HOME/.android" && \
+	    keytool -genkey -v -keystore "$$KEYSTORE" -storepass android \
+	      -alias androiddebugkey -keypass android \
+	      -keyalg RSA -keysize 2048 -validity 10000 \
+	      -dname "CN=Android Debug,O=Android,C=US"; \
+	  fi && \
+	  APKSIGNER=$$(find $$ANDROID_HOME/build-tools -name apksigner | sort -V | tail -1) && \
+	  IN=mobile/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk && \
+	  OUT=zetl-mobile-release.apk && \
+	  "$$APKSIGNER" sign --ks "$$KEYSTORE" --ks-pass pass:android \
+	    --key-pass pass:android --out "$$OUT" "$$IN" && \
+	  "$$APKSIGNER" verify "$$OUT" && \
+	  echo "Signed APK: $$OUT"'
 
 mobile-ios-init:
 	cd mobile && cargo tauri ios init
@@ -408,9 +446,11 @@ help:
 	@echo "  make mobile-test          - Run mobile unit + integration tests"
 	@echo "  make mobile-clean         - cargo clean -p zetl-mobile (forces dist/ rebundle)"
 	@echo "  make mobile-wipe          - Wipe app data dir so onboarding restarts fresh"
-	@echo "  make mobile-android-init  - One-time: cargo tauri android init"
-	@echo "  make mobile-android-dev   - Build+run debug APK on emulator/device"
-	@echo "  make mobile-android-build - Build release APK"
+	@echo "  make mobile-android-init        - One-time: cargo tauri android init (after SDK is set up)"
+	@echo "  make mobile-android-dev         - Build+run debug APK on emulator/device"
+	@echo "  make mobile-android-build       - Build arm64 release APK, sign with debug key (TARGET=universal for all ABIs)"
+	@echo "  make mobile-android-build-debug - Build debug APK (large; unstripped)"
+	@echo "  make mobile-android-sign        - Sign the last release APK with the Android debug keystore"
 	@echo "  make mobile-ios-init      - One-time: cargo tauri ios init"
 	@echo "  make mobile-ios-dev       - Build+run on simulator/device"
 	@echo "  make mobile-ios-build     - Build release IPA"
