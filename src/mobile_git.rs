@@ -35,10 +35,21 @@ pub enum PullOutcome {
     Conflict,
 }
 
-/// Clone a remote vault into `into`. Authenticates over SSH using the
-/// key in [`crate::mobile_state::global()`].
+/// Clone a remote vault into `into`. Authenticates over SSH using
+/// the key in [`crate::mobile_state::global()`].
+///
+/// If `into` exists and is non-empty but contains no `.git` directory
+/// (e.g., the Tauri shell pre-created the vault dir, or macOS dropped
+/// a stray `.DS_Store`, or a prior clone failed partway through), we
+/// wipe its contents before invoking git2 — git2 otherwise refuses
+/// with "exists and is not an empty directory". The presence of
+/// `.git` is treated as a real working tree and refused (the
+/// onboarding handler already redirects to `/` in that case, so we
+/// only see this branch as a defence-in-depth).
 pub fn clone(remote_url: &str, into: &Path) -> Result<Repository> {
     require_keystore_loaded()?;
+    prepare_clone_destination(into)
+        .with_context(|| format!("prepare {} for clone", into.display()))?;
 
     let mut fetch_opts = FetchOptions::new();
     fetch_opts.remote_callbacks(ssh_callbacks());
@@ -49,6 +60,40 @@ pub fn clone(remote_url: &str, into: &Path) -> Result<Repository> {
     builder
         .clone(remote_url, into)
         .with_context(|| format!("git clone {remote_url} → {} failed", into.display()))
+}
+
+fn prepare_clone_destination(into: &Path) -> Result<()> {
+    if !into.exists() {
+        return Ok(());
+    }
+    if into.join(".git").exists() {
+        return Err(anyhow!(
+            "{} is already a git working tree — reset via /_mobile/sync to switch vaults",
+            into.display()
+        ));
+    }
+    // The dir exists with no .git inside; it's an onboarding-state
+    // directory holding at most a `.DS_Store` or stray files from a
+    // failed clone. Wipe the contents so git2 sees an empty dir.
+    let mut had_anything = false;
+    for entry in std::fs::read_dir(into).context("read clone destination")? {
+        let entry = entry.context("iterate clone destination")?;
+        had_anything = true;
+        let p = entry.path();
+        if p.is_dir() {
+            std::fs::remove_dir_all(&p)
+                .with_context(|| format!("rm -rf {}", p.display()))?;
+        } else {
+            std::fs::remove_file(&p).with_context(|| format!("rm {}", p.display()))?;
+        }
+    }
+    if had_anything {
+        eprintln!(
+            "[zetl-mobile] cleared non-empty clone destination {} before clone",
+            into.display()
+        );
+    }
+    Ok(())
 }
 
 /// Fetch + fast-forward merge from the configured `origin` remote.
