@@ -165,7 +165,22 @@ async fn onboarding_clone_handler(Form(form): Form<CloneForm>) -> Response {
             .await;
 
     match clone_result {
-        Ok(Ok(_repo)) => Redirect::to("/").into_response(),
+        Ok(Ok(_repo)) => {
+            // Successful clone — persist vault metadata so the sync
+            // page and any future multi-vault picker can label the
+            // working tree by its derived owner/repo identity.
+            if let Some(app_data) = crate::mobile_state::app_data_dir() {
+                let meta = crate::mobile_state::VaultMeta {
+                    label: crate::mobile_state::derive_vault_label(&remote_url),
+                    remote_url: remote_url.clone(),
+                    cloned_at: chrono_like_now(),
+                };
+                if let Err(e) = crate::mobile_state::write_vault_meta(&app_data, &meta) {
+                    eprintln!("[zetl-mobile] write vault_meta.json failed: {e:#}");
+                }
+            }
+            Redirect::to("/").into_response()
+        }
         Ok(Err(e)) => Html(render_step_clone(&pub_line, Some(&format!("{e:#}")))).into_response(),
         Err(join_err) => Html(render_step_clone(
             &pub_line,
@@ -173,6 +188,21 @@ async fn onboarding_clone_handler(Form(form): Form<CloneForm>) -> Response {
         ))
         .into_response(),
     }
+}
+
+/// Cheap ISO-8601-ish timestamp without pulling chrono into the
+/// embed-serve dependency tree. Format: `YYYY-MM-DDTHH:MM:SSZ`.
+fn chrono_like_now() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    // Reuse the civil-from-unix algorithm shipped in mobile_capture
+    // by going through a fresh SystemNow.
+    let now = crate::mobile_capture::SystemNow::real();
+    let (y, mo, d, h, mi) = now.ymd_hm;
+    let _ = secs; // currently used implicitly via SystemNow::real()
+    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:00Z")
 }
 
 // ── /_mobile/capture ──────────────────────────────────────────────────────────
@@ -345,10 +375,10 @@ async fn reset_handler() -> Response {
         let _ = std::fs::create_dir_all(&vault_root);
     }
 
-    // Forget the persisted key + in-memory key.
+    // Forget the persisted key + in-memory key + vault metadata.
     if let Some(app_data) = crate::mobile_state::app_data_dir() {
-        let key_file = app_data.join("ssh_key.json");
-        let _ = std::fs::remove_file(&key_file);
+        let _ = std::fs::remove_file(app_data.join("ssh_key.json"));
+        let _ = std::fs::remove_file(app_data.join("vault_meta.json"));
     }
     keystore.clear();
 
@@ -490,6 +520,17 @@ fn render_capture_form(error: Option<&str>, title_prefill: &str, body_prefill: &
 }
 
 fn render_sync_page(msg: Option<SyncMsg>) -> String {
+    let vault_header = match crate::mobile_state::vault_meta() {
+        Some(meta) => format!(
+            r#"<div data-zetl-mobile-vault-label="{label}" style="font-size:0.95em;background:#f4f4f4;padding:0.6em 0.8em;border-radius:6px;margin-bottom:1em;">
+  <strong>Vault:</strong> {label}<br>
+  <span style="font-size:0.8em;opacity:0.7;">{remote}</span>
+</div>"#,
+            label = html_escape(&meta.label),
+            remote = html_escape(&meta.remote_url),
+        ),
+        None => String::new(),
+    };
     let banner = match msg {
         Some(SyncMsg::Ok(text)) => format!(
             r#"<div data-zetl-mobile-sync="ok" style="color:#063;background:#efe;padding:0.7em;border-radius:6px;margin-bottom:1em;">{}</div>"#,
@@ -529,6 +570,7 @@ fn render_sync_page(msg: Option<SyncMsg>) -> String {
 </style></head>
 <body data-zetl-mobile-route="sync">
 <h1>Sync</h1>
+{vault_header}
 {banner}
 {key_block}
 <form method="post" action="/_mobile/sync/pull"><button type="submit">Pull (fast-forward only)</button></form>

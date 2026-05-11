@@ -257,6 +257,127 @@ pub fn app_data_dir() -> Option<PathBuf> {
     app_data_dir_cell().lock().ok().and_then(|g| g.clone())
 }
 
+// ── Vault metadata (label + remote) ──────────────────────────────────────────
+
+/// Metadata for the currently-active vault — derived label, the
+/// remote URL the user cloned from, and a clone timestamp. Stored at
+/// `{app_data_dir}/vault_meta.json`. v0.1 keeps a single-vault story:
+/// only one of these exists at a time. v0.2 will move this to a
+/// per-vault subdir under `vaults/{label}/meta.json`.
+#[derive(Clone, Debug)]
+pub struct VaultMeta {
+    pub label: String,
+    pub remote_url: String,
+    pub cloned_at: String,
+}
+
+/// Derive a short, human-readable label from a git remote URL.
+/// Accepts both SSH (`git@host:owner/repo.git`) and HTTPS
+/// (`https://host/owner/repo.git`) forms; returns `"owner/repo"` for
+/// well-formed URLs, falling back to a sanitised tail otherwise.
+pub fn derive_vault_label(remote_url: &str) -> String {
+    let stripped = remote_url
+        .trim()
+        .trim_end_matches('/')
+        .trim_end_matches(".git")
+        .trim_end_matches('/');
+
+    // Walk from the end, taking segments split on '/' or ':'.
+    let parts: Vec<&str> = stripped
+        .rsplit(|c: char| c == '/' || c == ':')
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    match parts.as_slice() {
+        [repo, owner, ..] => format!("{owner}/{repo}"),
+        [single] => (*single).to_string(),
+        _ => "vault".to_string(),
+    }
+}
+
+/// Persist the vault metadata after a successful clone.
+pub fn write_vault_meta(app_data_dir: &std::path::Path, meta: &VaultMeta) -> Result<()> {
+    std::fs::create_dir_all(app_data_dir)
+        .with_context(|| format!("create {}", app_data_dir.display()))?;
+    let body = serde_json::json!({
+        "schema": "zetl-mobile/vault_meta.v1",
+        "label": meta.label,
+        "remote_url": meta.remote_url,
+        "cloned_at": meta.cloned_at,
+    });
+    let path = app_data_dir.join("vault_meta.json");
+    std::fs::write(&path, serde_json::to_string(&body).context("serialise vault meta")?)
+        .with_context(|| format!("write {}", path.display()))?;
+    Ok(())
+}
+
+/// Read the vault metadata if present.
+pub fn read_vault_meta(app_data_dir: &std::path::Path) -> Option<VaultMeta> {
+    let path = app_data_dir.join("vault_meta.json");
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    Some(VaultMeta {
+        label: v["label"].as_str()?.to_string(),
+        remote_url: v["remote_url"].as_str()?.to_string(),
+        cloned_at: v["cloned_at"].as_str().unwrap_or("").to_string(),
+    })
+}
+
+/// Convenience: read meta from the registered `app_data_dir()`.
+pub fn vault_meta() -> Option<VaultMeta> {
+    read_vault_meta(&app_data_dir()?)
+}
+
+#[cfg(test)]
+mod label_tests {
+    use super::derive_vault_label;
+
+    #[test]
+    fn https_url() {
+        assert_eq!(
+            derive_vault_label("https://github.com/anuna-cooperative/agent-comms-wiki.git"),
+            "anuna-cooperative/agent-comms-wiki"
+        );
+    }
+
+    #[test]
+    fn ssh_url() {
+        assert_eq!(
+            derive_vault_label("git@codeberg.org:anuna/zetl.git"),
+            "anuna/zetl"
+        );
+    }
+
+    #[test]
+    fn ssh_url_no_git_suffix() {
+        assert_eq!(
+            derive_vault_label("git@gitlab.com:group/project"),
+            "group/project"
+        );
+    }
+
+    #[test]
+    fn trailing_slash() {
+        assert_eq!(
+            derive_vault_label("https://codeberg.org/anuna/zetl/"),
+            "anuna/zetl"
+        );
+    }
+
+    #[test]
+    fn whitespace_trimmed() {
+        assert_eq!(
+            derive_vault_label("  https://github.com/x/y.git  "),
+            "x/y"
+        );
+    }
+
+    #[test]
+    fn single_segment_fallback() {
+        assert_eq!(derive_vault_label("vault.git"), "vault");
+    }
+}
+
 /// Format an ed25519 public key as the standard `ssh-ed25519 AAAA…
 /// <comment>` line accepted by `~/.ssh/authorized_keys` and every
 /// git host's "Add SSH key" page.
