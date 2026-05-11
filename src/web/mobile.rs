@@ -75,17 +75,31 @@ struct CaptureForm {
 }
 
 /// `GET /_mobile/onboarding` — guided seed-import + remote-URL +
-/// clone wizard. State-driven render: if no key has been imported,
-/// show the seed-input form; if a key is present, show the pubkey +
-/// the remote-URL / clone form.
+/// clone wizard. State-driven render:
+///
+/// - keystore empty → step 1 (paste seed)
+/// - keystore loaded, vault has no `.git` dir → step 2 (clone form)
+/// - keystore loaded AND vault is a working tree → onboarding is
+///   already complete; redirect to `/` so the user lands on the
+///   page list instead of a stale wizard.
 async fn onboarding_handler() -> Response {
     let keystore = crate::mobile_state::global();
 
-    let body = match keystore.pub_openssh() {
-        None => render_step_seed(None),
-        Some(pub_line) => render_step_clone(&pub_line, None),
+    let pub_line = match keystore.pub_openssh() {
+        None => return Html(render_step_seed(None)).into_response(),
+        Some(p) => p,
     };
-    Html(body).into_response()
+
+    // Onboarding is "done" when the vault root contains a .git dir
+    // (i.e. clone has succeeded). Both `set_vault_root` and the
+    // clone handler ensure this is the case after a successful run.
+    if let Some(vault_root) = crate::mobile_state::vault_root() {
+        if vault_root.join(".git").is_dir() {
+            return Redirect::to("/").into_response();
+        }
+    }
+
+    Html(render_step_clone(&pub_line, None)).into_response()
 }
 
 /// `POST /_mobile/onboarding/seed` — accept a 12-word BIP39 mnemonic,

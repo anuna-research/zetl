@@ -23,16 +23,26 @@
 
   <script>
     // The Tauri shell spawns an embedded zetl serve at this URL on
-    // startup (SPEC-040 REQ-4004). We poll until it's reachable, then
-    // navigate the WebView to it. This is the v0.1 strawman approach;
-    // a future slice can replace the polling loop with a programmatic
-    // WebView URL set from the Rust setup() hook.
-    const target = "http://127.0.0.1:23423/";
+    // startup (SPEC-040 REQ-4004). We poll the onboarding route until
+    // it's reachable, then send the WebView there — the onboarding
+    // handler routes the user to step 1, step 2, or redirects to /
+    // depending on the keystore + vault state, so this single entry
+    // point covers fresh-install, partial-onboarding, and
+    // already-set-up cases.
+    const probeUrl = "http://127.0.0.1:23423/_mobile/onboarding";
 
     async function probe() {
       try {
-        const r = await fetch(target, { method: "GET", cache: "no-store" });
-        if (r.ok || r.status === 401 || r.status === 403) return true;
+        const r = await fetch(probeUrl, {
+          method: "GET",
+          cache: "no-store",
+          redirect: "manual",
+        });
+        // Any of these status codes mean the server is up and
+        // responsive: a normal render (200), a redirect to /
+        // (3xx — onboarding already complete), or an auth-style
+        // 401/403 (won't happen on /_mobile but cheap to check).
+        if (r.status >= 200 && r.status < 500) return true;
       } catch (_) {}
       return false;
     }
@@ -40,7 +50,7 @@
     (async () => {
       for (let i = 0; i < 60; i++) {
         if (await probe()) {
-          window.location.replace(target);
+          window.location.replace(probeUrl);
           return;
         }
         await new Promise(r => setTimeout(r, 250));

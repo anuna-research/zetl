@@ -265,6 +265,105 @@ async fn sync_get_renders_buttons() {
     assert!(body.contains("Push"));
 }
 
+// ── End-to-end clone flow ────────────────────────────────────────────────────
+
+/// Build a temp bare git remote with a single `Welcome.md` page so
+/// the cloned vault has visible content after the test runs.
+fn make_seed_remote(dir: &std::path::Path) -> std::path::PathBuf {
+    let bare_path = dir.join("remote.git");
+    git2::Repository::init_bare(&bare_path).unwrap();
+
+    let work_dir = dir.join("seed-work");
+    let url = format!("file://{}", bare_path.display());
+    let repo = git2::Repository::clone(&url, &work_dir).unwrap();
+    std::fs::write(
+        work_dir.join("Welcome.md"),
+        "# Welcome\n\nFirst page in the vault.\n",
+    )
+    .unwrap();
+    let mut idx = repo.index().unwrap();
+    idx.add_path(std::path::Path::new("Welcome.md")).unwrap();
+    idx.write().unwrap();
+    let tree_id = idx.write_tree().unwrap();
+    let tree = repo.find_tree(tree_id).unwrap();
+    let sig = git2::Signature::now("e2e", "e2e@example").unwrap();
+    repo.commit(Some("refs/heads/main"), &sig, &sig, "init", &tree, &[])
+        .unwrap();
+    repo.set_head("refs/heads/main").unwrap();
+    let mut remote = repo.find_remote("origin").unwrap();
+    remote
+        .push::<&str>(&["refs/heads/main:refs/heads/main"], None)
+        .unwrap();
+
+    // Aim the bare's HEAD at main so subsequent clones land on a born
+    // branch (libgit2's default-branch is still "master" otherwise).
+    let bare = git2::Repository::open_bare(&bare_path).unwrap();
+    bare.set_head("refs/heads/main").unwrap();
+    drop(bare);
+
+    bare_path
+}
+
+#[tokio::test]
+async fn end_to_end_clone_via_onboarding_handlers() {
+    let _g = STATE_LOCK.lock().unwrap();
+
+    // Fresh keystore for this test. The handlers all read
+    // mobile_state::global() so clearing here keeps subsequent
+    // assertions deterministic regardless of test ordering.
+    zetl::mobile_state::global().clear();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let bare_path = make_seed_remote(tmp.path());
+    let vault_dir = tmp.path().join("phone-vault");
+    zetl::mobile_state::set_vault_root(vault_dir.clone());
+
+    let app = router();
+
+    // Step 1: POST the BIP39 mnemonic.
+    let seed_body = format!(
+        "mnemonic={}",
+        urlencoding::encode(FIXTURE_MNEMONIC).into_owned()
+    );
+    let (status, location, _) = post_form(&app, "/_mobile/onboarding/seed", &seed_body).await;
+    assert!(
+        matches!(
+            status,
+            StatusCode::SEE_OTHER | StatusCode::TEMPORARY_REDIRECT | StatusCode::FOUND
+        ),
+        "seed POST should redirect; got {status}"
+    );
+    assert_eq!(location.as_deref(), Some("/_mobile/onboarding"));
+
+    // Step 2: POST the remote URL → clone runs.
+    let url = format!("file://{}", bare_path.display());
+    let clone_body = format!("remote_url={}", urlencoding::encode(&url).into_owned());
+    let (status, location, body) =
+        post_form(&app, "/_mobile/onboarding/clone", &clone_body).await;
+    assert!(
+        matches!(
+            status,
+            StatusCode::SEE_OTHER | StatusCode::TEMPORARY_REDIRECT | StatusCode::FOUND
+        ),
+        "clone POST should redirect on success; got {status}; body={body}"
+    );
+    assert_eq!(
+        location.as_deref(),
+        Some("/"),
+        "clone success should redirect to vault root"
+    );
+
+    // Vault is populated: working tree contains the seeded file.
+    assert!(
+        vault_dir.join("Welcome.md").exists(),
+        "Welcome.md should exist after clone"
+    );
+    assert!(
+        vault_dir.join(".git").is_dir(),
+        ".git directory should exist after clone"
+    );
+}
+
 #[tokio::test]
 async fn sync_pull_without_vault_root_renders_error() {
     let _g = STATE_LOCK.lock().unwrap();
