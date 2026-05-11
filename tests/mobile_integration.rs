@@ -122,6 +122,17 @@ async fn unknown_mobile_route_returns_404() {
 #[tokio::test]
 async fn onboarding_seed_post_with_valid_mnemonic_redirects() {
     let _g = STATE_LOCK.lock().unwrap();
+    // Isolate from sibling tests: fresh keystore + fresh
+    // app_data/vault_root pointing at a clean tempdir so the
+    // onboarding GET doesn't auto-redirect to / because some prior
+    // test left a real working tree at the global vault_root.
+    zetl::mobile_state::global().clear();
+    let tmp = tempfile::tempdir().unwrap();
+    let app_data = tmp.path().join("app-data");
+    std::fs::create_dir_all(&app_data).unwrap();
+    zetl::mobile_state::set_app_data_dir(app_data.clone());
+    zetl::mobile_state::set_vault_root(app_data.join("vault"));
+
     let app = router();
     let body = format!(
         "mnemonic={}",
@@ -137,7 +148,7 @@ async fn onboarding_seed_post_with_valid_mnemonic_redirects() {
     );
     assert_eq!(location.as_deref(), Some("/_mobile/onboarding"));
     // After a successful seed POST the keystore is loaded; the next
-    // GET /_mobile/onboarding renders step 2 (clone form).
+    // GET /_mobile/onboarding renders the clone form (no vault yet).
     let (_status, body) = get(&app, "/_mobile/onboarding").await;
     assert!(
         body.contains("data-zetl-mobile-step=\"clone\""),
@@ -209,9 +220,14 @@ async fn capture_get_renders_form() {
 async fn capture_post_writes_file_commits_and_redirects() {
     let _g = STATE_LOCK.lock().unwrap();
 
-    let vault = tempfile::tempdir().unwrap();
-    git2::Repository::init(vault.path()).unwrap();
-    zetl::mobile_state::set_vault_root(vault.path().to_path_buf());
+    // Hold the tempdir for the test's lifetime; assign vault_root to
+    // a child path (not the tempdir root, which gets dropped). The
+    // captured-file assertion reads from the same child path.
+    let tmp = tempfile::tempdir().unwrap();
+    let vault = tmp.path().join("vault");
+    std::fs::create_dir_all(&vault).unwrap();
+    git2::Repository::init(&vault).unwrap();
+    zetl::mobile_state::set_vault_root(vault.clone());
 
     let app = router();
     let form_body = format!(
@@ -229,7 +245,7 @@ async fn capture_post_writes_file_commits_and_redirects() {
     );
     let loc = location.expect("redirect should set Location header");
     assert_eq!(loc, "/Coffee%20notes");
-    let written = std::fs::read_to_string(vault.path().join("Coffee notes.md")).unwrap();
+    let written = std::fs::read_to_string(vault.join("Coffee notes.md")).unwrap();
     assert_eq!(written, "Some content\n");
 }
 
@@ -308,15 +324,17 @@ fn make_seed_remote(dir: &std::path::Path) -> std::path::PathBuf {
 async fn end_to_end_clone_via_onboarding_handlers() {
     let _g = STATE_LOCK.lock().unwrap();
 
-    // Fresh keystore for this test. The handlers all read
-    // mobile_state::global() so clearing here keeps subsequent
-    // assertions deterministic regardless of test ordering.
+    // Fresh state — multi-vault layout: app_data_dir + vault symlink
+    // path under it; clone writes to app_data/vaults/<label>/ and
+    // points the symlink there.
     zetl::mobile_state::global().clear();
-
     let tmp = tempfile::tempdir().unwrap();
+    let app_data = tmp.path().join("app-data");
+    std::fs::create_dir_all(&app_data).unwrap();
+    zetl::mobile_state::set_app_data_dir(app_data.clone());
+    zetl::mobile_state::set_vault_root(app_data.join("vault"));
+
     let bare_path = make_seed_remote(tmp.path());
-    let vault_dir = tmp.path().join("phone-vault");
-    zetl::mobile_state::set_vault_root(vault_dir.clone());
 
     let app = router();
 
@@ -353,38 +371,52 @@ async fn end_to_end_clone_via_onboarding_handlers() {
         "clone success should redirect to vault root"
     );
 
-    // Vault is populated: working tree contains the seeded file.
+    // Multi-vault: clone lands in app_data/vaults/<derived-label>/.
+    // For the file:// remote, the derived label is the tempdir's
+    // basename — verify via list_vaults().
+    let entries = zetl::mobile_state::list_vaults();
+    assert_eq!(entries.len(), 1, "expected one cloned vault, got {entries:?}");
+    let entry = &entries[0];
+    assert!(entry.is_active, "newly-cloned vault should be active");
     assert!(
-        vault_dir.join("Welcome.md").exists(),
-        "Welcome.md should exist after clone"
+        entry.path.join("Welcome.md").exists(),
+        "Welcome.md should exist in vaults/{}",
+        entry.label
     );
     assert!(
-        vault_dir.join(".git").is_dir(),
-        ".git directory should exist after clone"
+        entry.path.join(".git").is_dir(),
+        ".git should exist in vaults/{}",
+        entry.label
     );
+    // Symlink at app_data/vault → vaults/<label>
+    let link = app_data.join("vault");
+    assert!(link.is_symlink(), "vault should be a symlink after clone");
 }
 
 #[tokio::test]
-async fn reset_clears_keystore_wipes_vault_and_redirects_to_onboarding() {
+async fn reset_clears_active_vault_keystore_and_redirects() {
     let _g = STATE_LOCK.lock().unwrap();
 
-    // Set up the same state as a successful end-to-end clone:
-    // - keystore loaded
-    // - vault dir with a .git directory and a file
-    // - app_data_dir containing a persisted ssh_key.json
+    // Multi-vault setup: app_data has vaults/<label>/ with .git, and
+    // app_data/vault is a symlink to that. Reset should wipe the
+    // active vault dir + the symlink + the persisted key.
     let tmp = tempfile::tempdir().unwrap();
     let app_data = tmp.path().join("app-data");
-    let vault = app_data.join("vault");
-    std::fs::create_dir_all(&vault).unwrap();
-    git2::Repository::init(&vault).unwrap();
-    std::fs::write(vault.join("Welcome.md"), "# Welcome\n").unwrap();
+    let vaults = app_data.join("vaults");
+    let label = "test-owner/test-repo";
+    let active_vault_dir = vaults.join(label);
+    std::fs::create_dir_all(&active_vault_dir).unwrap();
+    git2::Repository::init(&active_vault_dir).unwrap();
+    std::fs::write(active_vault_dir.join("Welcome.md"), "# Welcome\n").unwrap();
     std::fs::write(app_data.join("ssh_key.json"), r#"{}"#).unwrap();
+    let link = app_data.join("vault");
+    std::os::unix::fs::symlink(format!("vaults/{label}"), &link).unwrap();
+
     zetl::mobile_state::set_app_data_dir(app_data.clone());
-    zetl::mobile_state::set_vault_root(vault.clone());
+    zetl::mobile_state::set_vault_root(link.clone());
     zetl::mobile_state::global()
         .import_mnemonic(FIXTURE_MNEMONIC)
         .unwrap();
-    assert!(zetl::mobile_state::global().is_loaded());
 
     let app = router();
     let (status, location, _body) = post_form(&app, "/_mobile/reset", "").await;
@@ -395,21 +427,12 @@ async fn reset_clears_keystore_wipes_vault_and_redirects_to_onboarding() {
         ),
         "reset POST should redirect; got {status}"
     );
+    // Only one vault, so redirect goes to onboarding (no other vaults left).
     assert_eq!(location.as_deref(), Some("/_mobile/onboarding"));
 
-    // Vault working tree wiped (but the dir itself is recreated empty so
-    // the embedded serve can keep serving with an empty page list).
-    assert!(vault.exists(), "vault dir should be recreated empty");
-    assert!(
-        !vault.join("Welcome.md").exists(),
-        "vault content should be wiped"
-    );
-    assert!(
-        !vault.join(".git").exists(),
-        ".git should be wiped"
-    );
-
-    // Persisted ssh_key.json removed; keystore cleared.
+    // Active vault dir wiped, symlink removed, key forgotten.
+    assert!(!active_vault_dir.exists(), "active vault dir should be removed");
+    assert!(!link.exists(), "vault symlink should be removed");
     assert!(
         !app_data.join("ssh_key.json").exists(),
         "persisted ssh_key.json should be removed"
@@ -421,15 +444,20 @@ async fn reset_clears_keystore_wipes_vault_and_redirects_to_onboarding() {
 }
 
 #[tokio::test]
-async fn sync_pull_without_vault_root_renders_error() {
+async fn sync_pull_against_non_git_dir_renders_error() {
     let _g = STATE_LOCK.lock().unwrap();
 
-    // Force the vault_root cell to None by setting to an empty path
-    // and relying on the handler's error branch. We cannot reset the
-    // OnceLock-backed Mutex contents to None from a public API; use
-    // a fresh tempdir path that exists but has no git repo.
-    let dir = tempfile::tempdir().unwrap();
-    zetl::mobile_state::set_vault_root(dir.path().to_path_buf());
+    // Point vault_root at a dir that exists but has no git repo, so
+    // mobile_git::pull_ff_only errors and the handler renders the
+    // sync page with an error banner. Also pre-load the keystore so
+    // we don't trip the "no SSH key" gate ahead of the pull.
+    let tmp = tempfile::tempdir().unwrap();
+    let vault = tmp.path().join("not-a-repo");
+    std::fs::create_dir_all(&vault).unwrap();
+    zetl::mobile_state::set_vault_root(vault);
+    zetl::mobile_state::global()
+        .import_mnemonic(FIXTURE_MNEMONIC)
+        .unwrap();
 
     let app = router();
     let (status, _location, body) = post_form(&app, "/_mobile/sync/pull", "").await;

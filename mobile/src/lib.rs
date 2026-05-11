@@ -32,6 +32,17 @@ pub fn run() {
             zetl::mobile_state::set_app_data_dir(app_data_dir.clone());
             zetl::mobile_state::set_vault_root(vault_root.clone());
 
+            // Migrate any legacy single-vault layout into the multi-
+            // vault `vaults/<label>/` structure (idempotent — no-op on
+            // fresh install or already-multi-vault). After this call,
+            // `vault_root` is a symlink (or doesn't exist yet) and
+            // `vaults_dir` is populated.
+            if let Err(e) =
+                zetl::mobile_state::migrate_single_vault_layout(&app_data_dir)
+            {
+                tracing::warn!("vault layout migration failed: {e:#}");
+            }
+
             // Restore previously-persisted SSH key if present; otherwise
             // auto-generate a fresh per-device keypair so the user is
             // never asked to paste a seed phrase by default. The

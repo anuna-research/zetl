@@ -585,7 +585,9 @@ pub async fn launch_default(
     let data = match reindex(&vault_root) {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("[zetl-mobile] vault reindex on launch failed: {e:?}; starting with empty data");
+            eprintln!(
+                "[zetl-mobile] vault reindex on launch failed: {e:?}; starting with empty data"
+            );
             VaultData {
                 files: Vec::new(),
                 graph: LinkGraph::build(&[], &HashMap::new()),
@@ -609,8 +611,14 @@ pub async fn launch_default(
 
     let vault_root_arc = Arc::new(vault_root);
 
+    let data = Arc::new(RwLock::new(data));
+    // SPEC-040 multi-vault: register the data handle in mobile_state
+    // so /_mobile/vaults/switch can swap the embedded serve's
+    // in-memory VaultData when the active-vault symlink moves.
+    crate::mobile_state::set_vault_data_handle(data.clone());
+
     let state = WebState {
-        data: Arc::new(RwLock::new(data)),
+        data,
         crdt_store: ws::CrdtDocStore::new(vault_root_arc.clone()),
         vault_root: vault_root_arc.clone(),
         search_index: Arc::new(search_index),
@@ -642,13 +650,7 @@ pub async fn launch_default(
         asset_max_total_bytes: 100 * 1024 * 1024,
     };
 
-    run(
-        state,
-        port,
-        bind_addr,
-        std::time::Duration::from_secs(60),
-    )
-    .await
+    run(state, port, bind_addr, std::time::Duration::from_secs(60)).await
 }
 
 /// ETag + conditional-GET middleware for text/html responses.

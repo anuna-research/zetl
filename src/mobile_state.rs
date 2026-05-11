@@ -459,8 +459,13 @@ pub fn derive_vault_label(remote_url: &str) -> String {
         .filter(|s| !s.is_empty())
         .collect();
 
+    // The label doubles as a directory name under `vaults/`, so we
+    // hyphenate `owner/repo` rather than nesting it as two path
+    // components. (Display callers receive the same hyphenated form;
+    // a v0.2 design can split display vs filesystem labels if the UX
+    // calls for it.)
     match parts.as_slice() {
-        [repo, owner, ..] => format!("{owner}/{repo}"),
+        [repo, owner, ..] => format!("{owner}-{repo}"),
         [single] => (*single).to_string(),
         _ => "vault".to_string(),
     }
@@ -556,7 +561,7 @@ mod label_tests {
     fn https_url() {
         assert_eq!(
             derive_vault_label("https://github.com/anuna-cooperative/agent-comms-wiki.git"),
-            "anuna-cooperative/agent-comms-wiki"
+            "anuna-cooperative-agent-comms-wiki"
         );
     }
 
@@ -564,7 +569,7 @@ mod label_tests {
     fn ssh_url() {
         assert_eq!(
             derive_vault_label("git@codeberg.org:anuna/zetl.git"),
-            "anuna/zetl"
+            "anuna-zetl"
         );
     }
 
@@ -572,7 +577,7 @@ mod label_tests {
     fn ssh_url_no_git_suffix() {
         assert_eq!(
             derive_vault_label("git@gitlab.com:group/project"),
-            "group/project"
+            "group-project"
         );
     }
 
@@ -580,7 +585,7 @@ mod label_tests {
     fn trailing_slash() {
         assert_eq!(
             derive_vault_label("https://codeberg.org/anuna/zetl/"),
-            "anuna/zetl"
+            "anuna-zetl"
         );
     }
 
@@ -588,7 +593,7 @@ mod label_tests {
     fn whitespace_trimmed() {
         assert_eq!(
             derive_vault_label("  https://github.com/x/y.git  "),
-            "x/y"
+            "x-y"
         );
     }
 

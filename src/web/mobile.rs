@@ -51,6 +51,9 @@ where
         .route("/_mobile/sync/pull", post(sync_pull_handler))
         .route("/_mobile/sync/push", post(sync_push_handler))
         .route("/_mobile/reset", post(reset_handler))
+        .route("/_mobile/vaults", get(vaults_handler))
+        .route("/_mobile/vaults/switch", post(vaults_switch_handler))
+        .route("/_mobile/vaults/add", get(vaults_add_handler))
 }
 
 // ── /_mobile/onboarding ───────────────────────────────────────────────────────
@@ -89,7 +92,9 @@ struct CaptureForm {
 /// - keystore not loaded at all → fall back to the seed-paste form
 ///   (tests + odd-edge cases; production never hits this because the
 ///   shell auto-generates on launch).
-async fn onboarding_handler() -> Response {
+async fn onboarding_handler(
+    axum::extract::Query(q): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Response {
     let keystore = crate::mobile_state::global();
 
     let pub_line = match keystore.pub_openssh() {
@@ -97,9 +102,18 @@ async fn onboarding_handler() -> Response {
         Some(p) => p,
     };
 
-    if let Some(vault_root) = crate::mobile_state::vault_root() {
-        if vault_root.join(".git").is_dir() {
-            return Redirect::to("/").into_response();
+    // "Add another vault" flow passes ?add=1 so the auto-redirect-
+    // when-onboarded logic is bypassed and the user sees the clone
+    // form even though an active vault exists.
+    let force_clone_form = matches!(q.get("add").map(String::as_str), Some("1"));
+
+    if !force_clone_form {
+        if let Some(vault_root) = crate::mobile_state::vault_root() {
+            if vault_root.join(".git").is_dir()
+                || (vault_root.is_symlink() && vault_root.exists())
+            {
+                return Redirect::to("/").into_response();
+            }
         }
     }
 
@@ -127,9 +141,15 @@ async fn onboarding_seed_handler(Form(form): Form<SeedForm>) -> Response {
 }
 
 /// `POST /_mobile/onboarding/clone` — clone the user-supplied git
-/// remote into the registered vault root, using the in-keystore SSH
-/// key for auth. On success, redirect to the page list (`/`); on
-/// failure, re-render the clone form with the error.
+/// remote into `vaults/<label>/`, point the active-vault symlink at
+/// it, and reindex the embedded serve. On success, redirect to `/`;
+/// on failure, re-render the clone form with the error.
+///
+/// Multi-vault: the clone target is derived from the remote URL
+/// (`derive_vault_label`) and lives at `app_data_dir/vaults/<label>/`.
+/// The `app_data_dir/vault` symlink is repointed at the new vault so
+/// the embedded serve (whose `vault_root` is fixed at boot to that
+/// symlink path) follows it transparently.
 async fn onboarding_clone_handler(Form(form): Form<CloneForm>) -> Response {
     let keystore = crate::mobile_state::global();
     let pub_line = match keystore.pub_openssh() {
@@ -142,62 +162,72 @@ async fn onboarding_clone_handler(Form(form): Form<CloneForm>) -> Response {
         }
     };
 
-    let vault_root = match crate::mobile_state::vault_root() {
+    let app_data = match crate::mobile_state::app_data_dir() {
         Some(p) => p,
         None => {
             return Html(render_step_clone(
                 &pub_line,
-                Some("vault root not registered — Tauri shell did not initialise"),
+                Some("app data dir not registered — Tauri shell did not initialise"),
             ))
             .into_response();
         }
     };
 
     let remote_url = form.remote_url.trim().to_string();
+    let label = crate::mobile_state::derive_vault_label(&remote_url);
+    let vaults_dir = app_data.join("vaults");
+    let target_dir = vaults_dir.join(&label);
 
-    // If the user lands here with a vault already cloned (stale form
-    // cache, browser back-button, etc.), route them to the right
-    // place instead of bouncing off the prepare-clone refusal with
-    // a raw error string in the response body.
-    if vault_root.join(".git").is_dir() {
-        if let Some(meta) = crate::mobile_state::vault_meta() {
-            if meta.remote_url == remote_url {
-                // Same vault — nothing to do.
+    // If a vault with this label already exists (same remote previously
+    // cloned, or label collision), switch to it rather than re-cloning.
+    if target_dir.join(".git").is_dir() {
+        match crate::mobile_state::set_active_vault(&label) {
+            Ok(_) => {
+                let _ = crate::mobile_state::trigger_reindex();
                 return Redirect::to("/").into_response();
             }
+            Err(e) => {
+                return Html(render_step_clone(
+                    &pub_line,
+                    Some(&format!("could not activate existing vault '{label}': {e:#}")),
+                ))
+                .into_response();
+            }
         }
-        // Different (or unknown) remote — push the user to the sync
-        // page with a banner explaining and pointing at Reset.
-        let app = render_sync_page(Some(SyncMsg::Error(format!(
-            "A vault is already cloned here. To switch to {remote_url}, tap \
-             “Reset and switch vault” below first."
-        ))));
-        return Html(app).into_response();
+    }
+
+    if let Err(e) = std::fs::create_dir_all(&vaults_dir) {
+        return Html(render_step_clone(
+            &pub_line,
+            Some(&format!("create vaults dir failed: {e:#}")),
+        ))
+        .into_response();
     }
 
     // The clone is blocking I/O against libgit2. Run it on a blocking
     // pool thread so the axum request task is not held for the full
     // duration of the network fetch.
-    let clone_root = vault_root.clone();
+    let clone_target = target_dir.clone();
     let clone_url = remote_url.clone();
     let clone_result =
-        tokio::task::spawn_blocking(move || crate::mobile_git::clone(&clone_url, &clone_root))
+        tokio::task::spawn_blocking(move || crate::mobile_git::clone(&clone_url, &clone_target))
             .await;
 
     match clone_result {
         Ok(Ok(_repo)) => {
-            // Successful clone — persist vault metadata so the sync
-            // page and any future multi-vault picker can label the
-            // working tree by its derived owner/repo identity.
-            if let Some(app_data) = crate::mobile_state::app_data_dir() {
-                let meta = crate::mobile_state::VaultMeta {
-                    label: crate::mobile_state::derive_vault_label(&remote_url),
-                    remote_url: remote_url.clone(),
-                    cloned_at: chrono_like_now(),
-                };
-                if let Err(e) = crate::mobile_state::write_vault_meta(&app_data, &meta) {
-                    eprintln!("[zetl-mobile] write vault_meta.json failed: {e:#}");
-                }
+            // Point the active-vault symlink at the new working tree.
+            if let Err(e) = crate::mobile_state::set_active_vault(&label) {
+                return Html(render_step_clone(
+                    &pub_line,
+                    Some(&format!("clone succeeded but could not activate vault: {e:#}")),
+                ))
+                .into_response();
+            }
+            // Reindex the embedded serve so the page list reflects the
+            // newly-cloned content (the symlink moves, but state.data
+            // is still the pre-clone snapshot).
+            if let Err(e) = crate::mobile_state::trigger_reindex() {
+                eprintln!("[zetl-mobile] reindex after clone failed: {e:#}");
             }
             Redirect::to("/").into_response()
         }
@@ -210,20 +240,6 @@ async fn onboarding_clone_handler(Form(form): Form<CloneForm>) -> Response {
     }
 }
 
-/// Cheap ISO-8601-ish timestamp without pulling chrono into the
-/// embed-serve dependency tree. Format: `YYYY-MM-DDTHH:MM:SSZ`.
-fn chrono_like_now() -> String {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    // Reuse the civil-from-unix algorithm shipped in mobile_capture
-    // by going through a fresh SystemNow.
-    let now = crate::mobile_capture::SystemNow::real();
-    let (y, mo, d, h, mi) = now.ymd_hm;
-    let _ = secs; // currently used implicitly via SystemNow::real()
-    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:00Z")
-}
 
 // ── /_mobile/capture ──────────────────────────────────────────────────────────
 
@@ -365,44 +381,126 @@ enum SyncMsg {
     Error(String),
 }
 
-/// `POST /_mobile/reset` — wipe the local vault working tree and
-/// forget the in-memory + on-disk SSH key, then redirect to
-/// `/_mobile/onboarding` so the user can switch to a different
-/// vault. This is the v0.1 stand-in for true multi-vault support
-/// (which is a v0.2 question — vault picker, per-vault working
-/// trees, active-vault selection).
-///
-/// Operates only on directories under the app data dir registered
-/// by the Tauri shell — it does not touch arbitrary paths.
+// ── /_mobile/vaults — multi-vault picker ──────────────────────────────────────
+
+#[derive(Deserialize)]
+struct SwitchForm {
+    label: String,
+}
+
+/// `GET /_mobile/vaults` — list every cloned vault and let the user
+/// switch the active one. Each non-active row has a "Switch" button
+/// that POSTs to `/_mobile/vaults/switch`. An "Add another vault"
+/// link sends the user back to `/_mobile/onboarding` with a flag so
+/// the auto-redirect-when-onboarded logic is bypassed.
+async fn vaults_handler() -> Response {
+    Html(render_vaults_page(None)).into_response()
+}
+
+/// `POST /_mobile/vaults/switch` — repoint the `vault` symlink at
+/// `vaults/<label>/` and trigger a reindex so the embedded serve's
+/// page list reflects the new working tree.
+async fn vaults_switch_handler(Form(form): Form<SwitchForm>) -> Response {
+    let label = form.label.trim().to_string();
+    if label.is_empty() {
+        return Html(render_vaults_page(Some(VaultsMsg::Error(
+            "switch label is empty".into(),
+        ))))
+        .into_response();
+    }
+    match crate::mobile_state::set_active_vault(&label) {
+        Ok(_) => {
+            if let Err(e) = crate::mobile_state::trigger_reindex() {
+                eprintln!("[zetl-mobile] reindex after switch failed: {e:#}");
+            }
+            Redirect::to("/").into_response()
+        }
+        Err(e) => Html(render_vaults_page(Some(VaultsMsg::Error(format!("{e:#}")))))
+            .into_response(),
+    }
+}
+
+/// `GET /_mobile/vaults/add` — redirect to onboarding. The
+/// onboarding handler's "redirect to / when .git exists" logic is
+/// keyed off the *active* vault's `.git` directory; clicking
+/// "Add another vault" first repoints the symlink to a sentinel
+/// (no-op when there's no active vault) so onboarding renders the
+/// clone form rather than auto-redirecting. v0.1 implementation: we
+/// rely on the fact that the user can paste a *different* remote URL
+/// and the clone handler short-circuits to a switch if the label
+/// matches an existing vault. So a plain redirect to /_mobile/onboarding
+/// works — the user pastes a new URL and the handler does the right
+/// thing (clone-new or switch-to-existing).
+async fn vaults_add_handler() -> Response {
+    // Force the onboarding GET to render the clone form (step 2) by
+    // temporarily relying on the keystore-loaded + symlink-target-
+    // does-not-exist state. We can't easily fake that without races,
+    // so the simpler path: redirect straight to the clone-form
+    // render with a marker query so the onboarding handler always
+    // shows it. v0.1 implementation: redirect to a new URL that
+    // forces the form. For minimal code we just send the user to a
+    // direct clone-form render via /_mobile/onboarding?add=1 which
+    // the handler interprets as "always show clone step, never
+    // redirect".
+    Redirect::to("/_mobile/onboarding?add=1").into_response()
+}
+
+enum VaultsMsg {
+    Error(String),
+}
+
+/// `POST /_mobile/reset` — multi-vault aware: removes the **active**
+/// vault's working tree from `vaults/<active-label>/`, unsets the
+/// symlink, and forgets the in-memory + on-disk SSH key. Other
+/// cloned vaults under `vaults/` are preserved. Redirects to
+/// `/_mobile/onboarding` or `/_mobile/vaults` depending on whether
+/// any vaults remain.
 async fn reset_handler() -> Response {
     let keystore = crate::mobile_state::global();
 
-    // Best-effort: wipe the vault working tree. If anything fails we
-    // surface the error on the sync page so the user can recover by
-    // hand if needed.
-    if let Some(vault_root) = crate::mobile_state::vault_root() {
-        if vault_root.exists() {
-            if let Err(e) = std::fs::remove_dir_all(&vault_root) {
+    // Resolve the active vault's actual working-tree path (the
+    // symlink's target) before we remove the symlink.
+    let active_target: Option<std::path::PathBuf> =
+        crate::mobile_state::vault_root().and_then(|link| std::fs::read_link(&link).ok())
+            .and_then(|target| {
+                // Symlink target is relative to app_data_dir
+                crate::mobile_state::app_data_dir().map(|root| root.join(target))
+            });
+
+    if let Some(target) = active_target {
+        if target.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&target) {
                 return Html(render_sync_page(Some(SyncMsg::Error(format!(
                     "wipe vault {}: {e:#}",
-                    vault_root.display()
+                    target.display()
                 )))))
                 .into_response();
             }
         }
-        // Recreate the empty dir so the embedded serve can keep
-        // serving from it (with an empty page list) until clone runs.
-        let _ = std::fs::create_dir_all(&vault_root);
+    }
+    // Remove the symlink itself so onboarding renders cleanly.
+    if let Some(link) = crate::mobile_state::vault_root() {
+        if link.is_symlink() {
+            let _ = std::fs::remove_file(&link);
+        } else if link.exists() {
+            let _ = std::fs::remove_dir_all(&link);
+        }
     }
 
-    // Forget the persisted key + in-memory key + vault metadata.
+    // Forget the persisted key + in-memory key + legacy vault meta.
     if let Some(app_data) = crate::mobile_state::app_data_dir() {
         let _ = std::fs::remove_file(app_data.join("ssh_key.json"));
         let _ = std::fs::remove_file(app_data.join("vault_meta.json"));
     }
     keystore.clear();
 
-    Redirect::to("/_mobile/onboarding").into_response()
+    // If other vaults remain, the user probably wants to switch to
+    // one of them, not re-onboard from scratch.
+    if !crate::mobile_state::list_vaults().is_empty() {
+        Redirect::to("/_mobile/vaults").into_response()
+    } else {
+        Redirect::to("/_mobile/onboarding").into_response()
+    }
 }
 
 // ── HTML rendering helpers ────────────────────────────────────────────────────
@@ -501,6 +599,76 @@ fn html_escape(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+fn render_vaults_page(msg: Option<VaultsMsg>) -> String {
+    let banner = match msg {
+        Some(VaultsMsg::Error(text)) => format!(
+            r#"<div data-zetl-mobile-vaults-msg="error" style="color:#b00;background:#fee;padding:0.7em;border-radius:6px;margin-bottom:1em;">Error: {}</div>"#,
+            html_escape(&text)
+        ),
+        None => String::new(),
+    };
+
+    let entries = crate::mobile_state::list_vaults();
+    let rows = if entries.is_empty() {
+        r#"<p class="hint">No vaults cloned yet. <a href="/_mobile/onboarding">Add one →</a></p>"#.to_string()
+    } else {
+        entries
+            .iter()
+            .map(|v| {
+                let active_tag = if v.is_active {
+                    r#"<span style="color:#063;font-size:0.8em;">● active</span>"#
+                } else {
+                    ""
+                };
+                let switch_form = if v.is_active {
+                    String::new()
+                } else {
+                    format!(
+                        r#"<form method="post" action="/_mobile/vaults/switch" style="display:inline;margin-left:0.6em;">
+  <input type="hidden" name="label" value="{label}">
+  <button type="submit" style="width:auto;padding:0.3em 0.7em;font-size:0.85em;">Switch</button>
+</form>"#,
+                        label = html_escape(&v.label)
+                    )
+                };
+                format!(
+                    r#"<li style="margin:0.6em 0;line-height:1.5;">
+  <strong data-zetl-mobile-vault-label="{label}">{label}</strong> {active_tag}{switch_form}
+  <br><span style="font-size:0.8em;opacity:0.7;">{remote}</span>
+</li>"#,
+                    label = html_escape(&v.label),
+                    active_tag = active_tag,
+                    switch_form = switch_form,
+                    remote = html_escape(v.remote_url.as_deref().unwrap_or("(no remote)")),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    format!(
+        r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>zetl mobile · vaults</title>
+<style>
+  body {{ font-family: system-ui, sans-serif; max-width: 30em; margin: 0 auto; padding: 1.5em; }}
+  button {{ width: 100%; padding: 0.8em; font-size: 1rem; margin-top: 0.6em; }}
+  h1 {{ font-size: 1.2rem; margin: 0 0 1rem; }}
+  ul {{ list-style: none; padding: 0; }}
+  .hint {{ font-size: 0.9em; opacity: 0.7; }}
+  .links {{ font-size: 0.85em; opacity: 0.7; margin-top: 1.5em; display: flex; gap: 1em; }}
+  .links a {{ color: inherit; }}
+</style></head>
+<body data-zetl-mobile-route="vaults">
+<h1>Vaults</h1>
+{banner}
+<ul data-zetl-mobile-vaults-list>{rows}</ul>
+<p><a href="/_mobile/onboarding?add=1"><button type="button">+ Add another vault</button></a></p>
+<div class="links"><a href="/">Pages</a> · <a href="/_mobile/sync">Sync</a> · <a href="/_mobile/capture">Capture</a></div>
+</body></html>"#,
+    )
+}
+
 fn render_capture_form(error: Option<&str>, title_prefill: &str, body_prefill: &str) -> String {
     let error_block = match error {
         Some(msg) => format!(
@@ -540,16 +708,30 @@ fn render_capture_form(error: Option<&str>, title_prefill: &str, body_prefill: &
 }
 
 fn render_sync_page(msg: Option<SyncMsg>) -> String {
+    let other_count = crate::mobile_state::list_vaults()
+        .iter()
+        .filter(|v| !v.is_active)
+        .count();
+    let switcher_link = if other_count > 0 {
+        format!(
+            r#"<p class="hint" style="margin-top:0.4em;"><a href="/_mobile/vaults">Switch vault ({} other)</a></p>"#,
+            other_count
+        )
+    } else {
+        r#"<p class="hint" style="margin-top:0.4em;"><a href="/_mobile/vaults">Manage vaults</a></p>"#.to_string()
+    };
     let vault_header = match crate::mobile_state::vault_meta() {
         Some(meta) => format!(
             r#"<div data-zetl-mobile-vault-label="{label}" style="font-size:0.95em;background:#f4f4f4;padding:0.6em 0.8em;border-radius:6px;margin-bottom:1em;">
   <strong>Vault:</strong> {label}<br>
   <span style="font-size:0.8em;opacity:0.7;">{remote}</span>
+  {switcher}
 </div>"#,
             label = html_escape(&meta.label),
             remote = html_escape(&meta.remote_url),
+            switcher = switcher_link,
         ),
-        None => String::new(),
+        None => switcher_link.clone(),
     };
     let banner = match msg {
         Some(SyncMsg::Ok(text)) => format!(
