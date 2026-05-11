@@ -32,13 +32,28 @@ pub fn run() {
             zetl::mobile_state::set_app_data_dir(app_data_dir.clone());
             zetl::mobile_state::set_vault_root(vault_root.clone());
 
-            // Best-effort restore of a previously-persisted SSH key so
-            // the user does not re-enter their seed every launch.
-            // Failures are logged but never block startup — the
-            // onboarding wizard can still recover.
-            match zetl::mobile_state::global().restore(&app_data_dir) {
+            // Restore previously-persisted SSH key if present; otherwise
+            // auto-generate a fresh per-device keypair so the user is
+            // never asked to paste a seed phrase by default. The
+            // generated key is immediately persisted so subsequent
+            // launches reuse the same device identity.
+            //
+            // BIP39 seed import remains available via
+            // POST /_mobile/onboarding/seed for users who want their
+            // phone to share an identity with a desktop they already
+            // provisioned via `zetl derive-ssh-key --mnemonic`.
+            let keystore = zetl::mobile_state::global();
+            match keystore.restore(&app_data_dir) {
                 Ok(true) => tracing::info!("restored SSH key from app data dir"),
-                Ok(false) => tracing::info!("no persisted SSH key — onboarding required"),
+                Ok(false) => match keystore.generate_new() {
+                    Ok(_pub_line) => {
+                        tracing::info!("auto-generated fresh per-device SSH key");
+                        if let Err(e) = keystore.persist(&app_data_dir) {
+                            tracing::warn!("ssh key persist failed: {e:#}");
+                        }
+                    }
+                    Err(e) => tracing::error!("ssh key generation failed: {e:#}"),
+                },
                 Err(e) => tracing::warn!("ssh key restore failed: {e:#}"),
             }
 

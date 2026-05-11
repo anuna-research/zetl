@@ -75,14 +75,20 @@ struct CaptureForm {
     content: String,
 }
 
-/// `GET /_mobile/onboarding` — guided seed-import + remote-URL +
-/// clone wizard. State-driven render:
+/// `GET /_mobile/onboarding` — single-step wizard.
 ///
-/// - keystore empty → step 1 (paste seed)
-/// - keystore loaded, vault has no `.git` dir → step 2 (clone form)
+/// State-driven render:
+///
 /// - keystore loaded AND vault is a working tree → onboarding is
 ///   already complete; redirect to `/` so the user lands on the
-///   page list instead of a stale wizard.
+///   page list.
+/// - keystore loaded, no `.git` in vault → render the pubkey + clone
+///   form (the common path: the Tauri shell auto-generated a fresh
+///   per-device key at startup; user just needs to add it to their
+///   git host and paste the remote URL).
+/// - keystore not loaded at all → fall back to the seed-paste form
+///   (tests + odd-edge cases; production never hits this because the
+///   shell auto-generates on launch).
 async fn onboarding_handler() -> Response {
     let keystore = crate::mobile_state::global();
 
@@ -91,9 +97,6 @@ async fn onboarding_handler() -> Response {
         Some(p) => p,
     };
 
-    // Onboarding is "done" when the vault root contains a .git dir
-    // (i.e. clone has succeeded). Both `set_vault_root` and the
-    // clone handler ensure this is the case after a successful run.
     if let Some(vault_root) = crate::mobile_state::vault_root() {
         if vault_root.join(".git").is_dir() {
             return Redirect::to("/").into_response();
@@ -398,28 +401,44 @@ fn render_step_clone(pub_line: &str, error: Option<&str>) -> String {
     format!(
         r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>zetl mobile · onboarding · step 2</title>
+<title>zetl mobile · onboarding</title>
 <style>
   body {{ font-family: system-ui, sans-serif; max-width: 30em; margin: 0 auto; padding: 1.5em; }}
   pre {{ background: #f4f4f4; padding: 0.7em; border-radius: 6px; word-break: break-all; white-space: pre-wrap; font-size: 0.85rem; }}
   input[type="url"] {{ width: 100%; font-family: ui-monospace, monospace; font-size: 1rem; padding: 0.6em; box-sizing: border-box; }}
+  textarea {{ width: 100%; min-height: 6em; font-family: ui-monospace, monospace; font-size: 1rem; padding: 0.6em; box-sizing: border-box; }}
   button {{ width: 100%; padding: 0.8em; font-size: 1rem; margin-top: 0.6em; }}
-  .step {{ font-size: 0.85em; opacity: 0.65; margin-bottom: 0.4em; }}
   h1 {{ font-size: 1.2rem; margin: 0 0 1rem; }}
   p {{ line-height: 1.5; }}
   .copy {{ font-size: 0.85em; }}
+  details {{ margin-top: 2em; padding-top: 1em; border-top: 1px solid currentColor; opacity: 0.7; }}
+  details summary {{ cursor: pointer; font-size: 0.9em; }}
 </style></head>
 <body data-zetl-mobile-route="onboarding" data-zetl-mobile-step="clone">
-<div class="step">Step 2 of 2</div>
 <h1>Add this SSH key to your git host, then clone</h1>
-<p>Add the public key below to <em>Codeberg / GitHub / Gitea / your SSH-config</em> as a deploy key (or your account key). Then paste your vault's git remote URL and tap Clone.</p>
+<p>This phone has its own SSH key (generated on first launch). Add it to <em>any</em> git host where the vault lives — one key works for all of them.</p>
 <pre data-zetl-mobile-pubkey>{pub}</pre>
 <p class="copy"><button type="button" onclick="navigator.clipboard.writeText(document.querySelector('[data-zetl-mobile-pubkey]').textContent).then(() =&gt; {{ this.textContent = 'Copied'; }})">Copy public key</button></p>
+<p class="hint-links" style="font-size:0.85em;opacity:0.75;line-height:1.7;">
+  Open the SSH-keys settings for your host (paste in the form there):<br>
+  <a href="https://github.com/settings/ssh/new" target="_blank" rel="noopener noreferrer">→ GitHub</a> ·
+  <a href="https://gitlab.com/-/user_settings/ssh_keys" target="_blank" rel="noopener noreferrer">→ GitLab</a> ·
+  <a href="https://codeberg.org/user/settings/keys" target="_blank" rel="noopener noreferrer">→ Codeberg</a>
+</p>
 {error_block}
 <form method="post" action="/_mobile/onboarding/clone">
   <input type="url" name="remote_url" placeholder="git@codeberg.org:you/your-vault.git  or  https://codeberg.org/you/your-vault.git" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required>
   <button type="submit">Clone vault →</button>
 </form>
+
+<details>
+  <summary>Advanced: use my desktop's BIP39 seed phrase instead</summary>
+  <p>Pasting your 12-word recovery phrase from <code>zetl derive-ssh-key --mnemonic</code> on desktop will <strong>replace</strong> the auto-generated per-device key above with the deterministic one derived from your seed. Only do this if you want this phone to share an identity with your desktop. The seed is never written to disk.</p>
+  <form method="post" action="/_mobile/onboarding/seed">
+    <textarea name="mnemonic" placeholder="word1 word2 … word12" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required></textarea>
+    <button type="submit">Replace key with seed-derived one →</button>
+  </form>
+</details>
 </body></html>"#,
         pub = html_escape(pub_line),
     )

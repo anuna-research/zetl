@@ -54,11 +54,36 @@ impl KeyStore {
 
     /// Derive the ssh keypair from a 12-word BIP39 mnemonic, retain
     /// it in memory, and return the formatted public-key line for
-    /// display to the user.
+    /// display to the user. This is the **advanced** onboarding path
+    /// — used when a user wants the phone to share the same SSH
+    /// identity as a desktop already provisioned via `zetl
+    /// derive-ssh-key --mnemonic`. The default path is
+    /// [`Self::generate_new`] which keeps each device's key isolated.
     pub fn import_mnemonic(&self, mnemonic_phrase: &str) -> Result<String> {
         let signing: SigningKey =
             crate::user::recovery::derive_ssh_key_from_mnemonic(mnemonic_phrase)
                 .context("BIP39 → ed25519 derivation failed")?;
+        self.install_keypair(signing)
+    }
+
+    /// Generate a brand-new ed25519 keypair from OS randomness and
+    /// install it in the store. This is the **default** onboarding
+    /// path — each mobile device gets its own per-device key,
+    /// registered with the git host like any other client. No seed
+    /// transfer required between desktop and phone; no shared master
+    /// secret.
+    pub fn generate_new(&self) -> Result<String> {
+        use rand_core::OsRng;
+        let signing = SigningKey::generate(&mut OsRng);
+        self.install_keypair(signing)
+    }
+
+    /// Shared install path used by both `import_mnemonic` and
+    /// `generate_new`: extracts the keypair bytes, encodes them into
+    /// OpenSSH PEM (private) and the `ssh-ed25519 AAAA…` line
+    /// (public), and stores them under the same `StoredKey` slot so
+    /// every caller observes the same in-memory key going forward.
+    fn install_keypair(&self, signing: SigningKey) -> Result<String> {
         let pub_bytes: [u8; 32] = signing.verifying_key().to_bytes();
         let priv_bytes: [u8; 32] = signing.to_bytes();
 
@@ -347,5 +372,27 @@ mod tests {
         assert!(store.is_loaded());
         store.clear();
         assert!(!store.is_loaded());
+    }
+
+    #[test]
+    fn generate_new_produces_valid_per_device_key() {
+        let store = KeyStore::new();
+        let pub_line = store.generate_new().unwrap();
+        assert!(pub_line.starts_with("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5"));
+        assert!(pub_line.ends_with(" zetl-mobile"));
+        assert!(store.is_loaded());
+        assert!(store.priv_pem().is_some());
+    }
+
+    #[test]
+    fn generate_new_is_non_deterministic() {
+        let a = KeyStore::new();
+        let b = KeyStore::new();
+        let line_a = a.generate_new().unwrap();
+        let line_b = b.generate_new().unwrap();
+        assert_ne!(
+            line_a, line_b,
+            "two fresh generate_new() calls must produce distinct keys"
+        );
     }
 }
