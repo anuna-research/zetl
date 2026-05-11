@@ -588,6 +588,9 @@ fn render_step_clone(pub_line: &str, error: Option<&str>) -> String {
   .copy {{ font-size: 0.85em; }}
   details {{ margin-top: 2em; padding-top: 1em; border-top: 1px solid currentColor; opacity: 0.7; }}
   details summary {{ cursor: pointer; font-size: 0.9em; }}
+  .topbar {{ display: flex; align-items: center; gap: 0.4em; margin-bottom: 0.8em; font-size: 0.9em; }}
+  .topbar a {{ color: inherit; opacity: 0.8; text-decoration: none; }}
+  .topbar a:hover {{ opacity: 1; }}
 </style></head>
 <body data-zetl-mobile-route="onboarding" data-zetl-mobile-step="clone">
 <h1>Add this SSH key to your git host, then clone</h1>
@@ -715,13 +718,19 @@ fn render_capture_form(error: Option<&str>, title_prefill: &str, body_prefill: &
   input[type="text"] {{ width: 100%; font-size: 1rem; padding: 0.6em; box-sizing: border-box; margin-bottom: 0.6em; }}
   textarea {{ width: 100%; min-height: 12em; font-family: ui-monospace, monospace; font-size: 1rem; padding: 0.6em; box-sizing: border-box; }}
   button {{ width: 100%; padding: 0.8em; font-size: 1rem; margin-top: 0.6em; }}
-  h1 {{ font-size: 1.2rem; margin: 0 0 1rem; }}
+  h1 {{ font-size: 1.2rem; margin: 0; }}
   .hint {{ font-size: 0.85em; opacity: 0.65; margin-top: 0.2em; }}
   .links {{ font-size: 0.85em; opacity: 0.7; margin-top: 1.5em; display: flex; gap: 1em; }}
   .links a {{ color: inherit; }}
+  .topbar {{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 1em; }}
+  .cancel {{ font-size: 0.9em; opacity: 0.8; color: inherit; text-decoration: none; padding: 0.3em 0.6em; border: 1px solid currentColor; border-radius: 6px; }}
+  .cancel:hover {{ opacity: 1; }}
 </style></head>
 <body data-zetl-mobile-route="capture">
-<h1>Capture</h1>
+<div class="topbar">
+  <h1>Capture</h1>
+  <a href="/" class="cancel" data-zetl-mobile-action="cancel">✕ Cancel</a>
+</div>
 {error_block}
 <form method="post" action="/_mobile/capture">
   <input type="text" name="title" placeholder="Title (optional — auto from first line / timestamp)" value="{title_val}" autocomplete="off" autocapitalize="sentences" autocorrect="off" spellcheck="false">
@@ -729,7 +738,7 @@ fn render_capture_form(error: Option<&str>, title_prefill: &str, body_prefill: &
   <div class="hint">Saved as <code>&lt;title&gt;.md</code> in the vault root, committed locally, pushed if online.</div>
   <button type="submit">Save</button>
 </form>
-<div class="links"><a href="/">Pages</a> · <a href="/_mobile/sync">Sync</a></div>
+<div class="links"><a href="/">Pages</a> · <a href="/_mobile/sync">Sync</a> · <a href="/_mobile/vaults">Vaults</a></div>
 </body></html>"#,
         title_val = html_escape(title_prefill),
         body_val = html_escape(body_prefill),
