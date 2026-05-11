@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>zetl mobile · vaults</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 30em; margin: 0 auto; padding: 1.5em; }
+    button { width: 100%; padding: 0.8em; font-size: 1rem; margin-top: 0.6em; }
+    h1 { font-size: 1.2rem; margin: 0 0 1rem; }
+    ul { list-style: none; padding: 0; }
+    .hint { font-size: 0.9em; opacity: 0.7; }
+    .links { font-size: 0.85em; opacity: 0.7; margin-top: 1.5em; display: flex; gap: 1em; }
+    .links a { color: inherit; }
+  </style>
+</head>
+<body data-zetl-mobile-route="vaults">
+<h1>Vaults</h1>
+{% if msg_error -%}
+<div data-zetl-mobile-vaults-msg="error" style="color:#b00;background:#fee;padding:0.7em;border-radius:6px;margin-bottom:1em;">Error: {{ msg_error }}</div>
+{%- elif msg_ok -%}
+<div data-zetl-mobile-vaults-msg="ok" style="color:#063;background:#efe;padding:0.7em;border-radius:6px;margin-bottom:1em;">{{ msg_ok }}</div>
+{%- endif %}
+<ul data-zetl-mobile-vaults-list>
+{%- if entries %}
+{%- for v in entries %}
+<li style="margin:0.6em 0;line-height:1.5;">
+  <strong data-zetl-mobile-vault-label="{{ v.label }}">{{ v.label }}</strong>
+  {% if v.is_active %}<span style="color:#063;font-size:0.8em;">● active</span>{% endif %}
+  {% if not v.is_active %}<form method="post" action="/_mobile/vaults/switch" style="display:inline;margin-left:0.4em;">
+    <input type="hidden" name="label" value="{{ v.label }}">
+    <button type="submit" style="width:auto;padding:0.3em 0.7em;font-size:0.85em;">Switch</button>
+  </form>{% endif %}
+  <button type="button" data-zetl-mobile-remove="{{ v.label }}" style="margin-left:0.4em;padding:0.3em 0.7em;font-size:0.85em;background:#fee;color:#b00;border:1px solid #b00;border-radius:6px;cursor:pointer;font-family:inherit;width:auto;">Remove</button>
+  <br><span style="font-size:0.8em;opacity:0.7;">{{ v.remote_url | default("(no remote)") }}</span>
+</li>
+{%- endfor %}
+{%- else %}
+<p class="hint">No vaults cloned yet. <a href="/_mobile/onboarding">Add one →</a></p>
+{%- endif %}
+</ul>
+<p><a href="/_mobile/onboarding?add=1"><button type="button">+ Add another vault</button></a></p>
+<div class="links"><a href="/">Pages</a> · <a href="/_mobile/sync">Sync</a> · <a href="/_mobile/capture">Capture</a></div>
+
+<div id="zetl-confirm-overlay" data-zetl-modal="closed" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;align-items:center;justify-content:center;padding:1.5em;">
+  <div role="dialog" aria-modal="true" aria-labelledby="zetl-confirm-title" style="background:#fff;color:#111;max-width:28em;width:100%;padding:1.5em;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+    <h2 id="zetl-confirm-title" style="font-size:1.1rem;margin:0 0 0.7em;">Remove this vault from local storage?</h2>
+    <p style="line-height:1.5;margin:0 0 1em;"><strong id="zetl-confirm-label" style="font-family:ui-monospace,monospace;"></strong></p>
+    <p style="line-height:1.5;margin:0 0 1.2em;font-size:0.92em;opacity:0.85;">The git remote is NOT affected — you can re-clone any time via <em>+ Add another vault</em>. <strong>Any unpushed local changes in this vault will be lost.</strong></p>
+    <form method="post" action="/_mobile/vaults/remove" id="zetl-confirm-form" style="margin:0;">
+      <input type="hidden" name="label" id="zetl-confirm-input" value="">
+      <button type="submit" data-zetl-mobile-action="remove-confirm" style="background:#b00;color:#fff;border:1px solid #800;width:100%;padding:0.75em;font-size:1rem;border-radius:6px;cursor:pointer;font-family:inherit;">Yes, remove</button>
+    </form>
+    <button type="button" id="zetl-confirm-cancel" style="background:transparent;color:inherit;border:1px solid currentColor;width:100%;padding:0.75em;font-size:1rem;margin-top:0.5em;border-radius:6px;cursor:pointer;font-family:inherit;opacity:0.75;">Cancel</button>
+  </div>
+</div>
+<script>
+(function() {
+  var overlay = document.getElementById('zetl-confirm-overlay');
+  var input = document.getElementById('zetl-confirm-input');
+  var labelEl = document.getElementById('zetl-confirm-label');
+  var cancel = document.getElementById('zetl-confirm-cancel');
+  var form = document.getElementById('zetl-confirm-form');
+  if (!overlay || !input || !labelEl || !cancel || !form) return;
+  function open(label) { input.value = label; labelEl.textContent = label; overlay.style.display = 'flex'; overlay.dataset.zetlModal = 'open'; }
+  function close() { overlay.style.display = 'none'; overlay.dataset.zetlModal = 'closed'; }
+  document.querySelectorAll('button[data-zetl-mobile-remove]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) { e.preventDefault(); open(btn.dataset.zetlMobileRemove); });
+  });
+  cancel.addEventListener('click', close);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && overlay.dataset.zetlModal === 'open') close(); });
+})();
+</script>
+{{ mobile_external_link_js | safe }}
+</body>
+</html>

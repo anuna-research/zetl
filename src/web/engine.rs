@@ -541,6 +541,27 @@ impl TemplateEngine {
     }
 
     /// Render the help page.
+    /// SPEC-040: render a `/_mobile/*` template against an arbitrary
+    /// JSON-shaped context. Used by the mobile handlers in
+    /// `web::mobile` so they don't carry inline HTML — same
+    /// theme-override path (`.zetl/themes/<theme>/<name>` first,
+    /// then bundled) as every other zetl template.
+    pub fn render_mobile(
+        &self,
+        name: &str,
+        ctx: minijinja::Value,
+    ) -> Result<String, TemplateError> {
+        let env = self.env();
+        let tmpl = env
+            .get_template(name)
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output(name));
+        }
+        Ok(html)
+    }
+
     pub fn render_help(
         &self,
         vault_ctx: &VaultContext,

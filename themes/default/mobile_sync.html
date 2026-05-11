@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>zetl mobile · sync</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 30em; margin: 0 auto; padding: 1.5em; }
+    button { width: 100%; padding: 0.8em; font-size: 1rem; margin-top: 0.6em; }
+    h1 { font-size: 1.2rem; margin: 0 0 1rem; }
+    .hint { font-size: 0.85em; opacity: 0.7; }
+    .links { font-size: 0.85em; opacity: 0.7; margin-top: 1.5em; display: flex; gap: 1em; }
+    .links a { color: inherit; }
+    form { display: inline; }
+    form.zetl-busy button { opacity: 0.6; cursor: wait; }
+    form.zetl-busy button::after { content: ''; display: inline-block; width: 0.9em; height: 0.9em; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: zspin 0.8s linear infinite; margin-left: 0.6em; vertical-align: middle; }
+    @keyframes zspin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body data-zetl-mobile-route="sync">
+<div data-zetl-mobile-topbar style="display:flex;align-items:center;gap:0.5em;margin-bottom:1em;font-size:0.85em;">
+  <a href="/_mobile/vaults" style="color:inherit;text-decoration:none;padding:0.3em 0.6em;border:1px solid currentColor;border-radius:6px;opacity:0.75;">← Vaults</a>
+</div>
+<h1>Sync</h1>
+{% if vault_label -%}
+<div data-zetl-mobile-vault-label="{{ vault_label }}" style="font-size:0.95em;background:#f4f4f4;padding:0.6em 0.8em;border-radius:6px;margin-bottom:1em;">
+  <strong>Vault:</strong> {{ vault_label }}<br>
+  <span style="font-size:0.8em;opacity:0.7;">{{ vault_remote }}</span>
+  {{ switcher_link | safe }}
+</div>
+{%- else %}
+{{ switcher_link | safe }}
+{%- endif %}
+{% if msg_ok -%}
+<div data-zetl-mobile-sync="ok" style="color:#063;background:#efe;padding:0.7em;border-radius:6px;margin-bottom:1em;">{{ msg_ok }}</div>
+{%- elif msg_conflict -%}
+<div data-zetl-mobile-sync="conflict" style="color:#b00;background:#fee;padding:0.7em;border-radius:6px;margin-bottom:1em;">Remote diverged from local — resolve on desktop, then pull again. Push is blocked until the next fast-forward pull succeeds.</div>
+{%- elif msg_error -%}
+<div data-zetl-mobile-sync="error" style="color:#b00;background:#fee;padding:0.7em;border-radius:6px;margin-bottom:1em;">Error: {{ msg_error }}</div>
+{%- endif %}
+{% if key_loaded -%}
+<p class="hint">SSH key loaded.</p>
+{%- else -%}
+<p class="hint" data-zetl-mobile-keystore="empty">No SSH key in keystore — visit <a href="/_mobile/onboarding">onboarding</a> to paste your seed.</p>
+{%- endif %}
+<form method="post" action="/_mobile/sync/pull" data-zetl-busy-label="Pulling…"><button type="submit">Pull (fast-forward only)</button></form>
+<form method="post" action="/_mobile/sync/push" data-zetl-busy-label="Pushing…"><button type="submit">Push</button></form>
+<hr style="margin:1.6em 0 1em;opacity:0.25;">
+<details>
+  <summary class="hint">Reset this vault…</summary>
+  <p class="hint" style="margin-top:0.6em;">Removes the <strong>active</strong> vault's local working tree and forgets the SSH key. Other cloned vaults under <code>vaults/</code> are preserved. <strong>Anything not pushed will be lost.</strong></p>
+  <form method="post" action="/_mobile/reset" onsubmit="return confirm('Wipe the active vault and forget the SSH key? Unpushed changes will be lost.');">
+    <button type="submit" data-zetl-mobile-action="reset" style="background:#fee;color:#b00;border-color:#b00;">Reset active vault</button>
+  </form>
+</details>
+<div class="links"><a href="/">Pages</a> · <a href="/_mobile/capture">Capture</a> · <a href="/_mobile/onboarding">Onboarding</a></div>
+<script>
+document.querySelectorAll('form[data-zetl-busy-label]').forEach(function(f) {
+  f.addEventListener('submit', function() {
+    f.classList.add('zetl-busy');
+    var btn = f.querySelector('button');
+    if (btn) btn.textContent = f.dataset.zetlBusyLabel;
+  });
+});
+</script>
+{{ mobile_external_link_js | safe }}
+</body>
+</html>

@@ -33,6 +33,19 @@ use zetl::web::mobile;
 /// assert sequence cannot interleave with another test's reset.
 static STATE_LOCK: Mutex<()> = Mutex::new(());
 
+/// Register a shared template engine once per test-binary process so
+/// the `/_mobile/*` handlers can render their Minijinja templates
+/// against the bundled `default` theme. Leaks a tempdir for the
+/// engine's vault_root — cheap, the process exits when tests finish.
+fn ensure_engine() {
+    static ENGINE_INIT: std::sync::Once = std::sync::Once::new();
+    ENGINE_INIT.call_once(|| {
+        let dir = Box::leak(Box::new(tempfile::tempdir().unwrap()));
+        let engine = zetl::web::engine::TemplateEngine::new(dir.path(), "default", false, false);
+        zetl::mobile_state::set_template_engine(std::sync::Arc::new(engine));
+    });
+}
+
 const FIXTURE_MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon \
                                 abandon abandon abandon abandon abandon about";
 
@@ -66,6 +79,7 @@ async fn post_form(app: &Router, uri: &str, body: &str) -> (StatusCode, Option<S
 }
 
 fn router() -> Router {
+    ensure_engine();
     mobile::router::<()>().with_state(())
 }
 
@@ -356,8 +370,7 @@ async fn end_to_end_clone_via_onboarding_handlers() {
     // Step 2: POST the remote URL → clone runs.
     let url = format!("file://{}", bare_path.display());
     let clone_body = format!("remote_url={}", urlencoding::encode(&url).into_owned());
-    let (status, location, body) =
-        post_form(&app, "/_mobile/onboarding/clone", &clone_body).await;
+    let (status, location, body) = post_form(&app, "/_mobile/onboarding/clone", &clone_body).await;
     assert!(
         matches!(
             status,
@@ -375,7 +388,11 @@ async fn end_to_end_clone_via_onboarding_handlers() {
     // For the file:// remote, the derived label is the tempdir's
     // basename — verify via list_vaults().
     let entries = zetl::mobile_state::list_vaults();
-    assert_eq!(entries.len(), 1, "expected one cloned vault, got {entries:?}");
+    assert_eq!(
+        entries.len(),
+        1,
+        "expected one cloned vault, got {entries:?}"
+    );
     let entry = &entries[0];
     assert!(entry.is_active, "newly-cloned vault should be active");
     assert!(
@@ -422,7 +439,8 @@ async fn share_post_appends_inbox_and_redirects_to_capture() {
 
     // Inbox now has one entry.
     let inbox_path = app_data.join("share-inbox.jsonl");
-    let inbox = std::fs::read_to_string(&inbox_path).expect("inbox file should exist after share POST");
+    let inbox =
+        std::fs::read_to_string(&inbox_path).expect("inbox file should exist after share POST");
     assert!(inbox.contains("Captured from share sheet"));
     assert!(inbox.contains("example.com"));
 
@@ -461,8 +479,7 @@ async fn vaults_remove_wipes_local_dir_but_preserves_keystore() {
         .unwrap();
 
     let app = router();
-    let (status, _location, body) =
-        post_form(&app, "/_mobile/vaults/remove", "label=beta").await;
+    let (status, _location, body) = post_form(&app, "/_mobile/vaults/remove", "label=beta").await;
     assert_eq!(status, StatusCode::OK);
     assert!(
         body.contains("data-zetl-mobile-vaults-msg=\"ok\""),
@@ -547,7 +564,10 @@ async fn reset_clears_active_vault_keystore_and_redirects() {
     assert_eq!(location.as_deref(), Some("/_mobile/onboarding"));
 
     // Active vault dir wiped, symlink removed, key forgotten.
-    assert!(!active_vault_dir.exists(), "active vault dir should be removed");
+    assert!(
+        !active_vault_dir.exists(),
+        "active vault dir should be removed"
+    );
     assert!(!link.exists(), "vault symlink should be removed");
     assert!(
         !app_data.join("ssh_key.json").exists(),

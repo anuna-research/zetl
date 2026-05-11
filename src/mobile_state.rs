@@ -91,9 +91,8 @@ impl KeyStore {
     /// `zetl derive-ssh-key --mnemonic`.
     pub fn import_mnemonic(&self, mnemonic_phrase: &str) -> Result<String> {
         let trimmed = mnemonic_phrase.trim().to_string();
-        let signing: SigningKey =
-            crate::user::recovery::derive_ssh_key_from_mnemonic(&trimmed)
-                .context("BIP39 → ed25519 derivation failed")?;
+        let signing: SigningKey = crate::user::recovery::derive_ssh_key_from_mnemonic(&trimmed)
+            .context("BIP39 → ed25519 derivation failed")?;
         self.install_from_mnemonic(trimmed, signing)
     }
 
@@ -104,16 +103,11 @@ impl KeyStore {
     /// can write it down for off-device recovery.
     pub fn generate_new(&self) -> Result<String> {
         use rand_core::OsRng;
-        let mnemonic = bip39::Mnemonic::generate_in_with(
-            &mut OsRng,
-            bip39::Language::English,
-            12,
-        )
-        .context("BIP39 mnemonic generation failed")?
-        .to_string();
-        let signing: SigningKey =
-            crate::user::recovery::derive_ssh_key_from_mnemonic(&mnemonic)
-                .context("BIP39 → ed25519 derivation failed")?;
+        let mnemonic = bip39::Mnemonic::generate_in_with(&mut OsRng, bip39::Language::English, 12)
+            .context("BIP39 mnemonic generation failed")?
+            .to_string();
+        let signing: SigningKey = crate::user::recovery::derive_ssh_key_from_mnemonic(&mnemonic)
+            .context("BIP39 → ed25519 derivation failed")?;
         self.install_from_mnemonic(mnemonic, signing)
     }
 
@@ -178,7 +172,7 @@ impl KeyStore {
     /// otherwise — which is also the test default.
     ///
     /// v2 schema persists the BIP39 mnemonic; the derived `priv_pem`
-    /// + `pub_openssh` fields are kept alongside for backwards-compat
+    /// and `pub_openssh` fields are kept alongside for backwards-compat
     /// with v1 readers and to avoid re-deriving on every restore.
     pub fn persist(&self, app_data_dir: &std::path::Path) -> Result<()> {
         let guard = self.0.lock().expect("KeyStore mutex poisoned");
@@ -404,8 +398,7 @@ fn share_inbox_path(app_data_dir: &std::path::Path) -> PathBuf {
 /// write directly to the same file via the app-group container.
 pub fn append_share_entry(entry: &ShareInboxEntry) -> Result<()> {
     let app_data = app_data_dir().context("app_data_dir not registered")?;
-    std::fs::create_dir_all(&app_data)
-        .with_context(|| format!("create {}", app_data.display()))?;
+    std::fs::create_dir_all(&app_data).with_context(|| format!("create {}", app_data.display()))?;
     let path = share_inbox_path(&app_data);
     let line = serde_json::to_string(entry).context("serialize share entry")?;
     let mut f = std::fs::OpenOptions::new()
@@ -507,9 +500,7 @@ pub fn vaults_dir() -> Option<PathBuf> {
 pub fn active_vault_label() -> Option<String> {
     let link = vault_root()?;
     let target = std::fs::read_link(&link).ok()?;
-    target
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
+    target.file_name().map(|n| n.to_string_lossy().into_owned())
 }
 
 /// Point the `vault` symlink at `vaults/<label>[/<subpath>]`. The
@@ -550,7 +541,9 @@ pub fn set_active_vault(label: &str, subpath: Option<&str>) -> Result<()> {
             .with_context(|| format!("symlink {} → {}", link.display(), rel_target))?;
     }
     #[cfg(not(unix))]
-    return Err(anyhow!("multi-vault symlink switching not yet supported on this platform"));
+    return Err(anyhow!(
+        "multi-vault symlink switching not yet supported on this platform"
+    ));
     #[cfg(unix)]
     Ok(())
 }
@@ -581,7 +574,9 @@ pub fn detect_vault_subpath_candidates(repo_root: &std::path::Path) -> Vec<Vault
     let mut out = Vec::new();
 
     fn scan_one(dir: &std::path::Path, subpath: String, out: &mut Vec<VaultSubpathCandidate>) {
-        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
         let mut md_count = 0;
         let mut has_zetl_dir = false;
         for ent in rd.flatten() {
@@ -590,11 +585,7 @@ pub fn detect_vault_subpath_candidates(repo_root: &std::path::Path) -> Vec<Vault
             let path = ent.path();
             if path.is_dir() && name == ".zetl" {
                 has_zetl_dir = true;
-            } else if path.is_file()
-                && name
-                    .to_ascii_lowercase()
-                    .ends_with(".md")
-            {
+            } else if path.is_file() && name.to_ascii_lowercase().ends_with(".md") {
                 md_count += 1;
             }
         }
@@ -693,8 +684,7 @@ fn read_remote_url(repo_path: &std::path::Path) -> Option<String> {
 pub fn migrate_single_vault_layout(app_data: &std::path::Path) -> Result<()> {
     let vault = app_data.join("vault");
     let vaults = app_data.join("vaults");
-    std::fs::create_dir_all(&vaults)
-        .with_context(|| format!("create {}", vaults.display()))?;
+    std::fs::create_dir_all(&vaults).with_context(|| format!("create {}", vaults.display()))?;
 
     if !vault.exists() {
         return Ok(());
@@ -773,7 +763,7 @@ pub fn derive_vault_label(remote_url: &str) -> String {
 
     // Walk from the end, taking segments split on '/' or ':'.
     let parts: Vec<&str> = stripped
-        .rsplit(|c: char| c == '/' || c == ':')
+        .rsplit(['/', ':'])
         .filter(|s| !s.is_empty())
         .collect();
 
@@ -800,8 +790,11 @@ pub fn write_vault_meta(app_data_dir: &std::path::Path, meta: &VaultMeta) -> Res
         "cloned_at": meta.cloned_at,
     });
     let path = app_data_dir.join("vault_meta.json");
-    std::fs::write(&path, serde_json::to_string(&body).context("serialise vault meta")?)
-        .with_context(|| format!("write {}", path.display()))?;
+    std::fs::write(
+        &path,
+        serde_json::to_string(&body).context("serialise vault meta")?,
+    )
+    .with_context(|| format!("write {}", path.display()))?;
     Ok(())
 }
 
@@ -835,10 +828,31 @@ pub fn vault_meta() -> Option<VaultMeta> {
     read_vault_meta(&app_data_dir()?)
 }
 
+// ── Template engine handle (Minijinja rendering for /_mobile/* pages) ────────
+
+fn template_engine_cell() -> &'static Mutex<Option<Arc<crate::web::engine::TemplateEngine>>> {
+    static CELL: OnceLock<Mutex<Option<Arc<crate::web::engine::TemplateEngine>>>> = OnceLock::new();
+    CELL.get_or_init(|| Mutex::new(None))
+}
+
+/// Registered by [`crate::web::launch_default`] (production) or
+/// `tests/mobile_integration.rs`'s `ensure_engine()` helper. The
+/// `/_mobile/*` handlers fetch this to render the embedded
+/// Minijinja templates under `themes/default/mobile_*.html`.
+pub fn set_template_engine(engine: Arc<crate::web::engine::TemplateEngine>) {
+    if let Ok(mut g) = template_engine_cell().lock() {
+        *g = Some(engine);
+    }
+}
+
+pub fn template_engine() -> Option<Arc<crate::web::engine::TemplateEngine>> {
+    template_engine_cell().lock().ok().and_then(|g| g.clone())
+}
+
 // ── Vault data handle (live reindex plumbing) ────────────────────────────────
 
-fn vault_data_handle_cell(
-) -> &'static Mutex<Option<Arc<std::sync::RwLock<crate::web::VaultData>>>> {
+fn vault_data_handle_cell() -> &'static Mutex<Option<Arc<std::sync::RwLock<crate::web::VaultData>>>>
+{
     static CELL: OnceLock<Mutex<Option<Arc<std::sync::RwLock<crate::web::VaultData>>>>> =
         OnceLock::new();
     CELL.get_or_init(|| Mutex::new(None))
@@ -909,10 +923,7 @@ mod label_tests {
 
     #[test]
     fn whitespace_trimmed() {
-        assert_eq!(
-            derive_vault_label("  https://github.com/x/y.git  "),
-            "x-y"
-        );
+        assert_eq!(derive_vault_label("  https://github.com/x/y.git  "), "x-y");
     }
 
     #[test]
@@ -1009,8 +1020,7 @@ mod tests {
     #[test]
     fn restore_on_corrupted_file_errors() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("ssh_key.json"), b"{not json")
-            .unwrap();
+        std::fs::write(dir.path().join("ssh_key.json"), b"{not json").unwrap();
         let store = KeyStore::new();
         let res = store.restore(dir.path());
         assert!(res.is_err());
@@ -1189,6 +1199,9 @@ mod tests {
         let loaded = store2.restore(dir.path()).unwrap();
         assert!(loaded);
         assert_eq!(store2.pub_openssh().as_deref(), Some(original.as_str()));
-        assert_eq!(store2.mnemonic().as_deref(), Some(original_mnemonic.as_str()));
+        assert_eq!(
+            store2.mnemonic().as_deref(),
+            Some(original_mnemonic.as_str())
+        );
     }
 }

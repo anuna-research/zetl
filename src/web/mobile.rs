@@ -132,8 +132,7 @@ async fn onboarding_handler(
 
     if !force_clone_form {
         if let Some(vault_root) = crate::mobile_state::vault_root() {
-            if vault_root.join(".git").is_dir()
-                || (vault_root.is_symlink() && vault_root.exists())
+            if vault_root.join(".git").is_dir() || (vault_root.is_symlink() && vault_root.exists())
             {
                 // Emit a 200 OK HTML response with a client-side
                 // meta-refresh instead of a 303 redirect. WKWebView
@@ -225,7 +224,9 @@ async fn onboarding_clone_handler(Form(form): Form<CloneForm>) -> Response {
             Err(e) => {
                 return Html(render_step_clone(
                     &pub_line,
-                    Some(&format!("could not activate existing vault '{label}': {e:#}")),
+                    Some(&format!(
+                        "could not activate existing vault '{label}': {e:#}"
+                    )),
                 ))
                 .into_response();
             }
@@ -276,7 +277,9 @@ async fn onboarding_clone_handler(Form(form): Form<CloneForm>) -> Response {
             if let Err(e) = activate_result {
                 return Html(render_step_clone(
                     &pub_line,
-                    Some(&format!("clone succeeded but could not activate vault: {e:#}")),
+                    Some(&format!(
+                        "clone succeeded but could not activate vault: {e:#}"
+                    )),
                 ))
                 .into_response();
             }
@@ -290,8 +293,7 @@ async fn onboarding_clone_handler(Form(form): Form<CloneForm>) -> Response {
             // list.
             if candidates.len() > 1 {
                 let encoded_label = urlencoding::encode(&label).into_owned();
-                Redirect::to(&format!("/_mobile/vaults/pick?label={encoded_label}"))
-                    .into_response()
+                Redirect::to(&format!("/_mobile/vaults/pick?label={encoded_label}")).into_response()
             } else {
                 Redirect::to("/").into_response()
             }
@@ -352,7 +354,11 @@ async fn pick_subpath_post_handler(Form(form): Form<PickForm>) -> Response {
     if label.is_empty() {
         return Redirect::to("/_mobile/vaults").into_response();
     }
-    let opt_sub = if subpath.is_empty() { None } else { Some(subpath) };
+    let opt_sub = if subpath.is_empty() {
+        None
+    } else {
+        Some(subpath)
+    };
     match crate::mobile_state::set_active_vault(label, opt_sub) {
         Ok(_) => {
             if let Err(e) = crate::mobile_state::trigger_reindex() {
@@ -366,7 +372,6 @@ async fn pick_subpath_post_handler(Form(form): Form<PickForm>) -> Response {
         .into_response(),
     }
 }
-
 
 // ── /_mobile/capture ──────────────────────────────────────────────────────────
 
@@ -604,8 +609,9 @@ async fn vaults_switch_handler(Form(form): Form<SwitchForm>) -> Response {
             }
             Redirect::to("/").into_response()
         }
-        Err(e) => Html(render_vaults_page(Some(VaultsMsg::Error(format!("{e:#}")))))
-            .into_response(),
+        Err(e) => {
+            Html(render_vaults_page(Some(VaultsMsg::Error(format!("{e:#}"))))).into_response()
+        }
     }
 }
 
@@ -746,12 +752,12 @@ async fn reset_handler() -> Response {
 
     // Resolve the active vault's actual working-tree path (the
     // symlink's target) before we remove the symlink.
-    let active_target: Option<std::path::PathBuf> =
-        crate::mobile_state::vault_root().and_then(|link| std::fs::read_link(&link).ok())
-            .and_then(|target| {
-                // Symlink target is relative to app_data_dir
-                crate::mobile_state::app_data_dir().map(|root| root.join(target))
-            });
+    let active_target: Option<std::path::PathBuf> = crate::mobile_state::vault_root()
+        .and_then(|link| std::fs::read_link(&link).ok())
+        .and_then(|target| {
+            // Symlink target is relative to app_data_dir
+            crate::mobile_state::app_data_dir().map(|root| root.join(target))
+        });
 
     if let Some(target) = active_target {
         if target.exists() {
@@ -792,39 +798,13 @@ async fn reset_handler() -> Response {
 // ── HTML rendering helpers ────────────────────────────────────────────────────
 
 fn render_step_seed(error: Option<&str>) -> String {
-    let error_block = match error {
-        Some(msg) => format!(
-            r#"<div data-zetl-mobile-error="seed" style="color:#b00;background:#fee;padding:0.75em;border-radius:6px;margin-bottom:1em;">Error: {}</div>"#,
-            html_escape(msg)
-        ),
-        None => String::new(),
-    };
-    format!(
-        r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>zetl mobile · onboarding · step 1</title>
-<style>
-  body {{ font-family: system-ui, sans-serif; max-width: 30em; margin: 0 auto; padding: 1.5em; }}
-  textarea {{ width: 100%; min-height: 6em; font-family: ui-monospace, monospace; font-size: 1rem; padding: 0.6em; box-sizing: border-box; }}
-  button {{ width: 100%; padding: 0.8em; font-size: 1rem; margin-top: 0.6em; }}
-  .step {{ font-size: 0.85em; opacity: 0.65; margin-bottom: 0.4em; }}
-  h1 {{ font-size: 1.2rem; margin: 0 0 1rem; }}
-  p {{ line-height: 1.5; }}
-</style></head>
-<body data-zetl-mobile-route="onboarding" data-zetl-mobile-step="seed">
-<div class="step">Step 1 of 2</div>
-<h1>Paste your 12-word recovery phrase</h1>
-<p>This is the same phrase you used with <code>zetl derive-ssh-key --mnemonic</code> on desktop. The phone derives the same SSH key locally — the phrase never leaves the device.</p>
-{error_block}
-<form method="post" action="/_mobile/onboarding/seed">
-  <textarea name="mnemonic" placeholder="word1 word2 … word12" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required></textarea>
-  <button type="submit">Derive SSH key →</button>
-</form>
-{back}
-{external_js}
-</body></html>"#,
-        back = render_onboarding_back_link(),
-        external_js = MOBILE_EXTERNAL_LINK_JS,
+    render_mobile_template(
+        "mobile_onboarding_seed.html",
+        minijinja::context! {
+            error => error.map(|s| s.to_string()),
+            back_link => render_onboarding_back_link(),
+            mobile_external_link_js => MOBILE_EXTERNAL_LINK_JS,
+        },
     )
 }
 
@@ -841,6 +821,19 @@ fn render_onboarding_back_link() -> String {
 }
 
 fn render_step_clone(pub_line: &str, error: Option<&str>) -> String {
+    render_mobile_template(
+        "mobile_onboarding_clone.html",
+        minijinja::context! {
+            pub_line => pub_line,
+            error => error.map(|s| s.to_string()),
+            back_link => render_onboarding_back_link(),
+            mobile_external_link_js => MOBILE_EXTERNAL_LINK_JS,
+        },
+    )
+}
+
+#[allow(dead_code)]
+fn _retired_render_step_clone(pub_line: &str, error: Option<&str>) -> String {
     let error_block = match error {
         Some(msg) => format!(
             r#"<div data-zetl-mobile-error="clone" style="color:#b00;background:#fee;padding:0.75em;border-radius:6px;margin-bottom:1em;">Error: {}</div>"#,
@@ -1000,17 +993,6 @@ document.addEventListener('click', function(e) {
 });
 </script>"#;
 
-/// Standard top-bar for `/_mobile/*` pages with a `← Vaults` back
-/// link. The pages that already have a more specific back affordance
-/// (`/_mobile/capture` has `✕ Cancel`, the picker has `← Back to
-/// Vaults` in the footer) skip this. `/_mobile/vaults` itself is the
-/// destination and renders no back link.
-fn render_topbar_back_to_vaults() -> &'static str {
-    r#"<div data-zetl-mobile-topbar style="display:flex;align-items:center;gap:0.5em;margin-bottom:1em;font-size:0.85em;">
-  <a href="/_mobile/vaults" style="color:inherit;text-decoration:none;padding:0.3em 0.6em;border:1px solid currentColor;border-radius:6px;opacity:0.75;">← Vaults</a>
-</div>"#
-}
-
 fn render_remove_confirm_page(label: &str) -> String {
     format!(
         r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
@@ -1047,81 +1029,24 @@ fn render_pick_subpath(
     candidates: &[crate::mobile_state::VaultSubpathCandidate],
     selected_subpath: &str,
 ) -> String {
-    let rows = if candidates.is_empty() {
-        r#"<p class="hint">No directories with markdown files were found in this repo. The vault is treated as empty until you (or another peer) add content.</p>
-<form method="post" action="/_mobile/vaults/pick">
-  <input type="hidden" name="label" value="">
-  <input type="hidden" name="subpath" value="">
-</form>"#
-            .to_string()
-    } else {
-        let opts = candidates
-            .iter()
-            .map(|c| {
-                let display = if c.subpath.is_empty() {
-                    "/ (repo root)".to_string()
-                } else {
-                    format!("/ {}", c.subpath)
-                };
-                let zetl_badge = if c.has_zetl_dir {
-                    r#" <span style="color:#063;font-size:0.85em;">● .zetl/</span>"#
-                } else {
-                    ""
-                };
-                let checked = if c.subpath == selected_subpath {
-                    " checked"
-                } else {
-                    ""
-                };
-                format!(
-                    r#"<label style="display:block;padding:0.7em;border:1px solid #ddd;border-radius:6px;margin-bottom:0.5em;cursor:pointer;">
-  <input type="radio" name="subpath" value="{value}"{checked}>
-  <strong>{display}</strong>{zetl_badge}
-  <br><span style="font-size:0.85em;opacity:0.7;">{md_count} markdown file{plural}</span>
-</label>"#,
-                    value = html_escape(&c.subpath),
-                    checked = checked,
-                    display = html_escape(&display),
-                    zetl_badge = zetl_badge,
-                    md_count = c.md_count,
-                    plural = if c.md_count == 1 { "" } else { "s" },
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        format!(
-            r#"<form method="post" action="/_mobile/vaults/pick">
-  <input type="hidden" name="label" value="{label}">
-  {opts}
-  <button type="submit">Use this folder →</button>
-</form>"#,
-            label = html_escape(label),
-            opts = opts,
-        )
-    };
-
-    format!(
-        r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>zetl mobile · choose folder</title>
-<style>
-  body {{ font-family: system-ui, sans-serif; max-width: 30em; margin: 0 auto; padding: 1.5em; }}
-  h1 {{ font-size: 1.2rem; margin: 0 0 0.4rem; }}
-  .hint {{ font-size: 0.9em; opacity: 0.75; line-height: 1.5; margin-bottom: 1em; }}
-  button {{ width: 100%; padding: 0.8em; font-size: 1rem; margin-top: 0.6em; }}
-  .links {{ font-size: 0.85em; opacity: 0.7; margin-top: 1.5em; display: flex; gap: 1em; }}
-  .links a {{ color: inherit; }}
-</style></head>
-<body data-zetl-mobile-route="pick-subpath" data-zetl-mobile-vault-label="{label}">
-<h1>Which folder is the vault?</h1>
-<p class="hint">The repo <code>{label}</code> has more than one directory that looks like it could be a zetl vault. Pick the one to use. (Folders with a <code>.zetl/</code> config dir are usually the right choice.)</p>
-{rows}
-<div class="links"><a href="/_mobile/vaults">← Back to Vaults</a></div>
-{external_js}
-</body></html>"#,
-        label = html_escape(label),
-        rows = rows,
-        external_js = MOBILE_EXTERNAL_LINK_JS,
+    let candidates_ctx: Vec<minijinja::Value> = candidates
+        .iter()
+        .map(|c| {
+            minijinja::context! {
+                subpath => c.subpath.clone(),
+                has_zetl_dir => c.has_zetl_dir,
+                md_count => c.md_count,
+            }
+        })
+        .collect();
+    render_mobile_template(
+        "mobile_vaults_pick.html",
+        minijinja::context! {
+            label => label,
+            candidates => candidates_ctx,
+            selected_subpath => selected_subpath,
+            mobile_external_link_js => MOBILE_EXTERNAL_LINK_JS,
+        },
     )
 }
 
@@ -1129,244 +1054,72 @@ fn render_recovery_page() -> String {
     let keystore = crate::mobile_state::global();
     let mnemonic = keystore.mnemonic().unwrap_or_default();
     let pub_line = keystore.pub_openssh().unwrap_or_default();
-
-    if mnemonic.is_empty() {
-        // v1-schema install (pre-mnemonic) or no key loaded.
-        return r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>zetl mobile · recovery</title>
-<style>
-  body { font-family: system-ui, sans-serif; max-width: 30em; margin: 0 auto; padding: 1.5em; }
-  h1 { font-size: 1.2rem; margin: 0 0 1rem; }
-  .hint { font-size: 0.9em; opacity: 0.7; }
-  .links { font-size: 0.85em; opacity: 0.7; margin-top: 1.5em; display: flex; gap: 1em; }
-  .links a { color: inherit; }
-</style></head>
-<body data-zetl-mobile-route="recovery">
-<h1>No recovery phrase available</h1>
-<p class="hint">This install pre-dates BIP39 persistence — there is no saved seed phrase for the SSH key in use. To get one, <a href="/_mobile/sync">reset the active vault</a> (you'll lose unpushed local edits in that vault only — other vaults are preserved), then re-onboard. The fresh onboarding generates and saves a new recovery phrase.</p>
-<div class="links"><a href="/_mobile/vaults">Vaults</a> · <a href="/_mobile/sync">Sync</a></div>
-</body></html>"#.to_string();
-    }
-
-    format!(
-        r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>zetl mobile · recovery</title>
-<style>
-  body {{ font-family: system-ui, sans-serif; max-width: 30em; margin: 0 auto; padding: 1.5em; }}
-  h1 {{ font-size: 1.2rem; margin: 0 0 1rem; }}
-  .hint {{ font-size: 0.9em; opacity: 0.75; line-height: 1.5; }}
-  .warn {{ background: #fff8e1; border: 1px solid #f0d97c; padding: 0.7em 0.9em; border-radius: 6px; margin-bottom: 1em; }}
-  .seed-box {{ position: relative; background: #f4f4f4; padding: 0.9em; border-radius: 6px; font-family: ui-monospace, monospace; font-size: 1rem; line-height: 1.55; word-spacing: 0.4em; user-select: all; }}
-  .seed-blur {{ filter: blur(6px); transition: filter 200ms; cursor: pointer; }}
-  .seed-blur::after {{ content: 'Tap to reveal'; position: absolute; inset: 0; display: grid; place-items: center; font-family: system-ui; font-size: 0.85em; filter: blur(0); background: rgba(244,244,244,0.7); border-radius: 6px; cursor: pointer; }}
-  button {{ width: 100%; padding: 0.8em; font-size: 1rem; margin-top: 0.6em; }}
-  .copy-btn {{ width: auto; padding: 0.3em 0.7em; font-size: 0.85em; margin: 0.4em 0 0; }}
-  .links {{ font-size: 0.85em; opacity: 0.7; margin-top: 1.5em; display: flex; gap: 1em; }}
-  .links a {{ color: inherit; }}
-  details {{ margin-top: 1.5em; padding-top: 1em; border-top: 1px solid currentColor; opacity: 0.8; }}
-  details summary {{ cursor: pointer; font-size: 0.9em; }}
-  pre {{ background: #f4f4f4; padding: 0.6em; border-radius: 6px; font-size: 0.78em; word-break: break-all; white-space: pre-wrap; margin: 0.4em 0; }}
-</style></head>
-<body data-zetl-mobile-route="recovery">
-<h1>Recovery phrase</h1>
-<div class="warn">
-  <strong>Write these 12 words down</strong> and store them somewhere safe (paper notebook, password manager). Anyone with these words can derive the same SSH key and access whatever you've granted that key. This phrase is also what lets you restore the same identity on a new device — without it, a lost device means a new identity and re-adding the new pubkey to your git host.
-</div>
-<div class="seed-box seed-blur" data-zetl-mobile-seed onclick="this.classList.remove('seed-blur')">{mnemonic}</div>
-<button type="button" class="copy-btn" onclick="navigator.clipboard.writeText(document.querySelector('[data-zetl-mobile-seed]').textContent).then(() =&gt; {{ this.textContent = 'Copied'; setTimeout(() =&gt; this.textContent = 'Copy phrase', 1500); }})">Copy phrase</button>
-
-<details>
-  <summary>SSH public key (for git-host setup)</summary>
-  <p class="hint" style="margin-top:0.4em;">This is what you paste into GitHub / GitLab / Codeberg's SSH keys page. Derived from the phrase above.</p>
-  <pre data-zetl-mobile-pubkey>{pub_line}</pre>
-</details>
-
-<div class="links"><a href="/_mobile/vaults">Vaults</a> · <a href="/_mobile/sync">Sync</a> · <a href="/">Pages</a></div>
-{external_js}
-</body></html>"#,
-        mnemonic = html_escape(&mnemonic),
-        pub_line = html_escape(&pub_line),
-        external_js = MOBILE_EXTERNAL_LINK_JS,
+    render_mobile_template(
+        "mobile_recovery.html",
+        minijinja::context! {
+            mnemonic => if mnemonic.is_empty() { None } else { Some(mnemonic) },
+            pub_line => pub_line,
+            mobile_external_link_js => MOBILE_EXTERNAL_LINK_JS,
+        },
     )
 }
 
 fn render_vaults_page(msg: Option<VaultsMsg>) -> String {
-    let banner = match msg {
-        Some(VaultsMsg::Error(text)) => format!(
-            r#"<div data-zetl-mobile-vaults-msg="error" style="color:#b00;background:#fee;padding:0.7em;border-radius:6px;margin-bottom:1em;">Error: {}</div>"#,
-            html_escape(&text)
-        ),
-        Some(VaultsMsg::Ok(text)) => format!(
-            r#"<div data-zetl-mobile-vaults-msg="ok" style="color:#063;background:#efe;padding:0.7em;border-radius:6px;margin-bottom:1em;">{}</div>"#,
-            html_escape(&text)
-        ),
-        None => String::new(),
+    let (msg_ok, msg_error) = match msg {
+        Some(VaultsMsg::Ok(text)) => (Some(text), None),
+        Some(VaultsMsg::Error(text)) => (None, Some(text)),
+        None => (None, None),
     };
-
-    let entries = crate::mobile_state::list_vaults();
-    let rows = if entries.is_empty() {
-        r#"<p class="hint">No vaults cloned yet. <a href="/_mobile/onboarding">Add one →</a></p>"#.to_string()
-    } else {
-        entries
-            .iter()
-            .map(|v| {
-                let active_tag = if v.is_active {
-                    r#"<span style="color:#063;font-size:0.8em;">● active</span>"#
-                } else {
-                    ""
-                };
-                let switch_form = if v.is_active {
-                    String::new()
-                } else {
-                    format!(
-                        r#"<form method="post" action="/_mobile/vaults/switch" style="display:inline;margin-left:0.4em;">
-  <input type="hidden" name="label" value="{label}">
-  <button type="submit" style="width:auto;padding:0.3em 0.7em;font-size:0.85em;">Switch</button>
-</form>"#,
-                        label = html_escape(&v.label)
-                    )
-                };
-                let remove_link = format!(
-                    r#"<button type="button" data-zetl-mobile-remove="{label}" style="margin-left:0.4em;padding:0.3em 0.7em;font-size:0.85em;background:#fee;color:#b00;border:1px solid #b00;border-radius:6px;cursor:pointer;font-family:inherit;width:auto;">Remove</button>"#,
-                    label = html_escape(&v.label),
-                );
-                format!(
-                    r#"<li style="margin:0.6em 0;line-height:1.5;">
-  <strong data-zetl-mobile-vault-label="{label}">{label}</strong> {active_tag}{switch_form}{remove_link}
-  <br><span style="font-size:0.8em;opacity:0.7;">{remote}</span>
-</li>"#,
-                    label = html_escape(&v.label),
-                    active_tag = active_tag,
-                    switch_form = switch_form,
-                    remove_link = remove_link,
-                    remote = html_escape(v.remote_url.as_deref().unwrap_or("(no remote)")),
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
-
-    format!(
-        r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>zetl mobile · vaults</title>
-<style>
-  body {{ font-family: system-ui, sans-serif; max-width: 30em; margin: 0 auto; padding: 1.5em; }}
-  button {{ width: 100%; padding: 0.8em; font-size: 1rem; margin-top: 0.6em; }}
-  h1 {{ font-size: 1.2rem; margin: 0 0 1rem; }}
-  ul {{ list-style: none; padding: 0; }}
-  .hint {{ font-size: 0.9em; opacity: 0.7; }}
-  .links {{ font-size: 0.85em; opacity: 0.7; margin-top: 1.5em; display: flex; gap: 1em; }}
-  .links a {{ color: inherit; }}
-</style></head>
-<body data-zetl-mobile-route="vaults">
-<h1>Vaults</h1>
-{banner}
-<ul data-zetl-mobile-vaults-list>{rows}</ul>
-<p><a href="/_mobile/onboarding?add=1"><button type="button">+ Add another vault</button></a></p>
-<div class="links"><a href="/">Pages</a> · <a href="/_mobile/sync">Sync</a> · <a href="/_mobile/capture">Capture</a></div>
-
-<!-- In-page confirmation modal for Remove. Custom dialog (not
-     window.confirm) because Tauri WKWebView silently suppresses the
-     native confirm() unless tauri-plugin-dialog is wired up. -->
-<div id="zetl-confirm-overlay" data-zetl-modal="closed" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;align-items:center;justify-content:center;padding:1.5em;">
-  <div role="dialog" aria-modal="true" aria-labelledby="zetl-confirm-title" style="background:#fff;color:#111;max-width:28em;width:100%;padding:1.5em;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
-    <h2 id="zetl-confirm-title" style="font-size:1.1rem;margin:0 0 0.7em;">Remove this vault from local storage?</h2>
-    <p style="line-height:1.5;margin:0 0 1em;"><strong id="zetl-confirm-label" style="font-family:ui-monospace,monospace;"></strong></p>
-    <p style="line-height:1.5;margin:0 0 1.2em;font-size:0.92em;opacity:0.85;">The git remote is NOT affected — you can re-clone any time via <em>+ Add another vault</em>. <strong>Any unpushed local changes in this vault will be lost.</strong></p>
-    <form method="post" action="/_mobile/vaults/remove" id="zetl-confirm-form" style="margin:0;">
-      <input type="hidden" name="label" id="zetl-confirm-input" value="">
-      <button type="submit" data-zetl-mobile-action="remove-confirm" style="background:#b00;color:#fff;border:1px solid #800;width:100%;padding:0.75em;font-size:1rem;border-radius:6px;cursor:pointer;font-family:inherit;">Yes, remove</button>
-    </form>
-    <button type="button" id="zetl-confirm-cancel" style="background:transparent;color:inherit;border:1px solid currentColor;width:100%;padding:0.75em;font-size:1rem;margin-top:0.5em;border-radius:6px;cursor:pointer;font-family:inherit;opacity:0.75;">Cancel</button>
-  </div>
-</div>
-
-<script>
-(function() {{
-  var overlay = document.getElementById('zetl-confirm-overlay');
-  var input = document.getElementById('zetl-confirm-input');
-  var labelEl = document.getElementById('zetl-confirm-label');
-  var cancel = document.getElementById('zetl-confirm-cancel');
-  var form = document.getElementById('zetl-confirm-form');
-  if (!overlay || !input || !labelEl || !cancel || !form) return;
-  function open(label) {{
-    input.value = label;
-    labelEl.textContent = label;
-    overlay.style.display = 'flex';
-    overlay.dataset.zetlModal = 'open';
-  }}
-  function close() {{
-    overlay.style.display = 'none';
-    overlay.dataset.zetlModal = 'closed';
-  }}
-  document.querySelectorAll('button[data-zetl-mobile-remove]').forEach(function(btn) {{
-    btn.addEventListener('click', function(e) {{
-      e.preventDefault();
-      open(btn.dataset.zetlMobileRemove);
-    }});
-  }});
-  cancel.addEventListener('click', close);
-  overlay.addEventListener('click', function(e) {{
-    if (e.target === overlay) close();
-  }});
-  document.addEventListener('keydown', function(e) {{
-    if (e.key === 'Escape' && overlay.dataset.zetlModal === 'open') close();
-  }});
-}})();
-</script>
-{external_js}
-</body></html>"#,
-        external_js = MOBILE_EXTERNAL_LINK_JS,
+    let entries_ctx: Vec<minijinja::Value> = crate::mobile_state::list_vaults()
+        .into_iter()
+        .map(|v| {
+            minijinja::context! {
+                label => v.label,
+                is_active => v.is_active,
+                remote_url => v.remote_url,
+            }
+        })
+        .collect();
+    render_mobile_template(
+        "mobile_vaults.html",
+        minijinja::context! {
+            entries => entries_ctx,
+            msg_ok => msg_ok,
+            msg_error => msg_error,
+            mobile_external_link_js => MOBILE_EXTERNAL_LINK_JS,
+        },
     )
 }
 
 fn render_capture_form(error: Option<&str>, title_prefill: &str, body_prefill: &str) -> String {
-    let error_block = match error {
-        Some(msg) => format!(
-            r#"<div data-zetl-mobile-error="capture" style="color:#b00;background:#fee;padding:0.75em;border-radius:6px;margin-bottom:1em;">Error: {}</div>"#,
-            html_escape(msg)
-        ),
-        None => String::new(),
-    };
-    format!(
-        r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>zetl mobile · capture</title>
-<style>
-  body {{ font-family: system-ui, sans-serif; max-width: 30em; margin: 0 auto; padding: 1.5em; }}
-  input[type="text"] {{ width: 100%; font-size: 1rem; padding: 0.6em; box-sizing: border-box; margin-bottom: 0.6em; }}
-  textarea {{ width: 100%; min-height: 12em; font-family: ui-monospace, monospace; font-size: 1rem; padding: 0.6em; box-sizing: border-box; }}
-  button {{ width: 100%; padding: 0.8em; font-size: 1rem; margin-top: 0.6em; }}
-  h1 {{ font-size: 1.2rem; margin: 0; }}
-  .hint {{ font-size: 0.85em; opacity: 0.65; margin-top: 0.2em; }}
-  .links {{ font-size: 0.85em; opacity: 0.7; margin-top: 1.5em; display: flex; gap: 1em; }}
-  .links a {{ color: inherit; }}
-  .topbar {{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 1em; }}
-  .cancel {{ font-size: 0.9em; opacity: 0.8; color: inherit; text-decoration: none; padding: 0.3em 0.6em; border: 1px solid currentColor; border-radius: 6px; }}
-  .cancel:hover {{ opacity: 1; }}
-</style></head>
-<body data-zetl-mobile-route="capture">
-<div class="topbar">
-  <h1>Capture</h1>
-  <a href="/" class="cancel" data-zetl-mobile-action="cancel">✕ Cancel</a>
-</div>
-{error_block}
-<form method="post" action="/_mobile/capture">
-  <input type="text" name="title" placeholder="Title (optional — auto from first line / timestamp)" value="{title_val}" autocomplete="off" autocapitalize="sentences" autocorrect="off" spellcheck="false">
-  <textarea name="content" placeholder="Markdown — [[wikilinks]] welcome" required autofocus>{body_val}</textarea>
-  <div class="hint">Saved as <code>&lt;title&gt;.md</code> in the vault root, committed locally, pushed if online.</div>
-  <button type="submit">Save</button>
-</form>
-<div class="links"><a href="/">Pages</a> · <a href="/_mobile/sync">Sync</a> · <a href="/_mobile/vaults">Vaults</a></div>
-{external_js}
-</body></html>"#,
-        title_val = html_escape(title_prefill),
-        body_val = html_escape(body_prefill),
-        external_js = MOBILE_EXTERNAL_LINK_JS,
+    render_mobile_template(
+        "mobile_capture.html",
+        minijinja::context! {
+            error => error.map(|s| s.to_string()),
+            title_prefill => title_prefill,
+            body_prefill => body_prefill,
+            mobile_external_link_js => MOBILE_EXTERNAL_LINK_JS,
+        },
     )
+}
+
+/// Render a `mobile_*.html` template via the registered template
+/// engine (themed Minijinja with theme-override fallback). When no
+/// engine is registered (e.g., a stale test path before the engine
+/// handle was wired up), surface a placeholder body that still
+/// carries the `data-zetl-mobile-route` marker so route-mount tests
+/// don't blow up. Production always has an engine.
+fn render_mobile_template(name: &str, ctx: minijinja::Value) -> String {
+    match crate::mobile_state::template_engine() {
+        Some(engine) => engine.render_mobile(name, ctx).unwrap_or_else(|e| {
+            format!(
+                "<!DOCTYPE html><html><body>template error rendering {name}: {e:#}</body></html>"
+            )
+        }),
+        None => format!(
+            r#"<!DOCTYPE html><html><body data-zetl-mobile-template="missing">template engine not registered — render of {name} skipped</body></html>"#
+        ),
+    }
 }
 
 fn render_sync_page(msg: Option<SyncMsg>) -> String {
@@ -1382,91 +1135,24 @@ fn render_sync_page(msg: Option<SyncMsg>) -> String {
     } else {
         r#"<p class="hint" style="margin-top:0.4em;"><a href="/_mobile/vaults">Manage vaults</a></p>"#.to_string()
     };
-    let vault_header = match crate::mobile_state::vault_meta() {
-        Some(meta) => format!(
-            r#"<div data-zetl-mobile-vault-label="{label}" style="font-size:0.95em;background:#f4f4f4;padding:0.6em 0.8em;border-radius:6px;margin-bottom:1em;">
-  <strong>Vault:</strong> {label}<br>
-  <span style="font-size:0.8em;opacity:0.7;">{remote}</span>
-  {switcher}
-</div>"#,
-            label = html_escape(&meta.label),
-            remote = html_escape(&meta.remote_url),
-            switcher = switcher_link,
-        ),
-        None => switcher_link.clone(),
+    let meta = crate::mobile_state::vault_meta();
+    let (msg_ok, msg_conflict, msg_error) = match msg {
+        Some(SyncMsg::Ok(s)) => (Some(s), false, None),
+        Some(SyncMsg::Conflict) => (None, true, None),
+        Some(SyncMsg::Error(s)) => (None, false, Some(s)),
+        None => (None, false, None),
     };
-    let banner = match msg {
-        Some(SyncMsg::Ok(text)) => format!(
-            r#"<div data-zetl-mobile-sync="ok" style="color:#063;background:#efe;padding:0.7em;border-radius:6px;margin-bottom:1em;">{}</div>"#,
-            html_escape(&text)
-        ),
-        Some(SyncMsg::Conflict) => format!(
-            r#"<div data-zetl-mobile-sync="conflict" style="color:#b00;background:#fee;padding:0.7em;border-radius:6px;margin-bottom:1em;">{}</div>"#,
-            "Remote diverged from local — resolve on desktop, then pull again. Push is blocked until the next fast-forward pull succeeds."
-        ),
-        Some(SyncMsg::Error(text)) => format!(
-            r#"<div data-zetl-mobile-sync="error" style="color:#b00;background:#fee;padding:0.7em;border-radius:6px;margin-bottom:1em;">Error: {}</div>"#,
-            html_escape(&text)
-        ),
-        None => String::new(),
-    };
-
-    let key_loaded = crate::mobile_state::global().is_loaded();
-    let key_block = if key_loaded {
-        r#"<p class="hint">SSH key loaded.</p>"#.to_string()
-    } else {
-        r#"<p class="hint" data-zetl-mobile-keystore="empty">No SSH key in keystore — visit <a href="/_mobile/onboarding">onboarding</a> to paste your seed.</p>"#
-            .to_string()
-    };
-
-    format!(
-        r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>zetl mobile · sync</title>
-<style>
-  body {{ font-family: system-ui, sans-serif; max-width: 30em; margin: 0 auto; padding: 1.5em; }}
-  button {{ width: 100%; padding: 0.8em; font-size: 1rem; margin-top: 0.6em; }}
-  h1 {{ font-size: 1.2rem; margin: 0 0 1rem; }}
-  .hint {{ font-size: 0.85em; opacity: 0.7; }}
-  .links {{ font-size: 0.85em; opacity: 0.7; margin-top: 1.5em; display: flex; gap: 1em; }}
-  .links a {{ color: inherit; }}
-  form {{ display: inline; }}
-  form.zetl-busy button {{ opacity: 0.6; cursor: wait; }}
-  form.zetl-busy button::after {{ content: ''; display: inline-block; width: 0.9em; height: 0.9em; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: zspin 0.8s linear infinite; margin-left: 0.6em; vertical-align: middle; }}
-  @keyframes zspin {{ to {{ transform: rotate(360deg); }} }}
-</style></head>
-<body data-zetl-mobile-route="sync">
-{topbar}
-<h1>Sync</h1>
-{vault_header}
-{banner}
-{key_block}
-<form method="post" action="/_mobile/sync/pull" data-zetl-busy-label="Pulling…"><button type="submit">Pull (fast-forward only)</button></form>
-<form method="post" action="/_mobile/sync/push" data-zetl-busy-label="Pushing…"><button type="submit">Push</button></form>
-<hr style="margin:1.6em 0 1em;opacity:0.25;">
-<details>
-  <summary class="hint">Reset this vault…</summary>
-  <p class="hint" style="margin-top:0.6em;">Removes the <strong>active</strong> vault's local working tree and forgets the SSH key. Other cloned vaults under <code>vaults/</code> are preserved. <strong>Anything not pushed will be lost.</strong></p>
-  <form method="post" action="/_mobile/reset" onsubmit="return confirm('Wipe the active vault and forget the SSH key? Unpushed changes will be lost.');">
-    <button type="submit" data-zetl-mobile-action="reset" style="background:#fee;color:#b00;border-color:#b00;">Reset active vault</button>
-  </form>
-</details>
-<div class="links"><a href="/">Pages</a> · <a href="/_mobile/capture">Capture</a> · <a href="/_mobile/onboarding">Onboarding</a></div>
-<script>
-// Show a busy state on any form decorated with data-zetl-busy-label.
-// The form still submits normally — we just style it as "in flight"
-// so the user gets immediate visual feedback while the request runs.
-document.querySelectorAll('form[data-zetl-busy-label]').forEach(function(f) {{
-  f.addEventListener('submit', function() {{
-    f.classList.add('zetl-busy');
-    var btn = f.querySelector('button');
-    if (btn) btn.textContent = f.dataset.zetlBusyLabel;
-  }});
-}});
-</script>
-{external_js}
-</body></html>"#,
-        topbar = render_topbar_back_to_vaults(),
-        external_js = MOBILE_EXTERNAL_LINK_JS,
+    render_mobile_template(
+        "mobile_sync.html",
+        minijinja::context! {
+            vault_label => meta.as_ref().map(|m| m.label.clone()),
+            vault_remote => meta.as_ref().map(|m| m.remote_url.clone()).unwrap_or_default(),
+            switcher_link => switcher_link,
+            key_loaded => crate::mobile_state::global().is_loaded(),
+            msg_ok => msg_ok,
+            msg_conflict => msg_conflict,
+            msg_error => msg_error,
+            mobile_external_link_js => MOBILE_EXTERNAL_LINK_JS,
+        },
     )
 }

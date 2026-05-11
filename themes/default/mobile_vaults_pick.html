@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>zetl mobile · choose folder</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 30em; margin: 0 auto; padding: 1.5em; }
+    h1 { font-size: 1.2rem; margin: 0 0 0.4rem; }
+    .hint { font-size: 0.9em; opacity: 0.75; line-height: 1.5; margin-bottom: 1em; }
+    button { width: 100%; padding: 0.8em; font-size: 1rem; margin-top: 0.6em; }
+    .links { font-size: 0.85em; opacity: 0.7; margin-top: 1.5em; display: flex; gap: 1em; }
+    .links a { color: inherit; }
+  </style>
+</head>
+<body data-zetl-mobile-route="pick-subpath" data-zetl-mobile-vault-label="{{ label }}">
+<h1>Which folder is the vault?</h1>
+<p class="hint">The repo <code>{{ label }}</code> has more than one directory that looks like it could be a zetl vault. Pick the one to use. (Folders with a <code>.zetl/</code> config dir are usually the right choice.)</p>
+{%- if candidates %}
+<form method="post" action="/_mobile/vaults/pick">
+  <input type="hidden" name="label" value="{{ label }}">
+  {%- for c in candidates %}
+  <label style="display:block;padding:0.7em;border:1px solid #ddd;border-radius:6px;margin-bottom:0.5em;cursor:pointer;">
+    <input type="radio" name="subpath" value="{{ c.subpath }}"{% if c.subpath == selected_subpath %} checked{% endif %}>
+    <strong>{% if c.subpath %}/ {{ c.subpath }}{% else %}/ (repo root){% endif %}</strong>
+    {% if c.has_zetl_dir %}<span style="color:#063;font-size:0.85em;">● .zetl/</span>{% endif %}
+    <br><span style="font-size:0.85em;opacity:0.7;">{{ c.md_count }} markdown file{% if c.md_count != 1 %}s{% endif %}</span>
+  </label>
+  {%- endfor %}
+  <button type="submit">Use this folder →</button>
+</form>
+{%- else %}
+<p class="hint">No directories with markdown files were found in this repo. The vault is treated as empty until you (or another peer) add content.</p>
+{%- endif %}
+<div class="links"><a href="/_mobile/vaults">← Back to Vaults</a></div>
+{{ mobile_external_link_js | safe }}
+</body>
+</html>

@@ -607,7 +607,17 @@ pub async fn launch_default(
         .map_err(|e| anyhow::anyhow!("search index build failed: {e:?}"))?;
 
     let theme = "default";
-    let engine = engine::TemplateEngine::new(&vault_root, theme, false, false);
+    let engine = Arc::new(engine::TemplateEngine::new(
+        &vault_root,
+        theme,
+        false,
+        false,
+    ));
+
+    // SPEC-040 multi-vault: register the template engine so
+    // /_mobile/* handlers can render Minijinja templates instead of
+    // inline HTML.
+    crate::mobile_state::set_template_engine(engine.clone());
 
     let vault_root_arc = Arc::new(vault_root);
 
@@ -622,7 +632,7 @@ pub async fn launch_default(
         crdt_store: ws::CrdtDocStore::new(vault_root_arc.clone()),
         vault_root: vault_root_arc.clone(),
         search_index: Arc::new(search_index),
-        engine: Arc::new(engine),
+        engine: engine.clone(),
         theme: theme.to_string(),
         verbose: false,
         collab: false,

@@ -78,8 +78,7 @@ fn prepare_clone_destination(into: &Path) -> Result<()> {
         had_anything = true;
         let p = entry.path();
         if p.is_dir() {
-            std::fs::remove_dir_all(&p)
-                .with_context(|| format!("rm -rf {}", p.display()))?;
+            std::fs::remove_dir_all(&p).with_context(|| format!("rm -rf {}", p.display()))?;
         } else {
             std::fs::remove_file(&p).with_context(|| format!("rm {}", p.display()))?;
         }

@@ -35,9 +35,7 @@ pub fn run() {
 
             // Migrate any legacy single-vault layout into the multi-
             // vault `vaults/<label>/` structure (idempotent).
-            if let Err(e) =
-                zetl::mobile_state::migrate_single_vault_layout(&app_data_dir)
-            {
+            if let Err(e) = zetl::mobile_state::migrate_single_vault_layout(&app_data_dir) {
                 tracing::warn!("vault layout migration failed: {e:#}");
             }
 

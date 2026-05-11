@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>zetl mobile · onboarding · step 1</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 30em; margin: 0 auto; padding: 1.5em; }
+    textarea { width: 100%; min-height: 6em; font-family: ui-monospace, monospace; font-size: 1rem; padding: 0.6em; box-sizing: border-box; }
+    button { width: 100%; padding: 0.8em; font-size: 1rem; margin-top: 0.6em; }
+    .step { font-size: 0.85em; opacity: 0.65; margin-bottom: 0.4em; }
+    h1 { font-size: 1.2rem; margin: 0 0 1rem; }
+    p { line-height: 1.5; }
+  </style>
+</head>
+<body data-zetl-mobile-route="onboarding" data-zetl-mobile-step="seed">
+<div class="step">Step 1 of 2</div>
+<h1>Paste your 12-word recovery phrase</h1>
+<p>This is the same phrase you used with <code>zetl derive-ssh-key --mnemonic</code> on desktop. The phone derives the same SSH key locally — the phrase never leaves the device.</p>
+{% if error -%}
+<div data-zetl-mobile-error="seed" style="color:#b00;background:#fee;padding:0.75em;border-radius:6px;margin-bottom:1em;">Error: {{ error }}</div>
+{%- endif %}
+<form method="post" action="/_mobile/onboarding/seed">
+  <textarea name="mnemonic" placeholder="word1 word2 … word12" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required></textarea>
+  <button type="submit">Derive SSH key →</button>
+</form>
+{{ back_link | safe }}
+{{ mobile_external_link_js | safe }}
+</body>
+</html>
