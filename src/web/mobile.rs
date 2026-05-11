@@ -54,7 +54,10 @@ where
         .route("/_mobile/vaults", get(vaults_handler))
         .route("/_mobile/vaults/switch", post(vaults_switch_handler))
         .route("/_mobile/vaults/add", get(vaults_add_handler))
-        .route("/_mobile/vaults/remove", post(vaults_remove_handler))
+        .route(
+            "/_mobile/vaults/remove",
+            get(vaults_remove_confirm_handler).post(vaults_remove_handler),
+        )
         .route(
             "/_mobile/vaults/pick",
             get(pick_subpath_handler).post(pick_subpath_post_handler),
@@ -578,6 +581,26 @@ struct RemoveForm {
     label: String,
 }
 
+#[derive(Deserialize)]
+struct RemoveQuery {
+    label: String,
+}
+
+/// `GET /_mobile/vaults/remove?label=<label>` — confirmation page
+/// shown to the user before actually wiping. Avoids relying on
+/// `window.confirm()` which Tauri WebViews on some platforms silently
+/// suppress (the JS returns false and the form never submits, making
+/// it look like the button does nothing).
+async fn vaults_remove_confirm_handler(
+    axum::extract::Query(q): axum::extract::Query<RemoveQuery>,
+) -> Response {
+    let label = q.label.trim();
+    if label.is_empty() {
+        return Redirect::to("/_mobile/vaults").into_response();
+    }
+    Html(render_remove_confirm_page(label)).into_response()
+}
+
 /// `POST /_mobile/vaults/remove` — wipe the local working tree at
 /// `vaults/<label>/`. The git remote is untouched: the user can
 /// re-clone via /_mobile/onboarding?add=1 at any time. If the
@@ -925,6 +948,37 @@ fn render_topbar_back_to_vaults() -> &'static str {
 </div>"#
 }
 
+fn render_remove_confirm_page(label: &str) -> String {
+    format!(
+        r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>zetl mobile · confirm remove</title>
+<style>
+  body {{ font-family: system-ui, sans-serif; max-width: 30em; margin: 0 auto; padding: 1.5em; }}
+  h1 {{ font-size: 1.2rem; margin: 0 0 1rem; }}
+  .warn {{ background: #fee; border: 1px solid #f0a0a0; padding: 0.8em 1em; border-radius: 6px; margin-bottom: 1.2em; line-height: 1.5; }}
+  button {{ width: 100%; padding: 0.8em; font-size: 1rem; margin-top: 0.6em; box-sizing: border-box; }}
+  .danger {{ background: #b00; color: #fff; border: 1px solid #800; }}
+  .cancel {{ background: transparent; color: inherit; border: 1px solid currentColor; opacity: 0.7; }}
+</style></head>
+<body data-zetl-mobile-route="vaults-remove-confirm" data-zetl-mobile-vault-label="{label}">
+<h1>Remove this vault from local storage?</h1>
+<div class="warn">
+  <strong>{label}</strong><br>
+  The git remote is NOT affected — you can re-clone any time via <em>+ Add another vault</em>. But <strong>any unpushed local changes in this vault will be lost</strong>.
+</div>
+<form method="post" action="/_mobile/vaults/remove">
+  <input type="hidden" name="label" value="{label}">
+  <button type="submit" class="danger" data-zetl-mobile-action="remove-confirm">Yes, remove '{label}'</button>
+</form>
+<form action="/_mobile/vaults" method="get">
+  <button type="submit" class="cancel">Cancel</button>
+</form>
+</body></html>"#,
+        label = html_escape(label),
+    )
+}
+
 fn render_pick_subpath(
     label: &str,
     candidates: &[crate::mobile_state::VaultSubpathCandidate],
@@ -1111,23 +1165,19 @@ fn render_vaults_page(msg: Option<VaultsMsg>) -> String {
                         label = html_escape(&v.label)
                     )
                 };
-                let remove_form = format!(
-                    r#"<form method="post" action="/_mobile/vaults/remove" style="display:inline;margin-left:0.4em;" onsubmit="return confirm('Remove the local copy of {label_js}? The git remote is NOT affected — you can re-clone any time. Unpushed local changes WILL be lost.');">
-  <input type="hidden" name="label" value="{label}">
-  <button type="submit" data-zetl-mobile-action="remove" style="width:auto;padding:0.3em 0.7em;font-size:0.85em;background:#fee;color:#b00;border-color:#b00;">Remove</button>
-</form>"#,
-                    label = html_escape(&v.label),
-                    label_js = v.label.replace('\\', "\\\\").replace('\'', "\\'"),
+                let remove_link = format!(
+                    r#"<a href="/_mobile/vaults/remove?label={label_url}" data-zetl-mobile-action="remove" style="margin-left:0.4em;padding:0.3em 0.7em;font-size:0.85em;background:#fee;color:#b00;border:1px solid #b00;border-radius:6px;text-decoration:none;display:inline-block;">Remove</a>"#,
+                    label_url = urlencoding::encode(&v.label).into_owned(),
                 );
                 format!(
                     r#"<li style="margin:0.6em 0;line-height:1.5;">
-  <strong data-zetl-mobile-vault-label="{label}">{label}</strong> {active_tag}{switch_form}{remove_form}
+  <strong data-zetl-mobile-vault-label="{label}">{label}</strong> {active_tag}{switch_form}{remove_link}
   <br><span style="font-size:0.8em;opacity:0.7;">{remote}</span>
 </li>"#,
                     label = html_escape(&v.label),
                     active_tag = active_tag,
                     switch_form = switch_form,
-                    remove_form = remove_form,
+                    remove_link = remove_link,
                     remote = html_escape(v.remote_url.as_deref().unwrap_or("(no remote)")),
                 )
             })
