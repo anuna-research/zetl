@@ -39,11 +39,18 @@ pub struct KeyStore(Arc<Mutex<Option<StoredKey>>>);
 
 #[derive(Clone)]
 struct StoredKey {
-    /// `ssh-ed25519 AAAA<base64-blob> zetl-mobile` — the line the user
-    /// pastes into their git host's "add SSH key" page.
+    /// 12-word BIP39 mnemonic. The master secret — the SSH keypair
+    /// is deterministically derived from it via SLIP-0010 path
+    /// `m/44'/2'/0'`. Persisted so the user can write it down and
+    /// recover the same identity on a new device.
+    mnemonic: String,
+    /// `ssh-ed25519 AAAA<base64-blob> zetl-mobile` — the line the
+    /// user pastes into their git host's "add SSH key" page. Derived
+    /// from the mnemonic; cached in-memory to avoid re-derivation on
+    /// every read.
     pub_openssh: String,
     /// OpenSSH PEM private key, used by the `git2` credential
-    /// callback for clone / pull / push.
+    /// callback for clone / pull / push. Derived from the mnemonic.
     priv_pem: String,
 }
 
@@ -52,38 +59,42 @@ impl KeyStore {
         Self::default()
     }
 
-    /// Derive the ssh keypair from a 12-word BIP39 mnemonic, retain
-    /// it in memory, and return the formatted public-key line for
-    /// display to the user. This is the **advanced** onboarding path
-    /// — used when a user wants the phone to share the same SSH
-    /// identity as a desktop already provisioned via `zetl
-    /// derive-ssh-key --mnemonic`. The default path is
-    /// [`Self::generate_new`] which keeps each device's key isolated.
+    /// Adopt an existing 12-word BIP39 mnemonic — the **shared-identity**
+    /// onboarding path. Used when the user wants the phone to derive the
+    /// same SSH key as a desktop already provisioned via
+    /// `zetl derive-ssh-key --mnemonic`.
     pub fn import_mnemonic(&self, mnemonic_phrase: &str) -> Result<String> {
+        let trimmed = mnemonic_phrase.trim().to_string();
         let signing: SigningKey =
-            crate::user::recovery::derive_ssh_key_from_mnemonic(mnemonic_phrase)
+            crate::user::recovery::derive_ssh_key_from_mnemonic(&trimmed)
                 .context("BIP39 → ed25519 derivation failed")?;
-        self.install_keypair(signing)
+        self.install_from_mnemonic(trimmed, signing)
     }
 
-    /// Generate a brand-new ed25519 keypair from OS randomness and
-    /// install it in the store. This is the **default** onboarding
-    /// path — each mobile device gets its own per-device key,
-    /// registered with the git host like any other client. No seed
-    /// transfer required between desktop and phone; no shared master
-    /// secret.
+    /// Generate a brand-new 12-word BIP39 mnemonic, derive the SSH
+    /// key from it, install it in the store, and return the formatted
+    /// public-key line. The mnemonic is the master secret — persist
+    /// it via [`Self::persist`] so it survives restarts and the user
+    /// can write it down for off-device recovery.
     pub fn generate_new(&self) -> Result<String> {
         use rand_core::OsRng;
-        let signing = SigningKey::generate(&mut OsRng);
-        self.install_keypair(signing)
+        let mnemonic = bip39::Mnemonic::generate_in_with(
+            &mut OsRng,
+            bip39::Language::English,
+            12,
+        )
+        .context("BIP39 mnemonic generation failed")?
+        .to_string();
+        let signing: SigningKey =
+            crate::user::recovery::derive_ssh_key_from_mnemonic(&mnemonic)
+                .context("BIP39 → ed25519 derivation failed")?;
+        self.install_from_mnemonic(mnemonic, signing)
     }
 
     /// Shared install path used by both `import_mnemonic` and
-    /// `generate_new`: extracts the keypair bytes, encodes them into
-    /// OpenSSH PEM (private) and the `ssh-ed25519 AAAA…` line
-    /// (public), and stores them under the same `StoredKey` slot so
-    /// every caller observes the same in-memory key going forward.
-    fn install_keypair(&self, signing: SigningKey) -> Result<String> {
+    /// `generate_new`. Stores the mnemonic + derived keys under the
+    /// same `StoredKey` slot.
+    fn install_from_mnemonic(&self, mnemonic: String, signing: SigningKey) -> Result<String> {
         let pub_bytes: [u8; 32] = signing.verifying_key().to_bytes();
         let priv_bytes: [u8; 32] = signing.to_bytes();
 
@@ -92,10 +103,21 @@ impl KeyStore {
 
         let mut guard = self.0.lock().expect("KeyStore mutex poisoned");
         *guard = Some(StoredKey {
+            mnemonic,
             pub_openssh: pub_openssh.clone(),
             priv_pem,
         });
         Ok(pub_openssh)
+    }
+
+    /// BIP39 recovery phrase for the currently-loaded key, if any.
+    /// Used by the `/_mobile/recovery` route to display the seed to
+    /// the user with a "write this down" warning.
+    pub fn mnemonic(&self) -> Option<String> {
+        self.0
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|k| k.mnemonic.clone()))
     }
 
     /// Public-key OpenSSH line for the currently-imported seed, if
@@ -124,23 +146,24 @@ impl KeyStore {
         self.0.lock().ok().is_some_and(|g| g.is_some())
     }
 
-    /// Write the in-memory keypair to `{app_data_dir}/ssh_key.json`
-    /// with `0o600` permissions on Unix. Caller is the onboarding
-    /// POST handler, immediately after a successful
-    /// [`import_mnemonic`]. Returns `Ok(())` even if the file mode
-    /// chmod fails on platforms that don't support it (Windows).
+    /// Write the in-memory key material to `{app_data_dir}/ssh_key.json`
+    /// with `0o600` permissions on Unix. v2 schema persists the BIP39
+    /// mnemonic; the derived `priv_pem` + `pub_openssh` fields are
+    /// kept alongside for backwards-compat with v1 readers and to
+    /// avoid re-deriving on every restore.
     pub fn persist(&self, app_data_dir: &std::path::Path) -> Result<()> {
         let guard = self.0.lock().expect("KeyStore mutex poisoned");
         let stored = guard
             .as_ref()
-            .context("no key to persist; call import_mnemonic first")?;
+            .context("no key to persist; call import_mnemonic / generate_new first")?;
 
         std::fs::create_dir_all(app_data_dir)
             .with_context(|| format!("create {}", app_data_dir.display()))?;
 
         let path = app_data_dir.join("ssh_key.json");
         let body = serde_json::json!({
-            "schema": "zetl-mobile/ssh_key.v1",
+            "schema": "zetl-mobile/ssh_key.v2",
+            "mnemonic": stored.mnemonic,
             "pub_openssh": stored.pub_openssh,
             "priv_pem": stored.priv_pem,
         });
@@ -164,8 +187,12 @@ impl KeyStore {
     /// Try to restore a previously-persisted keypair from
     /// `{app_data_dir}/ssh_key.json`. Returns `Ok(true)` if a key was
     /// loaded, `Ok(false)` if the file did not exist (fresh install).
-    /// Errors only on parse failure of an existing file — that's an
-    /// actionable corruption case worth surfacing.
+    ///
+    /// Schema v2 (current) carries the BIP39 mnemonic. Schema v1
+    /// (older installs) carries only priv_pem + pub_openssh; we load
+    /// it with `mnemonic = ""` so users with v1 storage continue to
+    /// work but the `/_mobile/recovery` page tells them to re-onboard
+    /// to get a recoverable phrase.
     pub fn restore(&self, app_data_dir: &std::path::Path) -> Result<bool> {
         let path = app_data_dir.join("ssh_key.json");
         if !path.exists() {
@@ -183,9 +210,12 @@ impl KeyStore {
             .as_str()
             .context("ssh_key.json missing priv_pem")?
             .to_string();
+        // v2: mnemonic field is present. v1: empty string fallback.
+        let mnemonic = v["mnemonic"].as_str().unwrap_or("").to_string();
 
         let mut guard = self.0.lock().expect("KeyStore mutex poisoned");
         *guard = Some(StoredKey {
+            mnemonic,
             pub_openssh,
             priv_pem,
         });
@@ -728,6 +758,13 @@ mod tests {
         assert!(pub_line.ends_with(" zetl-mobile"));
         assert!(store.is_loaded());
         assert!(store.priv_pem().is_some());
+        // BIP39 mnemonic should be available alongside the derived key.
+        let phrase = store.mnemonic().expect("mnemonic should be set");
+        assert_eq!(
+            phrase.split_whitespace().count(),
+            12,
+            "generated mnemonic should be 12 words; got {phrase:?}"
+        );
     }
 
     #[test]
@@ -740,5 +777,36 @@ mod tests {
             line_a, line_b,
             "two fresh generate_new() calls must produce distinct keys"
         );
+        assert_ne!(
+            a.mnemonic().unwrap(),
+            b.mnemonic().unwrap(),
+            "fresh generate_new() calls must produce distinct mnemonics"
+        );
+    }
+
+    #[test]
+    fn import_mnemonic_round_trip_includes_phrase() {
+        let store = KeyStore::new();
+        store.import_mnemonic(FIXTURE_MNEMONIC).unwrap();
+        assert_eq!(
+            store.mnemonic().as_deref(),
+            Some(FIXTURE_MNEMONIC),
+            "imported mnemonic should be retrievable"
+        );
+    }
+
+    #[test]
+    fn persist_then_restore_carries_mnemonic_through() {
+        let dir = tempfile::tempdir().unwrap();
+        let store1 = KeyStore::new();
+        let original = store1.generate_new().unwrap();
+        let original_mnemonic = store1.mnemonic().unwrap();
+        store1.persist(dir.path()).unwrap();
+
+        let store2 = KeyStore::new();
+        let loaded = store2.restore(dir.path()).unwrap();
+        assert!(loaded);
+        assert_eq!(store2.pub_openssh().as_deref(), Some(original.as_str()));
+        assert_eq!(store2.mnemonic().as_deref(), Some(original_mnemonic.as_str()));
     }
 }
