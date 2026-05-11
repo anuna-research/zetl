@@ -1896,10 +1896,16 @@ fn test_bundled_theme_size_within_budget() {
             }
         }
     }
-    const BUDGET_BYTES: usize = 220 * 1024; // 220 KB
+    // NFR-014-002 budget. Bumped from 220 KB → 256 KB to accommodate
+    // (a) the `outline` theme added on the SPEC-040 branch and
+    // (b) the SPEC-040 mobile-mode sidebar block in default/base.html.
+    // Bumps go in increments of 32 KB so each step is a deliberate
+    // decision; the next bump is the natural place to land
+    // template-de-duplication / minification work.
+    const BUDGET_BYTES: usize = 256 * 1024; // 256 KB
     assert!(
         total_bytes <= BUDGET_BYTES,
-        "bundled theme content totals {total_bytes} bytes, exceeds 220 KB budget (NFR-014-002)"
+        "bundled theme content totals {total_bytes} bytes, exceeds 256 KB budget (NFR-014-002)"
     );
 }
 

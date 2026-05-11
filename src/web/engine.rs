@@ -317,6 +317,12 @@ fn __build_env_finish(env: &mut Environment<'static>, vault_root: &Path, theme: 
         resolve_graph_placement_for(vault_root, theme),
     );
 
+    // SPEC-040 mobile-mode flag: when the embedded serve is part of
+    // the Tauri Mobile shell, templates can inject mobile-specific
+    // sidebar entries (Vaults / Capture / Sync) gated on this global.
+    // Off otherwise so desktop serve stays unchanged.
+    env.add_global("mobile_mode", cfg!(feature = "mobile"));
+
     // SPEC-027 REQ-300: expose humanise_days (e.g. `3d`, `2w`, `9mo`) as a
     // template filter for history-metadata rendering. The real formatter
     // lives in `crate::history::core` which is feature-gated; when the
