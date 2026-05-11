@@ -2,7 +2,27 @@
 <html lang="en" data-theme="{{ theme }}">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  {# Safe-area insets: respect device cutouts and gesture nav on Android
+     15+ / iOS notch devices. The Tauri WebView lays out edge-to-edge
+     under the system bars, so without this padding the top of the page
+     hides under the status bar and the bottom under the gesture pill.
+     On desktop browsers `env(safe-area-inset-*)` evaluates to 0, so
+     this is a no-op outside mobile shells. #}
+  <style>
+    :root {
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+    }
+    body {
+      padding-top: var(--safe-top);
+      padding-right: var(--safe-right);
+      padding-bottom: var(--safe-bottom);
+      padding-left: var(--safe-left);
+    }
+  </style>
   <title>{% block title %}{{ vault.name }} — zetl{% endblock %}</title>
   <meta name="description" content="{% block description %}{{ vault.name }} — a knowledge vault built with zetl.{% endblock %}">
   {# Open Graph / social cards — child templates may override og_image/og_title/og_description blocks. #}

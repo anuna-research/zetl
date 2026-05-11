@@ -49,3 +49,21 @@ if ! grep -q 'networkSecurityConfig' "$MANIFEST"; then
   # Use perl rather than sed -i (BSD sed wants a different -i syntax).
   perl -i -pe 's|(android:usesCleartextTraffic="\$\{usesCleartextTraffic\}")|android:networkSecurityConfig="\@xml/network_security_config"\n        $1|' "$MANIFEST"
 fi
+
+# ── build.gradle.kts: flip release usesCleartextTraffic to "true" ────────────
+# Some Android WebView versions consult the manifest's
+# `usesCleartextTraffic` flag *before* falling through to the
+# network-security-config. Set it to true so the WebView doesn't bail
+# out at the manifest layer; the NSC above is what actually scopes
+# cleartext to 127.0.0.1 / localhost.
+BUILD_GRADLE="$ANDROID_PROJECT/app/build.gradle.kts"
+if [ -f "$BUILD_GRADLE" ]; then
+  perl -i -pe 's|(getByName\("release"\)\s*\{[^}]*?manifestPlaceholders\["usesCleartextTraffic"\]\s*=\s*)"false"|$1"true"|gs' "$BUILD_GRADLE"
+  # Also handle the case where the placeholder is only set in defaultConfig:
+  # leave defaultConfig alone (debug already overrides to "true") but make
+  # sure release has an explicit override. If the release block does not
+  # already mention it, inject one.
+  if ! grep -A 10 'getByName("release")' "$BUILD_GRADLE" | grep -q 'usesCleartextTraffic'; then
+    perl -i -pe 's|(getByName\("release"\)\s*\{)|$1\n            manifestPlaceholders["usesCleartextTraffic"] = "true"|' "$BUILD_GRADLE"
+  fi
+fi
