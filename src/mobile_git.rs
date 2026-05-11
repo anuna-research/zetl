@@ -304,7 +304,7 @@ fn require_keystore_loaded() -> Result<()> {
 /// point `$HOME` at that dir. The empty file means TOFU still happens
 /// in our certificate_check callback (every host is "unknown" → we
 /// accept on first sight), but libssh2's init step succeeds.
-fn ensure_known_hosts_file() {
+pub fn ensure_known_hosts_file() {
     let Some(app_data) = crate::mobile_state::app_data_dir() else {
         return;
     };

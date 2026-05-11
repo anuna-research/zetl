@@ -33,6 +33,16 @@ pub fn run() {
             zetl::mobile_state::set_app_data_dir(app_data_dir.clone());
             zetl::mobile_state::set_vault_root(vault_root.clone());
 
+            // Set $HOME + seed an empty `.ssh/known_hosts` BEFORE
+            // anything else touches libgit2. libgit2's SSH transport
+            // resolves HOME once at lib-init time (the first
+            // `Repository::*` call) and caches it; doing this later
+            // is a no-op for the cached path, which would make the
+            // SPEC-040 clone fail with `error loading known_hosts;
+            // class=Ssh (23)`. The keystore generate/restore step
+            // below uses git2 transitively, so this must run first.
+            zetl::mobile_git::ensure_known_hosts_file();
+
             // Migrate any legacy single-vault layout into the multi-
             // vault `vaults/<label>/` structure (idempotent).
             if let Err(e) = zetl::mobile_state::migrate_single_vault_layout(&app_data_dir) {
