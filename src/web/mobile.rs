@@ -1166,8 +1166,8 @@ fn render_vaults_page(msg: Option<VaultsMsg>) -> String {
                     )
                 };
                 let remove_link = format!(
-                    r#"<a href="/_mobile/vaults/remove?label={label_url}" data-zetl-mobile-action="remove" style="margin-left:0.4em;padding:0.3em 0.7em;font-size:0.85em;background:#fee;color:#b00;border:1px solid #b00;border-radius:6px;text-decoration:none;display:inline-block;">Remove</a>"#,
-                    label_url = urlencoding::encode(&v.label).into_owned(),
+                    r#"<button type="button" data-zetl-mobile-remove="{label}" style="margin-left:0.4em;padding:0.3em 0.7em;font-size:0.85em;background:#fee;color:#b00;border:1px solid #b00;border-radius:6px;cursor:pointer;font-family:inherit;width:auto;">Remove</button>"#,
+                    label = html_escape(&v.label),
                 );
                 format!(
                     r#"<li style="margin:0.6em 0;line-height:1.5;">
@@ -1204,6 +1204,56 @@ fn render_vaults_page(msg: Option<VaultsMsg>) -> String {
 <ul data-zetl-mobile-vaults-list>{rows}</ul>
 <p><a href="/_mobile/onboarding?add=1"><button type="button">+ Add another vault</button></a></p>
 <div class="links"><a href="/">Pages</a> · <a href="/_mobile/sync">Sync</a> · <a href="/_mobile/capture">Capture</a></div>
+
+<!-- In-page confirmation modal for Remove. Custom dialog (not
+     window.confirm) because Tauri WKWebView silently suppresses the
+     native confirm() unless tauri-plugin-dialog is wired up. -->
+<div id="zetl-confirm-overlay" data-zetl-modal="closed" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;align-items:center;justify-content:center;padding:1.5em;">
+  <div role="dialog" aria-modal="true" aria-labelledby="zetl-confirm-title" style="background:#fff;color:#111;max-width:28em;width:100%;padding:1.5em;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+    <h2 id="zetl-confirm-title" style="font-size:1.1rem;margin:0 0 0.7em;">Remove this vault from local storage?</h2>
+    <p style="line-height:1.5;margin:0 0 1em;"><strong id="zetl-confirm-label" style="font-family:ui-monospace,monospace;"></strong></p>
+    <p style="line-height:1.5;margin:0 0 1.2em;font-size:0.92em;opacity:0.85;">The git remote is NOT affected — you can re-clone any time via <em>+ Add another vault</em>. <strong>Any unpushed local changes in this vault will be lost.</strong></p>
+    <form method="post" action="/_mobile/vaults/remove" id="zetl-confirm-form" style="margin:0;">
+      <input type="hidden" name="label" id="zetl-confirm-input" value="">
+      <button type="submit" data-zetl-mobile-action="remove-confirm" style="background:#b00;color:#fff;border:1px solid #800;width:100%;padding:0.75em;font-size:1rem;border-radius:6px;cursor:pointer;font-family:inherit;">Yes, remove</button>
+    </form>
+    <button type="button" id="zetl-confirm-cancel" style="background:transparent;color:inherit;border:1px solid currentColor;width:100%;padding:0.75em;font-size:1rem;margin-top:0.5em;border-radius:6px;cursor:pointer;font-family:inherit;opacity:0.75;">Cancel</button>
+  </div>
+</div>
+
+<script>
+(function() {{
+  var overlay = document.getElementById('zetl-confirm-overlay');
+  var input = document.getElementById('zetl-confirm-input');
+  var labelEl = document.getElementById('zetl-confirm-label');
+  var cancel = document.getElementById('zetl-confirm-cancel');
+  var form = document.getElementById('zetl-confirm-form');
+  if (!overlay || !input || !labelEl || !cancel || !form) return;
+  function open(label) {{
+    input.value = label;
+    labelEl.textContent = label;
+    overlay.style.display = 'flex';
+    overlay.dataset.zetlModal = 'open';
+  }}
+  function close() {{
+    overlay.style.display = 'none';
+    overlay.dataset.zetlModal = 'closed';
+  }}
+  document.querySelectorAll('button[data-zetl-mobile-remove]').forEach(function(btn) {{
+    btn.addEventListener('click', function(e) {{
+      e.preventDefault();
+      open(btn.dataset.zetlMobileRemove);
+    }});
+  }});
+  cancel.addEventListener('click', close);
+  overlay.addEventListener('click', function(e) {{
+    if (e.target === overlay) close();
+  }});
+  document.addEventListener('keydown', function(e) {{
+    if (e.key === 'Escape' && overlay.dataset.zetlModal === 'open') close();
+  }});
+}})();
+</script>
 {external_js}
 </body></html>"#,
         external_js = MOBILE_EXTERNAL_LINK_JS,
