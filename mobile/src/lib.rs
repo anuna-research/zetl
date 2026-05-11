@@ -41,6 +41,12 @@ pub fn run() {
                 tracing::warn!("vault layout migration failed: {e:#}");
             }
 
+            // Prefer the OS keychain over the on-disk ssh_key.json
+            // for KeyStore persist/restore. Falls back to the file
+            // automatically if the platform backend isn't available
+            // (e.g., headless Linux without Secret Service).
+            zetl::mobile_state::enable_keyring();
+
             // Restore previously-persisted SSH key if present;
             // otherwise auto-generate a fresh per-device keypair.
             let keystore = zetl::mobile_state::global();

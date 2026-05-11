@@ -710,9 +710,9 @@ async fn reset_handler() -> Response {
         }
     }
 
-    // Forget the persisted key + in-memory key + legacy vault meta.
+    // Forget the persisted key (keyring + file) + legacy vault meta.
     if let Some(app_data) = crate::mobile_state::app_data_dir() {
-        let _ = std::fs::remove_file(app_data.join("ssh_key.json"));
+        keystore.forget_persistent(&app_data);
         let _ = std::fs::remove_file(app_data.join("vault_meta.json"));
     }
     keystore.clear();

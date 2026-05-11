@@ -25,10 +25,36 @@
 //! happens behind the same `KeyStore` API — no caller changes.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::{anyhow, Context, Result};
 use ed25519_dalek::SigningKey;
+
+// ── Keyring backend (production opt-in) ──────────────────────────────────────
+//
+// The Tauri shell calls `enable_keyring()` once at boot so `persist` /
+// `restore` prefer the OS keychain over the on-disk ssh_key.json. Tests
+// leave the flag off (default) so they continue to exercise the file
+// path against a tempdir without polluting the real keyring.
+
+static USE_KEYRING: AtomicBool = AtomicBool::new(false);
+
+const KEYRING_SERVICE: &str = "io.anuna.zetl.mobile";
+const KEYRING_USER: &str = "ssh_key";
+
+/// Opt the SPEC-040 KeyStore into using the OS keychain (macOS
+/// Keychain Services / Windows Credential Vault / Linux Secret
+/// Service via the `keyring` crate) for `persist` and `restore`.
+/// Production callers (the Tauri shell's setup() hook) flip this once
+/// at boot. Tests leave it off so the file path is exercised.
+pub fn enable_keyring() {
+    USE_KEYRING.store(true, Ordering::Relaxed);
+}
+
+fn keyring_enabled() -> bool {
+    USE_KEYRING.load(Ordering::Relaxed)
+}
 
 /// Process-lifetime SSH key store. Cheap to clone; clones share the
 /// same inner `Mutex<Option<StoredKey>>` so updates from one entry
@@ -146,21 +172,19 @@ impl KeyStore {
         self.0.lock().ok().is_some_and(|g| g.is_some())
     }
 
-    /// Write the in-memory key material to `{app_data_dir}/ssh_key.json`
-    /// with `0o600` permissions on Unix. v2 schema persists the BIP39
-    /// mnemonic; the derived `priv_pem` + `pub_openssh` fields are
-    /// kept alongside for backwards-compat with v1 readers and to
-    /// avoid re-deriving on every restore.
+    /// Persist the in-memory key material. Prefers the OS keychain
+    /// when `enable_keyring()` was called at boot (production path);
+    /// falls back to `{app_data_dir}/ssh_key.json` (0o600 Unix)
+    /// otherwise — which is also the test default.
+    ///
+    /// v2 schema persists the BIP39 mnemonic; the derived `priv_pem`
+    /// + `pub_openssh` fields are kept alongside for backwards-compat
+    /// with v1 readers and to avoid re-deriving on every restore.
     pub fn persist(&self, app_data_dir: &std::path::Path) -> Result<()> {
         let guard = self.0.lock().expect("KeyStore mutex poisoned");
         let stored = guard
             .as_ref()
             .context("no key to persist; call import_mnemonic / generate_new first")?;
-
-        std::fs::create_dir_all(app_data_dir)
-            .with_context(|| format!("create {}", app_data_dir.display()))?;
-
-        let path = app_data_dir.join("ssh_key.json");
         let body = serde_json::json!({
             "schema": "zetl-mobile/ssh_key.v2",
             "mnemonic": stored.mnemonic,
@@ -168,6 +192,38 @@ impl KeyStore {
             "priv_pem": stored.priv_pem,
         });
         let json = serde_json::to_string(&body).context("serialise key json")?;
+        drop(guard);
+
+        // Try keyring first when production has opted in. If the
+        // platform-specific backend doesn't work (no Secret Service
+        // on a headless Linux box, locked Keychain on macOS, …),
+        // log + fall through to the on-disk path so the user is
+        // never blocked.
+        #[cfg(feature = "keyring-storage")]
+        if keyring_enabled() {
+            match keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+                Ok(entry) => match entry.set_password(&json) {
+                    Ok(()) => {
+                        // Successful keyring write — clean up any
+                        // stale on-disk file so the two backends
+                        // don't drift.
+                        let _ = std::fs::remove_file(app_data_dir.join("ssh_key.json"));
+                        return Ok(());
+                    }
+                    Err(e) => eprintln!(
+                        "[zetl-mobile] keyring set_password failed: {e}; falling back to file"
+                    ),
+                },
+                Err(e) => {
+                    eprintln!("[zetl-mobile] keyring Entry::new failed: {e}; falling back to file")
+                }
+            }
+        }
+
+        std::fs::create_dir_all(app_data_dir)
+            .with_context(|| format!("create {}", app_data_dir.display()))?;
+
+        let path = app_data_dir.join("ssh_key.json");
 
         // Atomic write so a crash mid-persist never leaves the file
         // half-written. Same idiom as mobile_capture::write_atomic.
@@ -184,35 +240,63 @@ impl KeyStore {
         Ok(())
     }
 
-    /// Try to restore a previously-persisted keypair from
-    /// `{app_data_dir}/ssh_key.json`. Returns `Ok(true)` if a key was
-    /// loaded, `Ok(false)` if the file did not exist (fresh install).
+    /// Try to restore a previously-persisted keypair. When
+    /// `enable_keyring()` was called at boot, the keyring entry is
+    /// consulted first; missing-entry or platform error → fall back
+    /// to `{app_data_dir}/ssh_key.json`. Returns `Ok(true)` if a key
+    /// was loaded, `Ok(false)` if neither backend has anything
+    /// (fresh install).
     ///
     /// Schema v2 (current) carries the BIP39 mnemonic. Schema v1
-    /// (older installs) carries only priv_pem + pub_openssh; we load
-    /// it with `mnemonic = ""` so users with v1 storage continue to
-    /// work but the `/_mobile/recovery` page tells them to re-onboard
-    /// to get a recoverable phrase.
+    /// (older installs) carries only priv_pem + pub_openssh; we
+    /// load it with `mnemonic = ""` so users with v1 storage
+    /// continue to work but `/_mobile/recovery` tells them to
+    /// re-onboard to get a recoverable phrase.
     pub fn restore(&self, app_data_dir: &std::path::Path) -> Result<bool> {
+        // Try keyring first when production opted in.
+        #[cfg(feature = "keyring-storage")]
+        if keyring_enabled() {
+            if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+                match entry.get_password() {
+                    Ok(raw) => return self.load_from_json(&raw, "keyring"),
+                    Err(keyring::Error::NoEntry) => {
+                        // First launch with keyring enabled — fall through
+                        // to file. Useful when migrating an existing install.
+                    }
+                    Err(e) => eprintln!(
+                        "[zetl-mobile] keyring get_password failed: {e}; falling back to file"
+                    ),
+                }
+            }
+        }
+
         let path = app_data_dir.join("ssh_key.json");
         if !path.exists() {
             return Ok(false);
         }
         let raw =
             std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+        let loaded = self.load_from_json(&raw, "ssh_key.json")?;
+
+        // If we read from disk but keyring is enabled, migrate the
+        // material into the keyring on the next persist so the disk
+        // file can age out. We don't write here — that's persist's
+        // job.
+        Ok(loaded)
+    }
+
+    fn load_from_json(&self, raw: &str, source: &str) -> Result<bool> {
         let v: serde_json::Value =
-            serde_json::from_str(&raw).with_context(|| format!("parse {}", path.display()))?;
+            serde_json::from_str(raw).with_context(|| format!("parse key json from {source}"))?;
         let pub_openssh = v["pub_openssh"]
             .as_str()
-            .context("ssh_key.json missing pub_openssh")?
+            .with_context(|| format!("{source} missing pub_openssh"))?
             .to_string();
         let priv_pem = v["priv_pem"]
             .as_str()
-            .context("ssh_key.json missing priv_pem")?
+            .with_context(|| format!("{source} missing priv_pem"))?
             .to_string();
-        // v2: mnemonic field is present. v1: empty string fallback.
         let mnemonic = v["mnemonic"].as_str().unwrap_or("").to_string();
-
         let mut guard = self.0.lock().expect("KeyStore mutex poisoned");
         *guard = Some(StoredKey {
             mnemonic,
@@ -228,6 +312,19 @@ impl KeyStore {
         if let Ok(mut g) = self.0.lock() {
             *g = None;
         }
+    }
+
+    /// Best-effort wipe of all persisted backends — keyring entry
+    /// AND on-disk file. Used by `/_mobile/reset` so the user can
+    /// truly start fresh.
+    pub fn forget_persistent(&self, app_data_dir: &std::path::Path) {
+        #[cfg(feature = "keyring-storage")]
+        if keyring_enabled() {
+            if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+                let _ = entry.delete_credential();
+            }
+        }
+        let _ = std::fs::remove_file(app_data_dir.join("ssh_key.json"));
     }
 }
 
