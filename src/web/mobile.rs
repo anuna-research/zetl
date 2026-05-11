@@ -155,6 +155,26 @@ async fn onboarding_clone_handler(Form(form): Form<CloneForm>) -> Response {
 
     let remote_url = form.remote_url.trim().to_string();
 
+    // If the user lands here with a vault already cloned (stale form
+    // cache, browser back-button, etc.), route them to the right
+    // place instead of bouncing off the prepare-clone refusal with
+    // a raw error string in the response body.
+    if vault_root.join(".git").is_dir() {
+        if let Some(meta) = crate::mobile_state::vault_meta() {
+            if meta.remote_url == remote_url {
+                // Same vault — nothing to do.
+                return Redirect::to("/").into_response();
+            }
+        }
+        // Different (or unknown) remote — push the user to the sync
+        // page with a banner explaining and pointing at Reset.
+        let app = render_sync_page(Some(SyncMsg::Error(format!(
+            "A vault is already cloned here. To switch to {remote_url}, tap \
+             “Reset and switch vault” below first."
+        ))));
+        return Html(app).into_response();
+    }
+
     // The clone is blocking I/O against libgit2. Run it on a blocking
     // pool thread so the axum request task is not held for the full
     // duration of the network fetch.
