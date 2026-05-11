@@ -593,6 +593,11 @@ fn render_step_clone(pub_line: &str, error: Option<&str>) -> String {
   .topbar a:hover {{ opacity: 1; }}
 </style></head>
 <body data-zetl-mobile-route="onboarding" data-zetl-mobile-step="clone">
+<style>
+  form.zetl-busy button {{ opacity: 0.6; cursor: wait; }}
+  form.zetl-busy button::after {{ content: ''; display: inline-block; width: 0.9em; height: 0.9em; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: zspin 0.8s linear infinite; margin-left: 0.6em; vertical-align: middle; }}
+  @keyframes zspin {{ to {{ transform: rotate(360deg); }} }}
+</style>
 <h1>Add this SSH key to your git host, then clone</h1>
 <p>This phone has its own SSH key (generated on first launch). Add it to <em>any</em> git host where the vault lives — one key works for all of them.</p>
 <pre data-zetl-mobile-pubkey>{pub}</pre>
@@ -604,7 +609,7 @@ fn render_step_clone(pub_line: &str, error: Option<&str>) -> String {
   <a href="https://codeberg.org/user/settings/keys" target="_blank" rel="noopener noreferrer">→ Codeberg</a>
 </p>
 {error_block}
-<form method="post" action="/_mobile/onboarding/clone">
+<form method="post" action="/_mobile/onboarding/clone" data-zetl-busy-label="Cloning…">
   <input type="url" name="remote_url" placeholder="git@codeberg.org:you/your-vault.git  or  https://codeberg.org/you/your-vault.git" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required>
   <button type="submit">Clone vault →</button>
 </form>
@@ -618,6 +623,15 @@ fn render_step_clone(pub_line: &str, error: Option<&str>) -> String {
   </form>
 </details>
 {back}
+<script>
+document.querySelectorAll('form[data-zetl-busy-label]').forEach(function(f) {{
+  f.addEventListener('submit', function() {{
+    f.classList.add('zetl-busy');
+    var btn = f.querySelector('button');
+    if (btn) btn.textContent = f.dataset.zetlBusyLabel;
+  }});
+}});
+</script>
 </body></html>"#,
         pub = html_escape(pub_line),
         back = render_onboarding_back_link(),
@@ -807,23 +821,38 @@ fn render_sync_page(msg: Option<SyncMsg>) -> String {
   .links {{ font-size: 0.85em; opacity: 0.7; margin-top: 1.5em; display: flex; gap: 1em; }}
   .links a {{ color: inherit; }}
   form {{ display: inline; }}
+  form.zetl-busy button {{ opacity: 0.6; cursor: wait; }}
+  form.zetl-busy button::after {{ content: ''; display: inline-block; width: 0.9em; height: 0.9em; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: zspin 0.8s linear infinite; margin-left: 0.6em; vertical-align: middle; }}
+  @keyframes zspin {{ to {{ transform: rotate(360deg); }} }}
 </style></head>
 <body data-zetl-mobile-route="sync">
 <h1>Sync</h1>
 {vault_header}
 {banner}
 {key_block}
-<form method="post" action="/_mobile/sync/pull"><button type="submit">Pull (fast-forward only)</button></form>
-<form method="post" action="/_mobile/sync/push"><button type="submit">Push</button></form>
+<form method="post" action="/_mobile/sync/pull" data-zetl-busy-label="Pulling…"><button type="submit">Pull (fast-forward only)</button></form>
+<form method="post" action="/_mobile/sync/push" data-zetl-busy-label="Pushing…"><button type="submit">Push</button></form>
 <hr style="margin:1.6em 0 1em;opacity:0.25;">
 <details>
-  <summary class="hint">Switch to a different vault…</summary>
-  <p class="hint" style="margin-top:0.6em;">v0.1 supports one vault at a time. Reset clears the local working tree <em>and</em> forgets the SSH key, then sends you back to onboarding. <strong>Anything not pushed will be lost.</strong></p>
-  <form method="post" action="/_mobile/reset" onsubmit="return confirm('Wipe the local vault and forget the SSH key? Unpushed changes will be lost.');">
-    <button type="submit" data-zetl-mobile-action="reset" style="background:#fee;color:#b00;border-color:#b00;">Reset and switch vault</button>
+  <summary class="hint">Reset this vault…</summary>
+  <p class="hint" style="margin-top:0.6em;">Removes the <strong>active</strong> vault's local working tree and forgets the SSH key. Other cloned vaults under <code>vaults/</code> are preserved. <strong>Anything not pushed will be lost.</strong></p>
+  <form method="post" action="/_mobile/reset" onsubmit="return confirm('Wipe the active vault and forget the SSH key? Unpushed changes will be lost.');">
+    <button type="submit" data-zetl-mobile-action="reset" style="background:#fee;color:#b00;border-color:#b00;">Reset active vault</button>
   </form>
 </details>
 <div class="links"><a href="/">Pages</a> · <a href="/_mobile/capture">Capture</a> · <a href="/_mobile/onboarding">Onboarding</a></div>
+<script>
+// Show a busy state on any form decorated with data-zetl-busy-label.
+// The form still submits normally — we just style it as "in flight"
+// so the user gets immediate visual feedback while the request runs.
+document.querySelectorAll('form[data-zetl-busy-label]').forEach(function(f) {{
+  f.addEventListener('submit', function() {{
+    f.classList.add('zetl-busy');
+    var btn = f.querySelector('button');
+    if (btn) btn.textContent = f.dataset.zetlBusyLabel;
+  }});
+}});
+</script>
 </body></html>"#,
     )
 }
