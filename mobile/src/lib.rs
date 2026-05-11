@@ -74,10 +74,12 @@ pub fn run() {
 
             // Bypass the bundled dist/index.html entirely: as soon as
             // the embedded serve is reachable, navigate the main
-            // WebView directly at /_mobile/vaults via Tauri's
-            // programmatic navigate() API. This avoids the
-            // tauri://localhost → http://127.0.0.1 fetch-CORS dance
-            // that left the WebView stuck on a loading screen.
+            // WebView directly at the right /_mobile/* surface.
+            //
+            // Landing page picks itself based on state:
+            //   - share-inbox non-empty → /_mobile/capture?from=share
+            //     (capture-first, the spec's primary scenario)
+            //   - otherwise → /_mobile/vaults (multi-vault picker)
             //
             // The poll loop is generous: server typically binds in
             // <1s but we keep retrying for 30s in case the host is
@@ -85,7 +87,11 @@ pub fn run() {
             use tauri::Manager;
             if let Some(window) = app.get_webview_window("main") {
                 tauri::async_runtime::spawn(async move {
-                    let target = "http://127.0.0.1:23423/_mobile/vaults";
+                    let target = if zetl::mobile_state::share_inbox_count() > 0 {
+                        "http://127.0.0.1:23423/_mobile/capture?from=share"
+                    } else {
+                        "http://127.0.0.1:23423/_mobile/vaults"
+                    };
                     let mut tries = 0;
                     loop {
                         if std::net::TcpStream::connect_timeout(

@@ -47,6 +47,7 @@ where
             "/_mobile/capture",
             get(capture_handler).post(capture_post_handler),
         )
+        .route("/_mobile/share", post(share_post_handler))
         .route("/_mobile/sync", get(sync_handler))
         .route("/_mobile/sync/pull", post(sync_pull_handler))
         .route("/_mobile/sync/push", post(sync_push_handler))
@@ -369,12 +370,74 @@ async fn pick_subpath_post_handler(Form(form): Form<PickForm>) -> Response {
 
 // ── /_mobile/capture ──────────────────────────────────────────────────────────
 
-/// `GET /_mobile/capture` — quick-capture form (FAB target + share
-/// extension landing). Renders the same form on every visit; future
-/// share-extension intake will pass payload as a query string and
-/// pre-populate the form.
-async fn capture_handler() -> Response {
-    Html(render_capture_form(None, "", "")).into_response()
+/// `GET /_mobile/capture` — quick-capture form. When called with
+/// `?from=share`, drains the share-extension inbox and prefills the
+/// form with the most recent entry's title + body (REQ-4007).
+async fn capture_handler(
+    axum::extract::Query(q): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Response {
+    let from_share = q.get("from").map(String::as_str) == Some("share");
+    let (title, body) = if from_share {
+        let entries = crate::mobile_state::drain_share_inbox();
+        if let Some(first) = entries.into_iter().next() {
+            (first.title, first.body)
+        } else {
+            (String::new(), String::new())
+        }
+    } else {
+        (String::new(), String::new())
+    };
+    Html(render_capture_form(None, &title, &body)).into_response()
+}
+
+#[derive(Deserialize)]
+struct ShareIncoming {
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    body: String,
+    #[serde(default)]
+    url: String,
+}
+
+/// `POST /_mobile/share` — receive a share payload from a native
+/// share extension (Android share-target Activity is the primary
+/// caller; iOS Share Extensions write directly to the inbox file
+/// via the app-group container). Also useful for testing without
+/// platform-native code: `curl --data "title=X&body=Y" .../_mobile/share`.
+async fn share_post_handler(Form(form): Form<ShareIncoming>) -> Response {
+    let kind = if !form.url.is_empty() && form.body.is_empty() {
+        "url"
+    } else if !form.url.is_empty() {
+        "url_with_title"
+    } else {
+        "text"
+    };
+    let body = if !form.body.is_empty() {
+        form.body
+    } else {
+        form.url
+    };
+    let entry = crate::mobile_state::ShareInboxEntry {
+        received_at: iso8601_now(),
+        kind: kind.into(),
+        title: form.title,
+        body,
+    };
+    match crate::mobile_state::append_share_entry(&entry) {
+        Ok(()) => Redirect::to("/_mobile/capture?from=share").into_response(),
+        Err(e) => Html(format!(
+            "<h1>share inbox write failed</h1><pre>{}</pre>",
+            html_escape(&format!("{e:#}"))
+        ))
+        .into_response(),
+    }
+}
+
+fn iso8601_now() -> String {
+    let now = crate::mobile_capture::SystemNow::real();
+    let (y, mo, d, h, mi) = now.ymd_hm;
+    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:00Z")
 }
 
 /// `POST /_mobile/capture` — write a new note + commit, then redirect

@@ -366,6 +366,92 @@ pub fn vault_root() -> Option<PathBuf> {
     vault_root_cell().lock().ok().and_then(|g| g.clone())
 }
 
+// ── Share-extension inbox (REQ-4007 SPEC-040) ────────────────────────────────
+//
+// Native share-extension targets (iOS Share Extension, Android
+// ACTION_SEND Activity) write payloads here when the user shares
+// to zetl-mobile from another app. The main app drains the inbox on
+// launch and prefills `/_mobile/capture` with the first entry.
+//
+// File layout: `app_data_dir/share-inbox.jsonl` — one JSON object
+// per line:
+//   {"received_at": "2026-05-11T01:23:45Z",
+//    "kind": "text" | "url" | "url_with_title",
+//    "title": "...",
+//    "body":  "..."}
+//
+// Append-only so the share extension and the main app can write
+// concurrently without locking. The main app reads + truncates.
+
+use serde::{Deserialize, Serialize};
+use std::io::Write;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ShareInboxEntry {
+    pub received_at: String,
+    pub kind: String,
+    pub title: String,
+    pub body: String,
+}
+
+fn share_inbox_path(app_data_dir: &std::path::Path) -> PathBuf {
+    app_data_dir.join("share-inbox.jsonl")
+}
+
+/// Append one entry to the share inbox. Called by the
+/// `/_mobile/share` POST handler (used by Android's ShareReceiver
+/// and by tests / external tooling). Native iOS Share Extensions
+/// write directly to the same file via the app-group container.
+pub fn append_share_entry(entry: &ShareInboxEntry) -> Result<()> {
+    let app_data = app_data_dir().context("app_data_dir not registered")?;
+    std::fs::create_dir_all(&app_data)
+        .with_context(|| format!("create {}", app_data.display()))?;
+    let path = share_inbox_path(&app_data);
+    let line = serde_json::to_string(entry).context("serialize share entry")?;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .with_context(|| format!("open {}", path.display()))?;
+    writeln!(f, "{line}").with_context(|| format!("write {}", path.display()))?;
+    Ok(())
+}
+
+/// Non-destructive count of entries currently in the inbox. Used by
+/// the Tauri shell to decide whether to navigate the WebView to
+/// `/_mobile/capture?from=share` on startup instead of the usual
+/// `/_mobile/vaults` landing.
+pub fn share_inbox_count() -> usize {
+    let Some(app_data) = app_data_dir() else {
+        return 0;
+    };
+    let path = share_inbox_path(&app_data);
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return 0;
+    };
+    raw.lines().filter(|l| !l.trim().is_empty()).count()
+}
+
+/// Drain every pending entry from the inbox and delete the file.
+/// Called by the `/_mobile/capture?from=share` GET handler to
+/// retrieve payloads from native share extensions.
+pub fn drain_share_inbox() -> Vec<ShareInboxEntry> {
+    let Some(app_data) = app_data_dir() else {
+        return Vec::new();
+    };
+    let path = share_inbox_path(&app_data);
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    let entries: Vec<ShareInboxEntry> = raw
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect();
+    let _ = std::fs::remove_file(&path);
+    entries
+}
+
 /// Process-wide app-data dir — typically `~/Library/Application Support/io.anuna.zetl.mobile`
 /// on macOS, the corresponding sandboxed location on iOS / Android.
 /// Used by [`KeyStore::persist`] and [`KeyStore::restore`].
@@ -995,6 +1081,39 @@ mod tests {
             Some(FIXTURE_MNEMONIC),
             "imported mnemonic should be retrievable"
         );
+    }
+
+    #[test]
+    fn share_inbox_round_trip() {
+        let tmp = tempfile::tempdir().unwrap();
+        super::set_app_data_dir(tmp.path().to_path_buf());
+        // Start clean — drain anything left from other tests.
+        let _ = super::drain_share_inbox();
+        let _ = std::fs::remove_file(super::share_inbox_path(tmp.path()));
+
+        assert_eq!(super::share_inbox_count(), 0);
+        super::append_share_entry(&super::ShareInboxEntry {
+            received_at: "2026-05-11T12:00:00Z".into(),
+            kind: "url".into(),
+            title: "Example".into(),
+            body: "https://example.com".into(),
+        })
+        .unwrap();
+        super::append_share_entry(&super::ShareInboxEntry {
+            received_at: "2026-05-11T12:00:05Z".into(),
+            kind: "text".into(),
+            title: "".into(),
+            body: "a plain note".into(),
+        })
+        .unwrap();
+        assert_eq!(super::share_inbox_count(), 2);
+
+        let drained = super::drain_share_inbox();
+        assert_eq!(drained.len(), 2);
+        assert_eq!(drained[0].kind, "url");
+        assert_eq!(drained[1].body, "a plain note");
+        // Inbox file is gone after drain.
+        assert_eq!(super::share_inbox_count(), 0);
     }
 
     #[test]

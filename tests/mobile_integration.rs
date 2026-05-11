@@ -394,6 +394,52 @@ async fn end_to_end_clone_via_onboarding_handlers() {
 }
 
 #[tokio::test]
+async fn share_post_appends_inbox_and_redirects_to_capture() {
+    let _g = STATE_LOCK.lock().unwrap();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let app_data = tmp.path().join("app-data");
+    std::fs::create_dir_all(&app_data).unwrap();
+    zetl::mobile_state::set_app_data_dir(app_data.clone());
+    // Drain any leftover entries from sibling tests.
+    let _ = zetl::mobile_state::drain_share_inbox();
+
+    let app = router();
+    let body = format!(
+        "title={}&body={}",
+        urlencoding::encode("Captured from share sheet"),
+        urlencoding::encode("https://example.com — for later"),
+    );
+    let (status, location, _body) = post_form(&app, "/_mobile/share", &body).await;
+    assert!(
+        matches!(
+            status,
+            StatusCode::SEE_OTHER | StatusCode::TEMPORARY_REDIRECT | StatusCode::FOUND
+        ),
+        "share POST should redirect; got {status}"
+    );
+    assert_eq!(location.as_deref(), Some("/_mobile/capture?from=share"));
+
+    // Inbox now has one entry.
+    let inbox_path = app_data.join("share-inbox.jsonl");
+    let inbox = std::fs::read_to_string(&inbox_path).expect("inbox file should exist after share POST");
+    assert!(inbox.contains("Captured from share sheet"));
+    assert!(inbox.contains("example.com"));
+
+    // GET /_mobile/capture?from=share drains + prefills.
+    let (status, prefilled) = get(&app, "/_mobile/capture?from=share").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        prefilled.contains("Captured from share sheet"),
+        "capture form should be prefilled with share title; body fragment={prefilled}"
+    );
+    assert!(
+        !inbox_path.exists(),
+        "inbox file should be drained after capture GET"
+    );
+}
+
+#[tokio::test]
 async fn vaults_remove_wipes_local_dir_but_preserves_keystore() {
     let _g = STATE_LOCK.lock().unwrap();
 
