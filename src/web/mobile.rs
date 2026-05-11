@@ -112,13 +112,26 @@ async fn onboarding_handler(
             if vault_root.join(".git").is_dir()
                 || (vault_root.is_symlink() && vault_root.exists())
             {
-                return Redirect::to("/").into_response();
+                // Emit a 200 OK HTML response with a client-side
+                // meta-refresh instead of a 303 redirect. WKWebView
+                // (and some other WebViews) occasionally don't render
+                // a 303-then-200 chain on the *initial* page load,
+                // which manifests as a blank window. A normal HTML
+                // response with `<meta http-equiv="refresh">` lands
+                // reliably everywhere.
+                return Html(MOBILE_REDIRECT_HOME).into_response();
             }
         }
     }
 
     Html(render_step_clone(&pub_line, None)).into_response()
 }
+
+const MOBILE_REDIRECT_HOME: &str = "\
+<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">\
+<meta http-equiv=\"refresh\" content=\"0;url=/\">\
+<title>zetl mobile</title></head>\
+<body>Loading vault…</body></html>";
 
 /// `POST /_mobile/onboarding/seed` — accept a 12-word BIP39 mnemonic,
 /// derive the ed25519 SSH key, store it in the process keystore, and
