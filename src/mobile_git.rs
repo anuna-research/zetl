@@ -49,6 +49,7 @@ pub enum PullOutcome {
 /// Empty-destination prep + `.git`-already-present refusal as before.
 pub fn clone(remote_url: &str, into: &Path, pat: Option<&str>) -> Result<Repository> {
     require_keystore_loaded()?;
+    ensure_known_hosts_file();
     prepare_clone_destination(into)
         .with_context(|| format!("prepare {} for clone", into.display()))?;
 
@@ -102,6 +103,7 @@ fn prepare_clone_destination(into: &Path) -> Result<()> {
 /// `FastForwarded`.
 pub fn pull_ff_only(repo_path: &Path) -> Result<PullOutcome> {
     require_keystore_loaded()?;
+    ensure_known_hosts_file();
 
     // Use Repository::discover so callers can pass a vault subdirectory
     // (e.g. vaults/<label>/notes/) and git2 walks up to find the .git
@@ -195,6 +197,7 @@ fn worktree_is_dirty(repo: &Repository) -> Result<bool> {
 /// `Err(... "remote rejected ...")`.
 pub fn push(repo_path: &Path) -> Result<()> {
     require_keystore_loaded()?;
+    ensure_known_hosts_file();
 
     // Use Repository::discover so callers can pass a vault subdirectory
     // (e.g. vaults/<label>/notes/) and git2 walks up to find the .git
@@ -287,6 +290,50 @@ fn require_keystore_loaded() -> Result<()> {
         Err(anyhow!(
             "no SSH key in keystore — paste your BIP39 seed at /_mobile/onboarding first"
         ))
+    }
+}
+
+/// libgit2's SSH transport tries to load `$HOME/.ssh/known_hosts`
+/// during transport init — *before* any callbacks fire. On Android
+/// (and any sandboxed mobile environment) `$HOME` is unset or points
+/// at the app's private data dir with no `.ssh/` subtree, so libssh2
+/// errors out with `error loading known_hosts; class=Ssh (23)` before
+/// our `certificate_check` callback even gets to override it.
+///
+/// Ensure an empty `known_hosts` exists under the app data dir and
+/// point `$HOME` at that dir. The empty file means TOFU still happens
+/// in our certificate_check callback (every host is "unknown" → we
+/// accept on first sight), but libssh2's init step succeeds.
+fn ensure_known_hosts_file() {
+    let Some(app_data) = crate::mobile_state::app_data_dir() else {
+        return;
+    };
+    let ssh_dir = app_data.join(".ssh");
+    let known_hosts = ssh_dir.join("known_hosts");
+    if !known_hosts.exists() {
+        if let Err(e) = std::fs::create_dir_all(&ssh_dir) {
+            eprintln!("[zetl-mobile] mkdir {} failed: {e:#}", ssh_dir.display());
+            return;
+        }
+        if let Err(e) = std::fs::write(&known_hosts, b"") {
+            eprintln!(
+                "[zetl-mobile] write empty known_hosts {} failed: {e:#}",
+                known_hosts.display()
+            );
+            return;
+        }
+    }
+    // Point HOME at app_data so libssh2 looks at our empty file.
+    // Idempotent — only sets if libssh2 would otherwise miss it.
+    // SAFETY: setting an environment variable touches process-wide
+    // state and is technically unsound if another thread is also
+    // reading the environment concurrently. In practice every clone /
+    // pull / push goes through this path before any other thread
+    // touches HOME, and the value is stable across the process'
+    // lifetime — call it before spawning any task that reads HOME.
+    if std::env::var_os("HOME").as_deref() != Some(app_data.as_os_str()) {
+        // unsafe in 2024 edition; the parent crate is on 2021.
+        std::env::set_var("HOME", &app_data);
     }
 }
 
