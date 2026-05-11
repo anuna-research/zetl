@@ -6391,8 +6391,9 @@ fn cmd_serve(
     };
 
     // Open git repository for auto-commit on save (REQ-020-015).
-    let git_commit_lock =
-        zetl::web::git_commit::open_repo(&pipeline.vault_root).map(std::sync::Arc::new);
+    let git_commit_lock = zetl::web::git_commit::GitCommitLockSlot::with(
+        zetl::web::git_commit::open_repo(&pipeline.vault_root).map(std::sync::Arc::new),
+    );
 
     let public_dir = public.map(|p| {
         let path = std::path::PathBuf::from(p);

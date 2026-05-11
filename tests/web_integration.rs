@@ -69,7 +69,7 @@ fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
         trust_proxy: false,
         #[cfg(feature = "reason")]
         acl_cache: Arc::new(std::sync::Mutex::new(zetl::web::AclCache::new())),
-        git_commit_lock: None,
+        git_commit_lock: zetl::web::git_commit::GitCommitLockSlot::empty(),
         ws_hub: zetl::web::ws::WsHub::new(),
         ticket_store: zetl::web::ws::TicketStore::new(),
         crdt_store: zetl::web::ws::CrdtDocStore::new(Arc::new(vault_root.to_path_buf())),

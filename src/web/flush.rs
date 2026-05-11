@@ -179,7 +179,7 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
     }
 
     // ── Step 7: Git commit ───────────────────────────────────────────────
-    if let Some(ref lock) = state.git_commit_lock {
+    if let Some(lock) = state.git_commit_lock.current() {
         match lock.lock() {
             Ok(repo) => {
                 match super::git_commit::auto_commit(
@@ -470,7 +470,7 @@ mod tests {
             rate_limiters: crate::web::rate_limit::AuthRateLimiters::new(),
             #[cfg(feature = "reason")]
             acl_cache: Arc::new(Mutex::new(crate::web::AclCache::new())),
-            git_commit_lock: None,
+            git_commit_lock: crate::web::git_commit::GitCommitLockSlot::empty(),
             ws_hub: crate::web::ws::WsHub::new(),
             ticket_store: crate::web::ws::TicketStore::new(),
             crdt_store: CrdtDocStore::new(vault_root.clone()),
@@ -578,8 +578,8 @@ mod tests {
                 .unwrap();
         }
 
-        let mut state = test_state(&dir);
-        state.git_commit_lock = Some(Arc::new(Mutex::new(repo)));
+        let state = test_state(&dir);
+        state.git_commit_lock.set(Some(Arc::new(Mutex::new(repo))));
 
         // Load + dirty the doc.
         state.crdt_store.load_or_get("note").unwrap();
@@ -657,8 +657,8 @@ mod tests {
         crate::user::save_profile(dir.path(), &alice).unwrap();
         crate::user::save_profile(dir.path(), &bob).unwrap();
 
-        let mut state = test_state(&dir);
-        state.git_commit_lock = Some(Arc::new(Mutex::new(repo)));
+        let state = test_state(&dir);
+        state.git_commit_lock.set(Some(Arc::new(Mutex::new(repo))));
 
         // Load the doc and apply ops under alice, then under bob. Bob is
         // the last editor → he becomes the primary author.

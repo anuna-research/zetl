@@ -496,6 +496,47 @@ async fn vaults_remove_wipes_local_dir_but_preserves_keystore() {
 }
 
 #[tokio::test]
+async fn vaults_switch_rejects_traversal_labels() {
+    let _g = STATE_LOCK.lock().unwrap();
+
+    // Sibling dir outside vaults/ that an attacker would target via
+    // `label=../sibling` to repoint the symlink at it.
+    let tmp = tempfile::tempdir().unwrap();
+    let app_data = tmp.path().join("app-data");
+    let vaults = app_data.join("vaults");
+    std::fs::create_dir_all(vaults.join("alpha")).unwrap();
+    git2::Repository::init(vaults.join("alpha")).unwrap();
+    let sibling = app_data.join("sibling");
+    std::fs::create_dir_all(&sibling).unwrap();
+    std::fs::write(sibling.join("secret"), b"keep me").unwrap();
+    let link = app_data.join("vault");
+    std::os::unix::fs::symlink("vaults/alpha", &link).unwrap();
+    zetl::mobile_state::set_app_data_dir(app_data.clone());
+    zetl::mobile_state::set_vault_root(link.clone());
+
+    let app = router();
+    let (status, _location, body) =
+        post_form(&app, "/_mobile/vaults/switch", "label=..%2Fsibling").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("data-zetl-mobile-vaults-msg=\"error\""),
+        "traversal label should produce an error banner; body={body}"
+    );
+    // The symlink target must still point at vaults/alpha — not the
+    // sibling directory.
+    let target = std::fs::read_link(&link).unwrap();
+    assert_eq!(
+        target.to_string_lossy(),
+        "vaults/alpha",
+        "symlink must be unchanged after traversal attempt"
+    );
+    assert!(
+        sibling.join("secret").exists(),
+        "sibling dir untouched (didn't trigger remove_dir_all later)"
+    );
+}
+
+#[tokio::test]
 async fn vaults_remove_rejects_traversal_labels() {
     let _g = STATE_LOCK.lock().unwrap();
 

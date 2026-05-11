@@ -83,7 +83,9 @@ fn main() -> anyhow::Result<()> {
         rate_limiters: zetl::web::rate_limit::AuthRateLimiters::new(),
         #[cfg(feature = "reason")]
         acl_cache: Arc::new(Mutex::new(zetl::web::AclCache::new())),
-        git_commit_lock: Some(Arc::new(Mutex::new(repo))),
+        git_commit_lock: zetl::web::git_commit::GitCommitLockSlot::with(Some(Arc::new(
+            Mutex::new(repo),
+        ))),
         ws_hub: zetl::web::ws::WsHub::new(),
         ticket_store: zetl::web::ws::TicketStore::new(),
         crdt_store: CrdtDocStore::new(vault_root.clone()),

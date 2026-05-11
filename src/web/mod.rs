@@ -167,9 +167,13 @@ pub struct WebState {
     /// Lazy ACL decision cache, invalidated on vault_root_hash change (REQ-020-013).
     #[cfg(feature = "reason")]
     pub acl_cache: Arc<Mutex<AclCache>>,
-    /// Git repository lock for serializing auto-commits on save (REQ-020-015, CON-020-006).
-    /// `None` when the vault is not inside a git repository.
-    pub git_commit_lock: Option<Arc<git_commit::GitCommitLock>>,
+    /// Git repository lock for serializing auto-commits on save
+    /// (REQ-020-015, CON-020-006). Wrapped in an interior-mutable slot
+    /// so the SPEC-040 mobile flows can install a repo handle after
+    /// `/_mobile/onboarding/clone` succeeds — the embedded serve
+    /// launches before any vault exists, so the slot starts empty
+    /// for mobile and is populated lazily.
+    pub git_commit_lock: git_commit::GitCommitLockSlot,
     /// WebSocket editing hub — manages per-slug broadcast rooms (REQ-020-028).
     pub ws_hub: ws::WsHub,
     /// One-time ticket store for WebSocket auth (agents can't send cookies).
@@ -327,7 +331,7 @@ pub async fn run(
     // Spawn git HEAD poller for external commit detection (REQ-020-041).
     let _git_poll_handle = state
         .git_commit_lock
-        .clone()
+        .current()
         .and_then(|lock| git_poll::spawn_git_poller(state.clone(), git_poll_interval, lock));
 
     // Spawn comment auto-prune task (REQ-020-051).
@@ -645,7 +649,19 @@ pub async fn launch_default(
         rate_limiters: rate_limit::AuthRateLimiters::new(),
         #[cfg(feature = "reason")]
         acl_cache: Arc::new(Mutex::new(AclCache::new())),
-        git_commit_lock: None,
+        // Mobile boot: the vault symlink may have no `.git` yet (the
+        // user hasn't onboarded). Start the slot empty; the clone /
+        // switch / pick handlers populate it via
+        // `mobile_state::refresh_git_commit_lock` once a working tree
+        // is in place.
+        git_commit_lock: {
+            let slot = git_commit::GitCommitLockSlot::empty();
+            if let Some(repo) = git_commit::open_repo(&vault_root_arc) {
+                slot.set(Some(Arc::new(repo)));
+            }
+            crate::mobile_state::set_git_commit_lock_slot(slot.clone());
+            slot
+        },
         ws_hub: ws::WsHub::new(),
         ticket_store: ws::TicketStore::new(),
         wal_store: Arc::new(wal::WalStore::new(&vault_root_arc)),

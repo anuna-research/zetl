@@ -495,12 +495,77 @@ pub fn vaults_dir() -> Option<PathBuf> {
     app_data_dir().map(|d| d.join("vaults"))
 }
 
-/// Label of the currently-active vault (the `vault` symlink's
-/// target's basename), if any.
+/// Reject any path component that could escape the `vaults/` parent —
+/// empty strings, `.`, `..`, absolute paths, anything containing a
+/// path separator, NUL bytes, or shell-shenanigan characters. Used by
+/// `set_active_vault` before joining attacker-controllable form input.
+fn ensure_safe_vault_component(value: &str, kind: &str) -> Result<()> {
+    if value.is_empty() {
+        return Err(anyhow!("{kind} is empty"));
+    }
+    if value == "." || value == ".." {
+        return Err(anyhow!("{kind} '{value}' is not allowed"));
+    }
+    if value.contains('/') || value.contains('\\') || value.contains('\0') {
+        return Err(anyhow!("{kind} '{value}' contains a path separator or NUL"));
+    }
+    Ok(())
+}
+
+/// Label of the currently-active vault. The symlink target is one of:
+///
+/// - `vaults/<label>` for repo-root vaults (no subpath picked)
+/// - `vaults/<label>/<sub>/<path>` for subpath vaults
+///
+/// In both cases the label is the component immediately after `vaults/`,
+/// not the final path component — otherwise a subpath vault would report
+/// e.g. `notes` as the label and `list_vaults()` would fail to mark the
+/// real repo entry active.
 pub fn active_vault_label() -> Option<String> {
     let link = vault_root()?;
     let target = std::fs::read_link(&link).ok()?;
+    // Walk components, take the one after "vaults".
+    let mut comps = target.components();
+    while let Some(c) = comps.next() {
+        if let std::path::Component::Normal(name) = c {
+            if name == std::ffi::OsStr::new("vaults") {
+                if let Some(std::path::Component::Normal(label)) = comps.next() {
+                    return Some(label.to_string_lossy().into_owned());
+                }
+                return None;
+            }
+        }
+    }
+    // Fallback: legacy single-vault layout where the symlink target had
+    // no `vaults/` prefix. Use the basename to preserve compatibility.
     target.file_name().map(|n| n.to_string_lossy().into_owned())
+}
+
+/// Active vault subpath (the component after `vaults/<label>/`), or
+/// empty string if the vault is rooted at the repo root.
+pub fn active_vault_subpath() -> Option<String> {
+    let link = vault_root()?;
+    let target = std::fs::read_link(&link).ok()?;
+    let mut comps = target.components();
+    let mut after_label = false;
+    let mut found_vaults = false;
+    let mut subpath = std::path::PathBuf::new();
+    for c in comps.by_ref() {
+        if let std::path::Component::Normal(name) = c {
+            if !found_vaults {
+                if name == std::ffi::OsStr::new("vaults") {
+                    found_vaults = true;
+                }
+                continue;
+            }
+            if !after_label {
+                after_label = true;
+                continue;
+            }
+            subpath.push(name);
+        }
+    }
+    Some(subpath.to_string_lossy().into_owned())
 }
 
 /// Point the `vault` symlink at `vaults/<label>[/<subpath>]`. The
@@ -510,6 +575,24 @@ pub fn active_vault_label() -> Option<String> {
 pub fn set_active_vault(label: &str, subpath: Option<&str>) -> Result<()> {
     let app_data = app_data_dir().context("app_data_dir not registered")?;
     let vaults = app_data.join("vaults");
+
+    // Defence in depth: reject any label / subpath component that
+    // could escape `vaults/`. A crafted POST to /_mobile/vaults/switch
+    // or /_mobile/vaults/pick with e.g. `../../Documents` would
+    // otherwise be joined directly and pass the .exists() check on a
+    // sibling dir, leaving the symlink pointing outside the managed
+    // store. Later reindex / save / reset operations would then run
+    // against an arbitrary path.
+    ensure_safe_vault_component(label, "label")?;
+    if let Some(sub) = subpath {
+        for piece in sub.split('/') {
+            if piece.is_empty() {
+                continue;
+            }
+            ensure_safe_vault_component(piece, "subpath component")?;
+        }
+    }
+
     let mut abs_target = vaults.join(label);
     if let Some(sub) = subpath {
         let sub = sub.trim().trim_matches('/');
@@ -521,6 +604,23 @@ pub fn set_active_vault(label: &str, subpath: Option<&str>) -> Result<()> {
         return Err(anyhow!(
             "vault target does not exist at {}",
             abs_target.display()
+        ));
+    }
+
+    // After existence check, also require the canonicalised target
+    // remain under the canonicalised `vaults/` root so a symlinked
+    // entry inside `vaults/` cannot point elsewhere.
+    let vaults_canon = vaults
+        .canonicalize()
+        .with_context(|| format!("canonicalize vaults dir {}", vaults.display()))?;
+    let target_canon = abs_target
+        .canonicalize()
+        .with_context(|| format!("canonicalize vault target {}", abs_target.display()))?;
+    if !target_canon.starts_with(&vaults_canon) {
+        return Err(anyhow!(
+            "vault target {} escapes vaults dir {}",
+            target_canon.display(),
+            vaults_canon.display()
         ));
     }
     let link = vault_root().context("vault_root not registered")?;
@@ -899,7 +999,72 @@ pub fn trigger_reindex() -> Result<usize> {
 
     let mut w = handle.write().expect("vault data rwlock");
     *w = new;
+    drop(w);
+
+    // The vault changed on disk (clone, switch, pick, FF-pull, or
+    // capture). The commit lock needs to point at the correct .git for
+    // the now-active working tree so subsequent save_handler invocations
+    // through the mobile WebView actually create commits.
+    refresh_git_commit_lock();
+
     Ok(count)
+}
+
+// ── Git commit lock slot (post-onboarding install) ───────────────────────────
+
+fn git_commit_lock_slot_cell() -> &'static Mutex<Option<crate::web::git_commit::GitCommitLockSlot>>
+{
+    static CELL: OnceLock<Mutex<Option<crate::web::git_commit::GitCommitLockSlot>>> =
+        OnceLock::new();
+    CELL.get_or_init(|| Mutex::new(None))
+}
+
+/// Registered by [`crate::web::launch_default`] at boot. Holds the
+/// interior-mutable slot that WebState reads through, so the mobile
+/// clone / switch / pick handlers can install a commit lock after the
+/// embedded serve has started.
+pub fn set_git_commit_lock_slot(slot: crate::web::git_commit::GitCommitLockSlot) {
+    if let Ok(mut g) = git_commit_lock_slot_cell().lock() {
+        *g = Some(slot);
+    }
+}
+
+/// Re-open the active vault's git repository and install the resulting
+/// commit lock in the slot. Called after `/_mobile/onboarding/clone`,
+/// `/_mobile/vaults/switch`, and `/_mobile/vaults/pick` succeed so the
+/// next save through the normal `save_handler` actually commits — and
+/// `/_mobile/sync/push` therefore has something to push. Pass `None`
+/// to clear the slot (e.g. after `/_mobile/reset`).
+///
+/// Failures are logged and non-fatal: missing slot just means the
+/// embedded serve wasn't booted (test harness), and a discover failure
+/// means the working tree isn't a git repo yet, which is itself an
+/// actionable user-visible state via the onboarding flow.
+pub fn refresh_git_commit_lock() {
+    let Some(slot) = git_commit_lock_slot_cell()
+        .lock()
+        .ok()
+        .and_then(|g| g.clone())
+    else {
+        return;
+    };
+    let Some(root) = vault_root() else {
+        slot.set(None);
+        return;
+    };
+    match crate::web::git_commit::open_repo(&root) {
+        Some(lock) => slot.set(Some(Arc::new(lock))),
+        None => {
+            // Working tree not a git repo (yet). Clear the slot so a
+            // pre-onboarding stale lock doesn't accidentally commit
+            // into the wrong directory.
+            slot.set(None);
+            eprintln!(
+                "[zetl-mobile] refresh_git_commit_lock: no git repo at {} — slot cleared",
+                root.display()
+            );
+        }
+    }
 }
 
 #[cfg(test)]
@@ -946,6 +1111,45 @@ mod label_tests {
     #[test]
     fn single_segment_fallback() {
         assert_eq!(derive_vault_label("vault.git"), "vault");
+    }
+}
+
+#[cfg(test)]
+mod safe_component_tests {
+    use super::ensure_safe_vault_component;
+
+    #[test]
+    fn rejects_dot_dot() {
+        assert!(ensure_safe_vault_component("..", "label").is_err());
+    }
+
+    #[test]
+    fn rejects_single_dot() {
+        assert!(ensure_safe_vault_component(".", "label").is_err());
+    }
+
+    #[test]
+    fn rejects_forward_slash() {
+        assert!(ensure_safe_vault_component("..%2Fetc", "label").is_ok()); // url-encoded, opaque
+        assert!(ensure_safe_vault_component("../etc", "label").is_err());
+        assert!(ensure_safe_vault_component("ok/sub", "label").is_err());
+    }
+
+    #[test]
+    fn rejects_backslash_and_nul() {
+        assert!(ensure_safe_vault_component("ok\\sub", "label").is_err());
+        assert!(ensure_safe_vault_component("ok\0sub", "label").is_err());
+    }
+
+    #[test]
+    fn rejects_empty() {
+        assert!(ensure_safe_vault_component("", "label").is_err());
+    }
+
+    #[test]
+    fn accepts_normal_labels() {
+        assert!(ensure_safe_vault_component("anuna-zetl", "label").is_ok());
+        assert!(ensure_safe_vault_component("owner-repo.git", "label").is_ok());
     }
 }
 

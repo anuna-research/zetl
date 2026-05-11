@@ -5,7 +5,7 @@
 //! serializes concurrent commits so that HEAD always advances linearly.
 
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, RwLock};
 
 /// Serialization lock wrapping the git2 repository handle.
 ///
@@ -21,6 +21,63 @@ pub fn open_repo(vault_root: &Path) -> Option<GitCommitLock> {
     match git2::Repository::discover(vault_root) {
         Ok(repo) => Some(Mutex::new(repo)),
         Err(_) => None,
+    }
+}
+
+/// Interior-mutable slot holding the current commit lock so the
+/// SPEC-040 mobile clone / switch / pick flows can install a real
+/// repository handle *after* the embedded serve has launched.
+///
+/// On desktop the slot is set once at startup and never swapped; on
+/// mobile, `vault_root` is initially a placeholder symlink with no
+/// `.git`, so the slot starts empty and is populated by the
+/// `/_mobile/onboarding/clone`, `/_mobile/vaults/switch`, and
+/// `/_mobile/vaults/pick` handlers once the working tree exists.
+///
+/// `Clone` is shallow — every clone observes the same swap, which is
+/// how the same WebState handed to each axum handler sees a freshly
+/// populated lock without rebuilding the router.
+#[derive(Clone)]
+pub struct GitCommitLockSlot {
+    inner: Arc<RwLock<Option<Arc<GitCommitLock>>>>,
+}
+
+impl GitCommitLockSlot {
+    /// Empty slot — `current()` returns `None` until `set()` is called.
+    pub fn empty() -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    /// Slot pre-populated with the given lock. Used by the desktop
+    /// `start_with_vault_root` path that resolves the repo at boot.
+    pub fn with(lock: Option<Arc<GitCommitLock>>) -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(lock)),
+        }
+    }
+
+    /// Read the currently-installed lock (clones the `Arc`).
+    pub fn current(&self) -> Option<Arc<GitCommitLock>> {
+        self.inner.read().unwrap().clone()
+    }
+
+    /// True if a lock is currently installed.
+    pub fn is_some(&self) -> bool {
+        self.inner.read().unwrap().is_some()
+    }
+
+    /// Replace the currently-installed lock. Pass `None` to clear it
+    /// (e.g. after `/_mobile/reset`).
+    pub fn set(&self, lock: Option<Arc<GitCommitLock>>) {
+        *self.inner.write().unwrap() = lock;
+    }
+}
+
+impl Default for GitCommitLockSlot {
+    fn default() -> Self {
+        Self::empty()
     }
 }
 

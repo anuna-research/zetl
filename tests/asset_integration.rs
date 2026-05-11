@@ -61,7 +61,7 @@ fn build_collab_state(vault_root: &Path) -> (WebState, String, String) {
         trust_proxy: false,
         #[cfg(feature = "reason")]
         acl_cache: Arc::new(std::sync::Mutex::new(zetl::web::AclCache::new())),
-        git_commit_lock: None,
+        git_commit_lock: zetl::web::git_commit::GitCommitLockSlot::empty(),
         ws_hub: zetl::web::ws::WsHub::new(),
         ticket_store: zetl::web::ws::TicketStore::new(),
         crdt_store: zetl::web::ws::CrdtDocStore::new(Arc::new(vault_root.to_path_buf())),
@@ -506,10 +506,12 @@ async fn asset_commits_land_with_zetl_gitignored() {
             .unwrap();
     }
 
-    let (mut state, cookie, csrf) = build_collab_state(root);
-    state.git_commit_lock = Some(Arc::new(std::sync::Mutex::new(
-        git2::Repository::open(root).unwrap(),
-    )));
+    let (state, cookie, csrf) = build_collab_state(root);
+    state
+        .git_commit_lock
+        .set(Some(Arc::new(std::sync::Mutex::new(
+            git2::Repository::open(root).unwrap(),
+        ))));
     let app = asset_router(state);
 
     let slug = "diagrams/arch.png";
