@@ -27,7 +27,7 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use ed25519_dalek::SigningKey;
 
 /// Process-lifetime SSH key store. Cheap to clone; clones share the
@@ -257,13 +257,184 @@ pub fn app_data_dir() -> Option<PathBuf> {
     app_data_dir_cell().lock().ok().and_then(|g| g.clone())
 }
 
-// ── Vault metadata (label + remote) ──────────────────────────────────────────
+// ── Multi-vault filesystem layout ────────────────────────────────────────────
+//
+// app_data_dir/
+//   ssh_key.json                # one device key shared across vaults
+//   vault → vaults/<active>     # symlink to active working tree (Unix only;
+//                               # v0.2 Windows story: a small JSON pointer file)
+//   vaults/
+//     anuna-zetl/                 # working tree
+//       .git/
+//       README.md ...
+//     anuna-cooperative-agent-comms-wiki/
+//       ...
+//
+// The vault's *label* is its directory name under `vaults/`, derived
+// from the remote URL at clone time via `derive_vault_label`. The
+// remote URL is recovered on demand from `git remote get-url origin`
+// so we don't need a sidecar meta file per vault.
 
-/// Metadata for the currently-active vault — derived label, the
-/// remote URL the user cloned from, and a clone timestamp. Stored at
-/// `{app_data_dir}/vault_meta.json`. v0.1 keeps a single-vault story:
-/// only one of these exists at a time. v0.2 will move this to a
-/// per-vault subdir under `vaults/{label}/meta.json`.
+/// One entry in the list of cloned vaults.
+#[derive(Clone, Debug)]
+pub struct VaultEntry {
+    pub label: String,
+    pub path: PathBuf,
+    pub remote_url: Option<String>,
+    pub is_active: bool,
+}
+
+/// Path to the `vaults/` container, if `app_data_dir` is registered.
+pub fn vaults_dir() -> Option<PathBuf> {
+    app_data_dir().map(|d| d.join("vaults"))
+}
+
+/// Label of the currently-active vault (the `vault` symlink's
+/// target's basename), if any.
+pub fn active_vault_label() -> Option<String> {
+    let link = vault_root()?;
+    let target = std::fs::read_link(&link).ok()?;
+    target
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+}
+
+/// Point the `vault` symlink at `vaults/<label>`. Atomic-ish:
+/// removes any existing symlink/dir at the target first. Caller is
+/// responsible for triggering [`trigger_reindex`] afterwards.
+pub fn set_active_vault(label: &str) -> Result<()> {
+    let app_data = app_data_dir().context("app_data_dir not registered")?;
+    let vaults = app_data.join("vaults");
+    let abs_target = vaults.join(label);
+    if !abs_target.exists() {
+        return Err(anyhow!(
+            "vault '{label}' does not exist at {}",
+            abs_target.display()
+        ));
+    }
+    let link = vault_root().context("vault_root not registered")?;
+    // Remove any existing pointer (symlink or stray dir) and replace.
+    if link.is_symlink() {
+        std::fs::remove_file(&link).ok();
+    } else if link.exists() {
+        std::fs::remove_dir_all(&link).ok();
+    }
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(format!("vaults/{label}"), &link)
+        .with_context(|| format!("symlink {} → vaults/{label}", link.display()))?;
+    #[cfg(not(unix))]
+    return Err(anyhow!("multi-vault symlink switching not yet supported on this platform"));
+    #[cfg(unix)]
+    Ok(())
+}
+
+/// Scan the `vaults/` container and return every cloned vault. The
+/// active one (per the symlink) is flagged.
+pub fn list_vaults() -> Vec<VaultEntry> {
+    let Some(vaults) = vaults_dir() else {
+        return Vec::new();
+    };
+    let active = active_vault_label();
+    let mut entries: Vec<VaultEntry> = std::fs::read_dir(&vaults)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|ent| {
+            let path = ent.path();
+            if !path.join(".git").exists() {
+                return None;
+            }
+            let label = ent.file_name().to_string_lossy().into_owned();
+            let remote_url = read_remote_url(&path);
+            let is_active = active.as_deref() == Some(label.as_str());
+            Some(VaultEntry {
+                label,
+                path,
+                remote_url,
+                is_active,
+            })
+        })
+        .collect();
+    entries.sort_by(|a, b| a.label.cmp(&b.label));
+    entries
+}
+
+fn read_remote_url(repo_path: &std::path::Path) -> Option<String> {
+    let repo = git2::Repository::open(repo_path).ok()?;
+    repo.find_remote("origin")
+        .ok()
+        .and_then(|r| r.url().map(String::from))
+}
+
+/// Migrate a legacy single-vault layout (`app_data_dir/vault/` as a
+/// real working tree) into the multi-vault layout
+/// (`app_data_dir/vaults/<label>/` + symlink). Idempotent: no-op if
+/// the layout is already multi-vault, or if no vault is present.
+/// Called from the Tauri shell's `setup()` before the embedded
+/// serve spawns.
+pub fn migrate_single_vault_layout(app_data: &std::path::Path) -> Result<()> {
+    let vault = app_data.join("vault");
+    let vaults = app_data.join("vaults");
+    std::fs::create_dir_all(&vaults)
+        .with_context(|| format!("create {}", vaults.display()))?;
+
+    if !vault.exists() {
+        return Ok(());
+    }
+    if vault.is_symlink() {
+        return Ok(()); // already multi-vault
+    }
+    if !vault.join(".git").exists() {
+        // Empty/stub dir from the old single-vault Tauri shell init;
+        // safe to remove so a fresh symlink can be placed later.
+        std::fs::remove_dir_all(&vault).ok();
+        return Ok(());
+    }
+
+    // Real legacy working tree — move it into vaults/<label>/ and
+    // symlink. Label comes from the remote URL if we can read it,
+    // otherwise from a generic fallback.
+    let remote = read_remote_url(&vault);
+    let label = remote
+        .as_deref()
+        .map(derive_vault_label)
+        .unwrap_or_else(|| "migrated-vault".to_string());
+    let target = vaults.join(&label);
+    if target.exists() {
+        // Collision: append `-migrated`. v0.2 will surface this to
+        // the user properly; v0.1 just renames to avoid data loss.
+        let alt = vaults.join(format!("{label}-migrated"));
+        std::fs::rename(&vault, &alt)
+            .with_context(|| format!("rename legacy vault → {}", alt.display()))?;
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(
+            format!("vaults/{}", alt.file_name().unwrap().to_string_lossy()),
+            &vault,
+        )
+        .ok();
+    } else {
+        std::fs::rename(&vault, &target)
+            .with_context(|| format!("rename legacy vault → {}", target.display()))?;
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(format!("vaults/{label}"), &vault)
+            .with_context(|| format!("symlink {} → vaults/{label}", vault.display()))?;
+    }
+
+    // Drop the now-stale per-app-data vault_meta.json — meta is
+    // derived from the on-disk vault layout now.
+    let _ = std::fs::remove_file(app_data.join("vault_meta.json"));
+
+    Ok(())
+}
+
+// ── Legacy single-vault meta (kept for backwards-compat in tests) ────────────
+
+/// Metadata for the currently-active vault. v0.1 single-vault path
+/// wrote this to `{app_data_dir}/vault_meta.json`; multi-vault no
+/// longer uses the file — meta is derived from the on-disk
+/// `vaults/<label>/` directory plus `git remote get-url origin`.
+/// The type is retained for the `vault_meta()` accessor which now
+/// reads from the active vault entry.
 #[derive(Clone, Debug)]
 pub struct VaultMeta {
     pub label: String,
@@ -323,9 +494,58 @@ pub fn read_vault_meta(app_data_dir: &std::path::Path) -> Option<VaultMeta> {
     })
 }
 
-/// Convenience: read meta from the registered `app_data_dir()`.
+/// Convenience: derive vault metadata for the currently-active
+/// vault. Multi-vault: looks up the active entry via `list_vaults()`
+/// and constructs a `VaultMeta` from it. Falls back to the legacy
+/// `read_vault_meta(app_data_dir)` for tests that pre-date the
+/// vaults/ layout migration.
 pub fn vault_meta() -> Option<VaultMeta> {
+    let active = list_vaults().into_iter().find(|v| v.is_active);
+    if let Some(entry) = active {
+        return Some(VaultMeta {
+            label: entry.label,
+            remote_url: entry.remote_url.unwrap_or_default(),
+            cloned_at: String::new(),
+        });
+    }
+    // Legacy fallback (pre-migration tests / install).
     read_vault_meta(&app_data_dir()?)
+}
+
+// ── Vault data handle (live reindex plumbing) ────────────────────────────────
+
+fn vault_data_handle_cell(
+) -> &'static Mutex<Option<Arc<std::sync::RwLock<crate::web::VaultData>>>> {
+    static CELL: OnceLock<Mutex<Option<Arc<std::sync::RwLock<crate::web::VaultData>>>>> =
+        OnceLock::new();
+    CELL.get_or_init(|| Mutex::new(None))
+}
+
+/// Registered by [`crate::web::launch_default`] at boot. The mobile
+/// switch-vault path uses this to swap the embedded serve's in-memory
+/// `VaultData` after the symlink moves to a different working tree —
+/// the page list would otherwise show the old vault's content.
+pub fn set_vault_data_handle(handle: Arc<std::sync::RwLock<crate::web::VaultData>>) {
+    if let Ok(mut g) = vault_data_handle_cell().lock() {
+        *g = Some(handle);
+    }
+}
+
+/// Re-scan the active vault and swap the embedded serve's
+/// `VaultData` in place. Returns the new page count on success.
+pub fn trigger_reindex() -> Result<usize> {
+    let handle = {
+        let guard = vault_data_handle_cell().lock().expect("handle mutex");
+        guard
+            .clone()
+            .context("vault_data_handle not registered — embedded serve not booted")?
+    };
+    let vault_root = vault_root().context("vault_root not registered")?;
+    let new = crate::web::reindex(&vault_root).context("reindex failed")?;
+    let count = new.page_names.len();
+    let mut w = handle.write().expect("vault data rwlock");
+    *w = new;
+    Ok(count)
 }
 
 #[cfg(test)]
