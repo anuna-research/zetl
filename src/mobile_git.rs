@@ -100,8 +100,16 @@ fn prepare_clone_destination(into: &Path) -> Result<()> {
 pub fn pull_ff_only(repo_path: &Path) -> Result<PullOutcome> {
     require_keystore_loaded()?;
 
-    let repo = Repository::open(repo_path)
-        .with_context(|| format!("not a git working tree: {}", repo_path.display()))?;
+    // Use Repository::discover so callers can pass a vault subdirectory
+    // (e.g. vaults/<label>/notes/) and git2 walks up to find the .git
+    // dir at the repo root. This supports the SPEC-040 vault-subpath
+    // picker where the symlink target may not be the repo root.
+    let repo = Repository::discover(repo_path).with_context(|| {
+        format!(
+            "not a git working tree (no .git ancestor of {})",
+            repo_path.display()
+        )
+    })?;
 
     let mut remote = repo
         .find_remote("origin")
@@ -160,8 +168,16 @@ pub fn pull_ff_only(repo_path: &Path) -> Result<PullOutcome> {
 pub fn push(repo_path: &Path) -> Result<()> {
     require_keystore_loaded()?;
 
-    let repo = Repository::open(repo_path)
-        .with_context(|| format!("not a git working tree: {}", repo_path.display()))?;
+    // Use Repository::discover so callers can pass a vault subdirectory
+    // (e.g. vaults/<label>/notes/) and git2 walks up to find the .git
+    // dir at the repo root. This supports the SPEC-040 vault-subpath
+    // picker where the symlink target may not be the repo root.
+    let repo = Repository::discover(repo_path).with_context(|| {
+        format!(
+            "not a git working tree (no .git ancestor of {})",
+            repo_path.display()
+        )
+    })?;
 
     let mut remote = repo
         .find_remote("origin")

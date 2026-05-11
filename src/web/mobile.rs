@@ -54,6 +54,10 @@ where
         .route("/_mobile/vaults", get(vaults_handler))
         .route("/_mobile/vaults/switch", post(vaults_switch_handler))
         .route("/_mobile/vaults/add", get(vaults_add_handler))
+        .route(
+            "/_mobile/vaults/pick",
+            get(pick_subpath_handler).post(pick_subpath_post_handler),
+        )
         .route("/_mobile/recovery", get(recovery_handler))
 }
 
@@ -208,7 +212,7 @@ async fn onboarding_clone_handler(Form(form): Form<CloneForm>) -> Response {
     // If a vault with this label already exists (same remote previously
     // cloned, or label collision), switch to it rather than re-cloning.
     if target_dir.join(".git").is_dir() {
-        match crate::mobile_state::set_active_vault(&label) {
+        match crate::mobile_state::set_active_vault(&label, None) {
             Ok(_) => {
                 let _ = crate::mobile_state::trigger_reindex();
                 return Redirect::to("/").into_response();
@@ -251,27 +255,109 @@ async fn onboarding_clone_handler(Form(form): Form<CloneForm>) -> Response {
 
     match clone_result {
         Ok(Ok(_repo)) => {
-            // Point the active-vault symlink at the new working tree.
-            if let Err(e) = crate::mobile_state::set_active_vault(&label) {
+            // Scan the cloned repo for plausible vault subdirectories.
+            // Some repos hold the vault at the root; others nest it
+            // under `notes/`, `docs/`, etc.
+            let candidates = crate::mobile_state::detect_vault_subpath_candidates(&target_dir);
+
+            // Pick the best candidate (or repo root if none found) so
+            // the symlink is always pointing at something valid before
+            // we redirect.
+            let best_subpath = candidates.first().map(|c| c.subpath.clone());
+            let activate_result = crate::mobile_state::set_active_vault(
+                &label,
+                best_subpath.as_deref().filter(|s| !s.is_empty()),
+            );
+            if let Err(e) = activate_result {
                 return Html(render_step_clone(
                     &pub_line,
                     Some(&format!("clone succeeded but could not activate vault: {e:#}")),
                 ))
                 .into_response();
             }
-            // Reindex the embedded serve so the page list reflects the
-            // newly-cloned content (the symlink moves, but state.data
-            // is still the pre-clone snapshot).
             if let Err(e) = crate::mobile_state::trigger_reindex() {
                 eprintln!("[zetl-mobile] reindex after clone failed: {e:#}");
             }
-            Redirect::to("/").into_response()
+
+            // If the candidate is ambiguous, send the user to the
+            // picker to confirm (or choose a different folder). Single
+            // candidate (or none at all) → straight to the vault page
+            // list.
+            if candidates.len() > 1 {
+                let encoded_label = urlencoding::encode(&label).into_owned();
+                Redirect::to(&format!("/_mobile/vaults/pick?label={encoded_label}"))
+                    .into_response()
+            } else {
+                Redirect::to("/").into_response()
+            }
         }
         Ok(Err(e)) => Html(render_step_clone(&pub_line, Some(&format!("{e:#}")))).into_response(),
         Err(join_err) => Html(render_step_clone(
             &pub_line,
             Some(&format!("clone task panicked: {join_err}")),
         ))
+        .into_response(),
+    }
+}
+
+// ── /_mobile/vaults/pick — subpath picker ─────────────────────────────────────
+
+#[derive(Deserialize)]
+struct PickQuery {
+    label: String,
+}
+
+#[derive(Deserialize)]
+struct PickForm {
+    label: String,
+    subpath: String,
+}
+
+async fn pick_subpath_handler(
+    axum::extract::Query(q): axum::extract::Query<PickQuery>,
+) -> Response {
+    let label = q.label.trim();
+    if label.is_empty() {
+        return Redirect::to("/_mobile/vaults").into_response();
+    }
+    let app_data = match crate::mobile_state::app_data_dir() {
+        Some(p) => p,
+        None => return Redirect::to("/_mobile/vaults").into_response(),
+    };
+    let repo_root = app_data.join("vaults").join(label);
+    if !repo_root.is_dir() {
+        return Redirect::to("/_mobile/vaults").into_response();
+    }
+    let candidates = crate::mobile_state::detect_vault_subpath_candidates(&repo_root);
+    let active_subpath: String = crate::mobile_state::vault_root()
+        .and_then(|link| std::fs::read_link(&link).ok())
+        .and_then(|t| {
+            let s = t.to_string_lossy().to_string();
+            let prefix = format!("vaults/{label}");
+            s.strip_prefix(&prefix)
+                .map(|rest| rest.trim_start_matches('/').to_string())
+        })
+        .unwrap_or_default();
+    Html(render_pick_subpath(label, &candidates, &active_subpath)).into_response()
+}
+
+async fn pick_subpath_post_handler(Form(form): Form<PickForm>) -> Response {
+    let label = form.label.trim();
+    let subpath = form.subpath.trim();
+    if label.is_empty() {
+        return Redirect::to("/_mobile/vaults").into_response();
+    }
+    let opt_sub = if subpath.is_empty() { None } else { Some(subpath) };
+    match crate::mobile_state::set_active_vault(label, opt_sub) {
+        Ok(_) => {
+            if let Err(e) = crate::mobile_state::trigger_reindex() {
+                eprintln!("[zetl-mobile] reindex after subpath pick failed: {e:#}");
+            }
+            Redirect::to("/").into_response()
+        }
+        Err(e) => Html(render_vaults_page(Some(VaultsMsg::Error(format!(
+            "could not activate vault '{label}' at subpath '{subpath}': {e:#}"
+        )))))
         .into_response(),
     }
 }
@@ -444,7 +530,7 @@ async fn vaults_switch_handler(Form(form): Form<SwitchForm>) -> Response {
         ))))
         .into_response();
     }
-    match crate::mobile_state::set_active_vault(&label) {
+    match crate::mobile_state::set_active_vault(&label, None) {
         Ok(_) => {
             if let Err(e) = crate::mobile_state::trigger_reindex() {
                 eprintln!("[zetl-mobile] reindex after switch failed: {e:#}");
@@ -721,6 +807,87 @@ fn html_escape(s: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+fn render_pick_subpath(
+    label: &str,
+    candidates: &[crate::mobile_state::VaultSubpathCandidate],
+    selected_subpath: &str,
+) -> String {
+    let rows = if candidates.is_empty() {
+        r#"<p class="hint">No directories with markdown files were found in this repo. The vault is treated as empty until you (or another peer) add content.</p>
+<form method="post" action="/_mobile/vaults/pick">
+  <input type="hidden" name="label" value="">
+  <input type="hidden" name="subpath" value="">
+</form>"#
+            .to_string()
+    } else {
+        let opts = candidates
+            .iter()
+            .map(|c| {
+                let display = if c.subpath.is_empty() {
+                    "/ (repo root)".to_string()
+                } else {
+                    format!("/ {}", c.subpath)
+                };
+                let zetl_badge = if c.has_zetl_dir {
+                    r#" <span style="color:#063;font-size:0.85em;">● .zetl/</span>"#
+                } else {
+                    ""
+                };
+                let checked = if c.subpath == selected_subpath {
+                    " checked"
+                } else {
+                    ""
+                };
+                format!(
+                    r#"<label style="display:block;padding:0.7em;border:1px solid #ddd;border-radius:6px;margin-bottom:0.5em;cursor:pointer;">
+  <input type="radio" name="subpath" value="{value}"{checked}>
+  <strong>{display}</strong>{zetl_badge}
+  <br><span style="font-size:0.85em;opacity:0.7;">{md_count} markdown file{plural}</span>
+</label>"#,
+                    value = html_escape(&c.subpath),
+                    checked = checked,
+                    display = html_escape(&display),
+                    zetl_badge = zetl_badge,
+                    md_count = c.md_count,
+                    plural = if c.md_count == 1 { "" } else { "s" },
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!(
+            r#"<form method="post" action="/_mobile/vaults/pick">
+  <input type="hidden" name="label" value="{label}">
+  {opts}
+  <button type="submit">Use this folder →</button>
+</form>"#,
+            label = html_escape(label),
+            opts = opts,
+        )
+    };
+
+    format!(
+        r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>zetl mobile · choose folder</title>
+<style>
+  body {{ font-family: system-ui, sans-serif; max-width: 30em; margin: 0 auto; padding: 1.5em; }}
+  h1 {{ font-size: 1.2rem; margin: 0 0 0.4rem; }}
+  .hint {{ font-size: 0.9em; opacity: 0.75; line-height: 1.5; margin-bottom: 1em; }}
+  button {{ width: 100%; padding: 0.8em; font-size: 1rem; margin-top: 0.6em; }}
+  .links {{ font-size: 0.85em; opacity: 0.7; margin-top: 1.5em; display: flex; gap: 1em; }}
+  .links a {{ color: inherit; }}
+</style></head>
+<body data-zetl-mobile-route="pick-subpath" data-zetl-mobile-vault-label="{label}">
+<h1>Which folder is the vault?</h1>
+<p class="hint">The repo <code>{label}</code> has more than one directory that looks like it could be a zetl vault. Pick the one to use. (Folders with a <code>.zetl/</code> config dir are usually the right choice.)</p>
+{rows}
+<div class="links"><a href="/_mobile/vaults">← Back to Vaults</a></div>
+</body></html>"#,
+        label = html_escape(label),
+        rows = rows,
+    )
 }
 
 fn render_recovery_page() -> String {

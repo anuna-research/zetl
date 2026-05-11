@@ -329,33 +329,138 @@ pub fn active_vault_label() -> Option<String> {
         .map(|n| n.to_string_lossy().into_owned())
 }
 
-/// Point the `vault` symlink at `vaults/<label>`. Atomic-ish:
-/// removes any existing symlink/dir at the target first. Caller is
-/// responsible for triggering [`trigger_reindex`] afterwards.
-pub fn set_active_vault(label: &str) -> Result<()> {
+/// Point the `vault` symlink at `vaults/<label>[/<subpath>]`. The
+/// optional subpath lets the active vault be a nested directory
+/// within a cloned repo — useful when the git repo's vault content
+/// lives under e.g. `notes/` rather than the repo root.
+pub fn set_active_vault(label: &str, subpath: Option<&str>) -> Result<()> {
     let app_data = app_data_dir().context("app_data_dir not registered")?;
     let vaults = app_data.join("vaults");
-    let abs_target = vaults.join(label);
+    let mut abs_target = vaults.join(label);
+    if let Some(sub) = subpath {
+        let sub = sub.trim().trim_matches('/');
+        if !sub.is_empty() {
+            abs_target = abs_target.join(sub);
+        }
+    }
     if !abs_target.exists() {
         return Err(anyhow!(
-            "vault '{label}' does not exist at {}",
+            "vault target does not exist at {}",
             abs_target.display()
         ));
     }
     let link = vault_root().context("vault_root not registered")?;
-    // Remove any existing pointer (symlink or stray dir) and replace.
     if link.is_symlink() {
         std::fs::remove_file(&link).ok();
     } else if link.exists() {
         std::fs::remove_dir_all(&link).ok();
     }
     #[cfg(unix)]
-    std::os::unix::fs::symlink(format!("vaults/{label}"), &link)
-        .with_context(|| format!("symlink {} → vaults/{label}", link.display()))?;
+    {
+        let rel_target = match subpath {
+            Some(s) if !s.trim().trim_matches('/').is_empty() => {
+                format!("vaults/{label}/{}", s.trim().trim_matches('/'))
+            }
+            _ => format!("vaults/{label}"),
+        };
+        std::os::unix::fs::symlink(&rel_target, &link)
+            .with_context(|| format!("symlink {} → {}", link.display(), rel_target))?;
+    }
     #[cfg(not(unix))]
     return Err(anyhow!("multi-vault symlink switching not yet supported on this platform"));
     #[cfg(unix)]
     Ok(())
+}
+
+/// One candidate vault location inside a cloned repo. Surfaced to
+/// the picker UI after clone when more than one directory looks like
+/// a viable zetl vault.
+#[derive(Clone, Debug)]
+pub struct VaultSubpathCandidate {
+    /// Path relative to the repo root. Empty string == repo root.
+    pub subpath: String,
+    /// Count of `.md` files directly in this directory (not recursive).
+    pub md_count: usize,
+    /// Whether this dir contains a `.zetl/` config dir — the strongest
+    /// signal it's a real zetl vault.
+    pub has_zetl_dir: bool,
+}
+
+/// Scan a freshly-cloned repo for plausible vault subdirectories.
+///
+/// Strategy: check the repo root first; then each immediate
+/// subdirectory (skipping hidden `.foo/` and common non-vault names
+/// like `node_modules`, `target`, `dist`). A directory counts as a
+/// candidate if it has at least one `.md` file or a `.zetl/` config
+/// dir. Returns candidates sorted by score (zetl-dir first, then
+/// md-count desc, then alphabetical).
+pub fn detect_vault_subpath_candidates(repo_root: &std::path::Path) -> Vec<VaultSubpathCandidate> {
+    let mut out = Vec::new();
+
+    fn scan_one(dir: &std::path::Path, subpath: String, out: &mut Vec<VaultSubpathCandidate>) {
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        let mut md_count = 0;
+        let mut has_zetl_dir = false;
+        for ent in rd.flatten() {
+            let name = ent.file_name();
+            let name = name.to_string_lossy();
+            let path = ent.path();
+            if path.is_dir() && name == ".zetl" {
+                has_zetl_dir = true;
+            } else if path.is_file()
+                && name
+                    .to_ascii_lowercase()
+                    .ends_with(".md")
+            {
+                md_count += 1;
+            }
+        }
+        if md_count > 0 || has_zetl_dir {
+            out.push(VaultSubpathCandidate {
+                subpath,
+                md_count,
+                has_zetl_dir,
+            });
+        }
+    }
+
+    scan_one(repo_root, String::new(), &mut out);
+
+    if let Ok(rd) = std::fs::read_dir(repo_root) {
+        for ent in rd.flatten() {
+            let name = ent.file_name();
+            let name = name.to_string_lossy().to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+            const SKIP: &[&str] = &[
+                "node_modules",
+                "target",
+                "dist",
+                "build",
+                "out",
+                ".git",
+                ".github",
+                "vendor",
+            ];
+            if SKIP.contains(&name.as_str()) {
+                continue;
+            }
+            let p = ent.path();
+            if !p.is_dir() {
+                continue;
+            }
+            scan_one(&p, name, &mut out);
+        }
+    }
+
+    out.sort_by(|a, b| {
+        b.has_zetl_dir
+            .cmp(&a.has_zetl_dir)
+            .then(b.md_count.cmp(&a.md_count))
+            .then(a.subpath.cmp(&b.subpath))
+    });
+    out
 }
 
 /// Scan the `vaults/` container and return every cloned vault. The
@@ -793,6 +898,67 @@ mod tests {
             Some(FIXTURE_MNEMONIC),
             "imported mnemonic should be retrievable"
         );
+    }
+
+    #[test]
+    fn detect_vault_subpath_root_with_md() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("Welcome.md"), "x").unwrap();
+        std::fs::write(tmp.path().join("Other.md"), "y").unwrap();
+        let candidates = super::detect_vault_subpath_candidates(tmp.path());
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].subpath, "");
+        assert_eq!(candidates[0].md_count, 2);
+    }
+
+    #[test]
+    fn detect_vault_subpath_nested_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("README"), "x").unwrap(); // no .md ext
+        let notes = tmp.path().join("notes");
+        std::fs::create_dir(&notes).unwrap();
+        std::fs::write(notes.join("A.md"), "x").unwrap();
+        std::fs::write(notes.join("B.md"), "y").unwrap();
+        let candidates = super::detect_vault_subpath_candidates(tmp.path());
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].subpath, "notes");
+        assert_eq!(candidates[0].md_count, 2);
+    }
+
+    #[test]
+    fn detect_vault_subpath_zetl_dir_outranks_md_count() {
+        let tmp = tempfile::tempdir().unwrap();
+        let big = tmp.path().join("big-md-dir");
+        std::fs::create_dir(&big).unwrap();
+        for n in 0..10 {
+            std::fs::write(big.join(format!("{n}.md")), "x").unwrap();
+        }
+        let real_vault = tmp.path().join("real-vault");
+        std::fs::create_dir_all(real_vault.join(".zetl")).unwrap();
+        std::fs::write(real_vault.join("One.md"), "x").unwrap();
+        let candidates = super::detect_vault_subpath_candidates(tmp.path());
+        assert!(candidates.iter().any(|c| c.subpath == "real-vault"));
+        let first = &candidates[0];
+        assert_eq!(first.subpath, "real-vault");
+        assert!(first.has_zetl_dir);
+    }
+
+    #[test]
+    fn detect_vault_subpath_skips_excluded_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        for skip in ["node_modules", "target", ".github"] {
+            let p = tmp.path().join(skip);
+            std::fs::create_dir(&p).unwrap();
+            std::fs::write(p.join("noise.md"), "x").unwrap();
+        }
+        let candidates = super::detect_vault_subpath_candidates(tmp.path());
+        for c in &candidates {
+            assert!(
+                !["node_modules", "target", ".github"].contains(&c.subpath.as_str()),
+                "should skip {} but got: {candidates:?}",
+                c.subpath
+            );
+        }
     }
 
     #[test]
