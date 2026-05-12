@@ -51,11 +51,47 @@ Skipped for this round. The asymptotic problems are evident from the source audi
 
 ## Post-pass numbers
 
-_To be filled in by `task-final-bench`._
+Measured after the full Phase 1 + Phase 2 stack landed (commits `e771709` baseline → `HEAD`).
 
-| Vault  | Mode | Pre wall (s) | Post wall (s) | Speedup |
-|--------|------|-------------:|--------------:|--------:|
-| 1 000  | cold |     12.64    |  _tbd_        |  _tbd_  |
-| 3 000  | cold |     64.40    |  _tbd_        |  _tbd_  |
-| 1 000  | warm |     12.31    |  _tbd_        |  _tbd_  |
-| 3 000  | warm |     66.33    |  _tbd_        |  _tbd_  |
+| Vault  | Mode | Pre wall (s) | Post wall (s) | Speedup | Notes |
+|--------|------|-------------:|--------------:|--------:|-------|
+| 1 000  | cold |     12.64    |     5.96      | **2.12×** | user time stayed ~10 s; sys ~1 s |
+| 1 000  | warm |     12.31    |     5.99      | **2.06×** | warm = cold because per-page render is the bottleneck, not parsing |
+| 3 000  | cold |     64.40    |    37.38      | **1.72×** | user time grew from 55 s → 70 s (parallel CPU); wall dropped |
+| 3 000  | warm |     66.33    |    36.98      | **1.79×** | |
+
+The 3× cold-cache speedup target on the **10k-page** vault from the plan was not measurable because the 10k cold build still hits disk-full at ~8 GB partial dist — the per-page HTML bloat is unchanged by this pass (see Finding 3 above). The achieved 1.72–2.12× speedup spans the 1k / 3k measurable range and tracks roughly with the effective parallelism of the per-page render loop (user/wall ≈ 1.87 at 3k cold), which is the work that grew super-linearly in baseline.
+
+### Which optimisation did what
+
+| Optimisation | 3k cold wall | Δ from baseline | Δ from previous |
+|---|---:|---:|---:|
+| Baseline                           | 64.40 s | —      | — |
+| + resolve-pages-index              | 64.29 s | –0.11  | –0.11 |
+| + folder-index-quadratic           | 64.29 s | –0.11  |  0.00 |
+| + hoist-git-repo                   | 64.10 s | –0.30  | –0.19 |
+| + parallel-scanner                 | 64.10 s | –0.30  |  0.00 |
+| + parallel-page-render             | 37.38 s | **–27.02** | **–26.72** |
+
+The algorithmic Phase 1 fixes show essentially no wall-time gain at 1k–3k vaults — they target asymptotic factors that only dominate at larger N (10k+). They are still worth landing because:
+
+- `resolve-pages-index` lifts an O(N · L) cost to O(L); the link-resolution step is no longer a scaling threat at 50k+ pages.
+- `folder-index-quadratic` removes a provably-always-true membership check; it was pure dead work.
+- `hoist-git-repo` matters for real (git-backed) vaults — on the synthetic vault the entire history block is skipped because `last_changed` is absent.
+- `parallel-scanner` matters more on cold builds of larger vaults; at 3k it contributes <1 s of wall time because the scan is ~1.5 s of the 64 s total.
+
+The dominant win is **parallel-page-render**, as the audit predicted.
+
+### Correctness
+
+`scripts/perf-diff.sh target/perf/vault-1k` reports byte-identical dist trees across two consecutive parallel builds (excluding `sitemap.xml` and `graph-index.json` which embed wall-clock timestamps, and `*.br` brotli precompressed twins whose encoder is wall-clock keyed). Parallelism is fully deterministic.
+
+`cargo test --release --lib scanner` (173 tests) and `cargo test --release --lib web` (312 tests) both green after the pass.
+
+## Follow-ups (out of scope for this branch)
+
+1. **Per-page HTML bloat (~1 MB per page).** Dominates dist size and template-render CPU. The fix lives in the `PERF-AUDIT-2026-04-19` plan (`task-extract-shell-css`, `task-extract-transclusion-script`, `task-search-index-external`). Without those, larger vaults remain unmeasurable on developer disks and the per-page render stays super-linear in N.
+2. **Page-level memoisation in build.** Warm builds currently re-render every page even when nothing about it (or its linked-page set) changed. The scanner cache hits, but the render loop ignores it. A content-hash + linked-set keyed cache could turn warm rebuilds into near-zero work.
+3. **`build_folder_context` extension lookup.** Each direct child page does `data.files.iter().find(|f| ...)` to fetch its extension (`src/web/context.rs:519`). That's O(F) per page = O(F²) per build inside an already-parallel loop. A `HashMap<page_name, &ParsedFile>` (or just storing the extension on `PageEntry` during the first `data.page_slug_map` pass) eliminates it.
+4. **`og_count` accuracy with parallel render.** The new code seeds the atomic at 1 (for the vault-root og.png written before the loop) and adds per-page successes. Cosmetic only — no functional impact — but worth pulling into a typed helper if the same pattern is replicated elsewhere.
+
