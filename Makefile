@@ -364,11 +364,18 @@ mobile-android-dev:
 # Play Store distribution should use a real signing config in
 # `gen/android/app/build.gradle.kts`.
 TARGET ?= aarch64
+# Always wipe Gradle's APK outputs + intermediates before building.
+# Gradle's up-to-date check has been observed to skip
+# `mergeUniversalReleaseNativeLibs` when the cargo-produced .so changes
+# under a symlink in `jniLibs/`, leaving a stale APK in
+# `build/outputs/apk/universal/release/`. The wipe forces a full repack.
 mobile-android-build:
+	rm -rf mobile/gen/android/app/build/intermediates mobile/gen/android/app/build/outputs zetl-mobile-release.apk
 	bash mobile/scripts/patch-android-project.sh && \
 	  bash -c '. mobile/scripts/android-env.sh && cd mobile && cargo tauri android build --apk --target $(TARGET) && $(MAKE) -C .. mobile-android-sign'
 
 mobile-android-build-debug:
+	rm -rf mobile/gen/android/app/build/intermediates mobile/gen/android/app/build/outputs
 	bash mobile/scripts/patch-android-project.sh && \
 	  bash -c '. mobile/scripts/android-env.sh && cd mobile && cargo tauri android build --apk --debug --target $(TARGET)'
 
