@@ -9,6 +9,7 @@ use anyhow::Result;
 use ignore::WalkBuilder;
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use regex::Regex;
+use std::collections::HashMap;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -696,6 +697,110 @@ pub fn resolve_page_name(raw: &str, file_index: &[(String, PathBuf)]) -> Option<
 
     // No match found
     None
+}
+
+/// Pre-built index for resolving raw wikilink targets to canonical page names.
+///
+/// `resolve_page_name` does up to four linear scans over `file_index` per call.
+/// In `run_pipeline` this is invoked once per *raw_target*, of which a vault
+/// with N pages and ~L links/page has at most N·L. The total cost is therefore
+/// O(N²·L) on a vault with dense linking — the dominant cost on 10k-page
+/// vaults per the PERF-BUILD-2026-05-12 baseline.
+///
+/// Building this resolver once up front lifts every per-link lookup to O(1)
+/// (modulo hash collisions). It preserves the four-step SPEC-001 §3.2
+/// resolution semantics exactly:
+///   1. exact case-insensitive match on page name,
+///   2. normalised (hyphen/underscore/space-equivalent) match on page name,
+///   3. (for raw containing `/`) exact case-insensitive match on path-sans-ext,
+///   4. (for raw containing `/`) normalised match on path-sans-ext,
+/// with ambiguous matches (≥2 candidates at the same step) returning `None`.
+pub struct PageNameResolver<'a> {
+    file_index: &'a [(String, PathBuf)],
+    // Each map: key → list of page_name indices into file_index. A list of
+    // length > 1 means ambiguous at that step (resolution should return None).
+    by_exact_lower: HashMap<String, Vec<usize>>,
+    by_normalized: HashMap<String, Vec<usize>>,
+    by_path_lower: HashMap<String, Vec<usize>>,
+    by_path_normalized: HashMap<String, Vec<usize>>,
+}
+
+impl<'a> PageNameResolver<'a> {
+    /// Build the four lookup indices from `file_index`.
+    pub fn new(file_index: &'a [(String, PathBuf)]) -> Self {
+        let mut by_exact_lower: HashMap<String, Vec<usize>> = HashMap::new();
+        let mut by_normalized: HashMap<String, Vec<usize>> = HashMap::new();
+        let mut by_path_lower: HashMap<String, Vec<usize>> = HashMap::new();
+        let mut by_path_normalized: HashMap<String, Vec<usize>> = HashMap::new();
+
+        for (i, (page_name, file_path)) in file_index.iter().enumerate() {
+            by_exact_lower
+                .entry(page_name.to_lowercase())
+                .or_default()
+                .push(i);
+            by_normalized
+                .entry(normalize_page_name(page_name))
+                .or_default()
+                .push(i);
+
+            let path_str = file_path.to_string_lossy();
+            let path_sans_ext = path_str.strip_suffix(".md").unwrap_or(&path_str);
+            by_path_lower
+                .entry(path_sans_ext.to_lowercase())
+                .or_default()
+                .push(i);
+            by_path_normalized
+                .entry(normalize_page_name(path_sans_ext))
+                .or_default()
+                .push(i);
+        }
+
+        Self {
+            file_index,
+            by_exact_lower,
+            by_normalized,
+            by_path_lower,
+            by_path_normalized,
+        }
+    }
+
+    /// Resolve `raw` to a canonical page name following SPEC-001 §3.2.
+    /// Returns `None` for no-match or ambiguous match (preserving the
+    /// semantics of the free-function `resolve_page_name`).
+    pub fn resolve(&self, raw: &str) -> Option<String> {
+        let raw_lower = raw.to_lowercase();
+        if let Some(hits) = self.by_exact_lower.get(&raw_lower) {
+            match hits.len() {
+                1 => return Some(self.file_index[hits[0]].0.clone()),
+                _ => return None,
+            }
+        }
+
+        let raw_normalized = normalize_page_name(raw);
+        if let Some(hits) = self.by_normalized.get(&raw_normalized) {
+            match hits.len() {
+                1 => return Some(self.file_index[hits[0]].0.clone()),
+                _ => return None,
+            }
+        }
+
+        if raw.contains('/') {
+            if let Some(hits) = self.by_path_lower.get(&raw_lower) {
+                match hits.len() {
+                    1 => return Some(self.file_index[hits[0]].0.clone()),
+                    _ => return None,
+                }
+            }
+            if let Some(hits) = self.by_path_normalized.get(&raw_normalized) {
+                match hits.len() {
+                    1 => return Some(self.file_index[hits[0]].0.clone()),
+                    _ => return None,
+                }
+            }
+        }
+
+        None
+    }
 }
 
 /// Derive page name from file path (strip .md, use filename)
@@ -3045,5 +3150,59 @@ code here
             page_slug_from_path(&PathBuf::from("scripts/scene.fountain")),
             "scripts/scene"
         );
+    }
+
+    // ── PageNameResolver tests ───────────────────────────────────────────
+    //
+    // The resolver is a pre-indexed equivalent of `resolve_page_name`; for
+    // every supported resolution path we cross-check the two and require
+    // identical results.
+
+    fn assert_same_resolution(raw: &str, index: &[(String, PathBuf)]) {
+        let resolver = PageNameResolver::new(index);
+        let pre = resolve_page_name(raw, index);
+        let post = resolver.resolve(raw);
+        assert_eq!(pre, post, "divergent resolution for {raw:?}");
+    }
+
+    #[test]
+    fn resolver_matches_resolve_page_name_on_exact() {
+        let index = make_index(&[
+            ("Zettelkasten Method", "Zettelkasten Method.md"),
+            ("Rust Programming", "Rust Programming.md"),
+        ]);
+        assert_same_resolution("Zettelkasten Method", &index);
+        assert_same_resolution("zettelkasten method", &index);
+        assert_same_resolution("MY UNKNOWN PAGE", &index);
+    }
+
+    #[test]
+    fn resolver_matches_resolve_page_name_on_normalized() {
+        let index = make_index(&[("My Page", "My Page.md")]);
+        assert_same_resolution("my-page", &index);
+        assert_same_resolution("my_page", &index);
+        assert_same_resolution("My-Page", &index);
+    }
+
+    #[test]
+    fn resolver_matches_resolve_page_name_on_path_qualified() {
+        let index = make_index(&[
+            ("Note A", "folder/Note A.md"),
+            ("Note B", "other/Note B.md"),
+        ]);
+        assert_same_resolution("folder/Note A", &index);
+        assert_same_resolution("folder/note a", &index);
+        assert_same_resolution("nonexistent/Note A", &index);
+    }
+
+    #[test]
+    fn resolver_returns_none_on_ambiguous() {
+        // Two pages with same lowercased name collide on the exact-match step.
+        let index = make_index(&[
+            ("Page", "a/Page.md"),
+            ("page", "b/page.md"),
+        ]);
+        let resolver = PageNameResolver::new(&index);
+        assert_eq!(resolver.resolve("PAGE"), None);
     }
 }

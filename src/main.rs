@@ -21,7 +21,7 @@ use zetl::graph::LinkGraph;
 use zetl::merkle::{
     build_vault_hash_index, resolve_hash_prefix, validate_source_refs, HashResolutionResult,
 };
-use zetl::scanner::{resolve_page_name, scan_vault};
+use zetl::scanner::{resolve_page_name, scan_vault, PageNameResolver};
 use zetl::search::{search_vault, SearchConfig};
 use zetl::search_index::SearchIndex;
 use zetl::simhash::SimHashIndex;
@@ -210,7 +210,14 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
         .map(|f| (f.page_name.clone(), f.path.clone()))
         .collect();
 
-    // Resolve page names for all links
+    // Resolve page names for all links.
+    //
+    // PERF-BUILD-2026-05-12 / task `resolve-pages-index`: precompute four
+    // lookup tables once via `PageNameResolver`, then do O(1) resolution per
+    // link instead of the prior O(N) `resolve_page_name` Vec scan. On a 10k
+    // page vault with ~12 outbound links per page this is the difference
+    // between ~1.2e9 string comparisons and ~120k hash lookups.
+    let resolver = PageNameResolver::new(&file_index);
     let mut resolved_pages: HashMap<String, String> = HashMap::new();
     for file in &files {
         for link in &file.links {
@@ -218,8 +225,7 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
             if resolved_pages.contains_key(&key) {
                 continue;
             }
-            // Try resolving the target_page (the page portion, without heading/block)
-            if let Some(resolved) = resolve_page_name(&link.target_page, &file_index) {
+            if let Some(resolved) = resolver.resolve(&link.target_page) {
                 resolved_pages.insert(key, resolved);
             }
         }
@@ -338,6 +344,8 @@ fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str, verbose: u8) -> R
         .map(|f| (f.page_name.clone(), f.path.clone()))
         .collect();
 
+    // See `run_pipeline` for the rationale on PageNameResolver.
+    let resolver = PageNameResolver::new(&file_index);
     let mut resolved_pages: HashMap<String, String> = HashMap::new();
     for file in &files {
         for link in &file.links {
@@ -345,7 +353,7 @@ fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str, verbose: u8) -> R
             if resolved_pages.contains_key(&key) {
                 continue;
             }
-            if let Some(resolved) = resolve_page_name(&link.target_page, &file_index) {
+            if let Some(resolved) = resolver.resolve(&link.target_page) {
                 resolved_pages.insert(key, resolved);
             }
         }
