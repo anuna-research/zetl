@@ -86,6 +86,7 @@ comfy-table = "7"
 globset = "0.4"
 ignore = "0.4"
 petgraph = "0.7"
+rayon = "1"
 axum = { version = "0.8", features = ["ws"] }
 pulldown-cmark = "0.12"
 regex = "1"
