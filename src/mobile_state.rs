@@ -673,22 +673,54 @@ pub struct VaultSubpathCandidate {
 pub fn detect_vault_subpath_candidates(repo_root: &std::path::Path) -> Vec<VaultSubpathCandidate> {
     let mut out = Vec::new();
 
-    fn scan_one(dir: &std::path::Path, subpath: String, out: &mut Vec<VaultSubpathCandidate>) {
+    fn count_md_recursive(dir: &std::path::Path) -> usize {
         let Ok(rd) = std::fs::read_dir(dir) else {
-            return;
+            return 0;
         };
-        let mut md_count = 0;
-        let mut has_zetl_dir = false;
+        let mut total = 0;
         for ent in rd.flatten() {
             let name = ent.file_name();
             let name = name.to_string_lossy();
             let path = ent.path();
-            if path.is_dir() && name == ".zetl" {
-                has_zetl_dir = true;
+            if path.is_dir() {
+                // Skip dotdirs and the same "non-vault" names the
+                // candidate scan filters at the top level. This keeps
+                // counts honest — picking the repo root won't be
+                // inflated by node_modules / .git.
+                if name.starts_with('.') {
+                    continue;
+                }
+                const SKIP: &[&str] = &["node_modules", "target", "dist", "build", "out", "vendor"];
+                if SKIP.contains(&name.as_ref()) {
+                    continue;
+                }
+                total += count_md_recursive(&path);
             } else if path.is_file() && name.to_ascii_lowercase().ends_with(".md") {
-                md_count += 1;
+                total += 1;
             }
         }
+        total
+    }
+
+    fn scan_one(dir: &std::path::Path, subpath: String, out: &mut Vec<VaultSubpathCandidate>) {
+        let mut has_zetl_dir = false;
+        // Detect `.zetl/` non-recursively — only the direct child
+        // counts as a vault-config signal. Markdown count is
+        // recursive, so the repo root surfaces every nested page the
+        // scanner will eventually walk, not just the three or four
+        // README-style files directly under it.
+        if let Ok(rd) = std::fs::read_dir(dir) {
+            for ent in rd.flatten() {
+                let name = ent.file_name();
+                let name = name.to_string_lossy();
+                let path = ent.path();
+                if path.is_dir() && name == ".zetl" {
+                    has_zetl_dir = true;
+                    break;
+                }
+            }
+        }
+        let md_count = count_md_recursive(dir);
         if md_count > 0 || has_zetl_dir {
             out.push(VaultSubpathCandidate {
                 subpath,
@@ -1367,9 +1399,35 @@ mod tests {
         std::fs::write(notes.join("A.md"), "x").unwrap();
         std::fs::write(notes.join("B.md"), "y").unwrap();
         let candidates = super::detect_vault_subpath_candidates(tmp.path());
-        assert_eq!(candidates.len(), 1);
-        assert_eq!(candidates[0].subpath, "notes");
-        assert_eq!(candidates[0].md_count, 2);
+        // Two candidates now: the repo root (recursive count picks up
+        // the nested files so the user can choose to index everything)
+        // and notes/ specifically. Both report the same count here
+        // because there are no .md files outside notes/.
+        assert_eq!(candidates.len(), 2);
+        assert!(candidates.iter().any(|c| c.subpath == ""));
+        let notes_c = candidates.iter().find(|c| c.subpath == "notes").unwrap();
+        assert_eq!(notes_c.md_count, 2);
+    }
+
+    #[test]
+    fn detect_vault_subpath_root_count_is_recursive() {
+        // Mirrors agent-comms-wiki: a few root-level .md files plus a
+        // big sub-directory full of pages. The root candidate should
+        // report a count that includes nested files so the picker can
+        // tell the user that picking root indexes everything.
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("README.md"), "x").unwrap();
+        std::fs::write(tmp.path().join("index.md"), "x").unwrap();
+        let concepts = tmp.path().join("concepts");
+        std::fs::create_dir(&concepts).unwrap();
+        for n in 0..50 {
+            std::fs::write(concepts.join(format!("{n}.md")), "x").unwrap();
+        }
+        let candidates = super::detect_vault_subpath_candidates(tmp.path());
+        let root_c = candidates.iter().find(|c| c.subpath == "").unwrap();
+        let concepts_c = candidates.iter().find(|c| c.subpath == "concepts").unwrap();
+        assert_eq!(root_c.md_count, 52);
+        assert_eq!(concepts_c.md_count, 50);
     }
 
     #[test]
