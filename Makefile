@@ -7,7 +7,7 @@ BASHCOMPDIR ?= $(PREFIX)/share/bash-completion/completions
 ZSHCOMPDIR  ?= $(PREFIX)/share/zsh/site-functions
 FISHCOMPDIR ?= $(PREFIX)/share/fish/vendor_completions.d
 
-.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build nfr-gates nfr-gates-strict nfr-gates-033 nfr-gates-033-strict check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts eco-features-check eco-matrix-check translator-roundtrip audit-corpus dist dist-macos-arm64 dist-macos-x86_64 dist-windows dist-metadata dist-upload dist-clean help
+.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build nfr-gates nfr-gates-strict nfr-gates-033 nfr-gates-033-strict check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts eco-features-check eco-matrix-check translator-roundtrip audit-corpus dist dist-macos-arm64 dist-macos-x86_64 dist-windows dist-metadata dist-upload dist-clean help mobile-build mobile-run mobile-test mobile-clean mobile-wipe mobile-android-init mobile-android-dev mobile-android-build mobile-ios-init mobile-ios-dev mobile-ios-build
 
 all: build
 
@@ -305,6 +305,103 @@ doc:
 doc-open:
 	cargo doc --no-deps --open
 
+# ─── SPEC-040 mobile (Tauri Mobile) ─────────────────────────────────────────
+#
+# `mobile-run` is the fastest iteration loop: builds the desktop dev shell
+# of the Tauri Mobile project and runs it. Window opens; embedded zetl serve
+# boots on 127.0.0.1:23423; WebView lands on /_mobile/onboarding.
+#
+# `mobile-wipe` clears the app's data directory so you can re-test the
+# fresh-install onboarding flow without manually rm-ing platform-specific
+# paths. Use before `mobile-run` to start clean.
+#
+# Android + iOS targets wrap `cargo tauri android` / `ios` subcommands —
+# the cargo-tauri-cli must be on PATH, plus Android NDK/SDK or Xcode
+# respectively. The `init` targets are one-time and generate
+# `mobile/gen/{android,apple}/` (gitignored).
+
+# Best-guess app data dir per platform. macOS default below; override on
+# Linux / Windows by passing MOBILE_APP_DATA=... to mobile-wipe.
+MOBILE_APP_DATA ?= $(HOME)/Library/Application Support/io.anuna.zetl.mobile
+
+mobile-build:
+	cargo build --release -p zetl-mobile
+
+mobile-run:
+	cargo run --release -p zetl-mobile
+
+mobile-test:
+	cargo test --features mobile --lib mobile_
+	cargo test --features mobile --test mobile_integration
+
+mobile-clean:
+	cargo clean -p zetl-mobile
+
+mobile-wipe:
+	@echo "Wiping $(MOBILE_APP_DATA)/"
+	@rm -rf "$(MOBILE_APP_DATA)"
+	@echo "Done — next launch starts at /_mobile/onboarding step 1."
+
+# Android targets source mobile/scripts/android-env.sh, which detects
+# the SDK / NDK / JDK-17 locations and creates the per-repo NDK clang
+# shims that openssl-sys's vendored build needs. See mobile/README.md
+# §Android for the prerequisite install commands.
+mobile-android-init:
+	bash -c '. mobile/scripts/android-env.sh && cd mobile && cargo tauri android init' && \
+	  bash mobile/scripts/patch-android-project.sh
+
+mobile-android-dev:
+	bash mobile/scripts/patch-android-project.sh && \
+	  bash -c '. mobile/scripts/android-env.sh && cd mobile && cargo tauri android dev'
+
+# Default: arm64 release APK (covers >95% of modern devices, smallest
+# universal bundle). Override TARGET=universal for all four ABIs.
+#
+# Always sign the release APK with the standard Android debug
+# keystore — Tauri's release path produces an unsigned APK, which
+# Android 7+ rejects with "App not installed as a package, appears
+# to be invalid". The debug keystore is fine for sideload-testing;
+# Play Store distribution should use a real signing config in
+# `gen/android/app/build.gradle.kts`.
+TARGET ?= aarch64
+mobile-android-build:
+	bash mobile/scripts/patch-android-project.sh && \
+	  bash -c '. mobile/scripts/android-env.sh && cd mobile && cargo tauri android build --apk --target $(TARGET) && $(MAKE) -C .. mobile-android-sign'
+
+mobile-android-build-debug:
+	bash mobile/scripts/patch-android-project.sh && \
+	  bash -c '. mobile/scripts/android-env.sh && cd mobile && cargo tauri android build --apk --debug --target $(TARGET)'
+
+# Sign the most recent release APK with the Android debug keystore.
+# Creates the keystore on first use. Output: zetl-mobile-release.apk
+# at the repo root, ready for `adb install`.
+mobile-android-sign:
+	bash -c '. mobile/scripts/android-env.sh && \
+	  KEYSTORE=$$HOME/.android/debug.keystore && \
+	  if [ ! -f "$$KEYSTORE" ]; then \
+	    mkdir -p "$$HOME/.android" && \
+	    keytool -genkey -v -keystore "$$KEYSTORE" -storepass android \
+	      -alias androiddebugkey -keypass android \
+	      -keyalg RSA -keysize 2048 -validity 10000 \
+	      -dname "CN=Android Debug,O=Android,C=US"; \
+	  fi && \
+	  APKSIGNER=$$(find $$ANDROID_HOME/build-tools -name apksigner | sort -V | tail -1) && \
+	  IN=mobile/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk && \
+	  OUT=zetl-mobile-release.apk && \
+	  "$$APKSIGNER" sign --ks "$$KEYSTORE" --ks-pass pass:android \
+	    --key-pass pass:android --out "$$OUT" "$$IN" && \
+	  "$$APKSIGNER" verify "$$OUT" && \
+	  echo "Signed APK: $$OUT"'
+
+mobile-ios-init:
+	cd mobile && cargo tauri ios init
+
+mobile-ios-dev:
+	cd mobile && cargo tauri ios dev
+
+mobile-ios-build:
+	cd mobile && cargo tauri ios build
+
 help:
 	@echo "zetl - Bi-directional wikilink graph CLI"
 	@echo ""
@@ -347,6 +444,22 @@ help:
 	@echo "  make dist-upload  - Upload dist-release/ to R2 via wrangler"
 	@echo "  make dist-clean   - Remove dist-release/"
 	@echo ""
+	@echo "SPEC-040 mobile (Tauri Mobile):"
+	@echo "  make mobile-build         - Build the desktop dev shell"
+	@echo "  make mobile-run           - Build + run desktop dev shell (opens window)"
+	@echo "  make mobile-test          - Run mobile unit + integration tests"
+	@echo "  make mobile-clean         - cargo clean -p zetl-mobile (forces dist/ rebundle)"
+	@echo "  make mobile-wipe          - Wipe app data dir so onboarding restarts fresh"
+	@echo "  make mobile-android-init        - One-time: cargo tauri android init (after SDK is set up)"
+	@echo "  make mobile-android-dev         - Build+run debug APK on emulator/device"
+	@echo "  make mobile-android-build       - Build arm64 release APK, sign with debug key (TARGET=universal for all ABIs)"
+	@echo "  make mobile-android-build-debug - Build debug APK (large; unstripped)"
+	@echo "  make mobile-android-sign        - Sign the last release APK with the Android debug keystore"
+	@echo "  make mobile-ios-init      - One-time: cargo tauri ios init"
+	@echo "  make mobile-ios-dev       - Build+run on simulator/device"
+	@echo "  make mobile-ios-build     - Build release IPA"
+	@echo ""
 	@echo "Options:"
 	@echo "  PREFIX=<path>     - Install prefix (default: ~/.local)"
 	@echo "  VERSION=<ver>     - Version for release target (e.g. VERSION=0.1.1)"
+	@echo "  MOBILE_APP_DATA=<path> - Override app data dir for mobile-wipe (macOS default shown)"

@@ -16,6 +16,12 @@ pub mod hooks;
 #[cfg(feature = "mcp")]
 pub mod mcp;
 pub mod merkle;
+#[cfg(feature = "mobile")]
+pub mod mobile_capture;
+#[cfg(feature = "mobile")]
+pub mod mobile_git;
+#[cfg(feature = "mobile")]
+pub mod mobile_state;
 pub mod parsers;
 #[cfg(feature = "reason")]
 pub mod reason;

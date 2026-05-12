@@ -3,6 +3,10 @@
 /demo-dist
 .zetl/
 .DS_Store
+# Mobile build artifacts produced by `make mobile-android-build*`.
+*.apk
+*.aab
+*.idsig
 tools/theme-build/*/node_modules
 /landing
 /private

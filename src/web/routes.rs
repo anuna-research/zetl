@@ -189,7 +189,7 @@ pub async fn dashboard_handler(
     let is_admin = role >= crate::user::Role::Admin;
 
     // Recent git edits (last 20 commits)
-    let recent_edits = recent_git_edits(&state.git_commit_lock, 20);
+    let recent_edits = recent_git_edits(&state.git_commit_lock.current(), 20);
 
     // Accessible pages — filter by read ACL in collab mode (REQ-020-031).
     let data = state.data.read().unwrap_or_else(|e| e.into_inner());
@@ -1230,7 +1230,7 @@ pub async fn save_handler(
     let session_user_id: Option<String> = crate::web::session::token_from_cookies(&headers)
         .and_then(|token| state.sessions.validate(&token));
 
-    if let Some(ref lock) = state.git_commit_lock {
+    if let Some(lock) = state.git_commit_lock.current() {
         // Resolve author from authenticated session, fallback to "zetl".
         let (author_name, author_id) = if let Some(ref uid) = session_user_id {
             match crate::user::load_profile(&state.vault_root, uid) {
@@ -2383,7 +2383,7 @@ async fn page_history_handler_inner(State(state): State<WebState>, page_slug: St
     };
 
     // Collect git log entries for this file.
-    let git_entries = if let Some(ref lock) = state.git_commit_lock {
+    let git_entries = if let Some(lock) = state.git_commit_lock.current() {
         let repo = lock.lock().unwrap_or_else(|e| e.into_inner());
         crate::web::git_commit::file_log(&repo, &file_path, 100)
     } else {
@@ -2575,7 +2575,7 @@ pub async fn api_file_diff_handler(
     let file_path = file.path.clone();
     drop(data);
 
-    let Some(ref lock) = state.git_commit_lock else {
+    let Some(lock) = state.git_commit_lock.current() else {
         return (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": "git not available" })),
@@ -2644,7 +2644,7 @@ pub async fn api_restore_handler(
         }
     }
 
-    let Some(ref lock) = state.git_commit_lock else {
+    let Some(lock) = state.git_commit_lock.current() else {
         return (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": "git not available" })),
@@ -4846,7 +4846,7 @@ pub async fn admin_permissions_save_handler(
         let _ = std::fs::write(&access_path, &new_content);
 
         // Auto-commit
-        if let Some(ref lock) = state.git_commit_lock {
+        if let Some(lock) = state.git_commit_lock.current() {
             if let Ok(repo) = lock.lock() {
                 let acl_path = vault_root.join(".zetl/collab/access.spl");
                 let user_name = crate::user::load_profile(vault_root, &session.user_id)
@@ -4932,7 +4932,7 @@ pub async fn admin_permissions_save_handler(
     }
 
     // Auto-commit the change
-    if let Some(ref lock) = state.git_commit_lock {
+    if let Some(lock) = state.git_commit_lock.current() {
         if let Ok(repo) = lock.lock() {
             let rel_path = std::path::Path::new(".zetl/collab/access.spl");
             let user_name = crate::user::load_profile(vault_root, &session.user_id)
@@ -5449,7 +5449,7 @@ pub async fn api_pages_put_handler(
     }
 
     // Git auto-commit
-    if let Some(ref lock) = state.git_commit_lock {
+    if let Some(lock) = state.git_commit_lock.current() {
         let (author_name, author_id) = match crate::user::load_profile(&state.vault_root, &user_id)
         {
             Ok(Some(profile)) => (profile.name.clone(), profile.id.clone()),
@@ -5572,7 +5572,7 @@ pub async fn api_pages_delete_handler(
     }
 
     // Git auto-commit the deletion
-    if let Some(ref lock) = state.git_commit_lock {
+    if let Some(lock) = state.git_commit_lock.current() {
         let (author_name, author_id) = match crate::user::load_profile(&state.vault_root, &user_id)
         {
             Ok(Some(profile)) => (profile.name.clone(), profile.id.clone()),
@@ -6997,7 +6997,7 @@ mod tests {
             rate_limiters: crate::web::rate_limit::AuthRateLimiters::new(),
             #[cfg(feature = "reason")]
             acl_cache: Arc::new(std::sync::Mutex::new(crate::web::AclCache::new())),
-            git_commit_lock: None,
+            git_commit_lock: crate::web::git_commit::GitCommitLockSlot::empty(),
             ws_hub: crate::web::ws::WsHub::new(),
             ticket_store: crate::web::ws::TicketStore::new(),
             crdt_store: crate::web::ws::CrdtDocStore::new(Arc::new(vault_root.to_path_buf())),
@@ -7681,7 +7681,7 @@ pub async fn upload_asset_handler(
             let is_replace = meta.replaced_at.is_some();
 
             // Git auto-commit (REQ-3513)
-            if let Some(ref lock) = state.git_commit_lock {
+            if let Some(lock) = state.git_commit_lock.current() {
                 match lock.lock() {
                     Ok(repo) => {
                         let asset_path = crate::assets::store::asset_path(&state.vault_root, slug)
@@ -7998,7 +7998,7 @@ pub async fn delete_asset_handler(
             state.asset_storage.decrement(size_before);
 
             // Git auto-commit deletion (REQ-3513)
-            if let Some(ref lock) = state.git_commit_lock {
+            if let Some(lock) = state.git_commit_lock.current() {
                 match lock.lock() {
                     Ok(repo) => {
                         let msg = format!("asset: delete {slug} [user: {user_id}]");

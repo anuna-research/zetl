@@ -14,7 +14,7 @@ readme = "README.md"
 # diamond-types-spike is an IMPL-029 phase-0 spike that pins its own deps
 # and must stay standalone.
 [workspace]
-members = ["tools/zetl-ast-reference-gen", "tools/xtask"]
+members = ["tools/zetl-ast-reference-gen", "tools/xtask", "mobile"]
 exclude = ["tools/diamond-types-spike"]
 
 [profile.release]
@@ -33,6 +33,24 @@ mcp = ["dep:rmcp"]
 # no-op; preserved so `cargo test --features collab` keeps working for
 # callers and CI that still pass the flag.
 collab = []
+# Pulls in the `keyring` crate so the SPEC-040 mobile KeyStore can
+# persist the SSH key in the platform keychain on macOS / Windows /
+# Linux desktop. iOS and Android fall back to the file path until
+# Tauri-plugin-side keychain glue lands. Off by default — only the
+# mobile feature activates it.
+keyring-storage = ["dep:keyring"]
+# SPEC-040 REQ-4004 / REQ-4005: enables the `/_mobile/*` route surface
+# (onboarding, capture, sync) consumed by the Tauri Mobile shell when
+# zetl serve is embedded as the mobile UI host. Off by default — desktop
+# serve never registers these routes.
+#
+# Activates `ssh` (BIP39-derived ed25519 key auth — REQ-4003) and
+# `https` (anonymous public-repo clones for users who don't want to
+# set up SSH keys; private HTTPS via PAT is a follow-up) features on
+# git2 so the mobile_git module's clone / pull / push paths can reach
+# both kinds of git remote. Also activates `keyring-storage` so the
+# KeyStore prefers the OS keychain over the JSON file when available.
+mobile = ["git2/ssh", "git2/https", "keyring-storage", "vendored-openssl"]
 # SPEC-033 per-ecosystem feature flags (REQ-3301, NFR-3304). Each flag
 # gates one ecosystem's adapter + translator code at compile time so a
 # minimal zetl build can drop whole ecosystems. `src/ecosystems/` holds
@@ -152,6 +170,13 @@ rmcp = { version = "1", optional = true, features = ["server", "transport-io", "
 # self-contained OpenSSL is built during cross-compile release runs.
 openssl = { version = "0.10", optional = true, features = ["vendored"] }
 urlencoding = "2.1.3"
+# SPEC-040 KeyStore platform keychain — feature-gated via
+# `keyring-storage` (which the `mobile` feature activates). On macOS
+# this wraps Keychain Services; on Windows the Credential Vault; on
+# Linux the Secret Service (libsecret / kwallet). iOS support
+# upstream is in-progress; we fall back to ssh_key.json on platforms
+# where the crate cannot operate.
+keyring = { version = "3", optional = true, default-features = false, features = ["apple-native", "windows-native", "linux-native"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 imageproc = { version = "0.25", default-features = false }
 ab_glyph = "0.2"

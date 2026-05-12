@@ -61,17 +61,45 @@
     folderSel.appendChild(o);
   });
 
+  /* Build a heading row per top-level folder (plus one for root-level
+     pages). They sit inside the grid as `grid-column: 1 / -1` full-width
+     rows and are positioned by `order` so they slot in between the
+     cards when sort=folder. Hidden otherwise. */
+  var folderHeadings = {};
+  function ensureHeading(folder){
+    if (folderHeadings[folder]) return folderHeadings[folder];
+    var h = document.createElement('div');
+    h.className = 'zetl-index-folder-heading';
+    h.style.gridColumn = '1 / -1';
+    h.style.display = 'none';
+    var label = folder ? folder + '/' : '(root)';
+    h.innerHTML = '<h3 class="text-sm font-semibold uppercase tracking-wide opacity-60 mt-4">' +
+      label.replace(/[&<>]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]; }) +
+      '</h3>';
+    grid.appendChild(h);
+    folderHeadings[folder] = h;
+    return h;
+  }
+  /* Default sort: "folder" when the vault has >=2 top-level folders
+     (e.g. concepts/ + papers/), else "alpha" — flat vaults don't need
+     headings. */
+  var topFolderKeys = Object.keys(topFolders);
+  /* Account for the implicit root group: if there are any cards with no
+     folder, root counts as a group too. */
+  var hasRootGroup = cards.some(function(c){ return !c.dataset.folder; });
+  var defaultSort = (topFolderKeys.length + (hasRootGroup ? 1 : 0) >= 2) ? 'folder' : 'alpha';
+
   function getParams(){
     var q = new URLSearchParams(window.location.search);
     return {
-      sort: q.get('sort') || 'alpha',
+      sort: q.get('sort') || defaultSort,
       folder: q.get('folder') || '',
       filter: q.get('filter') || ''
     };
   }
   function setParams(p){
     var q = new URLSearchParams();
-    if (p.sort && p.sort !== 'alpha') q.set('sort', p.sort);
+    if (p.sort && p.sort !== defaultSort) q.set('sort', p.sort);
     if (p.folder) q.set('folder', p.folder);
     if (p.filter) q.set('filter', p.filter);
     var s = q.toString();
@@ -114,11 +142,24 @@
         return (+b.dataset.linksTotal) - (+a.dataset.linksTotal)
             || a.dataset.title.localeCompare(b.dataset.title);
       });
+    } else if (p.sort === 'folder') {
+      ordered.sort(function(a, b){
+        var fa = (a.dataset.folder || '').split('/')[0];
+        var fb = (b.dataset.folder || '').split('/')[0];
+        return fa.localeCompare(fb)
+            || a.dataset.title.localeCompare(b.dataset.title);
+      });
     } else {
       ordered.sort(function(a, b){
         return a.dataset.title.localeCompare(b.dataset.title);
       });
     }
+
+    /* Hide all folder headings up front; when sort=folder we'll show
+       the ones that have at least one visible card under them. */
+    Object.keys(folderHeadings).forEach(function(k){
+      folderHeadings[k].style.display = 'none';
+    });
 
     var needsDead = p.filter === 'dead';
     /* PAGE_SIZE threshold: vaults under it render everything; past it the
@@ -126,14 +167,31 @@
     var PAGE_SIZE = 60;
     var proceed = function(){
       var visible = 0, shown = 0, pastLimit = 0;
-      ordered.forEach(function(c, i){
-        c.style.order = String(i);
+      /* Allocate ordinals as we go. Headings get their own ordinal so
+         they slot before the first card of each group; cards get an
+         ordinal too. We use ordinal multiples of 2 for cards and
+         insert headings at odd ordinals immediately before their
+         first-visible card, so the grid renders headings ahead of
+         their pages even though they live at the END of the DOM. */
+      var lastFolder = null;
+      var groupingByFolder = (p.sort === 'folder');
+      var ord = 0;
+      ordered.forEach(function(c){
         var show = true;
         var top = (c.dataset.folder || '').split('/')[0];
         if (p.folder && top !== p.folder) show = false;
         if ((p.sort === 'orphans' || p.filter === 'orphans') && c.dataset.orphan !== '1') show = false;
         if (needsDead && !(deadSources && deadSources[c.dataset.slug])) show = false;
         if (show) {
+          /* In folder mode, surface a heading whenever the top-level
+             folder transitions. The heading row goes BEFORE the next
+             card via flex/grid `order`. */
+          if (groupingByFolder && top !== lastFolder) {
+            var h = ensureHeading(top);
+            h.style.display = '';
+            h.style.order = String(ord++);
+            lastFolder = top;
+          }
           visible++;
           if (!pageState.showAll && cards.length > PAGE_SIZE && shown >= PAGE_SIZE) {
             c.style.display = 'none';
@@ -142,8 +200,10 @@
             c.style.display = '';
             shown++;
           }
+          c.style.order = String(ord++);
         } else {
           c.style.display = 'none';
+          c.style.order = '';
         }
       });
       var filtered = !!p.folder || p.filter === 'dead' || p.filter === 'orphans' || p.sort === 'orphans';

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>zetl mobile</title>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; background: #fff; color: #111; font-family: system-ui, -apple-system, sans-serif; }
+    @media (prefers-color-scheme: dark) { html, body { background: #111; color: #eee; } }
+    .loader { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 1rem; padding: 1rem; text-align: center; }
+    .loader h1 { margin: 0; font-weight: 500; font-size: 1.05rem; opacity: 0.8; }
+    .loader p { margin: 0; font-size: 0.9rem; opacity: 0.55; max-width: 28em; line-height: 1.45; }
+    .loader p.err { color: #b00; opacity: 1; }
+    .spinner { width: 2rem; height: 2rem; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; opacity: 0.5; animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    a { color: inherit; }
+  </style>
+</head>
+<body>
+  <div class="loader">
+    <div class="spinner"></div>
+    <h1>zetl mobile</h1>
+    <p>Loading the embedded server…</p>
+  </div>
+
+  <script>
+    // The Tauri WebView is at `tauri://localhost` origin; the embedded
+    // serve listens on `http://127.0.0.1:23423`. fetch() between these
+    // origins is CORS-blocked by default, but a top-level navigation
+    // (window.location.replace) is NOT subject to CORS — that's how
+    // we hop into the embedded serve's UI. The serve typically binds
+    // within ~1s of the shell launching; the small delay below lets
+    // it come up before we navigate.
+    //
+    // /_mobile/vaults is the safe entry point: it renders content in
+    // every state (empty vault list with "Add one" CTA on fresh
+    // install, or the picker with the active+other vaults if anything
+    // has been cloned). From there the user reaches /, capture, sync,
+    // onboarding etc. via in-page links.
+    const target = "http://127.0.0.1:23423/_mobile/vaults";
+
+    function go() { window.location.replace(target); }
+
+    // Most launches: server is up within ~800ms. Generous safety
+    // margin keeps the WebView from racing the embedded serve.
+    setTimeout(go, 1200);
+  </script>
+
+  <noscript>
+    <div class="loader">
+      <p class="err">JavaScript is required. Open <a href="http://127.0.0.1:23423/_mobile/vaults">/_mobile/vaults</a> manually.</p>
+    </div>
+  </noscript>
+</body>
+</html>

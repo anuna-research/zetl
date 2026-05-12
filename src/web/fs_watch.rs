@@ -931,7 +931,7 @@ mod tests {
             rate_limiters: crate::web::rate_limit::AuthRateLimiters::new(),
             #[cfg(feature = "reason")]
             acl_cache: Arc::new(Mutex::new(crate::web::AclCache::new())),
-            git_commit_lock: None,
+            git_commit_lock: crate::web::git_commit::GitCommitLockSlot::empty(),
             ws_hub: crate::web::ws::WsHub::new(),
             ticket_store: crate::web::ws::TicketStore::new(),
             crdt_store: CrdtDocStore::new(vault_root.clone()),

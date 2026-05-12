@@ -7,6 +7,8 @@ pub mod git_commit;
 pub mod git_poll;
 pub mod html;
 pub mod markdown;
+#[cfg(feature = "mobile")]
+pub mod mobile;
 pub mod og;
 pub mod rate_limit;
 pub mod robots;
@@ -165,9 +167,13 @@ pub struct WebState {
     /// Lazy ACL decision cache, invalidated on vault_root_hash change (REQ-020-013).
     #[cfg(feature = "reason")]
     pub acl_cache: Arc<Mutex<AclCache>>,
-    /// Git repository lock for serializing auto-commits on save (REQ-020-015, CON-020-006).
-    /// `None` when the vault is not inside a git repository.
-    pub git_commit_lock: Option<Arc<git_commit::GitCommitLock>>,
+    /// Git repository lock for serializing auto-commits on save
+    /// (REQ-020-015, CON-020-006). Wrapped in an interior-mutable slot
+    /// so the SPEC-040 mobile flows can install a repo handle after
+    /// `/_mobile/onboarding/clone` succeeds — the embedded serve
+    /// launches before any vault exists, so the slot starts empty
+    /// for mobile and is populated lazily.
+    pub git_commit_lock: git_commit::GitCommitLockSlot,
     /// WebSocket editing hub — manages per-slug broadcast rooms (REQ-020-028).
     pub ws_hub: ws::WsHub,
     /// One-time ticket store for WebSocket auth (agents can't send cookies).
@@ -325,7 +331,7 @@ pub async fn run(
     // Spawn git HEAD poller for external commit detection (REQ-020-041).
     let _git_poll_handle = state
         .git_commit_lock
-        .clone()
+        .current()
         .and_then(|lock| git_poll::spawn_git_poller(state.clone(), git_poll_interval, lock));
 
     // Spawn comment auto-prune task (REQ-020-051).
@@ -505,7 +511,15 @@ pub async fn run(
         .merge(auth_routes)
         .merge(ws_routes)
         .merge(asset_routes)
-        .merge(content_routes)
+        .merge(content_routes);
+
+    // SPEC-040 REQ-4005 / CON-4004: mobile-specific routes for the Tauri
+    // Mobile shell. Not behind collab_gate / csrf_guard — mobile is
+    // single-user and the embedded server binds to loopback only.
+    #[cfg(feature = "mobile")]
+    let app = app.merge(mobile::router());
+
+    let app = app
         .with_state(state)
         .layer(middleware::map_response(|mut resp: axum::response::Response| async {
             // Only set CSP if the handler didn't already set one (e.g. the editor).
@@ -536,6 +550,169 @@ pub async fn run(
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+/// SPEC-040 REQ-4004: convenience entry-point that builds a minimal
+/// `WebState` for embedded use (the Tauri Mobile shell, plus any
+/// other in-process embedder that wants the full serve UI without
+/// CLI plumbing) and hands it to [`run`].
+///
+/// Defaults applied:
+///
+/// - `collab = false`, `tls = false`, `trust_proxy = false`
+/// - `passkey_mgr = None` (single-user; no WebAuthn)
+/// - `git_commit_lock = None` (auto-commit disabled; mobile commits via
+///   the explicit capture / save paths in subsequent slices)
+/// - `public_dir = None`
+/// - `scan_options = ScanOptions::default()`
+/// - `theme = "default"` (override post-construction if needed)
+/// - asset limits at the same defaults the CLI uses unless caller
+///   overrides via env vars (left untouched for now)
+///
+/// Gated to `feature = "mobile"` so non-mobile builds don't pull
+/// in the extra public surface unintentionally.
+#[cfg(feature = "mobile")]
+pub async fn launch_default(
+    vault_root: std::path::PathBuf,
+    bind_addr: &str,
+    port: u16,
+) -> anyhow::Result<()> {
+    use std::sync::Arc;
+    use std::sync::RwLock;
+
+    // Make sure the working tree directory exists. On first run before
+    // onboarding clones a remote, it may not yet — the embedded server
+    // still needs to start so the user can reach /_mobile/onboarding.
+    let _ = std::fs::create_dir_all(&vault_root);
+
+    // Index the vault (may be empty on first run).
+    let data = match reindex(&vault_root) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!(
+                "[zetl-mobile] vault reindex on launch failed: {e:?}; starting with empty data"
+            );
+            VaultData {
+                files: Vec::new(),
+                graph: LinkGraph::build(&[], &HashMap::new()),
+                page_names: Vec::new(),
+                resolved: HashSet::new(),
+                page_slug_map: HashMap::new(),
+                page_slug_map_lower: HashMap::new(),
+                collision_names: HashSet::new(),
+            }
+        }
+    };
+
+    // SearchIndex::build accepts an empty file list and yields a usable
+    // (empty) index. Treat any failure here as fatal — without an index
+    // we cannot serve search requests.
+    let search_index = SearchIndex::build(&vault_root, &data.files)
+        .map_err(|e| anyhow::anyhow!("search index build failed: {e:?}"))?;
+
+    // SPEC-040: pick up the active vault's theme. Resolution order:
+    //
+    // 1. `<vault>/.zetl/themes/<name>/` — a disk-installed theme. If
+    //    the user ran `zetl theme install …` on the desktop and the
+    //    install is committed to the cloned repo, we honour it here.
+    //    When multiple are installed we pick the first alphabetically
+    //    so the choice is deterministic.
+    // 2. otherwise → bundled `default`.
+    //
+    // The theme is captured at *launch* — switching between vaults
+    // with different themes requires an app restart in v0.1. Live
+    // engine swap on /_mobile/vaults/switch is a v0.2 polish item.
+    let theme = detect_vault_theme(&vault_root);
+    let engine = Arc::new(engine::TemplateEngine::new(
+        &vault_root,
+        &theme,
+        false,
+        false,
+    ));
+
+    // SPEC-040 multi-vault: register the template engine so
+    // /_mobile/* handlers can render Minijinja templates instead of
+    // inline HTML.
+    crate::mobile_state::set_template_engine(engine.clone());
+
+    let vault_root_arc = Arc::new(vault_root);
+
+    let data = Arc::new(RwLock::new(data));
+    // SPEC-040 multi-vault: register the data handle in mobile_state
+    // so /_mobile/vaults/switch can swap the embedded serve's
+    // in-memory VaultData when the active-vault symlink moves.
+    crate::mobile_state::set_vault_data_handle(data.clone());
+
+    let state = WebState {
+        data,
+        crdt_store: ws::CrdtDocStore::new(vault_root_arc.clone()),
+        vault_root: vault_root_arc.clone(),
+        search_index: Arc::new(search_index),
+        engine: engine.clone(),
+        theme: theme.to_string(),
+        verbose: false,
+        collab: false,
+        tls: false,
+        trust_proxy: false,
+        sessions: session::SessionStore::new(),
+        recovery_challenges: Arc::new(crate::user::recovery::RecoveryChallengeStore::new()),
+        mnemonic_shown: Arc::new(Mutex::new(HashSet::new())),
+        bootstrap_used: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        rate_limiters: rate_limit::AuthRateLimiters::new(),
+        #[cfg(feature = "reason")]
+        acl_cache: Arc::new(Mutex::new(AclCache::new())),
+        // Mobile boot: the vault symlink may have no `.git` yet (the
+        // user hasn't onboarded). Start the slot empty; the clone /
+        // switch / pick handlers populate it via
+        // `mobile_state::refresh_git_commit_lock` once a working tree
+        // is in place.
+        git_commit_lock: {
+            let slot = git_commit::GitCommitLockSlot::empty();
+            if let Some(repo) = git_commit::open_repo(&vault_root_arc) {
+                slot.set(Some(Arc::new(repo)));
+            }
+            crate::mobile_state::set_git_commit_lock_slot(slot.clone());
+            slot
+        },
+        ws_hub: ws::WsHub::new(),
+        ticket_store: ws::TicketStore::new(),
+        wal_store: Arc::new(wal::WalStore::new(&vault_root_arc)),
+        pending_writes: fs_watch::PendingWrites::new(),
+        passkey_mgr: None,
+        public_dir: None,
+        scan_options: crate::scanner::ScanOptions::default(),
+        #[cfg(feature = "semantic")]
+        vector_index: None,
+        asset_storage: crate::assets::store::StorageCounterGuard::new(0),
+        asset_max_file_bytes: 10 * 1024 * 1024,
+        asset_max_total_bytes: 100 * 1024 * 1024,
+    };
+
+    run(state, port, bind_addr, std::time::Duration::from_secs(60)).await
+}
+
+/// Auto-pick a theme for the SPEC-040 embedded serve at launch by
+/// scanning `<vault_root>/.zetl/themes/`. Returns the first installed
+/// theme alphabetically, or `"default"` if no disk theme is present.
+///
+/// Used by [`launch_default`] when the mobile shell launches; ignored
+/// by the desktop CLI, where the theme comes from `--theme`.
+#[cfg(feature = "mobile")]
+fn detect_vault_theme(vault_root: &std::path::Path) -> String {
+    let themes_dir = vault_root.join(".zetl").join("themes");
+    let Ok(read_dir) = std::fs::read_dir(&themes_dir) else {
+        return "default".to_string();
+    };
+    let mut names: Vec<String> = read_dir
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
+        .collect();
+    names.sort();
+    names
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| "default".to_string())
 }
 
 /// ETag + conditional-GET middleware for text/html responses.

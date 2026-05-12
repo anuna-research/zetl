@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}{{ vault.name }} - outline{% endblock %}
+{% block chrome_title %}{{ vault.name }}{% endblock %}
+
+{% block content %}
+<main class="main-content">
+  <h1 class="section-title">Vault</h1>
+  <div class="stats-line" aria-label="Vault statistics">
+    <span>{{ vault.stats.total_pages }} pages</span>
+    <span>{{ vault.stats.total_links }} links</span>
+    <span>{{ vault.stats.dead_links }} dead links</span>
+    <span>{{ vault.stats.orphans }} orphans</span>
+  </div>
+
+  <div class="outline-toolbar">
+    <input id="page-filter" class="outline-filter" type="search" placeholder="Filter pages..." autocomplete="off">
+    <button class="icon-btn" type="button" onclick="openSearch()">Search</button>
+  </div>
+
+  <h2 class="section-title">All pages</h2>
+  <ul class="outline-list" id="page-list">
+    {% for page in vault.pages %}
+    <li>
+      <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}" data-page-row>
+        <span>{{ page.title }}</span>
+        <span class="meta">{{ page.outlink_count }} out / {{ page.backlink_count }} in</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var input = document.getElementById('page-filter');
+  var rows = Array.prototype.slice.call(document.querySelectorAll('[data-page-row]'));
+  if (!input) return;
+  input.addEventListener('input', function(){
+    var q = input.value.trim().toLowerCase();
+    rows.forEach(function(row){
+      row.parentElement.hidden = q && row.textContent.toLowerCase().indexOf(q) === -1;
+    });
+  });
+})();
+</script>
+{% endblock %}

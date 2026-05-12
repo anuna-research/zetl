@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability for the main window. SPEC-040: includes opener:allow-open-url so the JS click handler in MOBILE_EXTERNAL_LINK_JS can route target=\"_blank\" anchors through the OS opener instead of trapping the user inside the Tauri WebView.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "opener:allow-open-url"
+  ]
+}

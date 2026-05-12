@@ -317,6 +317,12 @@ fn __build_env_finish(env: &mut Environment<'static>, vault_root: &Path, theme: 
         resolve_graph_placement_for(vault_root, theme),
     );
 
+    // SPEC-040 mobile-mode flag: when the embedded serve is part of
+    // the Tauri Mobile shell, templates can inject mobile-specific
+    // sidebar entries (Vaults / Capture / Sync) gated on this global.
+    // Off otherwise so desktop serve stays unchanged.
+    env.add_global("mobile_mode", cfg!(feature = "mobile"));
+
     // SPEC-027 REQ-300: expose humanise_days (e.g. `3d`, `2w`, `9mo`) as a
     // template filter for history-metadata rendering. The real formatter
     // lives in `crate::history::core` which is feature-gated; when the
@@ -535,6 +541,27 @@ impl TemplateEngine {
     }
 
     /// Render the help page.
+    /// SPEC-040: render a `/_mobile/*` template against an arbitrary
+    /// JSON-shaped context. Used by the mobile handlers in
+    /// `web::mobile` so they don't carry inline HTML — same
+    /// theme-override path (`.zetl/themes/<theme>/<name>` first,
+    /// then bundled) as every other zetl template.
+    pub fn render_mobile(
+        &self,
+        name: &str,
+        ctx: minijinja::Value,
+    ) -> Result<String, TemplateError> {
+        let env = self.env();
+        let tmpl = env
+            .get_template(name)
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output(name));
+        }
+        Ok(html)
+    }
+
     pub fn render_help(
         &self,
         vault_ctx: &VaultContext,

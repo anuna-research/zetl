@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>zetl mobile · recovery</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 30em; margin: 0 auto; padding: calc(1.5em + env(safe-area-inset-top, 0px)) calc(1.5em + env(safe-area-inset-right, 0px)) calc(1.5em + env(safe-area-inset-bottom, 0px)) calc(1.5em + env(safe-area-inset-left, 0px)); }
+    h1 { font-size: 1.2rem; margin: 0 0 1rem; }
+    .hint { font-size: 0.9em; opacity: 0.75; line-height: 1.5; }
+    .warn { background: #fff8e1; border: 1px solid #f0d97c; padding: 0.7em 0.9em; border-radius: 6px; margin-bottom: 1em; }
+    .seed-box { position: relative; background: #f4f4f4; padding: 0.9em; border-radius: 6px; font-family: ui-monospace, monospace; font-size: 1rem; line-height: 1.55; word-spacing: 0.4em; user-select: all; }
+    .seed-blur { filter: blur(6px); transition: filter 200ms; cursor: pointer; }
+    .seed-blur::after { content: 'Tap to reveal'; position: absolute; inset: 0; display: grid; place-items: center; font-family: system-ui; font-size: 0.85em; filter: blur(0); background: rgba(244,244,244,0.7); border-radius: 6px; cursor: pointer; }
+    button { width: 100%; padding: 0.8em; font-size: 1rem; margin-top: 0.6em; }
+    .copy-btn { width: auto; padding: 0.3em 0.7em; font-size: 0.85em; margin: 0.4em 0 0; }
+    .links { font-size: 0.85em; opacity: 0.7; margin-top: 1.5em; display: flex; gap: 1em; }
+    .links a { color: inherit; }
+    details { margin-top: 1.5em; padding-top: 1em; border-top: 1px solid currentColor; opacity: 0.8; }
+    details summary { cursor: pointer; font-size: 0.9em; }
+    pre { background: #f4f4f4; padding: 0.6em; border-radius: 6px; font-size: 0.78em; word-break: break-all; white-space: pre-wrap; margin: 0.4em 0; }
+  </style>
+</head>
+<body data-zetl-mobile-route="recovery">
+{% if mnemonic -%}
+<h1>Recovery phrase</h1>
+<div class="warn">
+  <strong>Write these 12 words down</strong> and store them somewhere safe (paper notebook, password manager). Anyone with these words can derive the same SSH key and access whatever you've granted that key. This phrase is also what lets you restore the same identity on a new device — without it, a lost device means a new identity and re-adding the new pubkey to your git host.
+</div>
+<div class="seed-box seed-blur" data-zetl-mobile-seed onclick="this.classList.remove('seed-blur')">{{ mnemonic }}</div>
+<button type="button" class="copy-btn" onclick="navigator.clipboard.writeText(document.querySelector('[data-zetl-mobile-seed]').textContent).then(() =&gt; { this.textContent = 'Copied'; setTimeout(() =&gt; this.textContent = 'Copy phrase', 1500); })">Copy phrase</button>
+<details>
+  <summary>SSH public key (for git-host setup)</summary>
+  <p class="hint" style="margin-top:0.4em;">This is what you paste into GitHub / GitLab / Codeberg's SSH keys page. Derived from the phrase above.</p>
+  <pre data-zetl-mobile-pubkey>{{ pub_line }}</pre>
+</details>
+{%- else -%}
+<h1>No recovery phrase available</h1>
+<p class="hint">This install pre-dates BIP39 persistence — there is no saved seed phrase for the SSH key in use. To get one, <a href="/_mobile/sync">reset the active vault</a> (you'll lose unpushed local edits in that vault only — other vaults are preserved), then re-onboard. The fresh onboarding generates and saves a new recovery phrase.</p>
+{%- endif %}
+<div class="links"><a href="/_mobile/vaults">Vaults</a> · <a href="/_mobile/sync">Sync</a> · <a href="/">Pages</a></div>
+{{ mobile_external_link_js | safe }}
+</body>
+</html>

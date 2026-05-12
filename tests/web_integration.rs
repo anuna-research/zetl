@@ -69,7 +69,7 @@ fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
         trust_proxy: false,
         #[cfg(feature = "reason")]
         acl_cache: Arc::new(std::sync::Mutex::new(zetl::web::AclCache::new())),
-        git_commit_lock: None,
+        git_commit_lock: zetl::web::git_commit::GitCommitLockSlot::empty(),
         ws_hub: zetl::web::ws::WsHub::new(),
         ticket_store: zetl::web::ws::TicketStore::new(),
         crdt_store: zetl::web::ws::CrdtDocStore::new(Arc::new(vault_root.to_path_buf())),
@@ -1483,6 +1483,17 @@ fn test_bundled_minimal_theme_has_all_templates() {
 }
 
 #[test]
+fn test_bundled_outline_theme_has_all_templates() {
+    use zetl::web::engine::bundled_template;
+    for name in &["base.html", "index.html", "page.html", "folder.html"] {
+        assert!(
+            bundled_template("outline", name).is_some(),
+            "bundled outline theme missing template: {name}"
+        );
+    }
+}
+
+#[test]
 fn test_bundled_minimal_theme_has_no_cdn_links() {
     use zetl::web::engine::bundled_template;
     let cdn_patterns = [
@@ -1497,6 +1508,26 @@ fn test_bundled_minimal_theme_has_no_cdn_links() {
             assert!(
                 !content.contains(cdn),
                 "minimal theme {name} contains CDN reference to {cdn}: NFR-014-002 requires no CDN"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_bundled_outline_theme_has_no_cdn_links() {
+    use zetl::web::engine::bundled_template;
+    let cdn_patterns = [
+        "cdn.jsdelivr.net",
+        "fonts.googleapis.com",
+        "unpkg.com",
+        "cdnjs.cloudflare.com",
+    ];
+    for name in &["base.html", "index.html", "page.html", "folder.html"] {
+        let content = bundled_template("outline", name).unwrap_or("");
+        for cdn in &cdn_patterns {
+            assert!(
+                !content.contains(cdn),
+                "outline theme {name} contains CDN reference to {cdn}: bundled themes must be self-contained"
             );
         }
     }
@@ -1570,6 +1601,46 @@ fn test_build_minimal_theme_produces_valid_site() {
     );
 }
 
+#[test]
+fn test_build_outline_theme_produces_valid_site() {
+    let tmp = tempfile::tempdir().unwrap();
+    build_test_vault(tmp.path());
+
+    let out_dir = tmp.path().join("dist-outline");
+    zetl_cmd(tmp.path())
+        .arg("build")
+        .arg("-o")
+        .arg(out_dir.as_os_str())
+        .arg("--theme")
+        .arg("outline")
+        .assert()
+        .success();
+
+    let index = fs::read_to_string(out_dir.join("index.html")).unwrap();
+    assert!(
+        index.contains("<!DOCTYPE html>") || index.contains("<!doctype html>"),
+        "outline build index should be valid HTML"
+    );
+    assert!(
+        index.contains("outline-shell") && index.contains("Filter pages"),
+        "outline build index should use outline theme chrome"
+    );
+
+    let page_one = fs::read_to_string(out_dir.join("page-one/index.html")).unwrap();
+    assert!(
+        page_one.contains("outline-document") && page_one.contains("outline-board-toggle"),
+        "outline build page should include outline page controls"
+    );
+
+    let graph = fs::read_to_string(out_dir.join("_graph/index.html")).unwrap();
+    assert!(
+        graph.contains("__zetlEnsureGraph")
+            && graph.contains("graphology.min.js")
+            && graph.contains("sigma.min.js"),
+        "outline graph page should inherit the default graph vendor loader"
+    );
+}
+
 /// TEST-014-005 (scenario 1): zetl theme list shows bundled themes (no .zetl/themes/).
 #[test]
 fn test_theme_list_shows_bundled_themes() {
@@ -1603,6 +1674,10 @@ fn test_theme_list_shows_bundled_themes() {
         names.contains(&"minimal"),
         "theme list should include 'minimal' bundled theme, got: {names:?}"
     );
+    assert!(
+        names.contains(&"outline"),
+        "theme list should include 'outline' bundled theme, got: {names:?}"
+    );
 
     // All listed themes should show source = "bundled" when no .zetl/themes/ exists
     for theme in themes {
@@ -1614,7 +1689,7 @@ fn test_theme_list_shows_bundled_themes() {
     }
 
     // Both bundled themes should have version metadata
-    for theme_name in &["default", "minimal"] {
+    for theme_name in &["default", "minimal", "outline"] {
         let t = themes
             .iter()
             .find(|t| t["name"].as_str() == Some(theme_name))
@@ -1821,10 +1896,16 @@ fn test_bundled_theme_size_within_budget() {
             }
         }
     }
-    const BUDGET_BYTES: usize = 220 * 1024; // 220 KB
+    // NFR-014-002 budget. Bumped from 220 KB → 256 KB to accommodate
+    // (a) the `outline` theme added on the SPEC-040 branch and
+    // (b) the SPEC-040 mobile-mode sidebar block in default/base.html.
+    // Bumps go in increments of 32 KB so each step is a deliberate
+    // decision; the next bump is the natural place to land
+    // template-de-duplication / minification work.
+    const BUDGET_BYTES: usize = 256 * 1024; // 256 KB
     assert!(
         total_bytes <= BUDGET_BYTES,
-        "bundled theme content totals {total_bytes} bytes, exceeds 220 KB budget (NFR-014-002)"
+        "bundled theme content totals {total_bytes} bytes, exceeds 256 KB budget (NFR-014-002)"
     );
 }
 
