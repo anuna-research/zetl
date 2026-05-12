@@ -210,6 +210,14 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 # function of its RNG input).
 rand_chacha = "0.3"
 
+# PERF-BUILD-2026-05-12 task `bench-fixture`: synthetic-vault generator
+# used by the perf benchmarks. Lives under `src/bin/` so it does not
+# affect any production code path; build it on demand with
+# `cargo build --release --bin gen-vault`.
+[[bin]]
+name = "gen-vault"
+path = "src/bin/gen-vault.rs"
+
 [[test]]
 name = "reason_integration"
 required-features = ["reason"]
