@@ -1,14 +1,19 @@
 package io.anuna.zetl.mobile
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
+import android.os.Message
 import android.util.Log
 import android.webkit.ConsoleMessage
 import android.webkit.GeolocationPermissions
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.enableEdgeToEdge
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -41,8 +46,45 @@ class MainActivity : TauriActivity() {
     super.onWebViewCreate(webView)
     webView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
     webView.settings.setGeolocationEnabled(true)
+    webView.settings.setSupportMultipleWindows(true)
+    webView.settings.javaScriptCanOpenWindowsAutomatically = true
 
     webView.webChromeClient = object : WebChromeClient() {
+      // Replacing Tauri's RustWebChromeClient also loses its
+      // `onCreateWindow` handler, so target="_blank" links and
+      // `window.open()` go nowhere. Route them out to the system
+      // browser via an ACTION_VIEW intent — the standard pattern is a
+      // throwaway WebView whose WebViewClient intercepts the first URL
+      // load and fires the intent instead.
+      override fun onCreateWindow(
+        view: WebView,
+        isDialog: Boolean,
+        isUserGesture: Boolean,
+        resultMsg: Message,
+      ): Boolean {
+        val tempWebView = WebView(view.context)
+        tempWebView.webViewClient = object : WebViewClient() {
+          override fun shouldOverrideUrlLoading(
+            v: WebView,
+            request: WebResourceRequest,
+          ): Boolean {
+            val intent = Intent(Intent.ACTION_VIEW, request.url).apply {
+              flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            try {
+              this@MainActivity.startActivity(intent)
+            } catch (e: Exception) {
+              Log.w("zetl-webview", "failed to open external url", e)
+            }
+            return true
+          }
+        }
+        val transport = resultMsg.obj as WebView.WebViewTransport
+        transport.webView = tempWebView
+        resultMsg.sendToTarget()
+        return true
+      }
+
       override fun onGeolocationPermissionsShowPrompt(
         origin: String?,
         callback: GeolocationPermissions.Callback?
