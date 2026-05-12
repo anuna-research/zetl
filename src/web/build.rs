@@ -1474,6 +1474,19 @@ pub fn build_static(
     }
 
     // ── folder index pages ─────────────────────────────────────────────
+    //
+    // PERF-BUILD-2026-05-12 / task `folder-index-quadratic`:
+    //
+    // Each folder slug enters `folders` only after we found at least one
+    // page whose slug is rooted in that folder (the while-loop below walks
+    // `/` separators of an actual page's slug, so the entry is derived
+    // from a real page). The prior `data.files.iter().any(...)`
+    // re-verification was therefore provably always true and produced an
+    // O(folders · files) scan that dominated the loop on 10k-page vaults
+    // with deep folder nesting. Drop it — the construction itself is the
+    // existence proof. `page_slug_from_path` is also already lowercased
+    // (see scanner.rs::page_slug_from_path), so the now-removed
+    // `to_lowercase()` calls were redundant.
     let mut folders: HashSet<String> = HashSet::new();
     for file in &data.files {
         let slug = page_slug_from_path(&file.path);
@@ -1487,16 +1500,6 @@ pub fn build_static(
 
     let mut folder_count = 0usize;
     for folder in &folders {
-        let folder_prefix = format!("{}/", folder.to_lowercase());
-        let has_pages = data.files.iter().any(|f| {
-            let s = page_slug_from_path(&f.path);
-            s.to_lowercase().starts_with(&folder_prefix)
-        });
-
-        if !has_pages {
-            continue;
-        }
-
         let folder_dir = out.join(folder);
         std::fs::create_dir_all(&folder_dir)?;
 
