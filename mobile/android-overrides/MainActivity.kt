@@ -1,33 +1,99 @@
 package io.anuna.zetl.mobile
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
+import android.webkit.ConsoleMessage
+import android.webkit.GeolocationPermissions
+import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
 class MainActivity : TauriActivity() {
+  private var pendingGeoOrigin: String? = null
+  private var pendingGeoCallback: GeolocationPermissions.Callback? = null
+
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
   }
 
   // SPEC-040: Tauri loads the WebView from `https://tauri.localhost/`
-  // (the bundled `dist/` placeholder) and the Rust setup() then
-  // navigates it to `http://127.0.0.1:23423/_mobile/...`. That
-  // HTTPS → HTTP hop is mixed content; WebView's default
+  // and the Rust setup() then navigates it to `http://127.0.0.1:23423/_mobile/...`.
+  // The HTTPS → HTTP hop is mixed content; WebView's default
   // `MIXED_CONTENT_NEVER_ALLOW` blocks it and surfaces the failure as
-  // the misleading `ERR_CLEARTEXT_NOT_PERMITTED` error.
+  // the misleading `ERR_CLEARTEXT_NOT_PERMITTED`. Allow mixed content
+  // here; the network-security-config still scopes actual cleartext
+  // reach to 127.0.0.1 / localhost.
   //
-  // Allow mixed content here so the embedded serve is reachable. The
-  // network-security-config still scopes actual cleartext reach to
-  // `127.0.0.1` / `localhost` only.
-  //
-  // Implemented in MainActivity (not the auto-generated RustWebView)
-  // because `cargo tauri android android-studio-script` regenerates
-  // the `generated/` directory on every Gradle build, so patches to
-  // RustWebView.kt get wiped before Kotlin compile.
+  // Also wire up a WebChromeClient that handles geolocation prompts —
+  // Tauri's default chrome client silently drops them so
+  // `navigator.geolocation.watchPosition` times out and the user never
+  // sees a permission dialog. We auto-grant the web prompt when the
+  // user has already granted Android-level location, or request the
+  // Android permission first and forward the result back to the web
+  // callback.
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
     webView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+    webView.settings.setGeolocationEnabled(true)
+
+    webView.webChromeClient = object : WebChromeClient() {
+      override fun onGeolocationPermissionsShowPrompt(
+        origin: String?,
+        callback: GeolocationPermissions.Callback?
+      ) {
+        val granted = ContextCompat.checkSelfPermission(
+          this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED ||
+          ContextCompat.checkSelfPermission(
+            this@MainActivity, Manifest.permission.ACCESS_COARSE_LOCATION
+          ) == PackageManager.PERMISSION_GRANTED
+
+        if (granted) {
+          callback?.invoke(origin, true, false)
+        } else {
+          pendingGeoOrigin = origin
+          pendingGeoCallback = callback
+          ActivityCompat.requestPermissions(
+            this@MainActivity,
+            arrayOf(
+              Manifest.permission.ACCESS_FINE_LOCATION,
+              Manifest.permission.ACCESS_COARSE_LOCATION,
+            ),
+            GEO_PERM_REQUEST,
+          )
+        }
+      }
+
+      override fun onConsoleMessage(msg: ConsoleMessage?): Boolean {
+        if (msg != null) {
+          Log.d("zetl-webview", "${msg.sourceId()}:${msg.lineNumber()} ${msg.message()}")
+        }
+        return true
+      }
+    }
+  }
+
+  override fun onRequestPermissionsResult(
+    requestCode: Int,
+    permissions: Array<out String>,
+    grantResults: IntArray,
+  ) {
+    super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    if (requestCode == GEO_PERM_REQUEST) {
+      val ok = grantResults.any { it == PackageManager.PERMISSION_GRANTED }
+      pendingGeoCallback?.invoke(pendingGeoOrigin, ok, false)
+      pendingGeoOrigin = null
+      pendingGeoCallback = null
+    }
+  }
+
+  companion object {
+    private const val GEO_PERM_REQUEST = 4001
   }
 }

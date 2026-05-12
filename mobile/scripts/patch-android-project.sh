@@ -50,6 +50,14 @@ if ! grep -q 'networkSecurityConfig' "$MANIFEST"; then
   perl -i -pe 's|(android:usesCleartextTraffic="\$\{usesCleartextTraffic\}")|android:networkSecurityConfig="\@xml/network_security_config"\n        $1|' "$MANIFEST"
 fi
 
+# ── AndroidManifest.xml: add geolocation uses-permission entries ────────────
+# Required for `navigator.geolocation.watchPosition` (Map page "Locate me").
+# Without these, the WebChromeClient grant in MainActivity still returns true
+# but the OS denies actual location reads.
+if ! grep -q 'ACCESS_FINE_LOCATION' "$MANIFEST"; then
+  perl -i -pe 's|(\s*<application\b)|    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n$1|' "$MANIFEST"
+fi
+
 # ── MainActivity.kt: mixed-content override + edge-to-edge wiring ───────────
 # Tauri loads the WebView from `https://tauri.localhost/` (the bundled
 # dist/) and then the Rust setup() navigates it to
