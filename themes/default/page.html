@@ -4,12 +4,8 @@
 {% block description %}{% if page.description %}{{ page.description }}{% else %}{{ page.title }} — a page in the {{ vault.name }} knowledge vault.{% endif %}{% endblock %}
 
 {% block content %}
-{% if page.transclusion_cards %}
 <div class="page-with-panel flex-1">
   <main class="flex-1 p-4 sm:p-6 min-w-0">
-{% else %}
-  <main class="flex-1 p-4 sm:p-6 max-w-4xl mx-auto w-full">
-{% endif %}
 
     {# Breadcrumbs #}
     <nav class="text-sm breadcrumbs mb-4">
@@ -115,8 +111,10 @@
     <h3 class="tp-header">Linked Pages</h3>
     {{ page.transclusion_cards | safe }}
   </aside>
-</div>
+  {% else %}
+  <aside class="transclusion-panel transclusion-panel-empty" aria-hidden="true"></aside>
   {% endif %}
+</div>
 {% endblock %}
 
 {% block scripts %}

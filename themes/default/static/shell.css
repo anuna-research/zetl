@@ -48,6 +48,13 @@
         top: 0;
         max-height: 100vh;
       }
+      /* Reserves the sidebar slot so main keeps the same width when a
+         page has no transclusions. Invisible — no border, no padding. */
+      .transclusion-panel-empty {
+        border-left: none;
+        background: transparent;
+        padding: 0;
+      }
       .transclusion-panel .transclusion-card .tc-excerpt {
         display: none;
       }
