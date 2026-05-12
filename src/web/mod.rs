@@ -610,10 +610,22 @@ pub async fn launch_default(
     let search_index = SearchIndex::build(&vault_root, &data.files)
         .map_err(|e| anyhow::anyhow!("search index build failed: {e:?}"))?;
 
-    let theme = "default";
+    // SPEC-040: pick up the active vault's theme. Resolution order:
+    //
+    // 1. `<vault>/.zetl/themes/<name>/` — a disk-installed theme. If
+    //    the user ran `zetl theme install …` on the desktop and the
+    //    install is committed to the cloned repo, we honour it here.
+    //    When multiple are installed we pick the first alphabetically
+    //    so the choice is deterministic.
+    // 2. otherwise → bundled `default`.
+    //
+    // The theme is captured at *launch* — switching between vaults
+    // with different themes requires an app restart in v0.1. Live
+    // engine swap on /_mobile/vaults/switch is a v0.2 polish item.
+    let theme = detect_vault_theme(&vault_root);
     let engine = Arc::new(engine::TemplateEngine::new(
         &vault_root,
-        theme,
+        &theme,
         false,
         false,
     ));
@@ -677,6 +689,30 @@ pub async fn launch_default(
     };
 
     run(state, port, bind_addr, std::time::Duration::from_secs(60)).await
+}
+
+/// Auto-pick a theme for the SPEC-040 embedded serve at launch by
+/// scanning `<vault_root>/.zetl/themes/`. Returns the first installed
+/// theme alphabetically, or `"default"` if no disk theme is present.
+///
+/// Used by [`launch_default`] when the mobile shell launches; ignored
+/// by the desktop CLI, where the theme comes from `--theme`.
+#[cfg(feature = "mobile")]
+fn detect_vault_theme(vault_root: &std::path::Path) -> String {
+    let themes_dir = vault_root.join(".zetl").join("themes");
+    let Ok(read_dir) = std::fs::read_dir(&themes_dir) else {
+        return "default".to_string();
+    };
+    let mut names: Vec<String> = read_dir
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
+        .collect();
+    names.sort();
+    names
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| "default".to_string())
 }
 
 /// ETag + conditional-GET middleware for text/html responses.
