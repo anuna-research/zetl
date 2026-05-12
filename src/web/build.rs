@@ -1306,6 +1306,20 @@ pub fn build_static(
     std::fs::write(help_dir.join("index.html"), help_html)?;
 
     // ── per-page HTML ───────────────────────────────────────────────────
+    //
+    // PERF-BUILD-2026-05-12 / task `hoist-git-repo`:
+    //
+    // Open the git repository once before the per-page loop instead of
+    // calling git2::Repository::discover for every page. Discovery walks
+    // up the filesystem and probes for `.git` on every iteration; doing
+    // it N times wasted real time and serialised behind libgit2's
+    // per-open setup. The repo handle is borrowed mutably by file_log,
+    // so this stays sequential — when the loop becomes a rayon
+    // par_iter (task `parallel-page-render`), each worker will need to
+    // open its own repo handle (Repository is !Send).
+    #[cfg(feature = "history")]
+    let git_repo: Option<git2::Repository> = git2::Repository::discover(vault_root).ok();
+
     let mut count = 0usize;
     for file in &data.files {
         let slug = page_slug_from_path(&file.path);
@@ -1416,13 +1430,15 @@ pub fn build_static(
             // Adversarial defect 2 (REQ-302 parity): serve passes real
             // git log entries; build previously passed `"[]"` which left
             // the template's client-side chart empty. Load git file_log
-            // directly when the vault is inside a git repo.
-            let git_entries_json = match git2::Repository::discover(vault_root) {
-                Ok(repo) => {
-                    let entries = crate::web::git_commit::file_log(&repo, &file.path, 100);
+            // directly when the vault is inside a git repo. The repo
+            // handle is opened once before the page loop (see
+            // `git_repo` above).
+            let git_entries_json = match git_repo.as_ref() {
+                Some(repo) => {
+                    let entries = crate::web::git_commit::file_log(repo, &file.path, 100);
                     serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string())
                 }
-                Err(_) => "[]".to_string(),
+                None => "[]".to_string(),
             };
             let ph_html = engine
                 .render_page_history(
