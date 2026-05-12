@@ -138,68 +138,85 @@ pub fn scan_vault(root: &Path, opts: &ScanOptions) -> Result<Vec<ParsedFile>> {
         }
     });
 
-    let mut parsed_files = Vec::new();
+    // PERF-BUILD-2026-05-12 / task `parallel-scanner`:
+    //
+    // Walk the vault sequentially (the `ignore` walk is mostly stat()
+    // calls, dwarfed by the parse cost) into a path list, then run the
+    // per-file work — read_to_string + parse_file + Merkle hashing — in
+    // parallel via rayon. parse_file is pure CPU and dominates the scan
+    // on cold builds; on an 8-core laptop the speedup is roughly linear.
+    //
+    // Output ordering: rayon's `collect()` preserves input order, and we
+    // additionally sort by path at the end so the returned vector is
+    // deterministic regardless of how rayon scheduled the work. This
+    // matters because downstream (LinkGraph build, slug map, file_index)
+    // depends on a stable iteration order to stay reproducible across
+    // runs.
+    use rayon::prelude::*;
 
+    enum Kind {
+        MarkdownLike, // .md or .fountain — go through parse_file
+        Spl,
+    }
+
+    let mut work: Vec<(PathBuf, Kind)> = Vec::new();
     for entry in builder.build() {
         let entry = entry?;
         let path = entry.path();
-
         if !path.is_file() {
             continue;
         }
-        let ext = path.extension().and_then(|e| e.to_str());
-
-        match ext {
-            Some("md") => {
-                let rel_path = path.strip_prefix(root).unwrap_or(path).to_path_buf();
-                let page_name = page_name_from_path(&rel_path);
-                let content = std::fs::read_to_string(path)?;
-                let mtime = std::fs::metadata(path)?.modified()?;
-
-                let mut parsed = parse_file(&rel_path, &content, &page_name);
-                parsed.mtime = mtime;
-                parsed_files.push(parsed);
-            }
-            Some("fountain") => {
-                let rel_path = path.strip_prefix(root).unwrap_or(path).to_path_buf();
-                let page_name = page_name_from_path(&rel_path);
-                let content = std::fs::read_to_string(path)?;
-                let mtime = std::fs::metadata(path)?.modified()?;
-
-                let mut parsed = parse_file(&rel_path, &content, &page_name);
-                parsed.mtime = mtime;
-                parsed_files.push(parsed);
-            }
-            Some("spl") => {
-                let rel_path = path.strip_prefix(root).unwrap_or(path).to_path_buf();
-                let page_name = page_name_from_path(&rel_path);
-                let content = std::fs::read_to_string(path)?;
-                let mtime = std::fs::metadata(path)?.modified()?;
-
-                let end_line = content.lines().count().max(1) as u32;
-                let spl_block = SplBlock {
-                    source_file: rel_path.clone(),
-                    source_page: page_name.clone(),
-                    start_line: 1,
-                    end_line,
-                    content: content.clone(),
-                };
-
-                let parsed = ParsedFile {
-                    path: rel_path,
-                    page_name,
-                    links: vec![],
-                    spl_blocks: vec![spl_block],
-                    diagnostics: vec![],
-                    mtime,
-                    merkle_leaves: vec![],
-                    file_merkle: None,
-                };
-                parsed_files.push(parsed);
-            }
+        let kind = match path.extension().and_then(|e| e.to_str()) {
+            Some("md") | Some("fountain") => Kind::MarkdownLike,
+            Some("spl") => Kind::Spl,
             _ => continue,
-        }
+        };
+        work.push((path.to_path_buf(), kind));
     }
+
+    let mut parsed_files: Vec<ParsedFile> = work
+        .par_iter()
+        .map(|(abs_path, kind)| -> Result<ParsedFile> {
+            let rel_path = abs_path
+                .strip_prefix(root)
+                .unwrap_or(abs_path)
+                .to_path_buf();
+            let page_name = page_name_from_path(&rel_path);
+            let content = std::fs::read_to_string(abs_path)?;
+            let mtime = std::fs::metadata(abs_path)?.modified()?;
+
+            match kind {
+                Kind::MarkdownLike => {
+                    let mut parsed = parse_file(&rel_path, &content, &page_name);
+                    parsed.mtime = mtime;
+                    Ok(parsed)
+                }
+                Kind::Spl => {
+                    let end_line = content.lines().count().max(1) as u32;
+                    let spl_block = SplBlock {
+                        source_file: rel_path.clone(),
+                        source_page: page_name.clone(),
+                        start_line: 1,
+                        end_line,
+                        content: content.clone(),
+                    };
+                    Ok(ParsedFile {
+                        path: rel_path,
+                        page_name,
+                        links: vec![],
+                        spl_blocks: vec![spl_block],
+                        diagnostics: vec![],
+                        mtime,
+                        merkle_leaves: vec![],
+                        file_merkle: None,
+                    })
+                }
+            }
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    // Final sort for deterministic downstream behaviour.
+    parsed_files.sort_by(|a, b| a.path.cmp(&b.path));
 
     Ok(parsed_files)
 }
