@@ -53,10 +53,8 @@ pub fn install_path_under(base: &Path) -> PathBuf {
 pub fn install_at(base: &Path) -> Result<PathBuf> {
     let path = install_path_under(base);
     let parent = path.parent().expect("install_path always has a parent");
-    fs::create_dir_all(parent)
-        .with_context(|| format!("failed to create {}", parent.display()))?;
-    fs::write(&path, rendered())
-        .with_context(|| format!("failed to write {}", path.display()))?;
+    fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent.display()))?;
+    fs::write(&path, rendered()).with_context(|| format!("failed to write {}", path.display()))?;
     Ok(path)
 }
 
