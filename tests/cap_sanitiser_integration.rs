@@ -183,9 +183,7 @@ fn every_allowlisted_tag_survives_open_close() {
             "caption" | "thead" | "tbody" | "tfoot" | "tr" | "colgroup" => {
                 format!("<table><{tag}>x</{tag}></table>")
             }
-            "th" | "td" => format!(
-                "<table><tbody><tr><{tag}>x</{tag}></tr></tbody></table>"
-            ),
+            "th" | "td" => format!("<table><tbody><tr><{tag}>x</{tag}></tr></tbody></table>"),
             "col" => "<table><colgroup><col></colgroup></table>".to_string(),
             // List items
             "li" => "<ul><li>x</li></ul>".to_string(),

@@ -1070,8 +1070,7 @@ mod tests {
     #[test]
     fn idempotence_passes_for_an_identity_hook() {
         let input = doc(vec![para(vec![text("x")])]);
-        let v =
-            validate_idempotence(Stage::Transform, "identity", "page", input, Ok).unwrap();
+        let v = validate_idempotence(Stage::Transform, "identity", "page", input, Ok).unwrap();
         assert!(v.is_none());
     }
 

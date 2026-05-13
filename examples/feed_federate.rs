@@ -178,10 +178,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!("\n[6/8] second pull: skipped={second_pull_skipped} imported={second_pull_imported}");
     if second_pull_imported != 0 {
-        return Err(format!(
-            "dedup failed; {second_pull_imported} would have been re-imported"
-        )
-        .into());
+        return Err(
+            format!("dedup failed; {second_pull_imported} would have been re-imported").into(),
+        );
     }
 
     // ── Step 7: forget + tombstone re-import block ────────────
