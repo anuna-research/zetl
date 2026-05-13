@@ -1061,10 +1061,10 @@ mod tests {
 
     #[test]
     fn float_comparisons() {
-        let fm = json!({ "x": 3.14 });
+        let fm = json!({ "x": 3.5 });
         check("x > 3", fm.clone(), true);
-        check("x < 3.2", fm.clone(), true);
-        check("x == 3.14", fm, true);
+        check("x < 3.6", fm.clone(), true);
+        check("x == 3.5", fm, true);
     }
 
     #[test]

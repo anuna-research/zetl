@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn p95_picks_19th_of_20_samples() {
-        let samples: Vec<Duration> = (1..=20).map(|i| Duration::from_millis(i)).collect();
+        let samples: Vec<Duration> = (1..=20).map(Duration::from_millis).collect();
         assert_eq!(p95(&samples), Duration::from_millis(19));
     }
 
@@ -450,9 +450,11 @@ mod tests {
     #[test]
     fn page_budget_evaluate_flags_protocol_overrun() {
         let b = PageBudget::from_spec(10);
-        let mut stats = PipelineStats::default();
         // 25 ms transform stage breaches the 10 ms NFR-3207 budget.
-        stats.transform = Duration::from_millis(25);
+        let stats = PipelineStats {
+            transform: Duration::from_millis(25),
+            ..Default::default()
+        };
         let report = b.evaluate("page", &stats, &[]);
         assert_eq!(report.violations.len(), 1);
         assert_eq!(report.violations[0].nfr, "NFR-3207");
@@ -462,9 +464,11 @@ mod tests {
     #[test]
     fn page_budget_evaluate_flags_selector_overrun() {
         let b = PageBudget::from_spec(10);
-        let mut stats = PipelineStats::default();
         // 25 ms pre-parse breaches the 20 ms aggregate selector budget.
-        stats.pre_parse = Duration::from_millis(25);
+        let stats = PipelineStats {
+            pre_parse: Duration::from_millis(25),
+            ..Default::default()
+        };
         let report = b.evaluate("page", &stats, &[]);
         assert_eq!(report.violations.len(), 1);
         assert_eq!(report.violations[0].nfr, "NFR-3201");
@@ -497,9 +501,11 @@ mod tests {
     #[test]
     fn report_format_lines_one_per_violation() {
         let b = PageBudget::from_spec(10);
-        let mut stats = PipelineStats::default();
-        stats.transform = Duration::from_millis(50);
-        stats.pre_parse = Duration::from_millis(50);
+        let stats = PipelineStats {
+            transform: Duration::from_millis(50),
+            pre_parse: Duration::from_millis(50),
+            ..Default::default()
+        };
         let report = b.evaluate("posts/hello", &stats, &[]);
         let lines = report.format_lines();
         assert_eq!(lines.len(), 2);

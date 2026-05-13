@@ -265,8 +265,10 @@ fn single_file_bundle_emits_one_file_per_cohort_when_enabled() {
     let tmp = TempDir::new().unwrap();
     let (_a, pk_eng) = fresh_identity_pair();
     let (_b, pk_ops) = fresh_identity_pair();
-    let mut access = AccessConfig::default();
-    access.single_file = SingleFileConfig { enabled: true };
+    let access = AccessConfig {
+        single_file: SingleFileConfig { enabled: true },
+        ..Default::default()
+    };
 
     run_capability_build(
         &cfg(tmp.path(), access, vec![]),
@@ -348,7 +350,7 @@ fn pure_renderers_are_stable_across_calls() {
 /// Robots.txt is already covered by `cap_robots_txt_integration.rs`
 /// but the deploy-artifact task ties it to the same `Disallow: /c/`
 /// + `Disallow: /_zetl/` expectation, so we pin that a capability
-/// build leaves the existing web-layer emission untouched.
+///   build leaves the existing web-layer emission untouched.
 #[test]
 fn robots_txt_preserved_alongside_deploy_artifacts() {
     // A capability build does NOT run `build_static`, so robots.txt is

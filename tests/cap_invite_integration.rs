@@ -136,8 +136,8 @@ fn delegated_mode_emits_banner_url_and_writes_grant() {
     assert_eq!(grants.grants.len(), 1);
     let g = &grants.grants[0];
     assert_eq!(g.cohort, "engineering");
-    assert_eq!(g.bound, false);
-    assert_eq!(g.revoked, false);
+    assert!(!g.bound);
+    assert!(!g.revoked);
     assert_eq!(g.name.as_deref(), Some("alice"));
     assert!(
         g.recipient

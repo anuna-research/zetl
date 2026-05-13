@@ -286,8 +286,7 @@ mod tests {
         assert!(!out.contains("<script"));
         assert!(
             !out.contains("alert(1)"),
-            "script content must not survive: {}",
-            out
+            "script content must not survive: {out}"
         );
     }
 
@@ -315,7 +314,7 @@ mod tests {
     #[test]
     fn strips_link_preconnect() {
         let out = sanitise("<link rel=\"preconnect\" href=\"https://tracker.example\">");
-        assert!(!out.contains("<link"), "rendered: {}", out);
+        assert!(!out.contains("<link"), "rendered: {out}");
     }
 
     #[test]
@@ -325,15 +324,14 @@ mod tests {
         assert!(!out.contains("onerror"));
         assert!(
             out.contains("href=\"https://ok\""),
-            "href should survive: {}",
-            out
+            "href should survive: {out}"
         );
     }
 
     #[test]
     fn strips_javascript_uri() {
         let out = sanitise("<a href=\"javascript:alert(1)\">x</a>");
-        assert!(!out.contains("javascript:"), "rendered: {}", out);
+        assert!(!out.contains("javascript:"), "rendered: {out}");
     }
 
     #[test]
@@ -345,7 +343,7 @@ mod tests {
     #[test]
     fn strips_data_uri_in_img_src() {
         let out = sanitise("<img src=\"data:image/svg+xml,<svg onload=alert(1)>\">");
-        assert!(!out.contains("data:"), "rendered: {}", out);
+        assert!(!out.contains("data:"), "rendered: {out}");
     }
 
     #[test]
@@ -435,7 +433,7 @@ mod tests {
             "<hr",
             "href=\"https://example.com\"",
         ] {
-            assert!(out.contains(frag), "missing {} in: {}", frag, out);
+            assert!(out.contains(frag), "missing {frag} in: {out}");
         }
     }
 
@@ -448,8 +446,8 @@ mod tests {
         // the scrubber sees a clean slate when deciding whether to
         // add `noopener noreferrer` on external links.
         let out = sanitise("<a href=\"https://ok\" rel=\"preconnect\">x</a>");
-        assert!(!out.contains("preconnect"), "rendered: {}", out);
-        assert!(!out.contains("rel="), "rendered: {}", out);
+        assert!(!out.contains("preconnect"), "rendered: {out}");
+        assert!(!out.contains("rel="), "rendered: {out}");
     }
 
     #[test]

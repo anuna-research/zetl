@@ -115,7 +115,7 @@ fn main() -> anyhow::Result<()> {
 
     // ── 4. grants.toml ─────────────────────────────────────────
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-    let build_epoch = format!("{}", chrono_rfc3339(now));
+    let build_epoch = chrono_rfc3339(now).to_string();
     let grants = GrantsFile {
         version: Some(1),
         grants: vec![Grant {

@@ -184,7 +184,7 @@ fn walk(root: &Path, here: &Path, out: &mut Vec<Page>) -> Result<(), Box<dyn std
         // Use a deterministic per-page date — month rotation across the
         // page set so ar-crawl sees a varied feed.
         let day = (out.len() % 28) as u32 + 1;
-        let date_published = format!("2026-04-{:02}T00:00:00Z", day);
+        let date_published = format!("2026-04-{day:02}T00:00:00Z");
         let id = format!("tag:localhost,2026:zetl/{slug}");
         let url = format!(
             "http://localhost:8088/{}",
@@ -270,7 +270,7 @@ fn url_segment_encode(s: &str) -> String {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
                 out.push(*b as char)
             }
-            other => out.push_str(&format!("%{:02X}", other)),
+            other => out.push_str(&format!("%{other:02X}")),
         }
     }
     out

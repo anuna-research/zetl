@@ -536,7 +536,7 @@ mod tests {
         );
         // /logout gets Clear-Site-Data but NOT CSP (not an HTML surface).
         assert!(
-            !rendered.contains(&format!("/logout\n  Clear-Site-Data: \"cache\", \"storage\", \"executionContexts\"\n  Content-Security-Policy:")),
+            !rendered.contains(&"/logout\n  Clear-Site-Data: \"cache\", \"storage\", \"executionContexts\"\n  Content-Security-Policy:".to_string()),
             "/logout should not carry CSP in _headers"
         );
     }

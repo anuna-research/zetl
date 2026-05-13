@@ -127,10 +127,7 @@ fn assert_no_script_surface(out: &str, input: &str) {
     ] {
         assert!(
             !lower.contains(marker),
-            "denied marker {:?} survived sanitisation\ninput:  {}\noutput: {}",
-            marker,
-            input,
-            out,
+            "denied marker {marker:?} survived sanitisation\ninput:  {input}\noutput: {out}",
         );
     }
 }
@@ -146,18 +143,15 @@ fn owasp_xss_cheatsheet_samples_leave_no_active_content() {
 #[test]
 fn every_req3421_denied_tag_is_stripped() {
     for tag in DENIED_TAGS {
-        let input = format!("<p>before</p><{tag}>payload</{tag}><p>after</p>", tag = tag);
+        let input = format!("<p>before</p><{tag}>payload</{tag}><p>after</p>");
         let out = sanitise(&input);
         assert!(
-            !out.to_lowercase().contains(&format!("<{}", tag)),
-            "tag <{}> survived: {}",
-            tag,
-            out,
+            !out.to_lowercase().contains(&format!("<{tag}")),
+            "tag <{tag}> survived: {out}",
         );
         assert!(
             out.contains("<p>before</p>") && out.contains("<p>after</p>"),
-            "surrounding paragraphs must remain: {}",
-            out,
+            "surrounding paragraphs must remain: {out}",
         );
     }
 }
@@ -167,13 +161,11 @@ fn every_denied_attribute_is_stripped() {
     // Use `<a>` as a carrier for attrs that would otherwise be per-tag;
     // `<div>` for the rest.
     for attr in DENIED_ATTRIBUTES {
-        let input = format!("<div {}=\"x\">hi</div>", attr);
+        let input = format!("<div {attr}=\"x\">hi</div>");
         let out = sanitise(&input);
         assert!(
-            !out.contains(&format!("{}=", attr)),
-            "attribute {} survived on <div>: {}",
-            attr,
-            out,
+            !out.contains(&format!("{attr}=")),
+            "attribute {attr} survived on <div>: {out}",
         );
     }
 }
@@ -189,36 +181,32 @@ fn every_allowlisted_tag_survives_open_close() {
         match tag {
             // Table internals
             "caption" | "thead" | "tbody" | "tfoot" | "tr" | "colgroup" => {
-                format!("<table><{tag}>x</{tag}></table>", tag = tag)
+                format!("<table><{tag}>x</{tag}></table>")
             }
             "th" | "td" => format!(
-                "<table><tbody><tr><{tag}>x</{tag}></tr></tbody></table>",
-                tag = tag
+                "<table><tbody><tr><{tag}>x</{tag}></tr></tbody></table>"
             ),
-            "col" => format!("<table><colgroup><col></colgroup></table>"),
+            "col" => "<table><colgroup><col></colgroup></table>".to_string(),
             // List items
-            "li" => format!("<ul><li>x</li></ul>"),
-            "dd" | "dt" => format!("<dl><{tag}>x</{tag}></dl>", tag = tag),
+            "li" => "<ul><li>x</li></ul>".to_string(),
+            "dd" | "dt" => format!("<dl><{tag}>x</{tag}></dl>"),
             // <details>/<summary>
-            "summary" => format!("<details><summary>x</summary></details>"),
+            "summary" => "<details><summary>x</summary></details>".to_string(),
             // Ruby internals
-            "rp" | "rt" => format!("<ruby>a<{tag}>x</{tag}></ruby>", tag = tag),
+            "rp" | "rt" => format!("<ruby>a<{tag}>x</{tag}></ruby>"),
             // <figcaption> inside <figure>
-            "figcaption" => format!("<figure><figcaption>x</figcaption></figure>"),
+            "figcaption" => "<figure><figcaption>x</figcaption></figure>".to_string(),
             // Void / normal tags — self-closing forms are normalised but
             // the opening `<tag` substring survives.
-            _ => format!("<{tag}>x</{tag}>", tag = tag),
+            _ => format!("<{tag}>x</{tag}>"),
         }
     }
     for tag in ALLOWED_TAGS {
         let input = wrap(tag);
         let out = sanitise(&input);
         assert!(
-            out.to_lowercase().contains(&format!("<{}", tag)),
-            "allowed tag <{}> was stripped\ninput:  {}\noutput: {}",
-            tag,
-            input,
-            out,
+            out.to_lowercase().contains(&format!("<{tag}")),
+            "allowed tag <{tag}> was stripped\ninput:  {input}\noutput: {out}",
         );
     }
 }
@@ -226,13 +214,11 @@ fn every_allowlisted_tag_survives_open_close() {
 #[test]
 fn allowed_url_schemes_survive_in_href() {
     for scheme in ALLOWED_URL_SCHEMES {
-        let input = format!("<a href=\"{}://example.example/x\">x</a>", scheme);
+        let input = format!("<a href=\"{scheme}://example.example/x\">x</a>");
         let out = sanitise(&input);
         assert!(
-            out.contains(&format!("{}://", scheme)),
-            "scheme {}: should survive in href: {}",
-            scheme,
-            out,
+            out.contains(&format!("{scheme}://")),
+            "scheme {scheme}: should survive in href: {out}",
         );
     }
 }
@@ -240,13 +226,11 @@ fn allowed_url_schemes_survive_in_href() {
 #[test]
 fn disallowed_url_schemes_stripped_from_href() {
     for scheme in ["javascript", "data", "vbscript", "file", "about", "blob"] {
-        let input = format!("<a href=\"{}:payload\">x</a>", scheme);
+        let input = format!("<a href=\"{scheme}:payload\">x</a>");
         let out = sanitise(&input);
         assert!(
-            !out.to_lowercase().contains(&format!("{}:", scheme)),
-            "scheme {}: survived in href: {}",
-            scheme,
-            out,
+            !out.to_lowercase().contains(&format!("{scheme}:")),
+            "scheme {scheme}: survived in href: {out}",
         );
     }
 }
@@ -265,8 +249,7 @@ fn common_commonmark_paragraph_roundtrips() {
     // `cap::sanitiser::tests::strips_author_rel_so_referrer_scrub_owns_rel_policy`.
     assert!(
         !out.contains("rel="),
-        "sanitiser must not emit rel attributes: {}",
-        out
+        "sanitiser must not emit rel attributes: {out}"
     );
 }
 
@@ -284,7 +267,7 @@ fn table_with_thead_tbody_survives() {
         "<th scope=\"col\">",
         "<td>a</td>",
     ] {
-        assert!(out.contains(frag), "missing {}: {}", frag, out);
+        assert!(out.contains(frag), "missing {frag}: {out}");
     }
 }
 
@@ -292,7 +275,7 @@ fn table_with_thead_tbody_survives() {
 fn code_block_with_lang_attr_survives() {
     let html = "<pre data-lang=\"rust\"><code data-lang=\"rust\">fn f() {}</code></pre>";
     let out = sanitise(html);
-    assert!(out.contains("data-lang=\"rust\""), "rendered: {}", out);
+    assert!(out.contains("data-lang=\"rust\""), "rendered: {out}");
     assert!(out.contains("<pre"));
     assert!(out.contains("<code"));
 }

@@ -81,7 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== federation playtest: vault A → vault B ===\n");
 
     // ── Step 1+2: Pull + parse ─────────────────────────────────
-    println!("[1/8] pulling {} ...", A_FEED_URL);
+    println!("[1/8] pulling {A_FEED_URL} ...");
     let body = http_get_localhost("/atom.xml", 8088)?;
     println!("       received {} bytes", body.len());
     let feed = parse_atom(&body);
@@ -179,8 +179,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n[6/8] second pull: skipped={second_pull_skipped} imported={second_pull_imported}");
     if second_pull_imported != 0 {
         return Err(format!(
-            "dedup failed; {} would have been re-imported",
-            second_pull_imported
+            "dedup failed; {second_pull_imported} would have been re-imported"
         )
         .into());
     }
@@ -359,7 +358,7 @@ fn write_inbox_entry(
     buf.push_str(&format!("original_item_url: {:?}\n", fm.original_item_url));
     buf.push_str(&format!("license: {:?}\n", fm.license));
     if let Some(u) = &fm.license_url {
-        buf.push_str(&format!("license_url: {:?}\n", u));
+        buf.push_str(&format!("license_url: {u:?}\n"));
     }
     buf.push_str("---\n\n");
     buf.push_str(&entry.content_html);
@@ -423,7 +422,7 @@ impl Entry {
             .rsplit_once(":zetl/")
             .map(|(_, s)| s)
             .unwrap_or(&self.id);
-        after.replace('/', "_").replace(' ', "_")
+        after.replace(['/', ' '], "_")
     }
 }
 

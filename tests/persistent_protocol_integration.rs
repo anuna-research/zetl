@@ -215,7 +215,7 @@ fn protocol_overhead_per_run_is_fast() {
     let p95 = samples[(samples.len() as f64 * 0.95) as usize];
     let p50 = samples[samples.len() / 2];
 
-    eprintln!("persistent protocol p50={:?} p95={:?}", p50, p95);
+    eprintln!("persistent protocol p50={p50:?} p95={p95:?}");
 
     // Hard-cap at the spec budget (10 ms) so the gate matches NFR-3207
     // regardless of host. Loopback Python echo on any modern CI worker

@@ -111,7 +111,7 @@ proptest! {
         let bits = 48 + bits_choice * 8; // 48, 56, 64, ..., 128
         let out = derive_path_cap(&secret, &salt, "eng", "a", bits).unwrap();
         // Crockford base32: ceil(bits / 5) chars
-        let expected_len = ((bits as usize) + 4) / 5;
+        let expected_len = (bits as usize).div_ceil(5);
         prop_assert_eq!(out.len(), expected_len);
     }
 

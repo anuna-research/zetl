@@ -154,9 +154,8 @@ fn matrix_lint_every_matrix_section_is_registered() {
     for id in &matrix_ids {
         assert!(
             registered.contains(id.as_str()),
-            "tools/zetl-ecosystem-matrix.toml has section [ecosystem.{}] \
+            "tools/zetl-ecosystem-matrix.toml has section [ecosystem.{id}] \
              but no matching entry in src/ecosystems/registry.rs",
-            id,
         );
     }
 }

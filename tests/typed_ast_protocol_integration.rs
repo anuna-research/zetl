@@ -276,7 +276,7 @@ fn zetl_only_binary_rejects_foreign_ast_type_with_hint() {
         "needs-pandoc",
         &[],
         doc_with(vec![]),
-        |v| Ok(v),
+        Ok,
     )
     .unwrap_err();
 

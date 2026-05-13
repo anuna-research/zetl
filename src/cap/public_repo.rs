@@ -790,7 +790,7 @@ mod tests {
         "#;
         let lens = parse_config_lens(toml_body).unwrap();
         let sk = lens.access.unwrap().split_key.unwrap();
-        assert_eq!(sk.enabled, false);
+        assert!(!sk.enabled);
     }
 
     #[test]

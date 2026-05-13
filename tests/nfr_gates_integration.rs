@@ -342,10 +342,12 @@ fn nfr_3207_protocol_overhead_smoke() {
     use zetl::hooks::pipeline::PipelineStats;
 
     let budget = PageBudget::default();
-    let mut quiet = PipelineStats::default();
     // Inhabit each timer with a value well inside its budget.
-    quiet.transform = Duration::from_millis(1);
-    quiet.pre_parse = Duration::from_millis(1);
+    let quiet = PipelineStats {
+        transform: Duration::from_millis(1),
+        pre_parse: Duration::from_millis(1),
+        ..Default::default()
+    };
     let report = budget.evaluate("smoke", &quiet, &[]);
     assert!(
         report.passed(),
@@ -354,14 +356,18 @@ fn nfr_3207_protocol_overhead_smoke() {
     );
 
     // Boundary: at exactly the budget we still pass (≤).
-    let mut at_budget = PipelineStats::default();
-    at_budget.transform = PROTOCOL_OVERHEAD_BUDGET;
+    let at_budget = PipelineStats {
+        transform: PROTOCOL_OVERHEAD_BUDGET,
+        ..Default::default()
+    };
     let r = budget.evaluate("at-edge", &at_budget, &[]);
     assert!(r.passed(), "NFR-3207: budget-edge value should pass (≤)");
 
     // Just over: trips a single NFR-3207 violation.
-    let mut over = PipelineStats::default();
-    over.transform = PROTOCOL_OVERHEAD_BUDGET + Duration::from_millis(1);
+    let over = PipelineStats {
+        transform: PROTOCOL_OVERHEAD_BUDGET + Duration::from_millis(1),
+        ..Default::default()
+    };
     let r = over_report_for("over", &budget, &over);
     assert_eq!(r, vec!["NFR-3207"]);
 

@@ -81,7 +81,7 @@ fn hook_new_scaffolds_at_expected_paths() {
     // invoke the file directly.
     use std::os::unix::fs::PermissionsExt;
     let mode = fs::metadata(&hook_path).unwrap().permissions().mode();
-    assert_eq!(mode & 0o111, 0o111, "scaffold must set +x: mode={:o}", mode);
+    assert_eq!(mode & 0o111, 0o111, "scaffold must set +x: mode={mode:o}");
 
     // Manifest parses as valid TOML + has the expected stage field.
     let manifest_text = fs::read_to_string(&manifest_path).unwrap();

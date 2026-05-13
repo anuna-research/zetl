@@ -87,7 +87,7 @@ fn normalise_test_token(raw: &str) -> Option<String> {
     } else if first_token
         .chars()
         .next()
-        .map_or(false, |c| c.is_ascii_digit())
+        .is_some_and(|c| c.is_ascii_digit())
     {
         // Spec uses comma-list shorthand: `TEST-3201, 3201-perf`.
         format!("TEST-{first_token}")

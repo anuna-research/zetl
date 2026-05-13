@@ -253,7 +253,7 @@ mod tests {
 
     /// OsRng path smoke-tests (can't be seeded, so we only check shape
     /// + size). Keeps the effectful wrapper covered so a future refactor
-    /// doesn't silently break it.
+    ///   doesn't silently break it.
     #[test]
     fn os_rng_wrapper_produces_tier_sized_list() {
         let padding = pad_to_tier(5).unwrap();

@@ -332,6 +332,7 @@ fn canonicalise_equates_docs_that_differ_only_in_positions() {
 ///   - preserves wikilinks (passes preserves check), BUT
 ///   - is not idempotent (breaks idempotent check), AND
 ///   - runs at the transform stage so `may_restructure` is skipped.
+///
 /// The report must flag exactly the idempotence violation.
 #[test]
 fn property_test_harness_end_to_end_reports_only_observed_violations() {
@@ -384,7 +385,7 @@ fn property_test_harness_identity_hook_passes_every_tier1_check() {
         input: doc(vec![para(vec![wikilink("A"), wikilink("B")]), embed("X")]),
         input_size: 1000,
     };
-    let report = run_property_test(&case, "identity", "page", |d| Ok(d)).unwrap();
+    let report = run_property_test(&case, "identity", "page", Ok).unwrap();
     assert!(
         report.passed(),
         "expected all-pass report, got {:?}",

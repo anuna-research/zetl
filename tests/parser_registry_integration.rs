@@ -191,8 +191,7 @@ default = "pandoc"
     let parser = reg.require(&name).unwrap();
     let err = parser
         .parse("# anything")
-        .err()
-        .expect("pandoc stub must error");
+        .expect_err("pandoc stub must error");
     match err {
         ParseError::RuntimeUnavailable { parser, hint } => {
             assert_eq!(parser, "pandoc");
@@ -263,7 +262,6 @@ parser = "pandoc"
         .require(&name)
         .unwrap()
         .parse("# paper body")
-        .err()
-        .expect("pandoc stub errors until adapter lands");
+        .expect_err("pandoc stub errors until adapter lands");
     assert!(matches!(err, ParseError::RuntimeUnavailable { .. }));
 }

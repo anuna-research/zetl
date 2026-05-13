@@ -175,18 +175,18 @@ fn page_location(idx: usize, pad: usize, seed: u64) -> PageLoc {
         2
     };
 
-    let mut rel = PathBuf::from(format!("topic-{}", topic));
+    let mut rel = PathBuf::from(format!("topic-{topic}"));
     if depth >= 1 {
         let sub = rng.next_u32() % 6;
-        rel.push(format!("sub-{}", sub));
+        rel.push(format!("sub-{sub}"));
     }
     if depth >= 2 {
         let sub2 = rng.next_u32() % 4;
-        rel.push(format!("sub-{}", sub2));
+        rel.push(format!("sub-{sub2}"));
     }
 
-    let page_name = format!("page-{:0width$}", idx, width = pad);
-    rel.push(format!("{}.md", page_name));
+    let page_name = format!("page-{idx:0pad$}");
+    rel.push(format!("{page_name}.md"));
     PageLoc {
         rel_path: rel,
         page_name,
@@ -211,11 +211,11 @@ fn write_page<W: Write>(
             .wrapping_add(idx as u64),
     );
 
-    let title = format!("Page {:04}", idx);
+    let title = format!("Page {idx:04}");
     let date = deterministic_date(idx, seed);
     writeln!(w, "---")?;
-    writeln!(w, "title: \"{}\"", title)?;
-    writeln!(w, "date: {}", date)?;
+    writeln!(w, "title: \"{title}\"")?;
+    writeln!(w, "date: {date}")?;
     writeln!(w, "---")?;
     writeln!(w)?;
 
@@ -242,7 +242,7 @@ fn write_page<W: Write>(
 
     for h in 0..heading_count {
         let heading_text = HEADINGS[(idx + h) % HEADINGS.len()];
-        writeln!(w, "## {}", heading_text)?;
+        writeln!(w, "## {heading_text}")?;
         writeln!(w)?;
 
         // Paragraph of ~40-80 words.
@@ -255,8 +255,8 @@ fn write_page<W: Write>(
         // `code_block_heading`. Uses ``` not ~~~.
         if h == code_block_heading {
             writeln!(w, "```rust")?;
-            writeln!(w, "fn page_{:04}() -> &'static str {{", idx)?;
-            writeln!(w, "    \"synthetic page {} sample\"", idx)?;
+            writeln!(w, "fn page_{idx:04}() -> &'static str {{")?;
+            writeln!(w, "    \"synthetic page {idx} sample\"")?;
             writeln!(w, "}}")?;
             writeln!(w, "```")?;
             writeln!(w)?;
@@ -274,7 +274,7 @@ fn write_page<W: Write>(
         let mut emitted_in_block = 0usize;
         if h == transclude_heading {
             let target = pick_target(&mut rng, idx, layout, /* phantom_chance */ 20);
-            writeln!(w, "See also ![[{}]] for context.", target)?;
+            writeln!(w, "See also ![[{target}]] for context.")?;
             emitted_in_block += 1;
         }
 
@@ -288,10 +288,10 @@ fn write_page<W: Write>(
                 if k > 0 {
                     buf.push_str(", ");
                 }
-                buf.push_str(&format!("[[{}]]", target));
+                buf.push_str(&format!("[[{target}]]"));
             }
             buf.push('.');
-            writeln!(w, "{}", buf)?;
+            writeln!(w, "{buf}")?;
         }
         writeln!(w)?;
     }
@@ -308,11 +308,11 @@ fn pick_target(rng: &mut Rng, self_idx: usize, layout: &[PageLoc], phantom_chanc
         // Phantom name — guaranteed not to clash with the
         // `page-NNNN` namespace.
         let n = rng.next_u32();
-        format!("phantom-{:08x}", n)
+        format!("phantom-{n:08x}")
     } else if layout.len() <= 1 {
         // Single-page vault: fall back to phantom.
         let n = rng.next_u32();
-        format!("phantom-{:08x}", n)
+        format!("phantom-{n:08x}")
     } else {
         let mut t = (rng.next_u32() as usize) % layout.len();
         if t == self_idx {
@@ -334,7 +334,7 @@ fn write_lorem<W: Write>(w: &mut W, rng: &mut Rng, words: usize) -> std::io::Res
                 write!(w, " ")?;
             }
         }
-        write!(w, "{}", word)?;
+        write!(w, "{word}")?;
         line_words += 1;
     }
     writeln!(w, ".")?;
@@ -353,7 +353,7 @@ fn deterministic_date(idx: usize, seed: u64) -> String {
     let month = 1 + (rng.next_u32() % 12); // 1..=12
                                            // Day capped at 28 to avoid month-length edge cases.
     let day = 1 + (rng.next_u32() % 28);
-    format!("{:04}-{:02}-{:02}", year, month, day)
+    format!("{year:04}-{month:02}-{day:02}")
 }
 
 // ── PRNG ───────────────────────────────────────────────────────────────

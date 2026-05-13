@@ -416,7 +416,7 @@ mod tests {
         let mut page = PageTemplateVars::new();
         let outcome = page.emit("tasks", Stage::Transform, json!({"total": 12}));
         assert!(matches!(outcome, EmitOutcome::Emitted { .. }));
-        assert_eq!(outcome.is_accepted(), true);
+        assert!(outcome.is_accepted());
 
         let root = page.to_page_ext();
         assert_eq!(root["tasks"]["total"], json!(12));

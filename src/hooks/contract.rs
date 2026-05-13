@@ -1071,7 +1071,7 @@ mod tests {
     fn idempotence_passes_for_an_identity_hook() {
         let input = doc(vec![para(vec![text("x")])]);
         let v =
-            validate_idempotence(Stage::Transform, "identity", "page", input, |d| Ok(d)).unwrap();
+            validate_idempotence(Stage::Transform, "identity", "page", input, Ok).unwrap();
         assert!(v.is_none());
     }
 
@@ -1232,8 +1232,8 @@ mod tests {
             input: doc(vec![para(vec![wikilink("A")]), embed("X")]),
             input_size: 0,
         };
-        let report = run_property_test(&case, "identity", "page", |d| Ok(d)).unwrap();
-        assert!(report.passed(), "expected empty report, got {:?}", report);
+        let report = run_property_test(&case, "identity", "page", Ok).unwrap();
+        assert!(report.passed(), "expected empty report, got {report:?}");
         assert_eq!(report.case_name, "identity-passes");
     }
 
@@ -1363,7 +1363,7 @@ mod tests {
         };
         // Output serialises to much more than 12 bytes; the bound is
         // 1.2x so this trips.
-        let report = run_property_test(&case, "h", "p", |d| Ok(d)).unwrap();
+        let report = run_property_test(&case, "h", "p", Ok).unwrap();
         let subs: Vec<_> = report.violations.iter().map(|v| v.sub_reason).collect();
         assert!(subs.contains(&ContractSubReason::ExpansionBound));
     }

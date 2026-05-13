@@ -10,8 +10,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use assert_cmd::prelude::*;
-use std::process::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
 use tempfile::TempDir;
 
 /// Walk `root` and collect (relative-path, file-bytes) for every `.md`
@@ -47,8 +46,7 @@ fn gen_vault_is_deterministic_for_same_seed() {
     let tmp_b = TempDir::new().unwrap();
 
     // Run #1
-    Command::cargo_bin("gen-vault")
-        .unwrap()
+    cargo_bin_cmd!("gen-vault")
         .args(["--pages", "50", "--avg-links", "8", "--seed", "42", "--out"])
         .arg(tmp_a.path())
         .arg("--force")
@@ -56,8 +54,7 @@ fn gen_vault_is_deterministic_for_same_seed() {
         .success();
 
     // Run #2 — separate tempdir, same seed/flags.
-    Command::cargo_bin("gen-vault")
-        .unwrap()
+    cargo_bin_cmd!("gen-vault")
         .args(["--pages", "50", "--avg-links", "8", "--seed", "42", "--out"])
         .arg(tmp_b.path())
         .arg("--force")
@@ -88,8 +85,7 @@ fn gen_vault_is_deterministic_for_same_seed() {
         let vb = snap_b.get(k).unwrap();
         assert_eq!(
             va, vb,
-            "content for {} differs across runs with the same seed",
-            k
+            "content for {k} differs across runs with the same seed"
         );
     }
 }
@@ -99,8 +95,7 @@ fn gen_vault_refuses_non_empty_dir_without_force() {
     let tmp = TempDir::new().unwrap();
     fs::write(tmp.path().join("squatter.txt"), b"hi").unwrap();
 
-    Command::cargo_bin("gen-vault")
-        .unwrap()
+    cargo_bin_cmd!("gen-vault")
         .args(["--pages", "5", "--seed", "1", "--out"])
         .arg(tmp.path())
         .assert()
