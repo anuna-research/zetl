@@ -11695,6 +11695,9 @@ fn main() -> anyhow::Result<()> {
                 corpus_root.as_deref(),
             ),
         },
+        Command::Skill { command } => match command {
+            zetl::cli::SkillCommand::Init { user } => zetl::skill::cmd_skill_init(*user),
+        },
     }
 }
 

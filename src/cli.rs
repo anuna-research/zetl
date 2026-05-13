@@ -591,6 +591,28 @@ pub enum Command {
         #[command(subcommand)]
         command: CapCommand,
     },
+
+    /// Install the bundled Claude Code skill (`SKILL.md`)
+    #[command(
+        after_help = "Examples:\n  zetl skill init           Install to ./.claude/skills/zetl/ (project)\n  zetl skill init --user    Install to ~/.claude/skills/zetl/ (global)\n\nIdempotent: overwrites any existing file so a binary upgrade refreshes the skill."
+    )]
+    Skill {
+        #[command(subcommand)]
+        command: SkillCommand,
+    },
+}
+
+/// Subcommands for `zetl skill` — self-bootstrap a Claude Code skill
+/// pointing at this `zetl` binary.
+#[derive(Subcommand)]
+pub enum SkillCommand {
+    /// Write the bundled `SKILL.md` to disk.
+    Init {
+        /// Install at `~/.claude/skills/zetl/` instead of `./.claude/skills/zetl/`.
+        /// `--global` is accepted as an alias.
+        #[arg(long, visible_alias = "global")]
+        user: bool,
+    },
 }
 
 /// Subcommands for `zetl cap` (SPEC-034 REQ-3416 capability-URL
