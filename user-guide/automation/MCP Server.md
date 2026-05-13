@@ -81,6 +81,19 @@ Drop this into `claude_desktop_config.json`:
 
 Claude Desktop spawns one stdio subprocess per MCP server it knows about, so the agent has live access the whole time the chat is open. Restart Claude Desktop after editing the config. The zetl server logs to stderr — visible in the Desktop log pane if a tool call misbehaves.
 
+## Claude Code skill
+
+For [Claude Code](https://docs.claude.com/claude-code) (the CLI/IDE agent — distinct from Claude Desktop above), bootstrap the bundled skill so the agent knows when `zetl` is the right tool:
+
+```bash
+zetl skill init             # ./.claude/skills/zetl/SKILL.md   (project scope, commit it)
+zetl skill init --global    # ~/.claude/skills/zetl/SKILL.md   (all your projects)
+```
+
+The skill is a short `SKILL.md` documenting trigger conditions (`[[wikilink]]` syntax, `.zetl/` directories, SPL blocks) and the common commands — `links`, `backlinks`, `check --dead-links`, `build`, `hook new`. It's idempotent and version-locked to the binary that writes it, so a `zetl` upgrade + `zetl skill init` rerun refreshes the skill in lockstep.
+
+Skills and MCP complement each other: the skill teaches the agent *which command to reach for*; the MCP server (above) lets it *run those commands* against a live vault.
+
 ## Cursor / other IDEs
 
 Any MCP-aware client that takes a `command` + `args` pair works the same way. Point the config at the `zetl` binary with `-d <vault>` and `mcp`; the client handles transport. For HTTP clients, configure the token header with the output of `zetl delegate`.

@@ -60,6 +60,7 @@ Every subcommand honours these, wherever they make sense.
 | [`delegate`](#zetl-delegate) | Issue a delegate JWT | `mcp` |
 | [`completions`](#zetl-completions) | Emit a shell completion script | — |
 | [`man`](#zetl-man) | Emit a roff(7) man page | — |
+| [`skill`](#zetl-skill) | Install the bundled Claude Code `SKILL.md` | — |
 
 ---
 
@@ -330,6 +331,18 @@ Supported shells: `bash`, `zsh`, `fish`, `elvish`, `powershell`.
 ## zetl man
 
 Print a roff(7) man page. Preview with `zetl man | man -l -`.
+
+## zetl skill
+
+Install the bundled [Claude Code](https://docs.claude.com/claude-code) skill so the agent knows when to reach for `zetl`. The `SKILL.md` is embedded in the binary; the on-disk copy carries the same version as the binary that wrote it, so an upgrade + re-run refreshes the skill.
+
+```bash
+zetl skill init             # write ./.claude/skills/zetl/SKILL.md  (project scope, commit it)
+zetl skill init --user      # write ~/.claude/skills/zetl/SKILL.md  (global)
+zetl skill init --global    # alias for --user
+```
+
+The file follows the [agentskills.io](https://agentskills.io) frontmatter schema (`name`, `description`, `license`, `compatibility`, `metadata`). Pairs naturally with [[MCP Server|zetl mcp]] — the skill teaches the agent which `zetl` command to reach for; the MCP server gives it live access to vault contents.
 
 ## Related
 
