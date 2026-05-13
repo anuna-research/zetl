@@ -30,7 +30,11 @@ fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<String, Vec<u8>>) {
         if ft.is_dir() {
             walk(root, &path, out);
         } else if ft.is_file() && path.extension().and_then(|e| e.to_str()) == Some("md") {
-            let rel = path.strip_prefix(root).unwrap().to_string_lossy().to_string();
+            let rel = path
+                .strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
             let bytes = fs::read(&path).unwrap();
             out.insert(rel, bytes);
         }
@@ -45,15 +49,7 @@ fn gen_vault_is_deterministic_for_same_seed() {
     // Run #1
     Command::cargo_bin("gen-vault")
         .unwrap()
-        .args([
-            "--pages",
-            "50",
-            "--avg-links",
-            "8",
-            "--seed",
-            "42",
-            "--out",
-        ])
+        .args(["--pages", "50", "--avg-links", "8", "--seed", "42", "--out"])
         .arg(tmp_a.path())
         .arg("--force")
         .assert()
@@ -62,15 +58,7 @@ fn gen_vault_is_deterministic_for_same_seed() {
     // Run #2 — separate tempdir, same seed/flags.
     Command::cargo_bin("gen-vault")
         .unwrap()
-        .args([
-            "--pages",
-            "50",
-            "--avg-links",
-            "8",
-            "--seed",
-            "42",
-            "--out",
-        ])
+        .args(["--pages", "50", "--avg-links", "8", "--seed", "42", "--out"])
         .arg(tmp_b.path())
         .arg("--force")
         .assert()
@@ -99,8 +87,7 @@ fn gen_vault_is_deterministic_for_same_seed() {
     for (k, va) in &snap_a {
         let vb = snap_b.get(k).unwrap();
         assert_eq!(
-            va,
-            vb,
+            va, vb,
             "content for {} differs across runs with the same seed",
             k
         );

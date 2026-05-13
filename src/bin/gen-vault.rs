@@ -75,7 +75,10 @@ fn run(cli: &Cli) -> Result<()> {
     // Create the output dir if missing; refuse non-empty unless --force.
     if cli.out.exists() {
         if !cli.out.is_dir() {
-            bail!("--out path {} exists but is not a directory", cli.out.display());
+            bail!(
+                "--out path {} exists but is not a directory",
+                cli.out.display()
+            );
         }
         let mut iter = fs::read_dir(&cli.out)
             .with_context(|| format!("failed to read --out dir {}", cli.out.display()))?;
@@ -97,7 +100,9 @@ fn run(cli: &Cli) -> Result<()> {
 
     // Pre-build the list of (folder-relative-path, page-name) tuples so
     // that link generation can target other pages by basename.
-    let layout: Vec<PageLoc> = (0..cli.pages).map(|i| page_location(i, pad, cli.seed)).collect();
+    let layout: Vec<PageLoc> = (0..cli.pages)
+        .map(|i| page_location(i, pad, cli.seed))
+        .collect();
 
     // For each page write the markdown body.
     for (idx, loc) in layout.iter().enumerate() {
@@ -156,7 +161,10 @@ fn pad_width(pages: usize) -> usize {
 /// The choice is fully deterministic in `seed` + `idx` so the generator
 /// is reproducible.
 fn page_location(idx: usize, pad: usize, seed: u64) -> PageLoc {
-    let mut rng = Rng::new(seed.wrapping_add(0x9E37_79B9_7F4A_7C15).wrapping_add(idx as u64));
+    let mut rng = Rng::new(
+        seed.wrapping_add(0x9E37_79B9_7F4A_7C15)
+            .wrapping_add(idx as u64),
+    );
     let topic = (idx % 8) as u64; // even spread across 8 top folders
     let depth_pick = rng.next_u32() % 100;
     let depth: u32 = if depth_pick < 30 {
@@ -198,7 +206,10 @@ fn write_page<W: Write>(
 ) -> std::io::Result<()> {
     // Per-page RNG: independent from layout-rng so changes to layout
     // distribution don't shift body content.
-    let mut rng = Rng::new(seed.wrapping_add(0xD1B5_4A32_D192_ED03).wrapping_add(idx as u64));
+    let mut rng = Rng::new(
+        seed.wrapping_add(0xD1B5_4A32_D192_ED03)
+            .wrapping_add(idx as u64),
+    );
 
     let title = format!("Page {:04}", idx);
     let date = deterministic_date(idx, seed);
@@ -334,10 +345,13 @@ fn write_lorem<W: Write>(w: &mut W, rng: &mut Rng, words: usize) -> std::io::Res
 /// year stays in [2020, 2026] so frontmatter parses cleanly under any
 /// downstream date validation.
 fn deterministic_date(idx: usize, seed: u64) -> String {
-    let mut rng = Rng::new(seed.wrapping_add(0xC2B2_AE3D_27D4_EB4F).wrapping_add(idx as u64));
+    let mut rng = Rng::new(
+        seed.wrapping_add(0xC2B2_AE3D_27D4_EB4F)
+            .wrapping_add(idx as u64),
+    );
     let year = 2020 + (rng.next_u32() % 7); // 2020..=2026
     let month = 1 + (rng.next_u32() % 12); // 1..=12
-    // Day capped at 28 to avoid month-length edge cases.
+                                           // Day capped at 28 to avoid month-length edge cases.
     let day = 1 + (rng.next_u32() % 28);
     format!("{:04}-{:02}-{:02}", year, month, day)
 }
@@ -354,7 +368,11 @@ struct Rng {
 impl Rng {
     fn new(seed: u64) -> Self {
         // Avoid the all-zero state which xorshift cannot escape.
-        let s = if seed == 0 { 0xDEAD_BEEF_CAFE_F00D } else { seed };
+        let s = if seed == 0 {
+            0xDEAD_BEEF_CAFE_F00D
+        } else {
+            seed
+        };
         Rng { state: s }
     }
 
@@ -394,12 +412,80 @@ const HEADINGS: &[&str] = &[
 ];
 
 const LOREM: &[&str] = &[
-    "lorem", "ipsum", "dolor", "sit", "amet", "consectetur", "adipiscing", "elit", "sed", "do",
-    "eiusmod", "tempor", "incididunt", "ut", "labore", "et", "dolore", "magna", "aliqua", "enim",
-    "ad", "minim", "veniam", "quis", "nostrud", "exercitation", "ullamco", "laboris", "nisi",
-    "aliquip", "ex", "ea", "commodo", "consequat", "duis", "aute", "irure", "in", "reprehenderit",
-    "voluptate", "velit", "esse", "cillum", "fugiat", "nulla", "pariatur", "excepteur", "sint",
-    "occaecat", "cupidatat", "non", "proident", "sunt", "culpa", "qui", "officia", "deserunt",
-    "mollit", "anim", "id", "est", "laborum", "graph", "vault", "page", "link", "node", "edge",
-    "merkle", "leaf", "scan", "build", "snapshot", "knowledge", "wikilink", "transclusion",
+    "lorem",
+    "ipsum",
+    "dolor",
+    "sit",
+    "amet",
+    "consectetur",
+    "adipiscing",
+    "elit",
+    "sed",
+    "do",
+    "eiusmod",
+    "tempor",
+    "incididunt",
+    "ut",
+    "labore",
+    "et",
+    "dolore",
+    "magna",
+    "aliqua",
+    "enim",
+    "ad",
+    "minim",
+    "veniam",
+    "quis",
+    "nostrud",
+    "exercitation",
+    "ullamco",
+    "laboris",
+    "nisi",
+    "aliquip",
+    "ex",
+    "ea",
+    "commodo",
+    "consequat",
+    "duis",
+    "aute",
+    "irure",
+    "in",
+    "reprehenderit",
+    "voluptate",
+    "velit",
+    "esse",
+    "cillum",
+    "fugiat",
+    "nulla",
+    "pariatur",
+    "excepteur",
+    "sint",
+    "occaecat",
+    "cupidatat",
+    "non",
+    "proident",
+    "sunt",
+    "culpa",
+    "qui",
+    "officia",
+    "deserunt",
+    "mollit",
+    "anim",
+    "id",
+    "est",
+    "laborum",
+    "graph",
+    "vault",
+    "page",
+    "link",
+    "node",
+    "edge",
+    "merkle",
+    "leaf",
+    "scan",
+    "build",
+    "snapshot",
+    "knowledge",
+    "wikilink",
+    "transclusion",
 ];

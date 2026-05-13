@@ -731,6 +731,7 @@ pub fn resolve_page_name(raw: &str, file_index: &[(String, PathBuf)]) -> Option<
 ///   2. normalised (hyphen/underscore/space-equivalent) match on page name,
 ///   3. (for raw containing `/`) exact case-insensitive match on path-sans-ext,
 ///   4. (for raw containing `/`) normalised match on path-sans-ext,
+///
 /// with ambiguous matches (≥2 candidates at the same step) returning `None`.
 pub struct PageNameResolver<'a> {
     file_index: &'a [(String, PathBuf)],
@@ -3215,10 +3216,7 @@ code here
     #[test]
     fn resolver_returns_none_on_ambiguous() {
         // Two pages with same lowercased name collide on the exact-match step.
-        let index = make_index(&[
-            ("Page", "a/Page.md"),
-            ("page", "b/page.md"),
-        ]);
+        let index = make_index(&[("Page", "a/Page.md"), ("page", "b/page.md")]);
         let resolver = PageNameResolver::new(&index);
         assert_eq!(resolver.resolve("PAGE"), None);
     }
