@@ -1294,8 +1294,6 @@ pub fn build_static(
             }
         }
     }
-    let mut og_count = 1usize;
-
     // ── help page ───────────────────────────────────────────────────────
     let help_html = engine.render_help(&vault_ctx, "build").map_err(|e| {
         eprintln!("{}", e.stderr_line("help"));
@@ -1306,166 +1304,206 @@ pub fn build_static(
     std::fs::write(help_dir.join("index.html"), help_html)?;
 
     // ── per-page HTML ───────────────────────────────────────────────────
-    let mut count = 0usize;
-    for file in &data.files {
-        let slug = page_slug_from_path(&file.path);
-        let page_dir = out.join(&slug);
-        std::fs::create_dir_all(&page_dir)?;
+    //
+    // PERF-BUILD-2026-05-12 / task `parallel-page-render`:
+    //
+    // The per-page work below is the dominant cost of a cold zetl build:
+    // markdown render, page context build, transclusion cards, template
+    // render, OG PNG composite, history HTML, three disk writes. Each
+    // page is independent — there is no shared mutable state between
+    // iterations beyond the OG counter — so we drive the loop with
+    // rayon's `try_for_each_init` to parallelise across cores.
+    //
+    // Per-worker setup:
+    //   * `git2::Repository` is !Send, so we cannot hoist a single repo
+    //     handle out of the par_iter. Instead each worker opens its own
+    //     via `try_for_each_init`. Discovery cost is amortised across
+    //     the worker's chunk of pages — much better than the prior
+    //     per-page open, equivalent to the sequential hoist when the
+    //     vault has no .git, and bounded by num_threads on real vaults.
+    //
+    // Counters: OG image successes are tracked with an AtomicUsize so
+    // the verbose summary stays accurate. The `count` total is just
+    // `data.files.len()` at the end (one HTML per file, by construction).
+    use rayon::prelude::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
-        let full_path = vault_root.join(&file.path);
-        let content = std::fs::read_to_string(&full_path)
-            .with_context(|| format!("Cannot read {}", full_path.display()))?;
+    let og_count_atomic = AtomicUsize::new(1); // 1 for the vault-root og.png written earlier
+    data.files
+        .par_iter()
+        .try_for_each_init(
+            || -> Option<git2::Repository> {
+                #[cfg(feature = "history")]
+                {
+                    git2::Repository::discover(vault_root).ok()
+                }
+                #[cfg(not(feature = "history"))]
+                {
+                    None::<git2::Repository>
+                }
+            },
+            |_git_repo, file| -> Result<()> {
+                let slug = page_slug_from_path(&file.path);
+                let page_dir = out.join(&slug);
+                std::fs::create_dir_all(&page_dir)?;
 
-        let root_path = compute_root_path(&slug);
-        let is_fountain = file.path.extension().is_some_and(|e| e == "fountain");
-        let rendered = if is_fountain {
-            // Pass raw fountain text to the template; the theme's JS parser handles it.
-            let body = strip_fountain_frontmatter(&content);
-            format!(
-                "<script type=\"text/fountain\" id=\"fountain-source\">{}</script>\n<div id=\"fountain-render\"></div>",
-                html_escape(&body)
-            )
-        } else {
-            markdown::render_to_html(&content, &data.page_slug_map, &root_path, "index.html")
-        };
-        let mut page_ctx = build_page_context(data, &file.page_name, &slug, &rendered, &content);
-        page_ctx.transclusion_cards =
-            build_transclusion_cards(data, vault_root, &file.page_name, &root_path);
-        #[cfg(feature = "history")]
-        {
-            // OBS-013: time per-page history context build.
-            let hist_start = std::time::Instant::now();
-            if let Some(hist) =
-                crate::history::build_template_page_history_context(&file.page_name, vault_root)
-            {
-                let hist_ms = hist_start.elapsed().as_millis();
-                if verbose {
-                    eprintln!(
-                        "[zetl] history-context: page {:?} trend={} points created={} duration_ms={}",
-                        file.page_name,
-                        hist.link_trend.len(),
-                        hist.created_at,
-                        hist_ms
+                let full_path = vault_root.join(&file.path);
+                let content = std::fs::read_to_string(&full_path)
+                    .with_context(|| format!("Cannot read {}", full_path.display()))?;
+
+                let root_path = compute_root_path(&slug);
+                let is_fountain = file.path.extension().is_some_and(|e| e == "fountain");
+                let rendered = if is_fountain {
+                    let body = strip_fountain_frontmatter(&content);
+                    format!(
+                        "<script type=\"text/fountain\" id=\"fountain-source\">{}</script>\n<div id=\"fountain-render\"></div>",
+                        html_escape(&body)
+                    )
+                } else {
+                    markdown::render_to_html(
+                        &content,
+                        &data.page_slug_map,
+                        &root_path,
+                        "index.html",
+                    )
+                };
+                let mut page_ctx =
+                    build_page_context(data, &file.page_name, &slug, &rendered, &content);
+                page_ctx.transclusion_cards =
+                    build_transclusion_cards(data, vault_root, &file.page_name, &root_path);
+                #[cfg(feature = "history")]
+                {
+                    let hist_start = std::time::Instant::now();
+                    if let Some(hist) = crate::history::build_template_page_history_context(
+                        &file.page_name,
+                        vault_root,
+                    ) {
+                        let hist_ms = hist_start.elapsed().as_millis();
+                        if verbose {
+                            eprintln!(
+                                "[zetl] history-context: page {:?} trend={} points created={} duration_ms={}",
+                                file.page_name,
+                                hist.link_trend.len(),
+                                hist.created_at,
+                                hist_ms
+                            );
+                        }
+                        page_ctx.history =
+                            serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+                    }
+                }
+                #[cfg(feature = "history")]
+                {
+                    let sources: Vec<String> =
+                        page_ctx.backlinks.iter().map(|b| b.title.clone()).collect();
+                    let since_map = crate::history::build_backlink_since_map(
+                        &file.page_name,
+                        &sources,
+                        vault_root,
                     );
+                    if !since_map.is_empty() {
+                        for bl in &mut page_ctx.backlinks {
+                            bl.since = since_map.get(&bl.title.to_lowercase()).cloned();
+                        }
+                    }
                 }
-                page_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
-            }
-        }
-        #[cfg(feature = "history")]
-        {
-            let sources: Vec<String> = page_ctx.backlinks.iter().map(|b| b.title.clone()).collect();
-            let since_map =
-                crate::history::build_backlink_since_map(&file.page_name, &sources, vault_root);
-            if !since_map.is_empty() {
-                for bl in &mut page_ctx.backlinks {
-                    bl.since = since_map.get(&bl.title.to_lowercase()).cloned();
+
+                let page_html = engine
+                    .render_page(
+                        &vault_ctx,
+                        &page_ctx,
+                        "build",
+                        &bm25_json,
+                        &history_json,
+                        "",
+                    )
+                    .map_err(|e| {
+                        eprintln!("{}", e.stderr_line(&slug));
+                        anyhow::anyhow!("{e}")
+                    })?;
+                std::fs::write(page_dir.join("index.html"), page_html)?;
+
+                let src_ext = file
+                    .path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("md");
+                std::fs::write(page_dir.join(format!("index.{src_ext}")), &content)?;
+
+                #[cfg(feature = "history")]
+                if page_ctx
+                    .history
+                    .get("last_changed")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| !s.is_empty())
+                {
+                    let hist_start = std::time::Instant::now();
+                    let breadcrumbs: Vec<crate::web::context::BreadcrumbEntry> = {
+                        let parts: Vec<&str> = slug.split('/').collect();
+                        let mut crumbs = Vec::new();
+                        for i in 0..parts.len().saturating_sub(1) {
+                            let s = parts[..=i].join("/");
+                            crumbs.push(crate::web::context::BreadcrumbEntry {
+                                title: parts[i].to_string(),
+                                slug: s,
+                            });
+                        }
+                        crumbs
+                    };
+                    let git_entries_json = match _git_repo.as_ref() {
+                        Some(repo) => {
+                            let entries =
+                                crate::web::git_commit::file_log(repo, &file.path, 100);
+                            serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string())
+                        }
+                        None => "[]".to_string(),
+                    };
+                    let ph_html = engine
+                        .render_page_history(
+                            &vault_ctx,
+                            &file.page_name,
+                            &slug,
+                            &breadcrumbs,
+                            &git_entries_json,
+                            &page_ctx.history,
+                            false,
+                            "build",
+                        )
+                        .map_err(|e| {
+                            eprintln!("{}", e.stderr_line(&slug));
+                            anyhow::anyhow!("{e}")
+                        })?;
+                    let hist_bytes = ph_html.len();
+                    std::fs::write(page_dir.join("_history.html"), ph_html)?;
+                    if verbose {
+                        eprintln!(
+                            "[zetl] history-static: page {:?} slug={:?} bytes={} duration_ms={}",
+                            file.page_name,
+                            slug,
+                            hist_bytes,
+                            hist_start.elapsed().as_millis()
+                        );
+                    }
                 }
-            }
-        }
 
-        let page_html = engine
-            .render_page(
-                &vault_ctx,
-                &page_ctx,
-                "build",
-                &bm25_json,
-                &history_json,
-                "",
-            )
-            .map_err(|e| {
-                eprintln!("{}", e.stderr_line(&slug));
-                anyhow::anyhow!("{e}")
-            })?;
-        std::fs::write(page_dir.join("index.html"), page_html)?;
-
-        // Per-page raw source alongside the rendered HTML, so LLM agents can
-        // fetch the original markdown (or fountain, spl, etc.) without
-        // parsing HTML. Extension matches the source file.
-        let src_ext = file
-            .path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("md");
-        std::fs::write(page_dir.join(format!("index.{src_ext}")), &content)?;
-
-        // SPEC-027 REQ-302 / adversarial defect 5: static emission of
-        // per-page history HTML. Gate on last_changed presence so the
-        // static file is never emitted when page.html's inline link
-        // guard (`page.history.last_changed`) would suppress the link —
-        // prevents orphan artefacts.
-        #[cfg(feature = "history")]
-        if page_ctx
-            .history
-            .get("last_changed")
-            .and_then(|v| v.as_str())
-            .is_some_and(|s| !s.is_empty())
-        {
-            let hist_start = std::time::Instant::now();
-            let breadcrumbs: Vec<crate::web::context::BreadcrumbEntry> = {
-                let parts: Vec<&str> = slug.split('/').collect();
-                let mut crumbs = Vec::new();
-                for i in 0..parts.len().saturating_sub(1) {
-                    let s = parts[..=i].join("/");
-                    crumbs.push(crate::web::context::BreadcrumbEntry {
-                        title: parts[i].to_string(),
-                        slug: s,
-                    });
+                match crate::web::og::render_og_png(&file.page_name, &vault_ctx.name, og_bg.as_ref()) {
+                    Ok(bytes) => {
+                        std::fs::write(page_dir.join("og.png"), &bytes)
+                            .context("writing page og.png")?;
+                        og_count_atomic.fetch_add(1, Ordering::Relaxed);
+                    }
+                    Err(e) if verbose => {
+                        eprintln!("[zetl] og: skipping {}: {e}", file.page_name);
+                    }
+                    Err(_) => {}
                 }
-                crumbs
-            };
-            // Adversarial defect 2 (REQ-302 parity): serve passes real
-            // git log entries; build previously passed `"[]"` which left
-            // the template's client-side chart empty. Load git file_log
-            // directly when the vault is inside a git repo.
-            let git_entries_json = match git2::Repository::discover(vault_root) {
-                Ok(repo) => {
-                    let entries = crate::web::git_commit::file_log(&repo, &file.path, 100);
-                    serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string())
-                }
-                Err(_) => "[]".to_string(),
-            };
-            let ph_html = engine
-                .render_page_history(
-                    &vault_ctx,
-                    &file.page_name,
-                    &slug,
-                    &breadcrumbs,
-                    &git_entries_json,
-                    &page_ctx.history,
-                    false,
-                    "build",
-                )
-                .map_err(|e| {
-                    eprintln!("{}", e.stderr_line(&slug));
-                    anyhow::anyhow!("{e}")
-                })?;
-            let hist_bytes = ph_html.len();
-            std::fs::write(page_dir.join("_history.html"), ph_html)?;
-            if verbose {
-                eprintln!(
-                    "[zetl] history-static: page {:?} slug={:?} bytes={} duration_ms={}",
-                    file.page_name,
-                    slug,
-                    hist_bytes,
-                    hist_start.elapsed().as_millis()
-                );
-            }
-        }
 
-        // Per-page OG image.
-        match crate::web::og::render_og_png(&file.page_name, &vault_ctx.name, og_bg.as_ref()) {
-            Ok(bytes) => {
-                std::fs::write(page_dir.join("og.png"), &bytes).context("writing page og.png")?;
-                og_count += 1;
-            }
-            Err(e) if verbose => {
-                eprintln!("[zetl] og: skipping {}: {e}", file.page_name);
-            }
-            Err(_) => {}
-        }
+                Ok(())
+            },
+        )?;
 
-        count += 1;
-    }
+    let count = data.files.len();
+    let og_count = og_count_atomic.load(Ordering::Relaxed);
     if verbose {
         eprintln!(
             "[zetl] og: wrote {og_count} images in {} ms",
@@ -1474,6 +1512,19 @@ pub fn build_static(
     }
 
     // ── folder index pages ─────────────────────────────────────────────
+    //
+    // PERF-BUILD-2026-05-12 / task `folder-index-quadratic`:
+    //
+    // Each folder slug enters `folders` only after we found at least one
+    // page whose slug is rooted in that folder (the while-loop below walks
+    // `/` separators of an actual page's slug, so the entry is derived
+    // from a real page). The prior `data.files.iter().any(...)`
+    // re-verification was therefore provably always true and produced an
+    // O(folders · files) scan that dominated the loop on 10k-page vaults
+    // with deep folder nesting. Drop it — the construction itself is the
+    // existence proof. `page_slug_from_path` is also already lowercased
+    // (see scanner.rs::page_slug_from_path), so the now-removed
+    // `to_lowercase()` calls were redundant.
     let mut folders: HashSet<String> = HashSet::new();
     for file in &data.files {
         let slug = page_slug_from_path(&file.path);
@@ -1487,16 +1538,6 @@ pub fn build_static(
 
     let mut folder_count = 0usize;
     for folder in &folders {
-        let folder_prefix = format!("{}/", folder.to_lowercase());
-        let has_pages = data.files.iter().any(|f| {
-            let s = page_slug_from_path(&f.path);
-            s.to_lowercase().starts_with(&folder_prefix)
-        });
-
-        if !has_pages {
-            continue;
-        }
-
         let folder_dir = out.join(folder);
         std::fs::create_dir_all(&folder_dir)?;
 

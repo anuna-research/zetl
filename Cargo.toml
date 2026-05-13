@@ -86,6 +86,7 @@ comfy-table = "7"
 globset = "0.4"
 ignore = "0.4"
 petgraph = "0.7"
+rayon = "1"
 axum = { version = "0.8", features = ["ws"] }
 pulldown-cmark = "0.12"
 regex = "1"
@@ -209,6 +210,14 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 # (SPEC-034 §8 purity: `cap::pad::x25519_padding_construct` is a
 # function of its RNG input).
 rand_chacha = "0.3"
+
+# PERF-BUILD-2026-05-12 task `bench-fixture`: synthetic-vault generator
+# used by the perf benchmarks. Lives under `src/bin/` so it does not
+# affect any production code path; build it on demand with
+# `cargo build --release --bin gen-vault`.
+[[bin]]
+name = "gen-vault"
+path = "src/bin/gen-vault.rs"
 
 [[test]]
 name = "reason_integration"
