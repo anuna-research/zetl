@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-05-13
+
+### Added
+
+- **`zetl skill init` self-bootstraps a Claude Code skill** for the
+  current vault under `.claude/skills/zetl/`, so agents working inside
+  the vault pick up zetl-specific conventions automatically. Documented
+  in the user-guide CLI Overview and MCP Server pages.
+- **Folder-grouped index** is the new default for multi-folder vaults
+  in the bundled theme. Single-folder vaults keep the flat alphabetical
+  index.
+- **`gen-vault` synthetic-vault generator** for build-perf
+  measurements, plus a `perf-diff.sh` determinism check (`scripts/`)
+  that catches non-deterministic byte drift between two builds.
+
+### Performance
+
+- **Parallel scanner + page render** via `rayon`. Per-file parse and
+  per-page render now fan out across cores. Combined with the
+  pre-pass items below, end-to-end build wall-clock improves
+  substantially on multi-folder vaults; baseline + post-pass figures
+  recorded in `bench/`.
+- **`PageNameResolver` replaces the `O(n)` `Vec` scan in
+  `resolve_page_name`** so wikilink resolution drops from quadratic to
+  near-linear on large vaults.
+- **Hoisted `git2::Repository::discover` out of the per-page loop**;
+  one discovery per build instead of one per page.
+- **Dropped a redundant `has_pages` check** from the folder-index
+  pass.
+
+### Fixed
+
+- **`zetl serve` / `zetl build` mobile shell (SPEC-040).** A clutch of
+  fixes for the embedded Tauri WebView:
+  - Mixed-content (`HTTPS → http://127.0.0.1` loopback) allowed via
+    `MainActivity` flag — the embedded serve port is loopback-only, so
+    cleartext to it is safe and required.
+  - `HOME` set before `libgit2` caches it in the Tauri `setup` hook;
+    seed an empty `known_hosts` so `libssh2` init succeeds.
+  - Trust-on-first-use SSH host-key check for first-time mobile clone.
+  - Tauri `opener:open-url` capability authorised for the outbound
+    URL handler.
+  - Vault sub-path picker counts subpath candidates recursively (a
+    vault may live below the repo root).
+  - Theme picker auto-picks the active vault's theme on launch.
+  - Cancel button on the capture form; back link on the onboarding
+    page when vaults already exist; in-page confirm modal for
+    Remove (was using JS `confirm()`).
+- **`fix(theme/default)`**: keep `<main>` width stable on pages with
+  no transclusions (eliminates a layout shift).
+
+### Documentation
+
+- BUG note: capability-mode build error reproduction case.
+
+## [0.7.0] - 2026-05-09
+
 ### Added
 
 - **RSS / Atom / JSON Feed support (SPEC-038 v1.0.0).** Pure-core
@@ -74,6 +131,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wired; `pull|list|status|forget` exit non-zero with structured
   "not yet wired" stubs pointing at the deferred shell-side work.
 
+### Fixed
+
+- **BUG-001**: Windows-authored nested-page paths produced an empty
+  `<article>` body. `page_slug_from_path` now normalises backslash
+  separators; a slug-miss diagnostic surfaces the offending path, and
+  a Windows cross-check job in CI guards against regression.
+
+> **Note.** `0.7.1` was skipped; no release was cut under that version.
+
+## [0.6.1] - 2026-04-21
+
+Hot-fix version-bump released the day after `0.6.0`. No source
+changes between the two tags.
+
+## [0.6.0] - 2026-04-21
+
+### Added
+
+- **Comprehensive user guide.** A ~40-page guide authored *as a zetl
+  vault* lives under `user-guide/`; covers install, CLI overview,
+  reading flow, editing flow, theming, hook authoring, capability
+  mode, and the MCP server. The guide is itself an example of an
+  externally-authored zetl vault.
+- **Heading-slug ids** are emitted alongside line anchors on rendered
+  pages, so deep-link URLs (`#section-name`) and Wikilink heading
+  targets (`[[Page#Section]]`) now resolve to the heading element
+  directly.
 - **Capability-URL distribution (SPEC-034 v0.4.0).** A new
   `zetl build --capability` build mode encrypts every page with
   [`age`](https://age-encryption.org) and signs the resulting envelope
@@ -303,6 +387,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   corresponding opt-out instructions). The
   `ecosystems_v1_umbrella_is_retired` integration test guards
   against accidental reintroduction. (SPEC-033 §12 Phase F)
+
+### Fixed
+
+- **`fix(semantic)`**: attention-weighted mean pooling + pad-to-256.
+- **`fix(theme/default)`**: hide the transclusion panel on mobile.
+- **User-created themes inherit the bundled default's static assets**,
+  so a theme that overrides only one template no longer 404s on the
+  default's CSS/JS.
+- **`fix(hooks/persistent)`**: retry `ETXTBSY` inside
+  `spawn_with_policy` so hook spawns don't race the executable's own
+  `close()`.
+
+## [0.5.0] - 2026-04-19
+
+### Added
+
+- **SPEC-031..033 drafts.** New design specs for the three-stage hook
+  pipeline (SPEC-032) and ecosystem bridges (SPEC-033) landed in
+  `specs/`. Implementation followed in `0.6.0`.
+- **Graph tap-to-focus, single-click-focus, double-click-navigate.**
+  On `/_graph`, a single click on a node focuses it (highlights its
+  1-hop neighbourhood); a double-click navigates. Mobile gets the
+  same behaviour via tap-once-to-focus, tap-again-to-open.
+
+### Performance
+
+- **`gzip` + `brotli` response compression** on `zetl serve` (text/*,
+  application/javascript, application/json, etc.).
+- **Brotli precompression** of build output — `zetl build` now emits
+  `*.br` alongside HTML/JS/CSS, so a static host can serve the
+  pre-compressed bytes directly with `Content-Encoding: br`.
+- **ETag + `304 Not Modified`** on `text/html` responses.
+- **Extracted inline `<style>` (~25 KB) to `/_static/shell.css`** and
+  inline page + graph `<script>` blocks to `/_static/*.js`, so the
+  shell hits the browser cache after first navigation and per-page
+  HTML stays small.
+- **Externalised `pages.json`** out of the inline template so the
+  pages-index is cacheable and SPA-friendly.
+- **`Cache-Control` on `/_static/*`** in serve mode (long-lived,
+  immutable for fingerprinted assets).
+
+### Fixed
+
+- Graph node clicks were broken in serve mode after the script
+  extraction; a missing event-binding inside the externalised module
+  was the cause.
+- SPA scroll and backlink highlight after navigate.
+- `theme-install` chmod is now `cfg(unix)`-gated so the Windows
+  cross-compile compiles cleanly (parallel guard to `0.2.7`).
+- Tailwind content scan now covers `themes/default/**/*.js` so
+  utility classes used by extracted scripts survive purge.
+- Mobile stats overflow on `/stats`.
+
+## [0.4.0] - 2026-04-19
+
+### Added
+
+- **CRDT-flush author attribution.** When a multi-user editing session
+  flushes to git, the resulting commit credits every distinct
+  contributor: the primary author plus `Co-authored-by:` trailers for
+  each additional editor. `PageHistoryEntry` now parses those trailers
+  and the default theme renders co-authors in the page-history byline.
+- **Per-slug CRDT contributor tracking** in the websocket layer feeds
+  the flush attribution above.
+- **Print styles** for the default theme: edit button hidden,
+  breadcrumbs flattened, sidebar collapsed; tested end-to-end against
+  the print-CSS coverage plan.
+- **Search-snippet highlighting (BUG-504).** Query matches are
+  highlighted in search-result excerpts.
+- **Inline SVG favicon** in the base template (no extra HTTP request,
+  no theme override required).
+- **`_graph.html` rendered during static build** so the graph view is
+  reachable on every static deployment, not just `zetl serve`.
+- **Tag cloud** widget and **dead-link node-and-edge styling**
+  (muted + dashed) on `/_graph`.
+- **Design polish on the graph:** focus mode with depth=0,
+  search-highlight, degree filter, folder-coloured nodes, mobile
+  controls, drawer z-index fixes.
+
+### Documentation
+
+- **SPEC-030 — theme data contract**: the external-facing template
+  context is now a documented surface; a strict-undefined contract
+  test exercises every render path so unknown variables fail loudly.
+
+### Fixed
+
+- **BUG-501**: "doesn't exist" banner now shows on the new-page save
+  flow.
+- **BUG-502**: "Recent changes" sidebar link restored on `/edit/`.
+- **BUG-503**: print polish — hide Edit button, flatten breadcrumbs.
+- **BUG-505**: prevent mobile label clipping via responsive
+  `stagePadding`.
+- **BUG-506**: replace default `:visited` magenta on wikilinks +
+  backlinks.
+- Graph render repair: defer vendor JS, stop mobile clipping.
+- Backlinks dedupe by source and drop the raw line label.
+- Guard Sigma instantiation against zero-width container (widget on
+  hidden tab no longer crashes).
+- SPA: force a full reload on `/edit/` transitions so CodeMirror
+  remounts cleanly.
+- Allow `data:` images under the editor CSP so the favicon loads.
+- Shrink default theme under the bundle budget; clippy clean.
+- "Recent changes" link visible on `/help` and `/{slug}/_history`
+  too.
 
 ## [0.3.0] - 2026-04-17
 
