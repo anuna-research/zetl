@@ -49,6 +49,7 @@ Every subcommand honours these, wherever they make sense.
 | [`theme`](#zetl-theme) | List / install / remove / export themes | — |
 | [`hook`](#zetl-hook) | Author, test, and inspect hooks | — |
 | [`ecosystem`](#zetl-ecosystem) | Probe Pandoc / mdBook / remark runtimes | `ecosystems-v1` |
+| [`feed`](#zetl-feed) | Manage inbound RSS / Atom / JSON Feed subscriptions | — |
 | [`ast`](#zetl-ast) | Inspect or diff zetl-ext AST | — |
 | [`agent`](#zetl-agent) | Run an agent-lifecycle hook | — |
 | [`invite`](#zetl-invite) | Multi-user invitation token | collab (built-in) |
@@ -244,6 +245,20 @@ Author, test, and inspect hooks. See [[Lifecycle Hooks]] and [[Render Pipeline H
 Probe plugin ecosystems. Requires `ecosystems-v1` feature flag.
 
 - `zetl ecosystem check` — per-ecosystem detection, version, configured-hook count, reachable plugins. Exits 0 when all *configured* ecosystems are available. See [[Plugin Ecosystems]].
+
+## zetl feed
+
+Manage **inbound** feed subscriptions — fetch, inspect, validate, and forget items pulled from other vaults' or blogs' RSS / Atom / JSON Feed URLs. Outbound feed *publishing* is a `zetl build` byproduct configured via `[feed]` in `.zetl/config.toml`, not a `zetl feed` subcommand. See [[Feeds]] for the full guide.
+
+- `zetl feed pull [SUB_ID...]` — fetch one or all `[[subscriptions]]` into `.zetl/feeds/<sub-id>/inbox/`.
+- `zetl feed list` — tabular subscription status.
+- `zetl feed status <SUB_ID>` — dedup state, retention, errors for one subscription.
+- `zetl feed validate <PATH>` — offline conformance smoke test (RSS 2.0 / Atom 1.0 / JSON Feed 1.1).
+- `zetl feed forget <SUB_ID> <PATTERN>` — erase imported items and mint a tombstone blocking re-import.
+
+Common flags: `--json`, `--no-input` (CI mode), `--dry-run`, `--include-archive`, `--reason <TEXT>`, `--feed-format rss|atom|jsonfeed`.
+
+> In v1.0 only `zetl feed validate` is fully wired; `pull` / `list` / `status` / `forget` exit non-zero with a structured "not yet wired" stub.
 
 ## zetl ast
 
