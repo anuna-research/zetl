@@ -24,6 +24,7 @@ use crate::web::session::SessionStore;
 
 use super::agent_token::AgentTokenAuthenticator;
 use super::passkey::PasskeyAuthenticator;
+use super::password::PasswordAuthenticator;
 use super::proxy_header::{ProxyHeaderAuthenticator, ProxyHeaderConfig};
 use super::{AuthChain, Authenticator};
 
@@ -223,7 +224,11 @@ pub(crate) fn build_chain(
                         .map_err(ConfigError)?,
                 )
             }
-            MethodId::Password | MethodId::CapabilityUrl | MethodId::Oidc => {
+            MethodId::Password => Box::new(PasswordAuthenticator::new(
+                sessions.clone(),
+                vault_root.clone(),
+            )),
+            MethodId::CapabilityUrl | MethodId::Oidc => {
                 return Err(ConfigError(format!(
                     "[collab.auth] method {:?} is not yet implemented in this \
                      build — remove it from `methods` or upgrade zetl \
@@ -464,7 +469,7 @@ mod tests {
     /// message naming the offending method.
     #[test]
     fn build_chain_rejects_unimplemented_methods() {
-        for unimplemented in ["password", "capability-url", "oidc"] {
+        for unimplemented in ["capability-url", "oidc"] {
             let body = format!(
                 r#"
                 [collab.auth]

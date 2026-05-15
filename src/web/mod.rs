@@ -401,6 +401,15 @@ pub async fn run(
             "/auth/accept",
             get(routes::accept_invite_handler).post(routes::accept_invite_submit_handler),
         )
+        // SPEC-041 REQ-4113: each authenticator may contribute its own
+        // public routes (e.g. /auth/password POST, OIDC callbacks). Merge
+        // them before the rate-limit layer so they inherit the same per-IP
+        // protection.
+        .merge(
+            auth_chain
+                .iter()
+                .fold(Router::new(), |acc, a| acc.merge(a.routes())),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit::auth_ip_rate_limit,

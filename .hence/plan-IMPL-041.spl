@@ -767,3 +767,24 @@
 (normally r-propagate-auth-password-impl-from-auth-password-store-permanently-failed permanently-failed-auth-password-store upstream-blocked-auth-password-impl)
 (normally r-propagate-auth-password-impl-from-auth-password-store-stale-v1 stale-v1-auth-password-store upstream-blocked-auth-password-impl)
 (normally r-propagate-auth-password-impl-from-auth-password-store-timeout-v1 timeout-v1-auth-password-store upstream-blocked-auth-password-impl)
+
+(claims agent:coder
+  :at "2026-05-15T03:24:27Z"
+  (given completed-auth-password-store))
+
+(claims agent:coder
+  :at "2026-05-15T03:24:57Z"
+  (given claim-v1-auth-password-impl)
+  (normally r-cl-state-v1-auth-password-impl claim-v1-auth-password-impl state-claimed-v1-auth-password-impl)
+  (normally r-cl-chain-v1-auth-password-impl state-claimed-v1-auth-password-impl claimed-auth-password-impl)
+)
+
+;; Propagation rules: failures in 'auth-password-impl' block downstream tasks
+(normally r-propagate-auth-docs-from-auth-password-impl-failed failed-auth-password-impl upstream-blocked-auth-docs)
+(normally r-propagate-auth-docs-from-auth-password-impl-permanently-failed permanently-failed-auth-password-impl upstream-blocked-auth-docs)
+(normally r-propagate-auth-docs-from-auth-password-impl-stale-v1 stale-v1-auth-password-impl upstream-blocked-auth-docs)
+(normally r-propagate-auth-docs-from-auth-password-impl-timeout-v1 timeout-v1-auth-password-impl upstream-blocked-auth-docs)
+(normally r-propagate-auth-observability-from-auth-password-impl-failed failed-auth-password-impl upstream-blocked-auth-observability)
+(normally r-propagate-auth-observability-from-auth-password-impl-permanently-failed permanently-failed-auth-password-impl upstream-blocked-auth-observability)
+(normally r-propagate-auth-observability-from-auth-password-impl-stale-v1 stale-v1-auth-password-impl upstream-blocked-auth-observability)
+(normally r-propagate-auth-observability-from-auth-password-impl-timeout-v1 timeout-v1-auth-password-impl upstream-blocked-auth-observability)
