@@ -264,11 +264,14 @@ pub(crate) fn build_chain(
                                 "[collab.auth.oidc] schema error: {e}"
                             ))
                         })?;
-                    Box::new(super::oidc::OidcAuthenticator::new(
-                        oidc_cfg,
-                        sessions.clone(),
-                        vault_root.clone(),
-                    ))
+                    Box::new(
+                        super::oidc::OidcAuthenticator::new(
+                            oidc_cfg,
+                            sessions.clone(),
+                            vault_root.clone(),
+                        )
+                        .map_err(|e| ConfigError(format!("[collab.auth.oidc] {e}")))?,
+                    )
                 }
                 #[cfg(not(feature = "collab-oidc"))]
                 {

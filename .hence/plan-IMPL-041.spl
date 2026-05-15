@@ -867,3 +867,24 @@
 (normally r-propagate-auth-oidc-impl-from-auth-oidc-feature-permanently-failed permanently-failed-auth-oidc-feature upstream-blocked-auth-oidc-impl)
 (normally r-propagate-auth-oidc-impl-from-auth-oidc-feature-stale-v1 stale-v1-auth-oidc-feature upstream-blocked-auth-oidc-impl)
 (normally r-propagate-auth-oidc-impl-from-auth-oidc-feature-timeout-v1 timeout-v1-auth-oidc-feature upstream-blocked-auth-oidc-impl)
+
+(claims agent:coder
+  :at "2026-05-15T03:58:28Z"
+  (given completed-auth-oidc-feature))
+
+(claims agent:coder
+  :at "2026-05-15T03:59:12Z"
+  (given claim-v1-auth-oidc-impl)
+  (normally r-cl-state-v1-auth-oidc-impl claim-v1-auth-oidc-impl state-claimed-v1-auth-oidc-impl)
+  (normally r-cl-chain-v1-auth-oidc-impl state-claimed-v1-auth-oidc-impl claimed-auth-oidc-impl)
+)
+
+;; Propagation rules: failures in 'auth-oidc-impl' block downstream tasks
+(normally r-propagate-auth-docs-from-auth-oidc-impl-failed failed-auth-oidc-impl upstream-blocked-auth-docs)
+(normally r-propagate-auth-docs-from-auth-oidc-impl-permanently-failed permanently-failed-auth-oidc-impl upstream-blocked-auth-docs)
+(normally r-propagate-auth-docs-from-auth-oidc-impl-stale-v1 stale-v1-auth-oidc-impl upstream-blocked-auth-docs)
+(normally r-propagate-auth-docs-from-auth-oidc-impl-timeout-v1 timeout-v1-auth-oidc-impl upstream-blocked-auth-docs)
+(normally r-propagate-auth-observability-from-auth-oidc-impl-failed failed-auth-oidc-impl upstream-blocked-auth-observability)
+(normally r-propagate-auth-observability-from-auth-oidc-impl-permanently-failed permanently-failed-auth-oidc-impl upstream-blocked-auth-observability)
+(normally r-propagate-auth-observability-from-auth-oidc-impl-stale-v1 stale-v1-auth-oidc-impl upstream-blocked-auth-observability)
+(normally r-propagate-auth-observability-from-auth-oidc-impl-timeout-v1 timeout-v1-auth-oidc-impl upstream-blocked-auth-observability)
