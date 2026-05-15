@@ -9,6 +9,8 @@ tags: [collaboration, static, sharing, capability]
 
 If you want multi-user editing, you want [[Running a Team Server]]. Capability mode is for publishing.
 
+> **Disambiguation.** This page is about **SPEC-034** capability mode — a *static* site, reader-side fragment decryption, no running server. If you're running `zetl serve --collab` and want to mint share-by-link URLs from a *live* server (the `?cap=<token>` form produced by `zetl collab share mint`), that's a different feature with a different threat model — see [[Authentication Methods#capability-url]].
+
 ## The idea in one paragraph
 
 Each page is encrypted at build time with a cohort-specific key. Invite URLs look like `https://wiki.example.com/welcome.html#k=<base64-secret>`. The `#fragment` — by design of the HTTP spec — is never sent to the server. The reader's browser, executing a small JavaScript shim, pulls the key out of the fragment, decrypts the page locally, and verifies a vault-level Ed25519 signature so nobody can serve them a forged page. Revocation is per-cohort: you rotate the cohort's salt and re-deploy, old URLs stop decrypting.

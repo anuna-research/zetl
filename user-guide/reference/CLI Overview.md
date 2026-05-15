@@ -55,6 +55,7 @@ Every subcommand honours these, wherever they make sense.
 | [`invite`](#zetl-invite) | Multi-user invitation token | collab (built-in) |
 | [`agent-token`](#zetl-agent-token) | Derive a headless API token | collab |
 | [`derive-ssh-key`](#zetl-derive-ssh-key) | Derive an SSH ed25519 key from a mnemonic | collab |
+| [`collab`](#zetl-collab) | Manage collab passwords + capability URLs | collab; `collab-oidc` for OIDC |
 | [`cap`](#zetl-cap) | Capability-URL static sharing operations | — |
 | [`reason`](#zetl-reason) | SPL queries over the vault | `reason` |
 | [`mcp`](#zetl-mcp) | Start an MCP server | `mcp` |
@@ -300,9 +301,35 @@ Derive an SSH ed25519 key from a BIP39 mnemonic. Useful for ephemeral containers
 zetl derive-ssh-key --mnemonic "word1 ... word12" --out /root/.ssh/id_ed25519
 ```
 
+## zetl collab
+
+Manage collab credentials for the **pluggable `[collab.auth]` chain**
+([SPEC-041](https://codeberg.org/anuna/zetl/src/branch/main/specs/SPEC-041-pluggable-collab-auth.md)).
+The default `--collab` chain is `passkey + agent-token` (unchanged from
+pre-SPEC-041); listing other methods in `.zetl/config.toml`'s
+`[collab.auth] methods = [...]` brings them online. See
+[[Authentication Methods]].
+
+| Subcommand | Purpose |
+| --- | --- |
+| `zetl collab passwd add <USER>` | TTY-prompted password set (argon2id); auto-creates the `UserProfile` |
+| `zetl collab passwd remove <USER>` | Drop the password record for one user |
+| `zetl collab passwd list` | List user_ids that have a password record (never hashes) |
+| `zetl collab share mint --scope <GLOB> --role <reader\|editor> --site-url <URL>` | Mint a `?cap=<token>` URL with `--expires <DURATION>` (5m..90d, default 7d) |
+| `zetl collab share list` | Tabular jti / scope / role / exp / status across the mint registry |
+| `zetl collab share revoke <JTI>` | Revoke a previously-minted capability URL |
+
+Passwords are read from a TTY prompt — never argv or env (SPEC-041 REQ-4108).
+Capability URLs are bearer tokens — the mint command prints a SECURITY
+notice on stderr. See [[Authentication Methods#capability-url]] for the
+full scope+role+expiry model and the URL-leakage threat-model
+discussion. OIDC requires a build with `--features collab,collab-oidc`.
+
 ## zetl cap
 
-Capability-URL static-site operations. See [[Capability URLs]].
+Capability-URL **static-site** operations (SPEC-034 — disjoint from
+[[Authentication Methods#capability-url]], which serves capability URLs
+from a live `--collab` server). See [[Capability URLs]].
 
 | Subcommand | Purpose |
 | --- | --- |
