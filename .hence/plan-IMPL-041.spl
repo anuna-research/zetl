@@ -650,3 +650,20 @@
 (claims agent:coder
   :at "2026-05-15T02:57:27Z"
   (given discovered-extractors-token-field-deferred-to-followup))
+
+(claims agent:coder
+  :at "2026-05-15T03:02:37Z"
+  (given completed-auth-gate-refactor))
+
+(claims agent:coder
+  :at "2026-05-15T03:04:46Z"
+  (given claim-v1-auth-config-lens)
+  (normally r-cl-state-v1-auth-config-lens claim-v1-auth-config-lens state-claimed-v1-auth-config-lens)
+  (normally r-cl-chain-v1-auth-config-lens state-claimed-v1-auth-config-lens claimed-auth-config-lens)
+)
+
+;; Propagation rules: failures in 'auth-config-lens' block downstream tasks
+(normally r-propagate-auth-chain-builder-from-auth-config-lens-failed failed-auth-config-lens upstream-blocked-auth-chain-builder)
+(normally r-propagate-auth-chain-builder-from-auth-config-lens-permanently-failed permanently-failed-auth-config-lens upstream-blocked-auth-chain-builder)
+(normally r-propagate-auth-chain-builder-from-auth-config-lens-stale-v1 stale-v1-auth-config-lens upstream-blocked-auth-chain-builder)
+(normally r-propagate-auth-chain-builder-from-auth-config-lens-timeout-v1 timeout-v1-auth-config-lens upstream-blocked-auth-chain-builder)
