@@ -28,6 +28,7 @@ pub(crate) mod agent_token;
 /// (SPEC-041 task-auth-share-cli).
 pub mod capability_url;
 pub(crate) mod config;
+pub(crate) mod observability;
 /// `cfg(feature = "collab-oidc")` — see SPEC-041 ADR-4105.
 #[cfg(feature = "collab-oidc")]
 pub(crate) mod oidc;

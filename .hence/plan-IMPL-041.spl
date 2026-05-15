@@ -888,3 +888,20 @@
 (normally r-propagate-auth-observability-from-auth-oidc-impl-permanently-failed permanently-failed-auth-oidc-impl upstream-blocked-auth-observability)
 (normally r-propagate-auth-observability-from-auth-oidc-impl-stale-v1 stale-v1-auth-oidc-impl upstream-blocked-auth-observability)
 (normally r-propagate-auth-observability-from-auth-oidc-impl-timeout-v1 timeout-v1-auth-oidc-impl upstream-blocked-auth-observability)
+
+(claims agent:coder
+  :at "2026-05-15T04:08:33Z"
+  (given completed-auth-oidc-impl))
+
+(claims agent:coder
+  :at "2026-05-15T04:10:26Z"
+  (given claim-v1-auth-observability)
+  (normally r-cl-state-v1-auth-observability claim-v1-auth-observability state-claimed-v1-auth-observability)
+  (normally r-cl-chain-v1-auth-observability state-claimed-v1-auth-observability claimed-auth-observability)
+)
+
+;; Propagation rules: failures in 'auth-observability' block downstream tasks
+(normally r-propagate-auth-adversarial-review-from-auth-observability-failed failed-auth-observability upstream-blocked-auth-adversarial-review)
+(normally r-propagate-auth-adversarial-review-from-auth-observability-permanently-failed permanently-failed-auth-observability upstream-blocked-auth-adversarial-review)
+(normally r-propagate-auth-adversarial-review-from-auth-observability-stale-v1 stale-v1-auth-observability upstream-blocked-auth-adversarial-review)
+(normally r-propagate-auth-adversarial-review-from-auth-observability-timeout-v1 timeout-v1-auth-observability upstream-blocked-auth-adversarial-review)

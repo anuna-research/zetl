@@ -20,6 +20,7 @@ use axum::http::{Extensions, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
+use super::observability::{log_auth_event, AuthOutcomeClass};
 use super::{AuthChain, AuthOutcome, AuthRejection, Authenticator, Principal};
 
 /// The result of walking the authenticator chain for one request.
@@ -78,16 +79,28 @@ pub(crate) async fn auth_resolve(
 
     match resolve_chain(&chain, &parts) {
         ChainOutcome::Authenticated(principal) => {
+            // SPEC-041 OBS-4103: emit the per-decision operator log line.
+            // Identity is the resolved handle — never a token byte
+            // (REQ-4115 redaction by construction).
+            log_auth_event(
+                principal.method,
+                AuthOutcomeClass::Authenticated,
+                Some(principal.identity.handle()),
+                None,
+            );
             parts.extensions.insert::<Option<Principal>>(Some(principal));
         }
         ChainOutcome::Unauthenticated => {
+            // OBS-4103: log abstain-to-end at a coarse "unauthenticated"
+            // tag — no specific authenticator owns the outcome.
+            log_auth_event("none", AuthOutcomeClass::Abstained, None, None);
             parts.extensions.insert::<Option<Principal>>(None);
         }
-        ChainOutcome::Rejected(AuthRejection { cause: _cause }) => {
-            // Generic user-visible failure (SPEC-041 §1.3.8). The `cause`
-            // category is operator-channel only and is logged by
-            // task-auth-observability — until then it is intentionally dropped
-            // rather than surfaced.
+        ChainOutcome::Rejected(AuthRejection { cause }) => {
+            // OBS-4103/OBS-4104: log + surface 401. The `cause` category
+            // is operator-channel only — never leaks to the response
+            // (SPEC-041 §1.3.8 cause-indistinguishability).
+            log_auth_event("chain", AuthOutcomeClass::Rejected, None, Some(cause));
             return StatusCode::UNAUTHORIZED.into_response();
         }
     }
