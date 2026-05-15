@@ -246,12 +246,40 @@ pub(crate) fn build_chain(
                 ))
             }
             MethodId::Oidc => {
-                return Err(ConfigError(format!(
-                    "[collab.auth] method {:?} is not yet implemented in this \
-                     build — remove it from `methods` or upgrade zetl \
-                     (IMPL-041 ships methods incrementally across Phases 2-5)",
-                    method.as_str()
-                )));
+                #[cfg(feature = "collab-oidc")]
+                {
+                    let oidc_value = cfg.oidc.as_ref().ok_or_else(|| {
+                        ConfigError(
+                            "[collab.auth] methods contains \"oidc\" but \
+                             [collab.auth.oidc] is missing — at minimum, set \
+                             `issuer`, `client_id`, and `client_secret_file`"
+                                .to_string(),
+                        )
+                    })?;
+                    let oidc_cfg: super::oidc::OidcConfig = oidc_value
+                        .clone()
+                        .try_into()
+                        .map_err(|e: toml::de::Error| {
+                            ConfigError(format!(
+                                "[collab.auth.oidc] schema error: {e}"
+                            ))
+                        })?;
+                    Box::new(super::oidc::OidcAuthenticator::new(
+                        oidc_cfg,
+                        sessions.clone(),
+                        vault_root.clone(),
+                    ))
+                }
+                #[cfg(not(feature = "collab-oidc"))]
+                {
+                    return Err(ConfigError(
+                        "[collab.auth] methods contains \"oidc\" but the \
+                         `collab-oidc` cargo feature is not compiled in — \
+                         rebuild with `--features collab,collab-oidc` \
+                         (SPEC-041 REQ-4114, ADR-4105)"
+                            .to_string(),
+                    ));
+                }
             }
         };
         chain.push(authenticator);

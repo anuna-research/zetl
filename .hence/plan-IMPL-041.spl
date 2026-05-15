@@ -850,3 +850,20 @@
   (normally r-cl-state-v1-auth-capability-acl claim-v1-auth-capability-acl state-claimed-v1-auth-capability-acl)
   (normally r-cl-chain-v1-auth-capability-acl state-claimed-v1-auth-capability-acl claimed-auth-capability-acl)
 )
+
+(claims agent:coder
+  :at "2026-05-15T03:51:47Z"
+  (given completed-auth-capability-acl))
+
+(claims agent:coder
+  :at "2026-05-15T03:55:09Z"
+  (given claim-v1-auth-oidc-feature)
+  (normally r-cl-state-v1-auth-oidc-feature claim-v1-auth-oidc-feature state-claimed-v1-auth-oidc-feature)
+  (normally r-cl-chain-v1-auth-oidc-feature state-claimed-v1-auth-oidc-feature claimed-auth-oidc-feature)
+)
+
+;; Propagation rules: failures in 'auth-oidc-feature' block downstream tasks
+(normally r-propagate-auth-oidc-impl-from-auth-oidc-feature-failed failed-auth-oidc-feature upstream-blocked-auth-oidc-impl)
+(normally r-propagate-auth-oidc-impl-from-auth-oidc-feature-permanently-failed permanently-failed-auth-oidc-feature upstream-blocked-auth-oidc-impl)
+(normally r-propagate-auth-oidc-impl-from-auth-oidc-feature-stale-v1 stale-v1-auth-oidc-feature upstream-blocked-auth-oidc-impl)
+(normally r-propagate-auth-oidc-impl-from-auth-oidc-feature-timeout-v1 timeout-v1-auth-oidc-feature upstream-blocked-auth-oidc-impl)

@@ -28,6 +28,9 @@ pub(crate) mod agent_token;
 /// (SPEC-041 task-auth-share-cli).
 pub mod capability_url;
 pub(crate) mod config;
+/// `cfg(feature = "collab-oidc")` — see SPEC-041 ADR-4105.
+#[cfg(feature = "collab-oidc")]
+pub(crate) mod oidc;
 pub(crate) mod passkey;
 /// `pub` (not `pub(crate)`) so the `zetl collab passwd` CLI in `src/main.rs`
 /// can drive the store via `upsert`/`remove`/`list` (SPEC-041 REQ-4108).

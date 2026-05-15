@@ -33,6 +33,13 @@ mcp = ["dep:rmcp"]
 # no-op; preserved so `cargo test --features collab` keeps working for
 # callers and CI that still pass the flag.
 collab = []
+# SPEC-041 ADR-4105: opt-in OIDC method. Additive on top of `collab`. The
+# deps that openidconnect pulls in (reqwest, oauth2, …) only enter the
+# build graph under this feature — NFR-4102 isolation. Phase 5b
+# (auth-oidc-impl) adds those deps and the real flow; Phase 5a (this
+# state) declares the feature so the chain builder can fail-startup with
+# a build-flag hint when `oidc` is named without the feature.
+collab-oidc = []
 # Pulls in the `keyring` crate so the SPEC-040 mobile KeyStore can
 # persist the SSH key in the platform keychain on macOS / Windows /
 # Linux desktop. iOS and Android fall back to the file path until
