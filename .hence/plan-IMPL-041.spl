@@ -595,3 +595,33 @@
 (normally r-propagate-auth-gate-refactor-from-auth-resolve-middleware-permanently-failed permanently-failed-auth-resolve-middleware upstream-blocked-auth-gate-refactor)
 (normally r-propagate-auth-gate-refactor-from-auth-resolve-middleware-stale-v1 stale-v1-auth-resolve-middleware upstream-blocked-auth-gate-refactor)
 (normally r-propagate-auth-gate-refactor-from-auth-resolve-middleware-timeout-v1 timeout-v1-auth-resolve-middleware upstream-blocked-auth-gate-refactor)
+
+(claims agent:coder
+  :at "2026-05-15T02:48:21Z"
+  (given completed-auth-resolve-middleware))
+
+(claims agent:coder
+  :at "2026-05-15T02:50:27Z"
+  (given claim-v1-auth-passkey-impl)
+  (normally r-cl-state-v1-auth-passkey-impl claim-v1-auth-passkey-impl state-claimed-v1-auth-passkey-impl)
+  (normally r-cl-chain-v1-auth-passkey-impl state-claimed-v1-auth-passkey-impl claimed-auth-passkey-impl)
+)
+
+;; Propagation rules: failures in 'auth-passkey-impl' block downstream tasks
+(normally r-propagate-auth-gate-refactor-from-auth-passkey-impl-failed failed-auth-passkey-impl upstream-blocked-auth-gate-refactor)
+(normally r-propagate-auth-gate-refactor-from-auth-passkey-impl-permanently-failed permanently-failed-auth-passkey-impl upstream-blocked-auth-gate-refactor)
+(normally r-propagate-auth-gate-refactor-from-auth-passkey-impl-stale-v1 stale-v1-auth-passkey-impl upstream-blocked-auth-gate-refactor)
+(normally r-propagate-auth-gate-refactor-from-auth-passkey-impl-timeout-v1 timeout-v1-auth-passkey-impl upstream-blocked-auth-gate-refactor)
+
+(claims agent:coder
+  :at "2026-05-15T02:50:27Z"
+  (given claim-v1-auth-agent-token-impl)
+  (normally r-cl-state-v1-auth-agent-token-impl claim-v1-auth-agent-token-impl state-claimed-v1-auth-agent-token-impl)
+  (normally r-cl-chain-v1-auth-agent-token-impl state-claimed-v1-auth-agent-token-impl claimed-auth-agent-token-impl)
+)
+
+;; Propagation rules: failures in 'auth-agent-token-impl' block downstream tasks
+(normally r-propagate-auth-gate-refactor-from-auth-agent-token-impl-failed failed-auth-agent-token-impl upstream-blocked-auth-gate-refactor)
+(normally r-propagate-auth-gate-refactor-from-auth-agent-token-impl-permanently-failed permanently-failed-auth-agent-token-impl upstream-blocked-auth-gate-refactor)
+(normally r-propagate-auth-gate-refactor-from-auth-agent-token-impl-stale-v1 stale-v1-auth-agent-token-impl upstream-blocked-auth-gate-refactor)
+(normally r-propagate-auth-gate-refactor-from-auth-agent-token-impl-timeout-v1 timeout-v1-auth-agent-token-impl upstream-blocked-auth-gate-refactor)

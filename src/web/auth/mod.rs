@@ -23,6 +23,8 @@
 // task-auth-gate-refactor, when the chain is wired into the router.
 #![allow(dead_code)]
 
+pub(crate) mod agent_token;
+pub(crate) mod passkey;
 pub(crate) mod resolve;
 pub(crate) mod token;
 
