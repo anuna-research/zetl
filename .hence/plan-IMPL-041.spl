@@ -578,3 +578,20 @@
 (claims agent:coder
   :at "2026-05-15T02:40:04Z"
   (given discovered-agent-token-is-not-jwt-separate-recogniser))
+
+(claims agent:coder
+  :at "2026-05-15T02:43:17Z"
+  (given completed-auth-token-recogniser))
+
+(claims agent:coder
+  :at "2026-05-15T02:46:40Z"
+  (given claim-v1-auth-resolve-middleware)
+  (normally r-cl-state-v1-auth-resolve-middleware claim-v1-auth-resolve-middleware state-claimed-v1-auth-resolve-middleware)
+  (normally r-cl-chain-v1-auth-resolve-middleware state-claimed-v1-auth-resolve-middleware claimed-auth-resolve-middleware)
+)
+
+;; Propagation rules: failures in 'auth-resolve-middleware' block downstream tasks
+(normally r-propagate-auth-gate-refactor-from-auth-resolve-middleware-failed failed-auth-resolve-middleware upstream-blocked-auth-gate-refactor)
+(normally r-propagate-auth-gate-refactor-from-auth-resolve-middleware-permanently-failed permanently-failed-auth-resolve-middleware upstream-blocked-auth-gate-refactor)
+(normally r-propagate-auth-gate-refactor-from-auth-resolve-middleware-stale-v1 stale-v1-auth-resolve-middleware upstream-blocked-auth-gate-refactor)
+(normally r-propagate-auth-gate-refactor-from-auth-resolve-middleware-timeout-v1 timeout-v1-auth-resolve-middleware upstream-blocked-auth-gate-refactor)

@@ -23,7 +23,10 @@
 // task-auth-gate-refactor, when the chain is wired into the router.
 #![allow(dead_code)]
 
+pub(crate) mod resolve;
 pub(crate) mod token;
+
+use std::sync::Arc;
 
 use axum::http::request::Parts;
 use axum::Router;
@@ -31,6 +34,16 @@ use axum::Router;
 use crate::user::Role;
 
 use super::WebState;
+
+/// The ordered authenticator chain (SPEC-041 ADR-4101).
+///
+/// Assembled once at startup from `[collab.auth] methods` (the chain builder
+/// lands in Phase 1) and walked first-match-wins by the `auth_resolve`
+/// middleware. `Arc`-wrapped so it can be cheap middleware state without
+/// `WebState` having to carry it — only `auth_resolve` needs the chain;
+/// everything downstream reads the resolved [`Principal`] from request
+/// extensions.
+pub(crate) type AuthChain = Arc<Vec<Box<dyn Authenticator + Send + Sync>>>;
 
 /// The identity an [`Authenticator`] resolves a request to.
 ///
