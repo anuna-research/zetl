@@ -788,3 +788,14 @@
 (normally r-propagate-auth-observability-from-auth-password-impl-permanently-failed permanently-failed-auth-password-impl upstream-blocked-auth-observability)
 (normally r-propagate-auth-observability-from-auth-password-impl-stale-v1 stale-v1-auth-password-impl upstream-blocked-auth-observability)
 (normally r-propagate-auth-observability-from-auth-password-impl-timeout-v1 timeout-v1-auth-password-impl upstream-blocked-auth-observability)
+
+(claims agent:coder
+  :at "2026-05-15T03:28:45Z"
+  (given completed-auth-password-impl))
+
+(claims agent:coder
+  :at "2026-05-15T03:31:43Z"
+  (given claim-v1-auth-passwd-cli)
+  (normally r-cl-state-v1-auth-passwd-cli claim-v1-auth-passwd-cli state-claimed-v1-auth-passwd-cli)
+  (normally r-cl-chain-v1-auth-passwd-cli state-claimed-v1-auth-passwd-cli claimed-auth-passwd-cli)
+)

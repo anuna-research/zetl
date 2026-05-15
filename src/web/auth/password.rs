@@ -64,8 +64,12 @@ pub(crate) struct PasswordRecord {
 }
 
 /// Why a password operation failed.
+///
+/// `pub` so the `zetl collab passwd` CLI can name the error type when
+/// propagating it (e.g. via `anyhow::Context`); internal variants stay
+/// readable but each one is essentially operator-channel diagnostic.
 #[derive(Debug, Error)]
-pub(crate) enum PasswordError {
+pub enum PasswordError {
     #[error("password store I/O: {0}")]
     Io(#[from] std::io::Error),
     #[error("password store JSON: {0}")]
@@ -183,7 +187,10 @@ fn write_store_atomic(
 
 /// Add (or overwrite) the password record for `user_id`, hashing the password
 /// with argon2id (NFR-4103 cost). Returns the PHC string written.
-pub(crate) fn upsert(
+///
+/// `pub` (not `pub(crate)`) so the `zetl collab passwd add` CLI driver in
+/// `src/main.rs` can call it directly (SPEC-041 REQ-4108).
+pub fn upsert(
     vault_root: &Path,
     user_id: &str,
     password: &str,
@@ -202,7 +209,9 @@ pub(crate) fn upsert(
 /// Remove the password record for `user_id`. Returns
 /// [`PasswordError::UnknownUser`] if there was no record to remove (so the
 /// CLI can give a clear "not found" exit, per CON-4106).
-pub(crate) fn remove(vault_root: &Path, user_id: &str) -> Result<(), PasswordError> {
+///
+/// `pub` so the `zetl collab passwd remove` CLI can call it directly.
+pub fn remove(vault_root: &Path, user_id: &str) -> Result<(), PasswordError> {
     let mut records = load_store(vault_root)?;
     let before = records.len();
     records.retain(|r| r.user_id != user_id);
@@ -216,7 +225,9 @@ pub(crate) fn remove(vault_root: &Path, user_id: &str) -> Result<(), PasswordErr
 /// List the user_ids that have a password record. Never returns PHC strings
 /// or hash bytes — `list` is for operator visibility, not credential
 /// inspection (CON-4106).
-pub(crate) fn list(vault_root: &Path) -> Result<Vec<String>, PasswordError> {
+///
+/// `pub` so the `zetl collab passwd list` CLI can call it directly.
+pub fn list(vault_root: &Path) -> Result<Vec<String>, PasswordError> {
     let records = load_store(vault_root)?;
     Ok(records.into_iter().map(|r| r.user_id).collect())
 }

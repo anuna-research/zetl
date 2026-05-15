@@ -11698,7 +11698,98 @@ fn main() -> anyhow::Result<()> {
         Command::Skill { command } => match command {
             zetl::cli::SkillCommand::Init { user } => zetl::skill::cmd_skill_init(*user),
         },
+        Command::Collab { command } => match command {
+            zetl::cli::CollabCommand::Passwd { command } => match command {
+                zetl::cli::PasswdCommand::Add { user } => cmd_collab_passwd_add(&cli, user),
+                zetl::cli::PasswdCommand::Remove { user } => {
+                    cmd_collab_passwd_remove(&cli, user)
+                }
+                zetl::cli::PasswdCommand::List => cmd_collab_passwd_list(&cli),
+            },
+        },
     }
+}
+
+// ── `zetl collab passwd` handlers (SPEC-041 REQ-4108, CON-4106) ──
+
+/// `zetl collab passwd add <user>` — TTY-prompted password setter.
+///
+/// Creates the `UserProfile` for `<user>` if it does not yet exist, then
+/// writes (or replaces) the argon2id PHC record in
+/// `.zetl/collab/passwords.json`. Per REQ-4108, the password is read only
+/// from a TTY prompt — never from argv, never from env.
+fn cmd_collab_passwd_add(cli: &zetl::cli::Cli, user: &str) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("cannot resolve vault directory: {}", cli.dir))?;
+
+    // CON-4106 pre-condition: vault must be collab-initialised. Use the
+    // presence of `.zetl/collab/` as a soft proxy; `passwords.json` is
+    // created on first write within it.
+    let collab_dir = vault_root.join(".zetl/collab");
+    std::fs::create_dir_all(&collab_dir).with_context(|| {
+        format!("failed to create {} (is this a zetl vault?)", collab_dir.display())
+    })?;
+
+    // Ensure a UserProfile exists. Re-use the user-id slug helper so the
+    // CLI accepts a friendly id and creates a minimal profile if missing.
+    let existing = zetl::user::load_profile(&vault_root, user)
+        .with_context(|| format!("failed to read profile for {user:?}"))?;
+    if existing.is_none() {
+        let profile = zetl::user::UserProfile {
+            id: user.to_string(),
+            name: user.to_string(),
+            created_at: zetl::user::access_request::now_iso8601(),
+            invited_by: None,
+            owner: false,
+            credentials: Vec::new(),
+            recovery_pubkey: String::new(),
+            agent_token_generation: 0,
+        };
+        zetl::user::save_profile(&vault_root, &profile)
+            .with_context(|| format!("failed to create profile for {user:?}"))?;
+        eprintln!("[zetl] created profile for {user:?} (Reader role)");
+    }
+
+    // REQ-4108: TTY-only password input. `rpassword` reads from /dev/tty so
+    // a pipe or non-tty stdin is rejected by the library itself.
+    let pw1 = rpassword::prompt_password(format!("Password for {user}: "))
+        .with_context(|| "failed to read password from TTY")?;
+    let pw2 = rpassword::prompt_password("Confirm password: ")
+        .with_context(|| "failed to read password from TTY")?;
+    if pw1 != pw2 {
+        anyhow::bail!("passwords did not match");
+    }
+    if pw1.is_empty() {
+        anyhow::bail!("password may not be empty");
+    }
+
+    zetl::web::auth::password::upsert(&vault_root, user, &pw1)
+        .with_context(|| format!("failed to write password record for {user:?}"))?;
+    eprintln!("[zetl] password set for {user:?}");
+    Ok(())
+}
+
+/// `zetl collab passwd remove <user>` — drop the password record.
+fn cmd_collab_passwd_remove(cli: &zetl::cli::Cli, user: &str) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("cannot resolve vault directory: {}", cli.dir))?;
+    zetl::web::auth::password::remove(&vault_root, user)
+        .with_context(|| format!("failed to remove password record for {user:?}"))?;
+    eprintln!("[zetl] removed password record for {user:?}");
+    Ok(())
+}
+
+/// `zetl collab passwd list` — print user_ids that have password records.
+/// Never prints hashes (CON-4106).
+fn cmd_collab_passwd_list(cli: &zetl::cli::Cli) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("cannot resolve vault directory: {}", cli.dir))?;
+    let ids = zetl::web::auth::password::list(&vault_root)
+        .with_context(|| "failed to read password store")?;
+    for id in ids {
+        println!("{id}");
+    }
+    Ok(())
 }
 
 /// Exit code emitted by `zetl cap` stubs whose implementation has not

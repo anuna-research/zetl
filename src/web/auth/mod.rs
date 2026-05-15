@@ -26,7 +26,10 @@
 pub(crate) mod agent_token;
 pub(crate) mod config;
 pub(crate) mod passkey;
-pub(crate) mod password;
+/// `pub` (not `pub(crate)`) so the `zetl collab passwd` CLI in `src/main.rs`
+/// can drive the store via `upsert`/`remove`/`list` (SPEC-041 REQ-4108).
+/// Internal items remain `pub(crate)`.
+pub mod password;
 pub(crate) mod provision;
 pub(crate) mod proxy_header;
 pub(crate) mod resolve;

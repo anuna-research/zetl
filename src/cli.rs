@@ -600,6 +600,47 @@ pub enum Command {
         #[command(subcommand)]
         command: SkillCommand,
     },
+
+    /// Collaborative-mode operations (SPEC-041)
+    #[command(
+        after_help = "Examples:\n  zetl collab passwd add alice       Set / change alice's password\n  zetl collab passwd list            List user_ids with passwords\n  zetl collab passwd remove alice    Drop alice's password record"
+    )]
+    Collab {
+        #[command(subcommand)]
+        command: CollabCommand,
+    },
+}
+
+/// Subcommands for `zetl collab` (SPEC-041 IMPL-041).
+#[derive(Subcommand)]
+pub enum CollabCommand {
+    /// Manage static-password credentials for `[collab.auth] methods = ["password", ...]`
+    /// (SPEC-041 REQ-4108, CON-4106).
+    Passwd {
+        #[command(subcommand)]
+        command: PasswdCommand,
+    },
+}
+
+/// `zetl collab passwd` subcommands (SPEC-041 CON-4106).
+#[derive(Subcommand)]
+pub enum PasswdCommand {
+    /// Set or change the password for `<user>`. Reads the password from a
+    /// TTY prompt — never from argv or env (REQ-4108). Creates the
+    /// `UserProfile` if it does not yet exist.
+    Add {
+        /// The `user_id` whose password to set.
+        user: String,
+    },
+    /// Remove the password record for `<user>`. Exits non-zero if no record
+    /// exists.
+    Remove {
+        /// The `user_id` whose password record to drop.
+        user: String,
+    },
+    /// List the `user_id`s that have a password record. Never prints hashes
+    /// or any other credential material.
+    List,
 }
 
 /// Subcommands for `zetl skill` — self-bootstrap a Claude Code skill
