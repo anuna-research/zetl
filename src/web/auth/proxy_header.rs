@@ -116,8 +116,19 @@ impl Cidr {
 /// Recognise a header value against the CON-4108 grammar
 /// `1*256( ALPHA / DIGIT / "." / "_" / "-" / "@" / "+" )`.
 /// Reject — never normalise — on mismatch (REQ-4120 LangSec).
+///
+/// Defence-in-depth for Vuln 2 (2026-05-15 review): the grammar permits
+/// `.`, so the EXACT values `"."` and `".."` are grammatically valid even
+/// though they are useless as user identifiers and dangerous as path
+/// components. The canonical fix lives in `provision::ensure_user` (which
+/// runs `is_safe_user_id` before any filesystem read), but rejecting
+/// these two exact literals here too means a malformed
+/// `X-Forwarded-User: ..` never even reaches provisioning.
 pub(crate) fn recognise_user_value(s: &str) -> Option<&str> {
     if s.is_empty() || s.len() > 256 {
+        return None;
+    }
+    if s == "." || s == ".." {
         return None;
     }
     if s.bytes().all(|b| {
@@ -336,6 +347,23 @@ mod tests {
     fn recognise_rejects_overlong() {
         let s = "a".repeat(257);
         assert_eq!(recognise_user_value(&s), None);
+    }
+
+    /// Vuln 2 defence-in-depth: the exact literals `.` and `..` are
+    /// rejected at the recogniser even though the CON-4108 alphabet would
+    /// otherwise admit them. `provision::ensure_user`'s `is_safe_user_id`
+    /// is the load-bearing check; this is the second layer.
+    #[test]
+    fn recognise_rejects_dot_and_dotdot() {
+        assert_eq!(recognise_user_value("."), None);
+        assert_eq!(recognise_user_value(".."), None);
+        // Substring `.` and `..` remain legitimate (emails, etc.).
+        assert_eq!(recognise_user_value("alice.bob"), Some("alice.bob"));
+        assert_eq!(recognise_user_value("a..b"), Some("a..b"));
+        assert_eq!(
+            recognise_user_value("alice@example.com"),
+            Some("alice@example.com")
+        );
     }
 
     /// REQ-4106 layer 2: header from non-allowlisted peer is ignored

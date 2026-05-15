@@ -471,10 +471,33 @@ fn jwk_to_decoding_key(jwk: &serde_json::Value, alg: Algorithm) -> Result<Decodi
 
 // ── Route handlers ────────────────────────────────────────────────────
 
+/// Validate a post-OIDC-login `return_to` candidate. Returns the candidate
+/// if it is a safe **local** path (starts with a single `/`, not `//` or
+/// `/\` which would be protocol-relative absolute URLs); otherwise returns
+/// `"/"`.
+///
+/// Prevents the canonical SSO post-login open-redirect attack — without
+/// this guard, `?next=https://evil.example.com` would redirect a freshly
+/// authenticated victim to an attacker-controlled host (Vuln 1 of the
+/// 2026-05-15 security review). Applied at BOTH login_handler (so bad
+/// values never enter the pending-state map) and callback_handler (the
+/// load-bearing sink-side check).
+fn safe_return_to(candidate: &str) -> String {
+    if candidate.starts_with('/')
+        && !candidate.starts_with("//")
+        && !candidate.starts_with("/\\")
+    {
+        candidate.to_string()
+    } else {
+        "/".to_string()
+    }
+}
+
 #[derive(Deserialize)]
 struct LoginQuery {
     /// Optional `next` parameter so the post-login redirect can return
-    /// the user to where they came from. Defaults to `/`.
+    /// the user to where they came from. Defaults to `/`. Validated by
+    /// `safe_return_to` before being stored — non-local values become `/`.
     next: Option<String>,
 }
 
@@ -507,12 +530,18 @@ async fn login_handler(
     let verifier = random_token();
     let challenge = pkce_s256_challenge(&verifier);
 
+    // SAFETY: `safe_return_to` filters out non-local URLs (Vuln 1). The
+    // sink-side check at the callback is the load-bearing one, but
+    // validating here too means the pending-state map never carries a
+    // dangerous value.
+    let return_to = safe_return_to(&q.next.unwrap_or_else(|| "/".to_string()));
+
     shared.pending.insert(
         oidc_state.clone(),
         PendingState {
             nonce: nonce.clone(),
             pkce_verifier: verifier,
-            return_to: q.next.unwrap_or_else(|| "/".to_string()),
+            return_to,
             created_at: Instant::now(),
         },
     );
@@ -617,9 +646,14 @@ async fn callback_handler(
     }
 
     // Mint a normal SessionStore session (ADR-4104) and set the cookie.
+    // SAFETY: `safe_return_to` is applied AGAIN here — load-bearing
+    // sink-side check that an open-redirect can't slip through even if the
+    // pending-state map were poisoned by some non-login_handler code path
+    // (defence in depth for Vuln 1).
     let token = state.sessions.create(&user_id);
     let cookie = session_cookie(&token, state.tls);
-    let mut response = Redirect::temporary(&pending.return_to).into_response();
+    let redirect_target = safe_return_to(&pending.return_to);
+    let mut response = Redirect::temporary(&redirect_target).into_response();
     response
         .headers_mut()
         .insert(header::SET_COOKIE, HeaderValue::from_str(&cookie).unwrap());
@@ -798,5 +832,42 @@ mod tests {
     #[test]
     fn time_imports_referenced() {
         let _ = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    }
+
+    /// Vuln 1 (post-OIDC-login open redirect): `safe_return_to` lets through
+    /// only same-origin local paths.
+    #[test]
+    fn safe_return_to_allows_local_paths() {
+        assert_eq!(safe_return_to("/"), "/");
+        assert_eq!(safe_return_to("/page"), "/page");
+        assert_eq!(safe_return_to("/a/b/c"), "/a/b/c");
+        assert_eq!(safe_return_to("/page?q=1&r=2"), "/page?q=1&r=2");
+        assert_eq!(safe_return_to("/page#anchor"), "/page#anchor");
+    }
+
+    /// Vuln 1: cross-origin and protocol-relative targets fall back to "/".
+    #[test]
+    fn safe_return_to_rejects_cross_origin() {
+        // Absolute URL with scheme — the canonical exploit.
+        assert_eq!(safe_return_to("https://evil.example.com/phish"), "/");
+        assert_eq!(safe_return_to("http://evil.example.com/"), "/");
+        assert_eq!(safe_return_to("javascript:alert(1)"), "/");
+        assert_eq!(safe_return_to("data:text/html,<script>x</script>"), "/");
+
+        // Protocol-relative (`//host/path`) — browsers treat as same-scheme
+        // cross-origin, so just as dangerous as an absolute URL.
+        assert_eq!(safe_return_to("//evil.example.com/phish"), "/");
+        assert_eq!(safe_return_to("//evil.example.com"), "/");
+
+        // Backslash-prefixed — some browsers normalise `\` → `/` in paths,
+        // making `/\evil.example.com` behave like a protocol-relative URL.
+        assert_eq!(safe_return_to("/\\evil.example.com"), "/");
+
+        // Bare hostnames / relative paths without a leading `/` — not
+        // exploitable as open-redirects in axum, but they're ambiguous and
+        // shouldn't survive validation either.
+        assert_eq!(safe_return_to("evil.example.com"), "/");
+        assert_eq!(safe_return_to("page"), "/");
+        assert_eq!(safe_return_to(""), "/");
     }
 }

@@ -950,3 +950,11 @@
   (normally r-cl-state-v1-auth-changelog-mark claim-v1-auth-changelog-mark state-claimed-v1-auth-changelog-mark)
   (normally r-cl-chain-v1-auth-changelog-mark state-claimed-v1-auth-changelog-mark claimed-auth-changelog-mark)
 )
+
+(claims agent:coder
+  :at "2026-05-15T04:19:06Z"
+  (given discovered-spec-status-flip-deferred-pending-cross-model-review))
+
+(claims agent:coder
+  :at "2026-05-15T04:19:06Z"
+  (given completed-auth-changelog-mark))

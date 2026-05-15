@@ -63,6 +63,13 @@ pub(crate) enum DenyReason {
     NoDomainForAllowlistCheck,
     /// Filesystem failure reading or writing the profile.
     IoError(String),
+    /// The user_id contains characters that would escape `.zetl/users/` as
+    /// a path component (`/`, `\`, `\0`, or the exact strings `.` / `..`).
+    /// Rejected before any profile read or write so an attacker cannot use
+    /// `user_id = ".."` to either (a) clobber a sibling JSON via `save_profile`
+    /// or (b) read a sibling profile via the existing-profile branch of
+    /// `ensure_user`. Vuln 2 of the 2026-05-15 security review.
+    InvalidUserId(String),
 }
 
 /// Resolve a principal's `user_id` to a profile, provisioning one at Reader
@@ -77,6 +84,18 @@ pub(crate) fn ensure_user(
     method: &'static str,
     policy: &ProvisionPolicy,
 ) -> ProvisionOutcome {
+    // 0. SECURITY (Vuln 2 / 2026-05-15 review): reject user_ids that
+    //    would escape `.zetl/users/` as a path component. `Path::join`
+    //    does NOT normalise `..`, so a `user_id = ".."` resolves through
+    //    the filesystem to `vault_root/.zetl/profile.json`. Run BEFORE
+    //    `load_profile` so an attacker cannot use a `..` user_id to read
+    //    a sibling profile via the existing-profile branch either.
+    if !is_safe_user_id(user_id) {
+        return ProvisionOutcome::Denied(DenyReason::InvalidUserId(
+            user_id.to_string(),
+        ));
+    }
+
     // 1. Existing profile? Pass through unchanged (idempotent).
     match load_profile(vault_root, user_id) {
         Ok(Some(_)) => return ProvisionOutcome::Allowed,
@@ -126,6 +145,27 @@ pub(crate) fn ensure_user(
 /// user_id contains no `@`.
 fn extract_domain(user_id: &str) -> Option<&str> {
     user_id.rsplit_once('@').map(|(_, domain)| domain).filter(|d| !d.is_empty())
+}
+
+/// Returns `true` iff `user_id` is safe to use as a path component beneath
+/// `vault_root/.zetl/users/` (SPEC-041 Vuln 2 / 2026-05-15 review).
+///
+/// Rejected:
+/// * empty strings or values longer than 256 chars;
+/// * strings containing `/`, `\\`, or NUL — any path-separator on any OS;
+/// * the EXACT literals `.` or `..` — these are the dotted path components
+///   that traverse. Substrings like `alice.bob` are fine.
+///
+/// Substring `.` is intentionally allowed so that email-shaped user_ids
+/// (`alice.bob@example.com`) and dotted handles round-trip unchanged.
+pub(crate) fn is_safe_user_id(user_id: &str) -> bool {
+    !user_id.is_empty()
+        && user_id.len() <= 256
+        && !user_id.contains('/')
+        && !user_id.contains('\\')
+        && !user_id.contains('\0')
+        && user_id != "."
+        && user_id != ".."
 }
 
 #[cfg(test)]
@@ -260,6 +300,85 @@ mod tests {
             ensure_user(tmp.path(), "alice@example.com", "oidc", &policy),
             ProvisionOutcome::Allowed
         );
+    }
+
+    /// Vuln 2 (path traversal): `is_safe_user_id` accepts realistic
+    /// account-shaped ids and rejects the dotted-path-component literals
+    /// and embedded separators that would let a `Path::join`d user_id
+    /// escape `.zetl/users/`.
+    #[test]
+    fn is_safe_user_id_matrix() {
+        // OK
+        assert!(is_safe_user_id("alice"));
+        assert!(is_safe_user_id("alice@example.com"));
+        assert!(is_safe_user_id("alice.bob"));
+        assert!(is_safe_user_id("alice.bob@example.com"));
+        assert!(is_safe_user_id("user_123"));
+        assert!(is_safe_user_id("a-b-c"));
+        assert!(is_safe_user_id("...starts.with.dots")); // not `.` or `..` exactly
+        assert!(is_safe_user_id("a")); // single char
+        // Reject empty + path-traversal components
+        assert!(!is_safe_user_id(""));
+        assert!(!is_safe_user_id("."));
+        assert!(!is_safe_user_id(".."));
+        // Reject path separators anywhere
+        assert!(!is_safe_user_id("../admin"));
+        assert!(!is_safe_user_id("foo/bar"));
+        assert!(!is_safe_user_id("foo\\bar"));
+        assert!(!is_safe_user_id("/"));
+        assert!(!is_safe_user_id("a/b"));
+        // Reject NUL
+        assert!(!is_safe_user_id("a\0b"));
+        // Reject over-length
+        assert!(!is_safe_user_id(&"a".repeat(257)));
+        // Boundary: 256 chars OK
+        assert!(is_safe_user_id(&"a".repeat(256)));
+    }
+
+    /// Vuln 2 regression: `ensure_user` with `user_id = ".."` denies
+    /// BEFORE any filesystem read — neither the existing-profile branch
+    /// (which would otherwise resolve `vault_root/.zetl/users/../profile.json`
+    /// = `vault_root/.zetl/profile.json` via `Path::join`+OS resolution)
+    /// nor the create-profile branch fires. Auto-provision policy is the
+    /// permissive case (would otherwise admit).
+    #[test]
+    fn ensure_user_rejects_dotdot_before_io() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let policy = ProvisionPolicy {
+            enabled: true,
+            domain_allow: None,
+        };
+        let outcome = ensure_user(tmp.path(), "..", "proxy-header", &policy);
+        match outcome {
+            ProvisionOutcome::Denied(DenyReason::InvalidUserId(id)) => {
+                assert_eq!(id, "..");
+            }
+            other => panic!("expected InvalidUserId, got {other:?}"),
+        }
+        // Confirm no profile.json was created anywhere under .zetl/ —
+        // neither inside .zetl/users/../ nor at vault_root/.zetl/profile.json.
+        assert!(!tmp.path().join(".zetl/profile.json").exists());
+        // The `.zetl/users` dir itself may or may not exist depending on
+        // load_profile behaviour on missing dirs; what we care about is
+        // that nothing escaped to .zetl/profile.json.
+    }
+
+    /// Vuln 2 regression: same denial for `user_id = "../admin"` and
+    /// other path-traversal shapes, including embedded forward and
+    /// backslashes.
+    #[test]
+    fn ensure_user_rejects_path_traversal_shapes() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let policy = ProvisionPolicy {
+            enabled: true,
+            domain_allow: None,
+        };
+        for bad in ["../admin", "foo/bar", "foo\\bar", ".", "", "/", "a\0b"] {
+            match ensure_user(tmp.path(), bad, "oidc", &policy) {
+                ProvisionOutcome::Denied(DenyReason::InvalidUserId(_)) => {}
+                other => panic!("expected InvalidUserId for {bad:?}, got {other:?}"),
+            }
+        }
     }
 
     /// ADR-4107 property: this module has no path to a non-Reader role.
