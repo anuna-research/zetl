@@ -1,0 +1,551 @@
+(meta plan
+  (id "IMPL-041")
+  (title "Pluggable Authentication for `zetl --collab` — implementation plan")
+  (version "0.1.0")
+  (status "active")
+  (created "2026-05-15")
+  (author "agent:claude")
+  (spec "SPEC-041")
+  (description "Implement SPEC-041 v0.1.0-strawman: pluggable authentication for `zetl --collab` via an Authenticator trait + ordered `[collab.auth]` config chain + a single `auth_resolve` middleware producing a Principal request extension, keeping the SPL authorization layer as the invariant seam. 23 tasks across seven phases: a Tier-1 spec-review gate, a behaviour-preserving trait refactor (Phase 0), config + chain assembly (Phase 1), then four new authenticators in ascending dependency-weight order — reverse-proxy header (Phase 2), static password (Phase 3), capability-URL (Phase 4), OIDC behind a cargo feature (Phase 5) — closing with observability, docs, cross-model adversarial review, and the spec-status flip (Phase 6). SPEC-041 is `draft` and authentication is a USDD Tier-1 no-go area; task-auth-tier1-review-spec gates all implementation."))
+
+;; ── Agents ──────────────────────────────────────────────────────────
+
+(given agent-coder-available)
+(given agent-reviewer-security-available)
+(given agent-docs-writer-available)
+
+;; ── Phase 0 gate — spec-level Tier-1 review ─────────────────────────
+
+(given task-auth-tier1-review-spec)
+(meta task-auth-tier1-review-spec
+  (description "USDD Tier-1 review of SPEC-041 v0.1.0-strawman per PROTO-001 §AI Trust Boundaries (authentication core is a no-go area requiring explicit human approval) and Constitutional Principle 12 (adversarial review from a fresh context). Cross-model adversarial pass + human-expert sign-off, with attention to: (a) the load-bearing REQ-4101/REQ-4104 invariant that authorization is untouched, (b) REQ-4106 + ADR-4103 proxy-header trust-gate fail-closed behaviour, (c) REQ-4110 OIDC callback validation completeness, (d) REQ-4116–4119 + ADR-4109/4110/4111 + Threat Model H — the capability-URL bearer-in-URL trade-off, which SPEC-036 §1 explicitly critiques, (e) REQ-4120 LangSec grammar coverage of every external-input contract.")
+  (acceptance "Review report produced. Zero S1 findings OR all S1 findings resolved in a refreshed spec draft that re-invokes this gate. S2-and-below findings documented with a resolution plan. Human-expert approval recorded (the user's explicit `this spec looks great` on the committed draft satisfies the human-expert portion; record it via `hence task assert`). Spec status stays `draft` until task-auth-changelog-mark; this gate only authorises implementation to begin.")
+  (priority "P0")
+  (spec-ref "SPEC-041 §14, PROTO-001 §AI Trust Boundaries"))
+
+;; ── Phase 0 — behaviour-preserving refactor (no new methods) ────────
+
+(given task-auth-trait)
+(meta task-auth-trait
+  (description "New `src/web/auth/mod.rs` per ADR-4108: the `Authenticator` trait (CON-4101) with `id`, `authenticate`, `issues_cookie_session`, `login_redirect`, `routes`; the `AuthOutcome` enum (Authenticated/Abstain/Reject); `Principal` (account user_id OR pseudonymous capability handle, `method`, `cookie_session`, optional `CapabilityGrant`); `AuthRejection`. Plain-data types only at this step — no impls, no middleware.")
+  (acceptance "`src/web/auth/mod.rs` compiles; types are `pub(crate)`. `AuthOutcome`/`Principal`/`AuthRejection` are `Debug`. No behaviour wired yet. TEST-4101 (type-shape portion) green.")
+  (priority "P0")
+  (spec-ref "SPEC-041 REQ-4101, REQ-4112, CON-4101, ADR-4108"))
+
+(given task-auth-token-recogniser)
+(meta task-auth-token-recogniser
+  (description "Extract the EdDSA JWT encode/recognise logic from `src/user/invite.rs` into a shared `src/web/auth/token.rs` recogniser per REQ-4120 (LangSec: one parser per language). Pure, total: `recognise(&str) -> Result<EdDsaJwt, TokenError>` validating the three-segment base64url grammar and the 64-byte signature length, plus a typed claims-extraction helper that checks `sub` BEFORE any other claim is trusted. `src/user/invite.rs` is rewired to call the shared recogniser with NO change to its observable behaviour (the SPEC-020 invite path stays byte-identical).")
+  (acceptance "`token.rs` is the single EdDSA-JWT recogniser; `src/user/invite.rs` delegates to it. Existing invite tests pass unchanged. New roundtrip property test `recognise∘encode == id` and a fuzz target green. TEST-4120 (token portion) green.")
+  (priority "P0")
+  (spec-ref "SPEC-041 REQ-4120, ADR-4108, ADR-4109"))
+
+(given task-auth-resolve-middleware)
+(meta task-auth-resolve-middleware
+  (description "`src/web/auth/resolve.rs` per CON-4103 + ADR-4102: the `auth_resolve` middleware walks the chain in order, inserts `Option<Principal>` into request extensions on the first `Authenticated`, returns the generic failure on `Reject`, and inserts `None` if all `Abstain`. Plus the extension accessor used by gates/extractors. Chain is `Vec<Box<dyn Authenticator + Send + Sync>>` (ADR-4101).")
+  (acceptance "`auth_resolve` resolves exactly once and is layerable before `collab_gate`. Unit tests cover first-match, reject-terminates, all-abstain. NFR-4104 determinism property test green. TEST-4104, TEST-NFR-4104 green.")
+  (priority "P0")
+  (spec-ref "SPEC-041 REQ-4104, NFR-4104, CON-4103, ADR-4101, ADR-4102"))
+
+(given task-auth-passkey-impl)
+(meta task-auth-passkey-impl
+  (description "`src/web/auth/passkey.rs`: wrap the EXISTING passkey/session logic from `src/web/session.rs` (`SessionStore::validate`, cookie parsing) behind the `Authenticator` trait. `issues_cookie_session() == true`. `login_redirect()` returns `/auth/login`. `routes()` re-exposes the existing passkey routes. No crypto, no storage, no behaviour change — a pure adapter.")
+  (acceptance "`PasskeyAuthenticator` produces the same Principal a valid `zetl_session` cookie does today. Existing session/passkey tests pass unchanged. TEST-4101 (passkey portion) green.")
+  (priority "P0")
+  (spec-ref "SPEC-041 REQ-4101, REQ-4112, CON-4101"))
+
+(given task-auth-agent-token-impl)
+(meta task-auth-agent-token-impl
+  (description "`src/web/auth/agent_token.rs`: wrap the EXISTING `verify_bearer_token` logic from `src/web/session.rs` behind the `Authenticator` trait, using the shared `token.rs` recogniser for the JWT-shape step. `issues_cookie_session() == false` (stateless — generalises the current Bearer CSRF exemption per REQ-4112). No `login_redirect`, no `routes`.")
+  (acceptance "`AgentTokenAuthenticator` authenticates exactly the Bearer tokens accepted today and rejects the same. Stateless flag set. Existing bearer-token tests pass unchanged. TEST-4101 (agent-token portion), TEST-4112 (stateless portion) green.")
+  (priority "P0")
+  (spec-ref "SPEC-041 REQ-4101, REQ-4112, CON-4101"))
+
+(given task-auth-gate-refactor)
+(meta task-auth-gate-refactor
+  (description "Thin `collab_gate`, `admin_gate`, and the four extractors (`SessionUser`, `BearerUser`, `AuthUser`, `SessionRole`) to read the `Principal` request extension instead of re-parsing headers/cookies (ADR-4102). Delete `admin_gate`'s parallel resolution. Wire `auth_resolve` into the router in `src/web/mod.rs` ahead of `collab_gate`/`csrf_guard`; add a middleware-ordering test. Default chain (`[\"passkey\", \"agent-token\"]`) is constructed inline for now — config wiring is Phase 1.")
+  (acceptance "All gates/extractors consume the extension; no raw-header parsing outside `auth/*`. Middleware-ordering test green. The ENTIRE existing SPEC-020/collab test suite passes UNCHANGED — zero behaviour change. TEST-4103 green.")
+  (priority "P0")
+  (spec-ref "SPEC-041 REQ-4103, REQ-4104, ADR-4102, ADR-4108"))
+
+;; ── Phase 1 — config & chain assembly ───────────────────────────────
+
+(given task-auth-config-lens)
+(meta task-auth-config-lens
+  (description "`src/web/auth/config.rs`: the `CollabAuthConfig` TOML lens per CON-4102, mirroring `ZetlConfigLens`/`AccessConfig` in `src/cap/public_repo.rs` — deserialises only `[collab]`, tolerates unknown SIBLING top-level keys, but `deny_unknown_fields` WITHIN `[collab.auth]` and its sub-tables so a typo fails startup. Pure `parse()` + pure `validate(cfg, compiled_features, trust_proxy)` carrying the REQ-4114 rule set that applies so far (unknown method name; missing required sub-table fields).")
+  (acceptance "`parse` + `validate` are pure, total functions. `methods` parses to an ordered list. Unknown method name and unknown sub-table key both fail with a named error. Negative-input tests per PROTO-001 §Requirement-Targeted Test Decomposition. TEST-4102, TEST-4114 (partial), TEST-4120 (config portion) green.")
+  (priority "P0")
+  (spec-ref "SPEC-041 REQ-4102, REQ-4114, REQ-4120, CON-4102"))
+
+(given task-auth-chain-builder)
+(meta task-auth-chain-builder
+  (description "Chain builder: `CollabAuthConfig` -> `Vec<Box<dyn Authenticator>>` in `methods` order, with an absent `[collab.auth]` block yielding `[\"passkey\", \"agent-token\"]` (REQ-4103). Replace the Phase-0 inline default with the builder. Startup wiring in `src/web/mod.rs`; emit the OBS-4105 startup line enumerating the assembled chain + compiled auth features.")
+  (acceptance "Default config reproduces Phase-0 behaviour exactly. Configured chains build in order. OBS-4105 line emitted at startup. TEST-4102, TEST-NFR-4104 green; TEST-4103 still green.")
+  (priority "P0")
+  (spec-ref "SPEC-041 REQ-4102, REQ-4103, OBS-4105"))
+
+;; ── Phase 2 — reverse-proxy header authenticator ────────────────────
+
+(given task-auth-provision)
+(meta task-auth-provision
+  (description "`src/web/auth/provision.rs` per REQ-4111 + ADR-4107: opt-in `auto_provision` that, on a first-seen principal, creates a `UserProfile` at a FIXED default role of Reader and never higher; OIDC additionally honours `provision_domain_allow`. Shared by the proxy-header (Phase 2) and OIDC (Phase 5) authenticators. Capability-URL principals are explicitly never routed through this (REQ-4119).")
+  (acceptance "`auto_provision` on -> Reader profile created; off -> unknown principal rejected; domain not in allowlist -> not provisioned. Reader is the ceiling — a property test confirms no path yields Editor/Admin. TEST-4111 green.")
+  (priority "P0")
+  (spec-ref "SPEC-041 REQ-4111, ADR-4107"))
+
+(given task-auth-proxy-header)
+(meta task-auth-proxy-header
+  (description "`src/web/auth/proxy_header.rs` per CON-4108: derive `user_id` from a configurable header (default `X-Forwarded-User`). REQ-4106 trust gate — engage ONLY when proxy trust is enabled AND the immediate peer IP is in `peer_allow` (CIDR list); ignore the header on any other peer. The header value is recognised against the CON-4108 ABNF grammar and REJECTED, not normalised, on mismatch (REQ-4120). `[collab.auth.proxy_header]` schema added to the config lens; `proxy-header` named without `--trust-proxy` is a hard startup error (REQ-4106/REQ-4114). Issues a stateless principal (REQ-4112).")
+  (acceptance "Grammatical header from an allowlisted peer authenticates; header from any other peer or absent proxy trust never does; ungrammatical value rejected; `proxy-header` w/o `--trust-proxy` -> named startup error. Fuzz target on the header recogniser. TEST-4105, TEST-4106, TEST-4111 (proxy path), TEST-4112, TEST-4114, TEST-4120 (proxy-header portion) green.")
+  (priority "P0")
+  (spec-ref "SPEC-041 REQ-4105, REQ-4106, REQ-4111, REQ-4112, REQ-4114, REQ-4120, CON-4108, ADR-4103"))
+
+;; ── Phase 3 — static password authenticator ─────────────────────────
+
+(given task-auth-password-store)
+(meta task-auth-password-store
+  (description "`src/web/auth/password.rs` store side per CON-4107 + ADR-4106: `.zetl/collab/passwords.json`, mode 0600 (enforced AND checked, mirroring the `server.key` 0600 check in `src/user/invite.rs`), schema `[{user_id, phc}]` where `phc` is the argon2id PHC string. Mutated under the same advisory file lock used for `used-nonces.json`. Pure `verify(submitted, phc) -> bool` (constant-time, parameters tuned to the NFR-4103 cost band, recorded in the PHC string so they can be raised later).")
+  (acceptance "Store read/write round-trips; 0600 enforced + a too-permissive file is rejected on read. `verify` is constant-time and within the NFR-4103 cost band on reference hardware. TEST-4107 (store + verify portion), TEST-NFR-4103 green.")
+  (priority "P0")
+  (spec-ref "SPEC-041 REQ-4107, NFR-4103, CON-4107, ADR-4106"))
+
+(given task-auth-password-impl)
+(meta task-auth-password-impl
+  (description "`PasswordAuthenticator` + `/auth/password` GET/POST routes per CON-4105, mounted via `Authenticator::routes()` in the public `auth_routes` group behind the existing per-IP rate limiter (REQ-4113). POST body recognised against the CON-4105 `application/x-www-form-urlencoded` ABNF grammar BEFORE any hash computation (REQ-4120). On success mint an ordinary `SessionStore` session + `Set-Cookie`; on failure re-render with a generic message. Verification is cause-indistinguishable: unknown user ≡ wrong password, in BOTH the response and the timing (REQ-4107).")
+  (acceptance "Happy path mints a normal session; wrong password and unknown user are byte-identical and timing-indistinguishable at the user layer; over-length/missing/extra form fields rejected pre-hash. Route is public + rate-limited. TEST-4107, TEST-4107-timing, TEST-4113, TEST-4120 (form-body portion) green.")
+  (priority "P0")
+  (spec-ref "SPEC-041 REQ-4107, REQ-4113, REQ-4120, CON-4105"))
+
+(given task-auth-passwd-cli)
+(meta task-auth-passwd-cli
+  (description "`zetl collab passwd add <user> | remove <user> | list` per CON-4106. Password read from a TTY prompt ONLY — never argv, never env. `add` creates the `UserProfile` if absent and writes/updates the argon2id record under the advisory lock; `remove` deletes it; `list` prints user ids only, never hashes. SPEC-004 exit codes; non-zero + stderr for vault-not-collab, permissions error, remove-of-unknown-user.")
+  (acceptance "`assert_cmd` tests: add/remove/list behave per CON-4106; password substring never appears in argv/env/process listing (grep-based test); `list` never prints a hash. TEST-4108 green.")
+  (priority "P1")
+  (spec-ref "SPEC-041 REQ-4108, CON-4106"))
+
+;; ── Phase 4 — capability-URL authenticator ──────────────────────────
+
+(given task-auth-capability-impl)
+(meta task-auth-capability-impl
+  (description "`src/web/auth/capability_url.rs` per CON-4109 + ADR-4109/4110/4111: a capability token is an EdDSA JWT (`sub = \"zetl-capability\"`, claims `scope`/`role`/`exp`/`jti`, `deny_unknown_fields`) signed by the existing `server.key`, recognised via the shared `token.rs` recogniser (REQ-4120). Token rides as `?cap=<token>` query (ADR-4110, NOT the fragment — server-side authenticator). On request: absent `?cap=` -> Abstain; bad signature / `sub` mismatch / expired / `jti` revoked -> Abstain (generic, not Reject). Else issue a PSEUDONYMOUS, scope-capped `Principal` (REQ-4119) — no UserProfile, never elevated, never satisfies `admin_gate`. Revocation set persisted under `.zetl/collab/` like `used-nonces.json` (REQ-4118). Responses to capability-URL requests set `Referrer-Policy: no-referrer`; the `?cap=` token is stripped from server logs and the audit trail (ADR-4110, REQ-4115). `[collab.auth.capability_url]` schema (`default_ttl`/`max_ttl`) added to the config lens.")
+  (acceptance "Validly-signed unexpired unrevoked token authenticates as a scope-capped bearer capability; expired/revoked/`sub`-mismatched/bad-signature tokens all yield the generic failure; the principal carries no UserProfile, is never elevated, and never passes `admin_gate`. `Referrer-Policy: no-referrer` present; token absent from logs. Fuzz target on the cap-token recogniser. TEST-4116, TEST-4117 (validation portion), TEST-4118, TEST-4119, TEST-4120 (cap-token portion) green.")
+  (priority "P0")
+  (spec-ref "SPEC-041 REQ-4116, REQ-4117, REQ-4118, REQ-4119, REQ-4120, CON-4109, ADR-4109, ADR-4110, ADR-4111"))
+
+(given task-auth-share-cli)
+(meta task-auth-share-cli
+  (description "`zetl collab share --scope <glob> --role <reader|editor> [--expires <duration>]` to mint, `--list` to enumerate live tokens, `--revoke <jti>` to revoke, per CON-4110. Minting prints exactly one `?cap=`-bearing URL plus a BEARER-AUTHORITY security notice on stderr (REQ-4116). `--expires` bounded to the REQ-4117 range (default 7d, 5min..90d) read from `[collab.auth.capability_url]`. `--revoke` adds the `jti` to the persisted revocation set; `--list` reflects live vs revoked. SPEC-004 exit codes.")
+  (acceptance "`assert_cmd` tests: `share` emits one URL + the bearer notice; minted token carries the requested scope/role and an in-bounds `exp`; out-of-bounds `--expires` rejected; `--revoke` of an unknown `jti` errors; `--list` reflects state. TEST-4116, TEST-4117 (CLI portion), TEST-4118 (CLI portion) green.")
+  (priority "P1")
+  (spec-ref "SPEC-041 REQ-4116, REQ-4117, REQ-4118, CON-4110"))
+
+(given task-auth-capability-acl)
+(meta task-auth-capability-acl
+  (description "Confirm (and adjust only if strictly necessary) that the SPL/`acl.rs` layer accommodates a capability-URL subject — a Principal carrying a capability attribute and NO UserProfile — without semantic change, per ADR-4111. The bound `scope` glob reaches SPL as a Principal attribute; SPL must be able to express `read iff page within capability glob` with existing operators (open question §15.9). If a new operator or fact shape is genuinely required, document it as a spec amendment rather than a silent change.")
+  (acceptance "An integration test drives a capability-URL request through `acl.rs`: in-scope read allowed, out-of-scope read denied, any write denied, `admin_gate` denied. No SPL semantic change, OR a documented amendment with rationale. TEST-4119 (acl portion) green.")
+  (priority "P0")
+  (spec-ref "SPEC-041 REQ-4119, ADR-4111, §15.9"))
+
+;; ── Phase 5 — OIDC / OAuth2 authenticator (feature-gated) ───────────
+
+(given task-auth-oidc-feature)
+(meta task-auth-oidc-feature
+  (description "Add the `collab-oidc` cargo feature, additive on top of `collab` (ADR-4105). Pull the OAuth2/OIDC + async-HTTP-client crates in UNDER that feature only. A default `--features collab` build gains zero new dependencies (NFR-4102). `oidc` named in `methods` without the feature compiled is a hard startup error with a build-instruction hint (REQ-4114). `--version` output lists compiled auth features.")
+  (acceptance "`cargo build --features collab` shows no new deps in the lockfile diff attributable to OIDC; `cargo build --features collab,collab-oidc` adds them. `oidc` w/o feature -> named startup error. `--version` lists auth features. TEST-NFR-4102, TEST-4114 (oidc-feature portion) green.")
+  (priority "P1")
+  (spec-ref "SPEC-041 REQ-4114, NFR-4102, ADR-4105"))
+
+(given task-auth-oidc-impl)
+(meta task-auth-oidc-impl
+  (description "`src/web/auth/oidc.rs` (`#[cfg(feature = \"collab-oidc\")]`) per CON-4104 + REQ-4109/4110: the OIDC Authorization Code flow with PKCE. `/auth/oidc/login` -> 302 to the IdP with `code` response type, PKCE `code_challenge`, `state`, `nonce`. `/auth/oidc/callback` -> recognise the callback query against the CON-4104 ABNF grammar (REQ-4120), validate `state`, exchange the code with the PKCE verifier, validate the ID token (pinned `issuer`, JWKS signature, `aud`, `exp`/`iat`, `nonce`), derive `user_id` from `user_id_claim`, domain-gated auto-provision (task-auth-provision), mint a `SessionStore` session (ADR-4104), 302 to the original path. `state`/`nonce` single-use. `[collab.auth.oidc]` schema in the config lens. Routes public + rate-limited (REQ-4113).")
+  (acceptance "End-to-end code flow against a mock IdP mints a normal session. Bad `state`, bad `nonce`, wrong `aud`, expired token, bad signature, replayed `state` ALL yield the generic failure with the cause in the operator log only. Callback-query fuzz target green. TEST-4109, TEST-4110, TEST-4111 (oidc path), TEST-4113, TEST-4120 (callback portion) green.")
+  (priority "P0")
+  (spec-ref "SPEC-041 REQ-4109, REQ-4110, REQ-4111, REQ-4113, REQ-4120, CON-4104, ADR-4104, ADR-4105"))
+
+;; ── Phase 6 — observability, docs, review, stabilisation ────────────
+
+(given task-auth-observability)
+(meta task-auth-observability
+  (description "Wire OBS-4101–OBS-4106 per SPEC-041 §9: the `auth_resolve` duration histogram, the outcomes counter, the per-decision operator log line, the success/reject audit line, the startup chain-enumeration line (already from task-auth-chain-builder — confirm), and the capability-token state gauge. Enforce the REQ-4115 redaction contract: no passwords, tokens, ID tokens, PKCE verifiers, or capability tokens in ANY log or audit line. The reject `cause` label/field is operator-channel only — never on an unauthenticated metrics endpoint (defeats REQ-4107 indistinguishability).")
+  (acceptance "All six OBS signals emit. A grep-based test confirms no secret material in logs/audit across every method's success+failure paths. The `cause` label is absent from any HTTP-readable metrics output. TEST-4115 green.")
+  (priority "P1")
+  (spec-ref "SPEC-041 REQ-4115, OBS-4101, OBS-4102, OBS-4103, OBS-4104, OBS-4105, OBS-4106"))
+
+(given task-auth-docs)
+(meta task-auth-docs
+  (description "`docs/collab-auth.md` — operator guide per PROTO-001 §Documentation: one section per method, the chain mental model, the proxy header-stripping requirement, the capability-URL sensitivity ceiling (low-to-moderate scopes only; OIDC/passkey above it), the `[collab.auth]` reference. `research/SPEC-041-threat-model.md` — the full threat model expanding §11 A–H, with Threat Model H (capability-URL leakage) quantified per the spec's deferral. Both derived from SPEC-041, the CON-### contracts, and the ADR-### rationale.")
+  (acceptance "Both documents exist and match the implementation (config keys, routes, exit codes byte-accurate). A synthetic-user walkthrough of HP2/HP3/HP4/HP5 completes without gaps. Threat Model H names the leakage vectors and confirms the mitigation set is complete.")
+  (priority "P1")
+  (spec-ref "SPEC-041 §11, §13 Phase 6, PROTO-001 §Documentation"))
+
+(given task-auth-adversarial-review)
+(meta task-auth-adversarial-review
+  (description "TEST-adversarial-041: cross-model adversarial review of the completed implementation per PROTO-001 Constitutional Principle 12 + §Multi-Model Cognitive Diversity. Fresh-context reviewer (different model family), given the spec + code + an explicit mandate to find defects, with priority on: the REQ-4101/REQ-4104 authorization-untouched invariant, REQ-4106 fail-closed proxy trust, REQ-4110 OIDC validation completeness, the Threat Model H capability-URL trade-off, REQ-4120 LangSec recogniser coverage, and the mutation-test kill rates (≥90% on `auth_resolve` + chain builder, the EdDSA-JWT recogniser + cap validation, and OIDC ID-token validation). Findings resolve into BUG-### or spec amendments.")
+  (acceptance "Review artifact committed to `.hence/reviews/auth-tier1-<date>.md` with the reviewer's model + session context. All S1/S2 findings addressed (fix + regression test) before task-auth-changelog-mark. Mutation kill rates measured and ≥90% on the named modules, or gaps closed.")
+  (priority "P0")
+  (spec-ref "SPEC-041 §8 TEST-adversarial-041, PROTO-001 Principle 12"))
+
+(given task-auth-changelog-mark)
+(meta task-auth-changelog-mark
+  (description "CHANGELOG.md entry for the release shipping SPEC-041 (the six methods, the `[collab.auth]` config, the `collab-oidc` feature, the new CLIs). Flip `specs/SPEC-041-pluggable-collab-auth.md` frontmatter from `draft`/`0.1.0-strawman` to `implemented`/`1.0.0` per PROTO-001 §Specification Status Lifecycle and remove the `[Provisional]` markers — gated on all implementation tasks done, all REQ->TEST traceability verified, the Tier-1 spec gate + the adversarial review both complete, and docs generated.")
+  (acceptance "CHANGELOG entry follows project conventions. `specs/SPEC-041-pluggable-collab-auth.md` status is `implemented`, version `1.0.0`, provisional markers removed. Commit message references the completed USDD Phase 3 quality gates.")
+  (priority "P1")
+  (spec-ref "SPEC-041 §14, PROTO-001 §Specification Status Lifecycle"))
+
+;; ── Readiness rules ─────────────────────────────────────────────────
+
+;; Phase 0 gate — ready immediately; blocks all implementation.
+(normally r-ready-tier1-review-spec
+  task-auth-tier1-review-spec
+  ready-auth-tier1-review-spec)
+
+;; Phase 0 — the refactor. Every task waits on the spec-review gate.
+(normally r-ready-trait
+  (and task-auth-trait completed-auth-tier1-review-spec)
+  ready-auth-trait)
+
+(normally r-ready-token-recogniser
+  (and task-auth-token-recogniser completed-auth-tier1-review-spec)
+  ready-auth-token-recogniser)
+
+(normally r-ready-resolve-middleware
+  (and task-auth-resolve-middleware completed-auth-trait)
+  ready-auth-resolve-middleware)
+
+(normally r-ready-passkey-impl
+  (and task-auth-passkey-impl completed-auth-trait completed-auth-token-recogniser)
+  ready-auth-passkey-impl)
+
+(normally r-ready-agent-token-impl
+  (and task-auth-agent-token-impl completed-auth-trait completed-auth-token-recogniser)
+  ready-auth-agent-token-impl)
+
+(normally r-ready-gate-refactor
+  (and task-auth-gate-refactor
+       completed-auth-resolve-middleware
+       completed-auth-passkey-impl
+       completed-auth-agent-token-impl)
+  ready-auth-gate-refactor)
+
+;; Phase 1 — config + chain. Depends on the refactor being complete.
+(normally r-ready-config-lens
+  (and task-auth-config-lens completed-auth-gate-refactor)
+  ready-auth-config-lens)
+
+(normally r-ready-chain-builder
+  (and task-auth-chain-builder completed-auth-config-lens)
+  ready-auth-chain-builder)
+
+;; Phase 2 — proxy header. First new method; proves the seam.
+(normally r-ready-provision
+  (and task-auth-provision completed-auth-chain-builder)
+  ready-auth-provision)
+
+(normally r-ready-proxy-header
+  (and task-auth-proxy-header completed-auth-chain-builder completed-auth-provision)
+  ready-auth-proxy-header)
+
+;; Phase 3 — static password.
+(normally r-ready-password-store
+  (and task-auth-password-store completed-auth-chain-builder)
+  ready-auth-password-store)
+
+(normally r-ready-password-impl
+  (and task-auth-password-impl completed-auth-password-store completed-auth-chain-builder)
+  ready-auth-password-impl)
+
+(normally r-ready-passwd-cli
+  (and task-auth-passwd-cli completed-auth-password-store)
+  ready-auth-passwd-cli)
+
+;; Phase 4 — capability URL. Reuses the Phase-0 EdDSA recogniser.
+(normally r-ready-capability-impl
+  (and task-auth-capability-impl
+       completed-auth-chain-builder
+       completed-auth-token-recogniser)
+  ready-auth-capability-impl)
+
+(normally r-ready-share-cli
+  (and task-auth-share-cli completed-auth-capability-impl)
+  ready-auth-share-cli)
+
+(normally r-ready-capability-acl
+  (and task-auth-capability-acl completed-auth-capability-impl)
+  ready-auth-capability-acl)
+
+;; Phase 5 — OIDC, behind the cargo feature.
+(normally r-ready-oidc-feature
+  (and task-auth-oidc-feature completed-auth-chain-builder)
+  ready-auth-oidc-feature)
+
+(normally r-ready-oidc-impl
+  (and task-auth-oidc-impl completed-auth-oidc-feature completed-auth-provision)
+  ready-auth-oidc-impl)
+
+;; Phase 6 — observability + docs wait on every new method; review waits
+;; on observability; the changelog/mark-implemented gate waits on both
+;; the adversarial review and the docs.
+(normally r-ready-observability
+  (and task-auth-observability
+       completed-auth-proxy-header
+       completed-auth-password-impl
+       completed-auth-capability-impl
+       completed-auth-oidc-impl)
+  ready-auth-observability)
+
+(normally r-ready-docs
+  (and task-auth-docs
+       completed-auth-proxy-header
+       completed-auth-password-impl
+       completed-auth-capability-impl
+       completed-auth-oidc-impl)
+  ready-auth-docs)
+
+(normally r-ready-adversarial-review
+  (and task-auth-adversarial-review completed-auth-observability)
+  ready-auth-adversarial-review)
+
+(normally r-ready-changelog-mark
+  (and task-auth-changelog-mark
+       completed-auth-adversarial-review
+       completed-auth-docs)
+  ready-auth-changelog-mark)
+
+;; ── Assignment rules ────────────────────────────────────────────────
+
+;; Tier-1 reviews -> security reviewer (fresh-context, cross-model).
+(normally r-assign-tier1-review-spec
+  (and ready-auth-tier1-review-spec agent-reviewer-security-available)
+  assign-to-auth-tier1-review-spec-reviewer-security)
+
+(normally r-assign-adversarial-review
+  (and ready-auth-adversarial-review agent-reviewer-security-available)
+  assign-to-auth-adversarial-review-reviewer-security)
+
+;; Prose documentation -> docs writer.
+(normally r-assign-docs
+  (and ready-auth-docs agent-docs-writer-available)
+  assign-to-auth-docs-docs-writer)
+
+;; Everything else -> coder.
+(normally r-assign-trait
+  (and ready-auth-trait agent-coder-available)
+  assign-to-auth-trait-coder)
+
+(normally r-assign-token-recogniser
+  (and ready-auth-token-recogniser agent-coder-available)
+  assign-to-auth-token-recogniser-coder)
+
+(normally r-assign-resolve-middleware
+  (and ready-auth-resolve-middleware agent-coder-available)
+  assign-to-auth-resolve-middleware-coder)
+
+(normally r-assign-passkey-impl
+  (and ready-auth-passkey-impl agent-coder-available)
+  assign-to-auth-passkey-impl-coder)
+
+(normally r-assign-agent-token-impl
+  (and ready-auth-agent-token-impl agent-coder-available)
+  assign-to-auth-agent-token-impl-coder)
+
+(normally r-assign-gate-refactor
+  (and ready-auth-gate-refactor agent-coder-available)
+  assign-to-auth-gate-refactor-coder)
+
+(normally r-assign-config-lens
+  (and ready-auth-config-lens agent-coder-available)
+  assign-to-auth-config-lens-coder)
+
+(normally r-assign-chain-builder
+  (and ready-auth-chain-builder agent-coder-available)
+  assign-to-auth-chain-builder-coder)
+
+(normally r-assign-provision
+  (and ready-auth-provision agent-coder-available)
+  assign-to-auth-provision-coder)
+
+(normally r-assign-proxy-header
+  (and ready-auth-proxy-header agent-coder-available)
+  assign-to-auth-proxy-header-coder)
+
+(normally r-assign-password-store
+  (and ready-auth-password-store agent-coder-available)
+  assign-to-auth-password-store-coder)
+
+(normally r-assign-password-impl
+  (and ready-auth-password-impl agent-coder-available)
+  assign-to-auth-password-impl-coder)
+
+(normally r-assign-passwd-cli
+  (and ready-auth-passwd-cli agent-coder-available)
+  assign-to-auth-passwd-cli-coder)
+
+(normally r-assign-capability-impl
+  (and ready-auth-capability-impl agent-coder-available)
+  assign-to-auth-capability-impl-coder)
+
+(normally r-assign-share-cli
+  (and ready-auth-share-cli agent-coder-available)
+  assign-to-auth-share-cli-coder)
+
+(normally r-assign-capability-acl
+  (and ready-auth-capability-acl agent-coder-available)
+  assign-to-auth-capability-acl-coder)
+
+(normally r-assign-oidc-feature
+  (and ready-auth-oidc-feature agent-coder-available)
+  assign-to-auth-oidc-feature-coder)
+
+(normally r-assign-oidc-impl
+  (and ready-auth-oidc-impl agent-coder-available)
+  assign-to-auth-oidc-impl-coder)
+
+(normally r-assign-observability
+  (and ready-auth-observability agent-coder-available)
+  assign-to-auth-observability-coder)
+
+(normally r-assign-changelog-mark
+  (and ready-auth-changelog-mark agent-coder-available)
+  assign-to-auth-changelog-mark-coder)
+
+;; ── Rule metadata ───────────────────────────────────────────────────
+
+(meta r-ready-tier1-review-spec
+  (description "The spec-level Tier-1 review is ready immediately and gates all implementation.")
+  (justification "PROTO-001 §AI Trust Boundaries lists authentication core as a no-go area requiring explicit human approval before implementation; SPEC-041 §14 makes Phase-start conditional on it. Building against an unreviewed authentication spec risks discarding work if S1 defects surface."))
+
+(meta r-ready-trait
+  (description "Phase 0 starts only after the spec-review gate passes.")
+  (justification "Every downstream task builds on the Authenticator trait shape; if the review changes the trait contract, starting earlier wastes the whole refactor."))
+
+(meta r-ready-gate-refactor
+  (description "The gate refactor depends on the trait, the middleware, and both existing-method adapters.")
+  (justification "REQ-4103 demands the refactor be behaviour-preserving — it can only be proven once passkey + agent-token are both behind the trait and `auth_resolve` exists to route through."))
+
+(meta r-ready-chain-builder
+  (description "The chain builder depends on the config lens.")
+  (justification "The builder consumes `CollabAuthConfig`; the lens must parse + validate before the builder can assemble an ordered chain (REQ-4102/REQ-4103)."))
+
+(meta r-ready-capability-impl
+  (description "The capability-URL authenticator depends on the shared EdDSA-JWT recogniser from Phase 0.")
+  (justification "ADR-4109 reuses the `src/user/invite.rs` signing infrastructure via the single `token.rs` recogniser (REQ-4120 one-parser-per-language); the capability token is the same primitive with a disjoint `sub` domain."))
+
+(meta r-ready-oidc-impl
+  (description "The OIDC authenticator depends on its cargo feature and on shared auto-provisioning.")
+  (justification "ADR-4105 isolates OIDC behind `collab-oidc`; REQ-4111 routes first-login provisioning through the shared `provision.rs` built in Phase 2."))
+
+(meta r-ready-adversarial-review
+  (description "The cross-model adversarial review runs once the implementation — including observability — is complete.")
+  (justification "PROTO-001 Constitutional Principle 12: no artifact is validated by the session that produced it; the review needs the finished, instrumented system to attack."))
+
+(meta r-ready-changelog-mark
+  (description "Final gate: every implementation task, the adversarial review, and the docs.")
+  (justification "PROTO-001 §Specification Status Lifecycle: status flips to `implemented` only after all Phase-3 quality gates pass — traceability, tests, docs, and adversarial review of the deliverable."))
+
+(meta r-assign-tier1-review-spec
+  (description "Security-sensitive spec review -> the security reviewer agent (fresh context, cross-model).")
+  (justification "PROTO-001 §Multi-Model Cognitive Diversity: a Tier-1 review must not be performed by the generating session."))
+
+(meta r-assign-trait
+  (description "Rust implementation tasks -> the coder agent."))
+
+(meta r-assign-docs
+  (description "Prose documentation -> the docs-writer agent."))
+
+;; ── End of plan ─────────────────────────────────────────────────────
+
+(claims agent:reviewer-security
+  :at "2026-05-15T02:32:04Z"
+  (given claim-v1-auth-tier1-review-spec)
+  (normally r-cl-state-v1-auth-tier1-review-spec claim-v1-auth-tier1-review-spec state-claimed-v1-auth-tier1-review-spec)
+  (normally r-cl-chain-v1-auth-tier1-review-spec state-claimed-v1-auth-tier1-review-spec claimed-auth-tier1-review-spec)
+)
+
+;; Propagation rules: failures in 'auth-tier1-review-spec' block downstream tasks
+(normally r-propagate-auth-token-recogniser-from-auth-tier1-review-spec-failed failed-auth-tier1-review-spec upstream-blocked-auth-token-recogniser)
+(normally r-propagate-auth-token-recogniser-from-auth-tier1-review-spec-permanently-failed permanently-failed-auth-tier1-review-spec upstream-blocked-auth-token-recogniser)
+(normally r-propagate-auth-token-recogniser-from-auth-tier1-review-spec-stale-v1 stale-v1-auth-tier1-review-spec upstream-blocked-auth-token-recogniser)
+(normally r-propagate-auth-token-recogniser-from-auth-tier1-review-spec-timeout-v1 timeout-v1-auth-tier1-review-spec upstream-blocked-auth-token-recogniser)
+(normally r-propagate-auth-token-recogniser-from-auth-tier1-review-spec-blocked upstream-blocked-auth-tier1-review-spec upstream-blocked-auth-token-recogniser)
+(normally r-propagate-auth-trait-from-auth-tier1-review-spec-failed failed-auth-tier1-review-spec upstream-blocked-auth-trait)
+(normally r-propagate-auth-trait-from-auth-tier1-review-spec-permanently-failed permanently-failed-auth-tier1-review-spec upstream-blocked-auth-trait)
+(normally r-propagate-auth-trait-from-auth-tier1-review-spec-stale-v1 stale-v1-auth-tier1-review-spec upstream-blocked-auth-trait)
+(normally r-propagate-auth-trait-from-auth-tier1-review-spec-timeout-v1 timeout-v1-auth-tier1-review-spec upstream-blocked-auth-trait)
+(normally r-propagate-auth-trait-from-auth-tier1-review-spec-blocked upstream-blocked-auth-tier1-review-spec upstream-blocked-auth-trait)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-auth-agent-token-impl-from-auth-token-recogniser-blocked upstream-blocked-auth-token-recogniser upstream-blocked-auth-agent-token-impl)
+(normally r-propagate-auth-capability-impl-from-auth-token-recogniser-blocked upstream-blocked-auth-token-recogniser upstream-blocked-auth-capability-impl)
+(normally r-propagate-auth-passkey-impl-from-auth-token-recogniser-blocked upstream-blocked-auth-token-recogniser upstream-blocked-auth-passkey-impl)
+(normally r-propagate-auth-agent-token-impl-from-auth-trait-blocked upstream-blocked-auth-trait upstream-blocked-auth-agent-token-impl)
+(normally r-propagate-auth-passkey-impl-from-auth-trait-blocked upstream-blocked-auth-trait upstream-blocked-auth-passkey-impl)
+(normally r-propagate-auth-resolve-middleware-from-auth-trait-blocked upstream-blocked-auth-trait upstream-blocked-auth-resolve-middleware)
+(normally r-propagate-auth-gate-refactor-from-auth-agent-token-impl-blocked upstream-blocked-auth-agent-token-impl upstream-blocked-auth-gate-refactor)
+(normally r-propagate-auth-capability-acl-from-auth-capability-impl-blocked upstream-blocked-auth-capability-impl upstream-blocked-auth-capability-acl)
+(normally r-propagate-auth-docs-from-auth-capability-impl-blocked upstream-blocked-auth-capability-impl upstream-blocked-auth-docs)
+(normally r-propagate-auth-observability-from-auth-capability-impl-blocked upstream-blocked-auth-capability-impl upstream-blocked-auth-observability)
+(normally r-propagate-auth-share-cli-from-auth-capability-impl-blocked upstream-blocked-auth-capability-impl upstream-blocked-auth-share-cli)
+(normally r-propagate-auth-gate-refactor-from-auth-passkey-impl-blocked upstream-blocked-auth-passkey-impl upstream-blocked-auth-gate-refactor)
+(normally r-propagate-auth-gate-refactor-from-auth-resolve-middleware-blocked upstream-blocked-auth-resolve-middleware upstream-blocked-auth-gate-refactor)
+(normally r-propagate-auth-config-lens-from-auth-gate-refactor-blocked upstream-blocked-auth-gate-refactor upstream-blocked-auth-config-lens)
+(normally r-propagate-auth-changelog-mark-from-auth-docs-blocked upstream-blocked-auth-docs upstream-blocked-auth-changelog-mark)
+(normally r-propagate-auth-adversarial-review-from-auth-observability-blocked upstream-blocked-auth-observability upstream-blocked-auth-adversarial-review)
+(normally r-propagate-auth-chain-builder-from-auth-config-lens-blocked upstream-blocked-auth-config-lens upstream-blocked-auth-chain-builder)
+(normally r-propagate-auth-changelog-mark-from-auth-adversarial-review-blocked upstream-blocked-auth-adversarial-review upstream-blocked-auth-changelog-mark)
+(normally r-propagate-auth-capability-impl-from-auth-chain-builder-blocked upstream-blocked-auth-chain-builder upstream-blocked-auth-capability-impl)
+(normally r-propagate-auth-oidc-feature-from-auth-chain-builder-blocked upstream-blocked-auth-chain-builder upstream-blocked-auth-oidc-feature)
+(normally r-propagate-auth-password-impl-from-auth-chain-builder-blocked upstream-blocked-auth-chain-builder upstream-blocked-auth-password-impl)
+(normally r-propagate-auth-password-store-from-auth-chain-builder-blocked upstream-blocked-auth-chain-builder upstream-blocked-auth-password-store)
+(normally r-propagate-auth-provision-from-auth-chain-builder-blocked upstream-blocked-auth-chain-builder upstream-blocked-auth-provision)
+(normally r-propagate-auth-proxy-header-from-auth-chain-builder-blocked upstream-blocked-auth-chain-builder upstream-blocked-auth-proxy-header)
+(normally r-propagate-auth-oidc-impl-from-auth-oidc-feature-blocked upstream-blocked-auth-oidc-feature upstream-blocked-auth-oidc-impl)
+(normally r-propagate-auth-docs-from-auth-password-impl-blocked upstream-blocked-auth-password-impl upstream-blocked-auth-docs)
+(normally r-propagate-auth-observability-from-auth-password-impl-blocked upstream-blocked-auth-password-impl upstream-blocked-auth-observability)
+(normally r-propagate-auth-passwd-cli-from-auth-password-store-blocked upstream-blocked-auth-password-store upstream-blocked-auth-passwd-cli)
+(normally r-propagate-auth-password-impl-from-auth-password-store-blocked upstream-blocked-auth-password-store upstream-blocked-auth-password-impl)
+(normally r-propagate-auth-oidc-impl-from-auth-provision-blocked upstream-blocked-auth-provision upstream-blocked-auth-oidc-impl)
+(normally r-propagate-auth-proxy-header-from-auth-provision-blocked upstream-blocked-auth-provision upstream-blocked-auth-proxy-header)
+(normally r-propagate-auth-docs-from-auth-proxy-header-blocked upstream-blocked-auth-proxy-header upstream-blocked-auth-docs)
+(normally r-propagate-auth-observability-from-auth-proxy-header-blocked upstream-blocked-auth-proxy-header upstream-blocked-auth-observability)
+(normally r-propagate-auth-docs-from-auth-oidc-impl-blocked upstream-blocked-auth-oidc-impl upstream-blocked-auth-docs)
+(normally r-propagate-auth-observability-from-auth-oidc-impl-blocked upstream-blocked-auth-oidc-impl upstream-blocked-auth-observability)
+
+(claims agent:reviewer-security
+  :at "2026-05-15T02:32:04Z"
+  (given discovered-review-no-s1-s2-findings))
+
+(claims agent:reviewer-security
+  :at "2026-05-15T02:32:04Z"
+  (given discovered-s3-login-redirect-ordering-underspecified))
+
+(claims agent:reviewer-security
+  :at "2026-05-15T02:32:04Z"
+  (given discovered-s3-oidc-jwks-token-response-grammar-implicit))
+
+(claims agent:reviewer-security
+  :at "2026-05-15T02:32:04Z"
+  (given verified-human-expert-approval-recorded))
+
+(claims agent:reviewer-security
+  :at "2026-05-15T02:32:04Z"
+  (given completed-auth-tier1-review-spec))
+
+(claims agent:coder
+  :at "2026-05-15T02:33:01Z"
+  (given claim-v1-auth-trait)
+  (normally r-cl-state-v1-auth-trait claim-v1-auth-trait state-claimed-v1-auth-trait)
+  (normally r-cl-chain-v1-auth-trait state-claimed-v1-auth-trait claimed-auth-trait)
+)
+
+;; Propagation rules: failures in 'auth-trait' block downstream tasks
+(normally r-propagate-auth-agent-token-impl-from-auth-trait-failed failed-auth-trait upstream-blocked-auth-agent-token-impl)
+(normally r-propagate-auth-agent-token-impl-from-auth-trait-permanently-failed permanently-failed-auth-trait upstream-blocked-auth-agent-token-impl)
+(normally r-propagate-auth-agent-token-impl-from-auth-trait-stale-v1 stale-v1-auth-trait upstream-blocked-auth-agent-token-impl)
+(normally r-propagate-auth-agent-token-impl-from-auth-trait-timeout-v1 timeout-v1-auth-trait upstream-blocked-auth-agent-token-impl)
+(normally r-propagate-auth-passkey-impl-from-auth-trait-failed failed-auth-trait upstream-blocked-auth-passkey-impl)
+(normally r-propagate-auth-passkey-impl-from-auth-trait-permanently-failed permanently-failed-auth-trait upstream-blocked-auth-passkey-impl)
+(normally r-propagate-auth-passkey-impl-from-auth-trait-stale-v1 stale-v1-auth-trait upstream-blocked-auth-passkey-impl)
+(normally r-propagate-auth-passkey-impl-from-auth-trait-timeout-v1 timeout-v1-auth-trait upstream-blocked-auth-passkey-impl)
+(normally r-propagate-auth-resolve-middleware-from-auth-trait-failed failed-auth-trait upstream-blocked-auth-resolve-middleware)
+(normally r-propagate-auth-resolve-middleware-from-auth-trait-permanently-failed permanently-failed-auth-trait upstream-blocked-auth-resolve-middleware)
+(normally r-propagate-auth-resolve-middleware-from-auth-trait-stale-v1 stale-v1-auth-trait upstream-blocked-auth-resolve-middleware)
+(normally r-propagate-auth-resolve-middleware-from-auth-trait-timeout-v1 timeout-v1-auth-trait upstream-blocked-auth-resolve-middleware)
