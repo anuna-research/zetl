@@ -11706,8 +11706,134 @@ fn main() -> anyhow::Result<()> {
                 }
                 zetl::cli::PasswdCommand::List => cmd_collab_passwd_list(&cli),
             },
+            zetl::cli::CollabCommand::Share { command } => match command {
+                zetl::cli::ShareCommand::Mint {
+                    scope,
+                    role,
+                    expires,
+                    site_url,
+                } => cmd_collab_share_mint(
+                    &cli,
+                    scope,
+                    role,
+                    expires.as_deref(),
+                    site_url,
+                ),
+                zetl::cli::ShareCommand::List => cmd_collab_share_list(&cli),
+                zetl::cli::ShareCommand::Revoke { jti } => {
+                    cmd_collab_share_revoke(&cli, jti)
+                }
+            },
         },
     }
+}
+
+// ── `zetl collab share` handlers (SPEC-041 REQ-4116/4117/4118, CON-4110) ──
+
+/// `zetl collab share mint` — sign a fresh capability token + record + print URL.
+fn cmd_collab_share_mint(
+    cli: &zetl::cli::Cli,
+    scope: &str,
+    role: &str,
+    expires: Option<&str>,
+    site_url: &str,
+) -> Result<()> {
+    use zetl::web::auth::capability_url::{
+        mint, parse_duration, record_mint, ShareRecord, TTL_DEFAULT_SECONDS,
+        TTL_MAX_SECONDS, TTL_MIN_SECONDS,
+    };
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("cannot resolve vault directory: {}", cli.dir))?;
+
+    // Resolve TTL — REQ-4117 bounds.
+    let ttl = match expires {
+        Some(s) => parse_duration(s)
+            .with_context(|| format!("invalid --expires {s:?}"))?,
+        None => TTL_DEFAULT_SECONDS,
+    };
+    if ttl < TTL_MIN_SECONDS || ttl > TTL_MAX_SECONDS {
+        anyhow::bail!(
+            "--expires out of bounds: {ttl}s not in [{TTL_MIN_SECONDS}, {TTL_MAX_SECONDS}] \
+             (5m..90d)"
+        );
+    }
+
+    // Load (or create) the vault signing key — shared with SPEC-020 invites.
+    let signing_key = zetl::user::invite::load_or_create_server_key(&vault_root)
+        .context("failed to load vault signing key")?;
+
+    let (token, claims) =
+        mint(&signing_key, scope, role, ttl).context("failed to mint capability token")?;
+
+    // Record the mint so `share list` can surface it.
+    let now_iso = zetl::user::access_request::now_iso8601();
+    let record = ShareRecord {
+        jti: claims.jti.clone(),
+        scope: claims.scope.clone(),
+        role: claims.role.clone(),
+        exp: claims.exp,
+        created_at: now_iso,
+    };
+    record_mint(&vault_root, &record).context("failed to record minted capability")?;
+
+    // Bearer-authority security notice on stderr (REQ-4116).
+    let trimmed = site_url.trim_end_matches('/');
+    let url = format!("{trimmed}/?cap={token}");
+
+    eprintln!(
+        "⚠  SECURITY: this URL is a bearer token. Anyone who holds it has the granted\n\
+         \x20  access (scope={:?} role={}) until it expires or is revoked.\n\
+         \x20  Send it only via channels you trust. Do NOT paste it through URL\n\
+         \x20  shorteners, link previewers, or chat with bot integrations.\n\
+         \x20  Revoke with: zetl collab share revoke {}\n",
+        claims.scope, claims.role, claims.jti
+    );
+    println!("{url}");
+    Ok(())
+}
+
+/// `zetl collab share list` — emit live + revoked records (no token bytes).
+fn cmd_collab_share_list(cli: &zetl::cli::Cli) -> Result<()> {
+    use zetl::web::auth::capability_url::{load_revoked, load_shares};
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("cannot resolve vault directory: {}", cli.dir))?;
+    let shares = load_shares(&vault_root).context("failed to read mint registry")?;
+    let revoked = load_revoked(&vault_root).context("failed to read revocation set")?;
+
+    if shares.is_empty() {
+        return Ok(());
+    }
+    // One line per record. CSV-ish so it pipes cleanly through `column -t`
+    // or jq-style transformations.
+    println!("jti\tscope\trole\texp\tstatus");
+    for r in shares {
+        let status = if revoked.contains(&r.jti) {
+            "revoked"
+        } else {
+            "live"
+        };
+        println!("{}\t{}\t{}\t{}\t{}", r.jti, r.scope, r.role, r.exp, status);
+    }
+    Ok(())
+}
+
+/// `zetl collab share revoke <jti>` — add to the revocation set.
+fn cmd_collab_share_revoke(cli: &zetl::cli::Cli, jti: &str) -> Result<()> {
+    use zetl::web::auth::capability_url::{load_shares, revoke};
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("cannot resolve vault directory: {}", cli.dir))?;
+
+    // CON-4110 error model: revoke of an unknown jti errors.
+    let shares = load_shares(&vault_root).context("failed to read mint registry")?;
+    if !shares.iter().any(|r| r.jti == jti) {
+        anyhow::bail!("no capability with jti {jti:?} in the mint registry");
+    }
+    revoke(&vault_root, jti).with_context(|| format!("failed to revoke {jti:?}"))?;
+    eprintln!("[zetl] revoked capability {jti:?}");
+    Ok(())
 }
 
 // ── `zetl collab passwd` handlers (SPEC-041 REQ-4108, CON-4106) ──

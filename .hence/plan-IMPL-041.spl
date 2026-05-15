@@ -828,3 +828,14 @@
 (normally r-propagate-auth-share-cli-from-auth-capability-impl-permanently-failed permanently-failed-auth-capability-impl upstream-blocked-auth-share-cli)
 (normally r-propagate-auth-share-cli-from-auth-capability-impl-stale-v1 stale-v1-auth-capability-impl upstream-blocked-auth-share-cli)
 (normally r-propagate-auth-share-cli-from-auth-capability-impl-timeout-v1 timeout-v1-auth-capability-impl upstream-blocked-auth-share-cli)
+
+(claims agent:coder
+  :at "2026-05-15T03:43:06Z"
+  (given completed-auth-capability-impl))
+
+(claims agent:coder
+  :at "2026-05-15T03:45:25Z"
+  (given claim-v1-auth-share-cli)
+  (normally r-cl-state-v1-auth-share-cli claim-v1-auth-share-cli state-claimed-v1-auth-share-cli)
+  (normally r-cl-chain-v1-auth-share-cli state-claimed-v1-auth-share-cli claimed-auth-share-cli)
+)

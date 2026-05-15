@@ -41,6 +41,7 @@ use super::{AuthOutcome, Authenticator, CapabilityGrant, Principal, PrincipalId}
 
 const COLLAB_DIR: &str = ".zetl/collab";
 const REVOKED_FILE: &str = "cap-revoked.json";
+const SHARES_FILE: &str = "cap-shares.json";
 
 /// `[collab.auth.capability_url]` schema. `deny_unknown_fields` so typos
 /// fail at parse (REQ-4120/REQ-4114).
@@ -135,6 +136,66 @@ pub fn revoke(vault_root: &Path, jti: &str) -> Result<(), CapabilityError> {
             file.set_permissions(fs::Permissions::from_mode(0o600))?;
         }
         let body = serde_json::to_string_pretty(&sorted)?;
+        file.write_all(body.as_bytes())?;
+        file.sync_all()?;
+    }
+    fs::rename(&tmp_path, &final_path)?;
+    Ok(())
+}
+
+// ─── Mint registry (for `share list`) — REQ-4118 supports ──────────────
+
+/// One record of a minted capability — what the operator needs to list,
+/// inspect, and revoke. Never stores the token bytes themselves (the
+/// jti suffices for revocation; the operator already has the URL).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ShareRecord {
+    pub jti: String,
+    pub scope: String,
+    pub role: String,
+    /// Unix timestamp seconds (REQ-4117).
+    pub exp: u64,
+    /// ISO 8601 — when the mint CLI ran.
+    pub created_at: String,
+}
+
+fn shares_path(vault_root: &Path) -> PathBuf {
+    vault_root.join(COLLAB_DIR).join(SHARES_FILE)
+}
+
+/// Load the mint registry; absent file ⇒ empty list.
+pub fn load_shares(vault_root: &Path) -> Result<Vec<ShareRecord>, CapabilityError> {
+    let path = shares_path(vault_root);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let body = fs::read_to_string(&path)?;
+    Ok(serde_json::from_str(&body)?)
+}
+
+/// Append `record` to the mint registry, persisted via atomic temp-file
+/// rename + 0600 (consistent with the revocation set and the password store).
+pub fn record_mint(vault_root: &Path, record: &ShareRecord) -> Result<(), CapabilityError> {
+    let dir = vault_root.join(COLLAB_DIR);
+    fs::create_dir_all(&dir)?;
+    let final_path = shares_path(vault_root);
+    let mut shares = load_shares(vault_root)?;
+    shares.push(record.clone());
+
+    let mut tmp_path = final_path.clone();
+    let suffix = format!(".tmp.{}", uuid::Uuid::new_v4());
+    tmp_path.set_extension(format!("json{suffix}"));
+    {
+        let mut file = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&tmp_path)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            file.set_permissions(fs::Permissions::from_mode(0o600))?;
+        }
+        let body = serde_json::to_string_pretty(&shares)?;
         file.write_all(body.as_bytes())?;
         file.sync_all()?;
     }
