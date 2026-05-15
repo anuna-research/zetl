@@ -922,3 +922,20 @@
 (normally r-propagate-auth-changelog-mark-from-auth-docs-permanently-failed permanently-failed-auth-docs upstream-blocked-auth-changelog-mark)
 (normally r-propagate-auth-changelog-mark-from-auth-docs-stale-v1 stale-v1-auth-docs upstream-blocked-auth-changelog-mark)
 (normally r-propagate-auth-changelog-mark-from-auth-docs-timeout-v1 timeout-v1-auth-docs upstream-blocked-auth-changelog-mark)
+
+(claims agent:docs-writer
+  :at "2026-05-15T04:16:01Z"
+  (given completed-auth-docs))
+
+(claims agent:reviewer-security
+  :at "2026-05-15T04:16:19Z"
+  (given claim-v1-auth-adversarial-review)
+  (normally r-cl-state-v1-auth-adversarial-review claim-v1-auth-adversarial-review state-claimed-v1-auth-adversarial-review)
+  (normally r-cl-chain-v1-auth-adversarial-review state-claimed-v1-auth-adversarial-review claimed-auth-adversarial-review)
+)
+
+;; Propagation rules: failures in 'auth-adversarial-review' block downstream tasks
+(normally r-propagate-auth-changelog-mark-from-auth-adversarial-review-failed failed-auth-adversarial-review upstream-blocked-auth-changelog-mark)
+(normally r-propagate-auth-changelog-mark-from-auth-adversarial-review-permanently-failed permanently-failed-auth-adversarial-review upstream-blocked-auth-changelog-mark)
+(normally r-propagate-auth-changelog-mark-from-auth-adversarial-review-stale-v1 stale-v1-auth-adversarial-review upstream-blocked-auth-changelog-mark)
+(normally r-propagate-auth-changelog-mark-from-auth-adversarial-review-timeout-v1 timeout-v1-auth-adversarial-review upstream-blocked-auth-changelog-mark)
