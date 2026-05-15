@@ -725,3 +725,24 @@
 (normally r-propagate-auth-proxy-header-from-auth-provision-permanently-failed permanently-failed-auth-provision upstream-blocked-auth-proxy-header)
 (normally r-propagate-auth-proxy-header-from-auth-provision-stale-v1 stale-v1-auth-provision upstream-blocked-auth-proxy-header)
 (normally r-propagate-auth-proxy-header-from-auth-provision-timeout-v1 timeout-v1-auth-provision upstream-blocked-auth-proxy-header)
+
+(claims agent:coder
+  :at "2026-05-15T03:13:38Z"
+  (given completed-auth-provision))
+
+(claims agent:coder
+  :at "2026-05-15T03:14:12Z"
+  (given claim-v1-auth-proxy-header)
+  (normally r-cl-state-v1-auth-proxy-header claim-v1-auth-proxy-header state-claimed-v1-auth-proxy-header)
+  (normally r-cl-chain-v1-auth-proxy-header state-claimed-v1-auth-proxy-header claimed-auth-proxy-header)
+)
+
+;; Propagation rules: failures in 'auth-proxy-header' block downstream tasks
+(normally r-propagate-auth-docs-from-auth-proxy-header-failed failed-auth-proxy-header upstream-blocked-auth-docs)
+(normally r-propagate-auth-docs-from-auth-proxy-header-permanently-failed permanently-failed-auth-proxy-header upstream-blocked-auth-docs)
+(normally r-propagate-auth-docs-from-auth-proxy-header-stale-v1 stale-v1-auth-proxy-header upstream-blocked-auth-docs)
+(normally r-propagate-auth-docs-from-auth-proxy-header-timeout-v1 timeout-v1-auth-proxy-header upstream-blocked-auth-docs)
+(normally r-propagate-auth-observability-from-auth-proxy-header-failed failed-auth-proxy-header upstream-blocked-auth-observability)
+(normally r-propagate-auth-observability-from-auth-proxy-header-permanently-failed permanently-failed-auth-proxy-header upstream-blocked-auth-observability)
+(normally r-propagate-auth-observability-from-auth-proxy-header-stale-v1 stale-v1-auth-proxy-header upstream-blocked-auth-observability)
+(normally r-propagate-auth-observability-from-auth-proxy-header-timeout-v1 timeout-v1-auth-proxy-header upstream-blocked-auth-observability)

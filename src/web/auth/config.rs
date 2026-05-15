@@ -24,6 +24,7 @@ use crate::web::session::SessionStore;
 
 use super::agent_token::AgentTokenAuthenticator;
 use super::passkey::PasskeyAuthenticator;
+use super::proxy_header::{ProxyHeaderAuthenticator, ProxyHeaderConfig};
 use super::{AuthChain, Authenticator};
 
 /// Stable identifier for an authentication method, the same string used in
@@ -89,10 +90,11 @@ pub(crate) struct CollabAuthConfig {
     #[serde(default = "default_methods")]
     pub methods: Vec<MethodId>,
 
-    /// `[collab.auth.proxy_header]` — schema filled in by Phase 2
-    /// (task-auth-proxy-header).
+    /// `[collab.auth.proxy_header]` — typed schema landed with Phase 2
+    /// (task-auth-proxy-header). Required when `proxy-header` is in
+    /// `methods`; the chain builder enforces that.
     #[serde(default)]
-    pub proxy_header: Option<toml::Value>,
+    pub proxy_header: Option<ProxyHeaderConfig>,
 
     /// `[collab.auth.password]` — schema filled in by Phase 3.
     #[serde(default)]
@@ -182,6 +184,7 @@ pub(crate) fn build_chain(
     cfg: &CollabAuthConfig,
     sessions: SessionStore,
     vault_root: Arc<PathBuf>,
+    trust_proxy: bool,
 ) -> Result<AuthChain, ConfigError> {
     validate(cfg)?;
 
@@ -193,10 +196,34 @@ pub(crate) fn build_chain(
             MethodId::AgentToken => {
                 Box::new(AgentTokenAuthenticator::new(vault_root.clone()))
             }
-            MethodId::ProxyHeader
-            | MethodId::Password
-            | MethodId::CapabilityUrl
-            | MethodId::Oidc => {
+            MethodId::ProxyHeader => {
+                // REQ-4106: proxy-header requires --trust-proxy. Refusing to
+                // start without it is the fail-closed mitigation against a
+                // spoofed header.
+                if !trust_proxy {
+                    return Err(ConfigError(
+                        "[collab.auth] methods contains \"proxy-header\" but \
+                         the server was not started with --trust-proxy — \
+                         remove the method or start with --trust-proxy \
+                         (SPEC-041 REQ-4106)"
+                            .to_string(),
+                    ));
+                }
+                let phc = cfg.proxy_header.as_ref().ok_or_else(|| {
+                    ConfigError(
+                        "[collab.auth] methods contains \"proxy-header\" but \
+                         [collab.auth.proxy_header] is missing — at minimum, \
+                         set `peer_allow` to the CIDR(s) of your trusted \
+                         proxy hop"
+                            .to_string(),
+                    )
+                })?;
+                Box::new(
+                    ProxyHeaderAuthenticator::new(phc, vault_root.clone())
+                        .map_err(ConfigError)?,
+                )
+            }
+            MethodId::Password | MethodId::CapabilityUrl | MethodId::Oidc => {
                 return Err(ConfigError(format!(
                     "[collab.auth] method {:?} is not yet implemented in this \
                      build — remove it from `methods` or upgrade zetl \
@@ -216,6 +243,7 @@ pub(crate) fn build_chain(
 pub(crate) fn build_chain_from_vault(
     vault_root: &Path,
     sessions: SessionStore,
+    trust_proxy: bool,
 ) -> Result<(AuthChain, CollabAuthConfig), ConfigError> {
     let path = vault_root.join(".zetl/config.toml");
     let body = match std::fs::read_to_string(&path) {
@@ -230,7 +258,12 @@ pub(crate) fn build_chain_from_vault(
         }
     };
     let cfg = parse(&body)?;
-    let chain = build_chain(&cfg, sessions, Arc::new(vault_root.to_path_buf()))?;
+    let chain = build_chain(
+        &cfg,
+        sessions,
+        Arc::new(vault_root.to_path_buf()),
+        trust_proxy,
+    )?;
     Ok((chain, cfg))
 }
 
@@ -400,6 +433,7 @@ mod tests {
             &cfg,
             SessionStore::new(),
             Arc::new(std::path::PathBuf::from("/tmp")),
+            false,
         )
         .unwrap();
         assert_eq!(chain.len(), 2);
@@ -419,6 +453,7 @@ mod tests {
             &cfg,
             SessionStore::new(),
             Arc::new(std::path::PathBuf::from("/tmp")),
+            false,
         )
         .unwrap();
         assert_eq!(chain[0].id(), "agent-token");
@@ -429,12 +464,7 @@ mod tests {
     /// message naming the offending method.
     #[test]
     fn build_chain_rejects_unimplemented_methods() {
-        for unimplemented in [
-            "proxy-header",
-            "password",
-            "capability-url",
-            "oidc",
-        ] {
+        for unimplemented in ["password", "capability-url", "oidc"] {
             let body = format!(
                 r#"
                 [collab.auth]
@@ -448,6 +478,7 @@ mod tests {
                 &cfg,
                 SessionStore::new(),
                 Arc::new(std::path::PathBuf::from("/tmp")),
+                false,
             );
             let err = match result {
                 Ok(_) => panic!("expected error for unimplemented method {unimplemented}"),
@@ -459,6 +490,76 @@ mod tests {
                 err.0
             );
         }
+    }
+
+    /// REQ-4106: `proxy-header` named without `--trust-proxy` is a startup
+    /// error naming the corrective action.
+    #[test]
+    fn proxy_header_without_trust_proxy_fails() {
+        let body = r#"
+            [collab.auth]
+            methods = ["proxy-header"]
+
+            [collab.auth.proxy_header]
+            peer_allow = ["127.0.0.1/32"]
+        "#;
+        let cfg = parse(body).unwrap();
+        let result = build_chain(
+            &cfg,
+            SessionStore::new(),
+            Arc::new(std::path::PathBuf::from("/tmp")),
+            /* trust_proxy */ false,
+        );
+        let err = match result {
+            Ok(_) => panic!("expected REQ-4106 startup error"),
+            Err(e) => e,
+        };
+        assert!(err.0.contains("--trust-proxy"), "got: {}", err.0);
+    }
+
+    /// REQ-4106: `proxy-header` named without a `[collab.auth.proxy_header]`
+    /// sub-table is a startup error naming the missing section.
+    #[test]
+    fn proxy_header_without_subtable_fails() {
+        let body = r#"
+            [collab.auth]
+            methods = ["proxy-header"]
+        "#;
+        let cfg = parse(body).unwrap();
+        let result = build_chain(
+            &cfg,
+            SessionStore::new(),
+            Arc::new(std::path::PathBuf::from("/tmp")),
+            /* trust_proxy */ true,
+        );
+        let err = match result {
+            Ok(_) => panic!("expected missing-subtable error"),
+            Err(e) => e,
+        };
+        assert!(err.0.contains("[collab.auth.proxy_header]"), "got: {}", err.0);
+    }
+
+    /// REQ-4105 / REQ-4106: with trust_proxy on and a valid sub-table,
+    /// `proxy-header` builds.
+    #[test]
+    fn proxy_header_builds_with_trust_proxy_and_subtable() {
+        let body = r#"
+            [collab.auth]
+            methods = ["proxy-header"]
+
+            [collab.auth.proxy_header]
+            peer_allow = ["127.0.0.1/32", "10.0.0.0/8"]
+        "#;
+        let cfg = parse(body).unwrap();
+        let chain = build_chain(
+            &cfg,
+            SessionStore::new(),
+            Arc::new(std::path::PathBuf::from("/tmp")),
+            /* trust_proxy */ true,
+        )
+        .unwrap();
+        assert_eq!(chain.len(), 1);
+        assert_eq!(chain[0].id(), "proxy-header");
     }
 
     /// OBS-4105: startup summary line lists every method in declared order
@@ -482,7 +583,7 @@ mod tests {
     fn build_chain_from_vault_absent_file_uses_default() {
         let tmp = tempfile::TempDir::new().unwrap();
         let (chain, cfg) =
-            build_chain_from_vault(tmp.path(), SessionStore::new()).unwrap();
+            build_chain_from_vault(tmp.path(), SessionStore::new(), false).unwrap();
         assert_eq!(chain.len(), 2);
         assert_eq!(cfg.methods, vec![MethodId::Passkey, MethodId::AgentToken]);
     }

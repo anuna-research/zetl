@@ -358,9 +358,12 @@ pub async fn run(
     // `[passkey, agent-token]` reproducing pre-SPEC-041 behaviour exactly
     // (REQ-4103). Methods naming an unshipped phase or invalid keys fail
     // startup (REQ-4114). OBS-4105 startup line emitted to stderr.
-    let (auth_chain, auth_cfg) =
-        auth::config::build_chain_from_vault(&state.vault_root, state.sessions.clone())
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let (auth_chain, auth_cfg) = auth::config::build_chain_from_vault(
+        &state.vault_root,
+        state.sessions.clone(),
+        state.trust_proxy,
+    )
+    .map_err(|e| anyhow::anyhow!("{e}"))?;
     eprintln!("{}", auth::config::format_chain_summary(&auth_cfg));
 
     // ── Auth routes (always public, even in --collab mode) ───────────
