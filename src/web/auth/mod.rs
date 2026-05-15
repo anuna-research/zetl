@@ -26,6 +26,7 @@
 pub(crate) mod agent_token;
 pub(crate) mod config;
 pub(crate) mod passkey;
+pub(crate) mod password;
 pub(crate) mod provision;
 pub(crate) mod proxy_header;
 pub(crate) mod resolve;

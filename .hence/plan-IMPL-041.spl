@@ -746,3 +746,24 @@
 (normally r-propagate-auth-observability-from-auth-proxy-header-permanently-failed permanently-failed-auth-proxy-header upstream-blocked-auth-observability)
 (normally r-propagate-auth-observability-from-auth-proxy-header-stale-v1 stale-v1-auth-proxy-header upstream-blocked-auth-observability)
 (normally r-propagate-auth-observability-from-auth-proxy-header-timeout-v1 timeout-v1-auth-proxy-header upstream-blocked-auth-observability)
+
+(claims agent:coder
+  :at "2026-05-15T03:18:47Z"
+  (given completed-auth-proxy-header))
+
+(claims agent:coder
+  :at "2026-05-15T03:21:53Z"
+  (given claim-v1-auth-password-store)
+  (normally r-cl-state-v1-auth-password-store claim-v1-auth-password-store state-claimed-v1-auth-password-store)
+  (normally r-cl-chain-v1-auth-password-store state-claimed-v1-auth-password-store claimed-auth-password-store)
+)
+
+;; Propagation rules: failures in 'auth-password-store' block downstream tasks
+(normally r-propagate-auth-passwd-cli-from-auth-password-store-failed failed-auth-password-store upstream-blocked-auth-passwd-cli)
+(normally r-propagate-auth-passwd-cli-from-auth-password-store-permanently-failed permanently-failed-auth-password-store upstream-blocked-auth-passwd-cli)
+(normally r-propagate-auth-passwd-cli-from-auth-password-store-stale-v1 stale-v1-auth-password-store upstream-blocked-auth-passwd-cli)
+(normally r-propagate-auth-passwd-cli-from-auth-password-store-timeout-v1 timeout-v1-auth-password-store upstream-blocked-auth-passwd-cli)
+(normally r-propagate-auth-password-impl-from-auth-password-store-failed failed-auth-password-store upstream-blocked-auth-password-impl)
+(normally r-propagate-auth-password-impl-from-auth-password-store-permanently-failed permanently-failed-auth-password-store upstream-blocked-auth-password-impl)
+(normally r-propagate-auth-password-impl-from-auth-password-store-stale-v1 stale-v1-auth-password-store upstream-blocked-auth-password-impl)
+(normally r-propagate-auth-password-impl-from-auth-password-store-timeout-v1 timeout-v1-auth-password-store upstream-blocked-auth-password-impl)

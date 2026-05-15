@@ -79,6 +79,7 @@ anyhow = "1"
 thiserror = "1"
 tempfile = "3"
 blake3 = "1"
+argon2 = "0.5"  # IMPL-041 Phase 3: argon2id password hashing (SPEC-041 REQ-4107, NFR-4103)
 clap = { version = "4", features = ["derive", "suggestions", "env"] }
 clap_complete = "4"
 clap_mangen = "0.2"
