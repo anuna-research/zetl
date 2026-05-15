@@ -839,3 +839,14 @@
   (normally r-cl-state-v1-auth-share-cli claim-v1-auth-share-cli state-claimed-v1-auth-share-cli)
   (normally r-cl-chain-v1-auth-share-cli state-claimed-v1-auth-share-cli claimed-auth-share-cli)
 )
+
+(claims agent:coder
+  :at "2026-05-15T03:49:21Z"
+  (given completed-auth-share-cli))
+
+(claims agent:coder
+  :at "2026-05-15T03:49:56Z"
+  (given claim-v1-auth-capability-acl)
+  (normally r-cl-state-v1-auth-capability-acl claim-v1-auth-capability-acl state-claimed-v1-auth-capability-acl)
+  (normally r-cl-chain-v1-auth-capability-acl state-claimed-v1-auth-capability-acl claimed-auth-capability-acl)
+)

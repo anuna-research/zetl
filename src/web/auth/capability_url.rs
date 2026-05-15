@@ -434,6 +434,67 @@ pub fn request_has_cap_param(uri: &axum::http::Uri) -> bool {
     extract_cap_query_value(uri.query()).is_some()
 }
 
+/// Enforce a capability-URL principal's `scope` + `role` against the
+/// inbound request (SPEC-041 REQ-4117, REQ-4119, ADR-4111).
+///
+/// This is the request-time gate that makes the bound scope load-bearing.
+/// `auth_resolve` populates the `Principal` extension; *this* middleware
+/// observes it and 403s when:
+///
+/// * The principal carries a [`CapabilityGrant`] (i.e. `PrincipalId::Capability`),
+///   AND
+/// * Either the request path does not match `grant.scope` (glob), OR the
+///   request method exceeds what `grant.role` permits (Reader → safe
+///   methods only; Editor → any method on an in-scope path).
+///
+/// Principals that are *not* capability-URL principals pass through
+/// unchanged — the gate is a no-op for the passkey / agent-token /
+/// proxy-header / password paths. `admin_gate` already rejects
+/// `PrincipalId::Capability` regardless of role, so admin-route gating is
+/// covered upstream (REQ-4119).
+pub async fn capability_gate(
+    request: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::http::{Method, StatusCode};
+    use axum::response::IntoResponse;
+
+    let principal = match crate::web::auth::resolve::request_principal(request.extensions()) {
+        Some(p) => p,
+        None => return next.run(request).await,
+    };
+    let Some(grant) = &principal.capability else {
+        // Not a capability principal — gate is a no-op.
+        return next.run(request).await;
+    };
+
+    // Scope check (REQ-4117). Path is matched without its leading `/`.
+    let path = request.uri().path().trim_start_matches('/');
+    let glob = match globset::Glob::new(&grant.scope) {
+        Ok(g) => g.compile_matcher(),
+        Err(_) => return StatusCode::FORBIDDEN.into_response(),
+    };
+    if !glob.is_match(path) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+
+    // Role check (REQ-4119). Reader → safe methods only; Editor → any
+    // method on the in-scope path. A capability principal never carries
+    // Role::Admin (the authenticator refuses unknown roles) — fail closed
+    // if one ever shows up.
+    let method = request.method();
+    let allow = match grant.role {
+        Role::Reader => method == Method::GET || method == Method::HEAD,
+        Role::Editor => true,
+        Role::Admin => false,
+    };
+    if !allow {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+
+    next.run(request).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -702,5 +763,132 @@ mod tests {
         let without: axum::http::Uri = "/x".parse().unwrap();
         assert!(request_has_cap_param(&with));
         assert!(!request_has_cap_param(&without));
+    }
+
+    /// REQ-4117/REQ-4119/ADR-4111: full pipeline through auth_resolve +
+    /// capability_gate against a mock router.
+    ///
+    /// Acceptance matrix (task-auth-capability-acl):
+    ///   in-scope read  → 200
+    ///   out-of-scope   → 403
+    ///   write w/ reader→ 403
+    ///   write w/ editor on in-scope → 200
+    #[tokio::test]
+    async fn gate_enforces_scope_and_role() {
+        use crate::web::auth::resolve::auth_resolve;
+        use crate::web::auth::AuthChain;
+        use axum::body::Body;
+        use axum::http::{Method, Request as HttpRequest, StatusCode};
+        use axum::routing::{get, put};
+        use axum::Router;
+        use tower::ServiceExt;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let key = test_key();
+        let chain: AuthChain = std::sync::Arc::new(vec![Box::new(
+            CapabilityUrlAuthenticator::new(
+                key.verifying_key(),
+                std::sync::Arc::new(tmp.path().to_path_buf()),
+            ),
+        )]);
+
+        // Build a router with auth_resolve + capability_gate + two routes.
+        let app = Router::new()
+            .route("/{*path}", get(|| async { "OK" }).put(|| async { "PUT-OK" }))
+            .route_layer(axum::middleware::from_fn(capability_gate))
+            .route_layer(axum::middleware::from_fn_with_state(
+                chain,
+                auth_resolve,
+            ));
+
+        let (reader_tok, _) = mint(&key, "shared/**", "reader", 60).unwrap();
+        let (editor_tok, _) = mint(&key, "shared/**", "editor", 60).unwrap();
+
+        // 1. In-scope read with reader token → 200.
+        let resp = app
+            .clone()
+            .oneshot(
+                HttpRequest::get(format!("/shared/page1?cap={reader_tok}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "in-scope read");
+
+        // 2. Out-of-scope read with reader token → 403.
+        let resp = app
+            .clone()
+            .oneshot(
+                HttpRequest::get(format!("/other/page?cap={reader_tok}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "out-of-scope read");
+
+        // 3. PUT with reader token (even in-scope) → 403.
+        let resp = app
+            .clone()
+            .oneshot(
+                HttpRequest::builder()
+                    .method(Method::PUT)
+                    .uri(format!("/shared/page1?cap={reader_tok}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "reader cannot write");
+
+        // 4. PUT with editor token on an in-scope path → 200.
+        let resp = app
+            .clone()
+            .oneshot(
+                HttpRequest::builder()
+                    .method(Method::PUT)
+                    .uri(format!("/shared/page1?cap={editor_tok}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "editor in-scope write");
+
+        // 5. PUT with editor token on an out-of-scope path → 403.
+        let resp = app
+            .clone()
+            .oneshot(
+                HttpRequest::builder()
+                    .method(Method::PUT)
+                    .uri(format!("/other/page?cap={editor_tok}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::FORBIDDEN,
+            "editor out-of-scope write"
+        );
+
+        // 6. Non-capability request (no `?cap=`) is a no-op gate — all
+        //    Abstain ⇒ Principal=None ⇒ no capability grant to enforce.
+        //    With auth_resolve in the stack, the handler still runs.
+        let resp = app
+            .oneshot(
+                HttpRequest::get("/anywhere")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
+            "non-capability request passes through"
+        );
     }
 }

@@ -542,6 +542,11 @@ pub async fn run(
             state.clone(),
             session::collab_gate,
         ))
+        // SPEC-041 REQ-4117/4119: enforce capability-URL principals' scope
+        // glob + role on every content request. Runs AFTER auth_resolve so
+        // the Principal extension is set; pass-through for every other
+        // principal type.
+        .route_layer(middleware::from_fn(auth::capability_url::capability_gate))
         // SPEC-041 ADR-4110(c): set `Referrer-Policy: no-referrer` on the
         // response to any request whose URL carries `?cap=` — keeps the
         // capability token from leaking via the `Referer` header to outbound
