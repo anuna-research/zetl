@@ -704,3 +704,24 @@
 (normally r-propagate-auth-proxy-header-from-auth-chain-builder-permanently-failed permanently-failed-auth-chain-builder upstream-blocked-auth-proxy-header)
 (normally r-propagate-auth-proxy-header-from-auth-chain-builder-stale-v1 stale-v1-auth-chain-builder upstream-blocked-auth-proxy-header)
 (normally r-propagate-auth-proxy-header-from-auth-chain-builder-timeout-v1 timeout-v1-auth-chain-builder upstream-blocked-auth-proxy-header)
+
+(claims agent:coder
+  :at "2026-05-15T03:08:53Z"
+  (given completed-auth-chain-builder))
+
+(claims agent:coder
+  :at "2026-05-15T03:11:55Z"
+  (given claim-v1-auth-provision)
+  (normally r-cl-state-v1-auth-provision claim-v1-auth-provision state-claimed-v1-auth-provision)
+  (normally r-cl-chain-v1-auth-provision state-claimed-v1-auth-provision claimed-auth-provision)
+)
+
+;; Propagation rules: failures in 'auth-provision' block downstream tasks
+(normally r-propagate-auth-oidc-impl-from-auth-provision-failed failed-auth-provision upstream-blocked-auth-oidc-impl)
+(normally r-propagate-auth-oidc-impl-from-auth-provision-permanently-failed permanently-failed-auth-provision upstream-blocked-auth-oidc-impl)
+(normally r-propagate-auth-oidc-impl-from-auth-provision-stale-v1 stale-v1-auth-provision upstream-blocked-auth-oidc-impl)
+(normally r-propagate-auth-oidc-impl-from-auth-provision-timeout-v1 timeout-v1-auth-provision upstream-blocked-auth-oidc-impl)
+(normally r-propagate-auth-proxy-header-from-auth-provision-failed failed-auth-provision upstream-blocked-auth-proxy-header)
+(normally r-propagate-auth-proxy-header-from-auth-provision-permanently-failed permanently-failed-auth-provision upstream-blocked-auth-proxy-header)
+(normally r-propagate-auth-proxy-header-from-auth-provision-stale-v1 stale-v1-auth-provision upstream-blocked-auth-proxy-header)
+(normally r-propagate-auth-proxy-header-from-auth-provision-timeout-v1 timeout-v1-auth-provision upstream-blocked-auth-proxy-header)
