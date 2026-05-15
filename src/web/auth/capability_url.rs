@@ -470,6 +470,20 @@ pub async fn capability_gate(
 
     // Scope check (REQ-4117). Path is matched without its leading `/`.
     let path = request.uri().path().trim_start_matches('/');
+
+    // SECURITY (Vuln 3 / 2026-05-15 review): reject paths whose components
+    // include `..` or `.` (raw OR percent-encoded). globset's `**` matches
+    // `/` and `.`, so without this guard a scope of `review/draft-7/**`
+    // would let a request like `review/draft-7/../secret/page` through the
+    // glob match — and any downstream sink that resolves `..` via OS path
+    // semantics (e.g. `try_serve_public` when `--public` is configured)
+    // would silently escape the bound scope. Failing closed at the gate
+    // keeps the capability's authority unambiguous regardless of how
+    // downstream code handles path normalisation.
+    if path_has_traversal_segment(path) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+
     let glob = match globset::Glob::new(&grant.scope) {
         Ok(g) => g.compile_matcher(),
         Err(_) => return StatusCode::FORBIDDEN.into_response(),
@@ -493,6 +507,39 @@ pub async fn capability_gate(
     }
 
     next.run(request).await
+}
+
+/// Returns `true` iff `path` contains a `.` or `..` segment in either its
+/// raw or percent-decoded form. Used by [`capability_gate`] to fail closed
+/// on traversal-shaped paths regardless of how downstream code handles
+/// path normalisation (Vuln 3 / 2026-05-15 security review).
+///
+/// Detection rules:
+/// * Split `path` on literal `/`. If any segment exactly equals `.` or
+///   `..`, return `true`.
+/// * Percent-decode `path` and repeat the same check. This catches
+///   `%2e%2e` (and case variants) which the raw split would miss because
+///   axum's `Uri::path()` does NOT decode the path component.
+///
+/// Empty segments (`//`, leading or trailing `/`) are intentionally NOT
+/// rejected here — they are not traversal-shaped and a `**`-scoped
+/// capability legitimately matches request paths whose trailing slash
+/// produces an empty trailing segment.
+///
+/// Substrings like `alice.bob`, `release-2.0`, or `..foo` remain
+/// legitimate — only exact `.` / `..` segments are caught.
+pub(crate) fn path_has_traversal_segment(path: &str) -> bool {
+    fn any_dot_segment(s: &str) -> bool {
+        s.split('/').any(|seg| seg == "." || seg == "..")
+    }
+    if any_dot_segment(path) {
+        return true;
+    }
+    let decoded = percent_decode(path);
+    if decoded != path && any_dot_segment(&decoded) {
+        return true;
+    }
+    false
 }
 
 #[cfg(test)]
@@ -755,6 +802,67 @@ mod tests {
         assert_eq!(auth.id(), "capability-url");
     }
 
+    /// Vuln 3 (capability scope traversal): the traversal-segment guard
+    /// allows ordinary paths and rejects `.` / `..` components in both
+    /// raw and percent-encoded form.
+    #[test]
+    fn path_has_traversal_segment_matrix() {
+        // Allowed — normal paths.
+        for ok in [
+            "",                 // root
+            "page",             // single segment
+            "foo/bar",          // multi-segment
+            "foo/bar/baz",      // deep
+            "review/draft-7/x", // typical capability scope path
+            "alice.bob",        // dot in middle of segment is fine
+            "release-2.0/notes",
+            "..foo/bar",        // segment starts with `..` but isn't `..`
+            "foo/..bar",
+            "foo/.bar",         // dot-files (segment starts with `.` but isn't `.`)
+            "foo/...",          // three dots, not `..`
+            "foo%2ebar",        // encoded dot mid-segment decodes to `foo.bar` — fine
+        ] {
+            assert!(
+                !path_has_traversal_segment(ok),
+                "expected {ok:?} to be allowed"
+            );
+        }
+
+        // Rejected — raw `.` / `..` segments anywhere.
+        for bad in [
+            "..",
+            ".",
+            "../foo",
+            "foo/..",
+            "foo/../bar",
+            "review/draft-7/../secret/page",
+            "./foo",
+            "foo/./bar",
+            "foo/./../bar", // both kinds of traversal segment
+        ] {
+            assert!(
+                path_has_traversal_segment(bad),
+                "expected {bad:?} to be rejected"
+            );
+        }
+
+        // Rejected — percent-encoded `..` / `.` segments.
+        for bad in [
+            "%2e%2e",                            // `..`
+            "%2E%2E",                            // case-insensitive hex
+            "foo/%2e%2e/bar",                    // `foo/../bar`
+            "review/draft-7/%2e%2e/secret/page", // canonical exploit shape
+            "%2e",                               // wait — this percent-decodes to `.`
+            "foo/%2e/bar",                       // `foo/./bar`
+            "%2E/foo",                           // `./foo`
+        ] {
+            assert!(
+                path_has_traversal_segment(bad),
+                "expected {bad:?} to be rejected (percent-encoded form)"
+            );
+        }
+    }
+
     /// ADR-4110: detection helper used by the response-middleware that sets
     /// `Referrer-Policy: no-referrer`.
     #[test]
@@ -874,7 +982,48 @@ mod tests {
             "editor out-of-scope write"
         );
 
-        // 6. Non-capability request (no `?cap=`) is a no-op gate — all
+        // 6. Vuln 3 regression: a `..` traversal in the path is rejected at
+        //    the gate, even though globset's `**` would match it
+        //    literally. The bypass would otherwise smuggle requests past
+        //    the bound scope into any downstream sink that resolves `..`
+        //    (e.g. `try_serve_public` when `--public` is configured).
+        let resp = app
+            .clone()
+            .oneshot(
+                HttpRequest::get(format!("/shared/../secret/page?cap={reader_tok}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::FORBIDDEN,
+            "`..` segments rejected at the gate"
+        );
+
+        // 6a. Same traversal, percent-encoded form (`%2e%2e`). axum's
+        //     `Uri::path()` returns the raw percent-encoded path, so the
+        //     literal `..`-segment check misses; the percent-decoded
+        //     check catches it.
+        let resp = app
+            .clone()
+            .oneshot(
+                HttpRequest::get(format!(
+                    "/shared/%2e%2e/secret/page?cap={reader_tok}"
+                ))
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::FORBIDDEN,
+            "percent-encoded `..` rejected at the gate"
+        );
+
+        // 7. Non-capability request (no `?cap=`) is a no-op gate — all
         //    Abstain ⇒ Principal=None ⇒ no capability grant to enforce.
         //    With auth_resolve in the stack, the handler still runs.
         let resp = app
