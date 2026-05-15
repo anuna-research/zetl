@@ -667,3 +667,40 @@
 (normally r-propagate-auth-chain-builder-from-auth-config-lens-permanently-failed permanently-failed-auth-config-lens upstream-blocked-auth-chain-builder)
 (normally r-propagate-auth-chain-builder-from-auth-config-lens-stale-v1 stale-v1-auth-config-lens upstream-blocked-auth-chain-builder)
 (normally r-propagate-auth-chain-builder-from-auth-config-lens-timeout-v1 timeout-v1-auth-config-lens upstream-blocked-auth-chain-builder)
+
+(claims agent:coder
+  :at "2026-05-15T03:06:31Z"
+  (given completed-auth-config-lens))
+
+(claims agent:coder
+  :at "2026-05-15T03:06:31Z"
+  (given claim-v1-auth-chain-builder)
+  (normally r-cl-state-v1-auth-chain-builder claim-v1-auth-chain-builder state-claimed-v1-auth-chain-builder)
+  (normally r-cl-chain-v1-auth-chain-builder state-claimed-v1-auth-chain-builder claimed-auth-chain-builder)
+)
+
+;; Propagation rules: failures in 'auth-chain-builder' block downstream tasks
+(normally r-propagate-auth-capability-impl-from-auth-chain-builder-failed failed-auth-chain-builder upstream-blocked-auth-capability-impl)
+(normally r-propagate-auth-capability-impl-from-auth-chain-builder-permanently-failed permanently-failed-auth-chain-builder upstream-blocked-auth-capability-impl)
+(normally r-propagate-auth-capability-impl-from-auth-chain-builder-stale-v1 stale-v1-auth-chain-builder upstream-blocked-auth-capability-impl)
+(normally r-propagate-auth-capability-impl-from-auth-chain-builder-timeout-v1 timeout-v1-auth-chain-builder upstream-blocked-auth-capability-impl)
+(normally r-propagate-auth-oidc-feature-from-auth-chain-builder-failed failed-auth-chain-builder upstream-blocked-auth-oidc-feature)
+(normally r-propagate-auth-oidc-feature-from-auth-chain-builder-permanently-failed permanently-failed-auth-chain-builder upstream-blocked-auth-oidc-feature)
+(normally r-propagate-auth-oidc-feature-from-auth-chain-builder-stale-v1 stale-v1-auth-chain-builder upstream-blocked-auth-oidc-feature)
+(normally r-propagate-auth-oidc-feature-from-auth-chain-builder-timeout-v1 timeout-v1-auth-chain-builder upstream-blocked-auth-oidc-feature)
+(normally r-propagate-auth-password-impl-from-auth-chain-builder-failed failed-auth-chain-builder upstream-blocked-auth-password-impl)
+(normally r-propagate-auth-password-impl-from-auth-chain-builder-permanently-failed permanently-failed-auth-chain-builder upstream-blocked-auth-password-impl)
+(normally r-propagate-auth-password-impl-from-auth-chain-builder-stale-v1 stale-v1-auth-chain-builder upstream-blocked-auth-password-impl)
+(normally r-propagate-auth-password-impl-from-auth-chain-builder-timeout-v1 timeout-v1-auth-chain-builder upstream-blocked-auth-password-impl)
+(normally r-propagate-auth-password-store-from-auth-chain-builder-failed failed-auth-chain-builder upstream-blocked-auth-password-store)
+(normally r-propagate-auth-password-store-from-auth-chain-builder-permanently-failed permanently-failed-auth-chain-builder upstream-blocked-auth-password-store)
+(normally r-propagate-auth-password-store-from-auth-chain-builder-stale-v1 stale-v1-auth-chain-builder upstream-blocked-auth-password-store)
+(normally r-propagate-auth-password-store-from-auth-chain-builder-timeout-v1 timeout-v1-auth-chain-builder upstream-blocked-auth-password-store)
+(normally r-propagate-auth-provision-from-auth-chain-builder-failed failed-auth-chain-builder upstream-blocked-auth-provision)
+(normally r-propagate-auth-provision-from-auth-chain-builder-permanently-failed permanently-failed-auth-chain-builder upstream-blocked-auth-provision)
+(normally r-propagate-auth-provision-from-auth-chain-builder-stale-v1 stale-v1-auth-chain-builder upstream-blocked-auth-provision)
+(normally r-propagate-auth-provision-from-auth-chain-builder-timeout-v1 timeout-v1-auth-chain-builder upstream-blocked-auth-provision)
+(normally r-propagate-auth-proxy-header-from-auth-chain-builder-failed failed-auth-chain-builder upstream-blocked-auth-proxy-header)
+(normally r-propagate-auth-proxy-header-from-auth-chain-builder-permanently-failed permanently-failed-auth-chain-builder upstream-blocked-auth-proxy-header)
+(normally r-propagate-auth-proxy-header-from-auth-chain-builder-stale-v1 stale-v1-auth-chain-builder upstream-blocked-auth-proxy-header)
+(normally r-propagate-auth-proxy-header-from-auth-chain-builder-timeout-v1 timeout-v1-auth-chain-builder upstream-blocked-auth-proxy-header)

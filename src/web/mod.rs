@@ -353,18 +353,15 @@ pub async fn run(
 
     let asset_max_file_bytes = state.asset_max_file_bytes;
 
-    // SPEC-041 IMPL-041 Phase 0: build the default authenticator chain
-    // `[passkey, agent-token]` (REQ-4103 — reproduces pre-SPEC-041 behaviour
-    // exactly). Config-driven assembly from `[collab.auth]` lands in Phase 1
-    // (task-auth-chain-builder). The chain is `auth_resolve`'s own middleware
-    // state (ADR-4101); only `auth_resolve` needs it.
-    let auth_chain: auth::AuthChain = std::sync::Arc::new(vec![
-        Box::new(auth::passkey::PasskeyAuthenticator::new(state.sessions.clone()))
-            as Box<dyn auth::Authenticator + Send + Sync>,
-        Box::new(auth::agent_token::AgentTokenAuthenticator::new(
-            state.vault_root.clone(),
-        )) as Box<dyn auth::Authenticator + Send + Sync>,
-    ]);
+    // SPEC-041 IMPL-041 Phase 1: assemble the authenticator chain from
+    // `[collab.auth]` in `.zetl/config.toml`. Absent block ⇒ default chain
+    // `[passkey, agent-token]` reproducing pre-SPEC-041 behaviour exactly
+    // (REQ-4103). Methods naming an unshipped phase or invalid keys fail
+    // startup (REQ-4114). OBS-4105 startup line emitted to stderr.
+    let (auth_chain, auth_cfg) =
+        auth::config::build_chain_from_vault(&state.vault_root, state.sessions.clone())
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+    eprintln!("{}", auth::config::format_chain_summary(&auth_cfg));
 
     // ── Auth routes (always public, even in --collab mode) ───────────
     let auth_routes = Router::new()

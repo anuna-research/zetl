@@ -15,8 +15,16 @@
 //! Phase 4, `oidc` in Phase 5).
 
 use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use serde::Deserialize;
+
+use crate::web::session::SessionStore;
+
+use super::agent_token::AgentTokenAuthenticator;
+use super::passkey::PasskeyAuthenticator;
+use super::{AuthChain, Authenticator};
 
 /// Stable identifier for an authentication method, the same string used in
 /// `[collab.auth] methods` and in the audit trail (REQ-4115).
@@ -161,6 +169,97 @@ pub(crate) fn validate(cfg: &CollabAuthConfig) -> Result<(), ConfigError> {
     Ok(())
 }
 
+/// Assemble the [`AuthChain`] from a validated [`CollabAuthConfig`]
+/// (SPEC-041 REQ-4102 / REQ-4103).
+///
+/// `methods` order is the chain order — `auth_resolve` walks it first-match-
+/// wins (NFR-4104). Methods whose implementation is feature-gated out or not
+/// yet shipped fail startup with a clear message (REQ-4114): the operator
+/// either removes them or upgrades zetl. The order of construction calls
+/// here matches the declared `methods` list — no reordering, no implicit
+/// fallbacks.
+pub(crate) fn build_chain(
+    cfg: &CollabAuthConfig,
+    sessions: SessionStore,
+    vault_root: Arc<PathBuf>,
+) -> Result<AuthChain, ConfigError> {
+    validate(cfg)?;
+
+    let mut chain: Vec<Box<dyn Authenticator + Send + Sync>> =
+        Vec::with_capacity(cfg.methods.len());
+    for method in &cfg.methods {
+        let authenticator: Box<dyn Authenticator + Send + Sync> = match method {
+            MethodId::Passkey => Box::new(PasskeyAuthenticator::new(sessions.clone())),
+            MethodId::AgentToken => {
+                Box::new(AgentTokenAuthenticator::new(vault_root.clone()))
+            }
+            MethodId::ProxyHeader
+            | MethodId::Password
+            | MethodId::CapabilityUrl
+            | MethodId::Oidc => {
+                return Err(ConfigError(format!(
+                    "[collab.auth] method {:?} is not yet implemented in this \
+                     build — remove it from `methods` or upgrade zetl \
+                     (IMPL-041 ships methods incrementally across Phases 2-5)",
+                    method.as_str()
+                )));
+            }
+        };
+        chain.push(authenticator);
+    }
+    Ok(Arc::new(chain))
+}
+
+/// Read `.zetl/config.toml` if present, parse `[collab.auth]`, validate, and
+/// assemble the chain — the shell wrapper around [`parse`] / [`validate`] /
+/// [`build_chain`]. An absent file yields the default config (REQ-4103).
+pub(crate) fn build_chain_from_vault(
+    vault_root: &Path,
+    sessions: SessionStore,
+) -> Result<(AuthChain, CollabAuthConfig), ConfigError> {
+    let path = vault_root.join(".zetl/config.toml");
+    let body = match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => {
+            return Err(ConfigError(format!(
+                "failed to read {}: {}",
+                path.display(),
+                e
+            )))
+        }
+    };
+    let cfg = parse(&body)?;
+    let chain = build_chain(&cfg, sessions, Arc::new(vault_root.to_path_buf()))?;
+    Ok((chain, cfg))
+}
+
+/// Format the OBS-4105 startup line enumerating the assembled chain and the
+/// compiled auth feature set. Emitted to stderr by `src/web/mod.rs` at
+/// startup so operators can see the active auth configuration at a glance.
+pub(crate) fn format_chain_summary(cfg: &CollabAuthConfig) -> String {
+    let methods = cfg
+        .methods
+        .iter()
+        .map(|m| m.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let features = compiled_auth_features().join(", ");
+    format!("[zetl] collab auth: methods=[{methods}] features=[{features}]")
+}
+
+/// The cargo features relevant to authentication that are compiled in.
+/// Always includes `"collab"` when this code is reachable; conditional
+/// `"collab-oidc"` joins it once Phase 5 lands.
+fn compiled_auth_features() -> Vec<&'static str> {
+    let mut features = vec!["collab"];
+    #[cfg(feature = "collab-oidc")]
+    {
+        features.push("collab-oidc");
+    }
+    features
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,6 +389,102 @@ mod tests {
             vec![MethodId::ProxyHeader, MethodId::AgentToken]
         );
         assert!(cfg.proxy_header.is_some());
+    }
+
+    /// REQ-4102 / REQ-4103: the default config builds a `[passkey,
+    /// agent-token]` chain.
+    #[test]
+    fn build_chain_default() {
+        let cfg = CollabAuthConfig::default();
+        let chain = build_chain(
+            &cfg,
+            SessionStore::new(),
+            Arc::new(std::path::PathBuf::from("/tmp")),
+        )
+        .unwrap();
+        assert_eq!(chain.len(), 2);
+        assert_eq!(chain[0].id(), "passkey");
+        assert_eq!(chain[1].id(), "agent-token");
+    }
+
+    /// REQ-4102 / NFR-4104: chain order matches `methods` order exactly.
+    #[test]
+    fn build_chain_preserves_order() {
+        let body = r#"
+            [collab.auth]
+            methods = ["agent-token", "passkey"]
+        "#;
+        let cfg = parse(body).unwrap();
+        let chain = build_chain(
+            &cfg,
+            SessionStore::new(),
+            Arc::new(std::path::PathBuf::from("/tmp")),
+        )
+        .unwrap();
+        assert_eq!(chain[0].id(), "agent-token");
+        assert_eq!(chain[1].id(), "passkey");
+    }
+
+    /// REQ-4114: methods whose Phase has not yet shipped fail with a clear
+    /// message naming the offending method.
+    #[test]
+    fn build_chain_rejects_unimplemented_methods() {
+        for unimplemented in [
+            "proxy-header",
+            "password",
+            "capability-url",
+            "oidc",
+        ] {
+            let body = format!(
+                r#"
+                [collab.auth]
+                methods = ["passkey", "{unimplemented}"]
+                "#
+            );
+            let cfg = parse(&body).unwrap();
+            // AuthChain contains `dyn Authenticator` (not Debug), so we can't
+            // use `unwrap_err()` directly — match instead.
+            let result = build_chain(
+                &cfg,
+                SessionStore::new(),
+                Arc::new(std::path::PathBuf::from("/tmp")),
+            );
+            let err = match result {
+                Ok(_) => panic!("expected error for unimplemented method {unimplemented}"),
+                Err(e) => e,
+            };
+            assert!(
+                err.0.contains(unimplemented),
+                "expected error to name {unimplemented}, got: {}",
+                err.0
+            );
+        }
+    }
+
+    /// OBS-4105: startup summary line lists every method in declared order
+    /// and the compiled-in feature set.
+    #[test]
+    fn format_chain_summary_lists_methods_and_features() {
+        let body = r#"
+            [collab.auth]
+            methods = ["passkey", "agent-token"]
+        "#;
+        let cfg = parse(body).unwrap();
+        let line = format_chain_summary(&cfg);
+        assert!(line.starts_with("[zetl] collab auth: "));
+        assert!(line.contains("methods=[passkey, agent-token]"));
+        assert!(line.contains("features=[collab"));
+    }
+
+    /// `build_chain_from_vault` with no config file present yields the
+    /// default chain (REQ-4103).
+    #[test]
+    fn build_chain_from_vault_absent_file_uses_default() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (chain, cfg) =
+            build_chain_from_vault(tmp.path(), SessionStore::new()).unwrap();
+        assert_eq!(chain.len(), 2);
+        assert_eq!(cfg.methods, vec![MethodId::Passkey, MethodId::AgentToken]);
     }
 
     /// MethodId wire strings round-trip via serde (the kebab-case mapping
