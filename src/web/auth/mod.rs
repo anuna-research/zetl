@@ -23,6 +23,8 @@
 // task-auth-gate-refactor, when the chain is wired into the router.
 #![allow(dead_code)]
 
+pub(crate) mod token;
+
 use axum::http::request::Parts;
 use axum::Router;
 

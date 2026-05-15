@@ -549,3 +549,32 @@
 (normally r-propagate-auth-resolve-middleware-from-auth-trait-permanently-failed permanently-failed-auth-trait upstream-blocked-auth-resolve-middleware)
 (normally r-propagate-auth-resolve-middleware-from-auth-trait-stale-v1 stale-v1-auth-trait upstream-blocked-auth-resolve-middleware)
 (normally r-propagate-auth-resolve-middleware-from-auth-trait-timeout-v1 timeout-v1-auth-trait upstream-blocked-auth-resolve-middleware)
+
+(claims agent:coder
+  :at "2026-05-15T02:35:54Z"
+  (given completed-auth-trait))
+
+(claims agent:coder
+  :at "2026-05-15T02:40:04Z"
+  (given claim-v1-auth-token-recogniser)
+  (normally r-cl-state-v1-auth-token-recogniser claim-v1-auth-token-recogniser state-claimed-v1-auth-token-recogniser)
+  (normally r-cl-chain-v1-auth-token-recogniser state-claimed-v1-auth-token-recogniser claimed-auth-token-recogniser)
+)
+
+;; Propagation rules: failures in 'auth-token-recogniser' block downstream tasks
+(normally r-propagate-auth-agent-token-impl-from-auth-token-recogniser-failed failed-auth-token-recogniser upstream-blocked-auth-agent-token-impl)
+(normally r-propagate-auth-agent-token-impl-from-auth-token-recogniser-permanently-failed permanently-failed-auth-token-recogniser upstream-blocked-auth-agent-token-impl)
+(normally r-propagate-auth-agent-token-impl-from-auth-token-recogniser-stale-v1 stale-v1-auth-token-recogniser upstream-blocked-auth-agent-token-impl)
+(normally r-propagate-auth-agent-token-impl-from-auth-token-recogniser-timeout-v1 timeout-v1-auth-token-recogniser upstream-blocked-auth-agent-token-impl)
+(normally r-propagate-auth-capability-impl-from-auth-token-recogniser-failed failed-auth-token-recogniser upstream-blocked-auth-capability-impl)
+(normally r-propagate-auth-capability-impl-from-auth-token-recogniser-permanently-failed permanently-failed-auth-token-recogniser upstream-blocked-auth-capability-impl)
+(normally r-propagate-auth-capability-impl-from-auth-token-recogniser-stale-v1 stale-v1-auth-token-recogniser upstream-blocked-auth-capability-impl)
+(normally r-propagate-auth-capability-impl-from-auth-token-recogniser-timeout-v1 timeout-v1-auth-token-recogniser upstream-blocked-auth-capability-impl)
+(normally r-propagate-auth-passkey-impl-from-auth-token-recogniser-failed failed-auth-token-recogniser upstream-blocked-auth-passkey-impl)
+(normally r-propagate-auth-passkey-impl-from-auth-token-recogniser-permanently-failed permanently-failed-auth-token-recogniser upstream-blocked-auth-passkey-impl)
+(normally r-propagate-auth-passkey-impl-from-auth-token-recogniser-stale-v1 stale-v1-auth-token-recogniser upstream-blocked-auth-passkey-impl)
+(normally r-propagate-auth-passkey-impl-from-auth-token-recogniser-timeout-v1 timeout-v1-auth-token-recogniser upstream-blocked-auth-passkey-impl)
+
+(claims agent:coder
+  :at "2026-05-15T02:40:04Z"
+  (given discovered-agent-token-is-not-jwt-separate-recogniser))

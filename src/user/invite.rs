@@ -7,7 +7,7 @@
 use anyhow::{Context, Result};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
-use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -20,13 +20,6 @@ const PENDING_INVITES_FILE: &str = "pending-invites.json";
 
 /// Default invitation expiry: 72 hours.
 const DEFAULT_EXPIRY_SECS: u64 = 72 * 60 * 60;
-
-/// JWT header for EdDSA-signed invitation tokens (CON-020-004).
-#[derive(Serialize)]
-struct JwtHeader {
-    alg: &'static str,
-    typ: &'static str,
-}
 
 /// JWT payload for invitation tokens (CON-020-004).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -215,24 +208,14 @@ pub fn generate_invitation(
     Ok((jwt, nonce))
 }
 
-/// Encode a JWT with EdDSA signature.
+/// Encode an invitation JWT with EdDSA signature.
+///
+/// Delegates to the shared EdDSA-JWT serialiser in `crate::web::auth::token`
+/// (SPEC-041 REQ-4120 — one serialiser for the EdDSA-JWT form, shared with the
+/// capability token).
 fn encode_jwt(key: &SigningKey, claims: &InviteClaims) -> Result<String> {
-    let header = JwtHeader {
-        alg: "EdDSA",
-        typ: "JWT",
-    };
-
-    let header_json = serde_json::to_vec(&header).context("failed to serialize JWT header")?;
-    let payload_json = serde_json::to_vec(claims).context("failed to serialize JWT payload")?;
-
-    let header_b64 = URL_SAFE_NO_PAD.encode(&header_json);
-    let payload_b64 = URL_SAFE_NO_PAD.encode(&payload_json);
-
-    let signing_input = format!("{header_b64}.{payload_b64}");
-    let signature = key.sign(signing_input.as_bytes());
-    let sig_b64 = URL_SAFE_NO_PAD.encode(signature.to_bytes());
-
-    Ok(format!("{signing_input}.{sig_b64}"))
+    crate::web::auth::token::encode(key, claims)
+        .map_err(|e| anyhow::anyhow!("failed to encode invitation JWT: {e}"))
 }
 
 /// Decode and verify a JWT, returning the claims if valid.
@@ -242,42 +225,17 @@ pub fn decode_jwt(vault_root: &Path, token: &str) -> Result<InviteClaims> {
 }
 
 /// Decode and verify a JWT with a given verifying key.
+///
+/// Recognition — the three-segment grammar, base64url decoding, signature
+/// verification, and the `sub = "zetl-invite"` discriminator check — is
+/// delegated to the shared EdDSA-JWT recogniser (SPEC-041 REQ-4120). Only the
+/// expiry check, which is interpretation specific to invitations, stays here.
 pub fn decode_jwt_with_key(key: &VerifyingKey, token: &str) -> Result<InviteClaims> {
-    let parts: Vec<&str> = token.split('.').collect();
-    if parts.len() != 3 {
-        anyhow::bail!("invalid JWT: expected 3 parts, got {}", parts.len());
-    }
-
-    let signing_input = format!("{}.{}", parts[0], parts[1]);
-    let sig_bytes = URL_SAFE_NO_PAD
-        .decode(parts[2])
-        .context("invalid JWT signature encoding")?;
-
-    if sig_bytes.len() != 64 {
-        anyhow::bail!(
-            "invalid JWT signature length ({} bytes, expected 64)",
-            sig_bytes.len()
-        );
-    }
-
-    let mut sig_arr = [0u8; 64];
-    sig_arr.copy_from_slice(&sig_bytes);
-    let signature = ed25519_dalek::Signature::from_bytes(&sig_arr);
-
-    key.verify_strict(signing_input.as_bytes(), &signature)
-        .map_err(|_| anyhow::anyhow!("JWT signature verification failed"))?;
-
-    let payload_json = URL_SAFE_NO_PAD
-        .decode(parts[1])
-        .context("invalid JWT payload encoding")?;
-
-    let claims: InviteClaims =
-        serde_json::from_slice(&payload_json).context("invalid JWT payload")?;
-
-    // Verify it's an invitation token
-    if claims.sub != "zetl-invite" {
-        anyhow::bail!("JWT is not an invitation token (sub={})", claims.sub);
-    }
+    let jwt =
+        crate::web::auth::token::recognise(token, key).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let claims: InviteClaims = jwt
+        .claims("zetl-invite")
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     // Check expiry
     let now = SystemTime::now()
