@@ -939,3 +939,14 @@
 (normally r-propagate-auth-changelog-mark-from-auth-adversarial-review-permanently-failed permanently-failed-auth-adversarial-review upstream-blocked-auth-changelog-mark)
 (normally r-propagate-auth-changelog-mark-from-auth-adversarial-review-stale-v1 stale-v1-auth-adversarial-review upstream-blocked-auth-changelog-mark)
 (normally r-propagate-auth-changelog-mark-from-auth-adversarial-review-timeout-v1 timeout-v1-auth-adversarial-review upstream-blocked-auth-changelog-mark)
+
+(claims agent:reviewer-security
+  :at "2026-05-15T04:17:47Z"
+  (given completed-auth-adversarial-review))
+
+(claims agent:coder
+  :at "2026-05-15T04:18:00Z"
+  (given claim-v1-auth-changelog-mark)
+  (normally r-cl-state-v1-auth-changelog-mark claim-v1-auth-changelog-mark state-claimed-v1-auth-changelog-mark)
+  (normally r-cl-chain-v1-auth-changelog-mark state-claimed-v1-auth-changelog-mark claimed-auth-changelog-mark)
+)
