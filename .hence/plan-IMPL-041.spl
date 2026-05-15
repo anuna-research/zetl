@@ -625,3 +625,28 @@
 (normally r-propagate-auth-gate-refactor-from-auth-agent-token-impl-permanently-failed permanently-failed-auth-agent-token-impl upstream-blocked-auth-gate-refactor)
 (normally r-propagate-auth-gate-refactor-from-auth-agent-token-impl-stale-v1 stale-v1-auth-agent-token-impl upstream-blocked-auth-gate-refactor)
 (normally r-propagate-auth-gate-refactor-from-auth-agent-token-impl-timeout-v1 timeout-v1-auth-agent-token-impl upstream-blocked-auth-gate-refactor)
+
+(claims agent:coder
+  :at "2026-05-15T02:52:13Z"
+  (given completed-auth-passkey-impl))
+
+(claims agent:coder
+  :at "2026-05-15T02:52:13Z"
+  (given completed-auth-agent-token-impl))
+
+(claims agent:coder
+  :at "2026-05-15T02:57:27Z"
+  (given claim-v1-auth-gate-refactor)
+  (normally r-cl-state-v1-auth-gate-refactor claim-v1-auth-gate-refactor state-claimed-v1-auth-gate-refactor)
+  (normally r-cl-chain-v1-auth-gate-refactor state-claimed-v1-auth-gate-refactor claimed-auth-gate-refactor)
+)
+
+;; Propagation rules: failures in 'auth-gate-refactor' block downstream tasks
+(normally r-propagate-auth-config-lens-from-auth-gate-refactor-failed failed-auth-gate-refactor upstream-blocked-auth-config-lens)
+(normally r-propagate-auth-config-lens-from-auth-gate-refactor-permanently-failed permanently-failed-auth-gate-refactor upstream-blocked-auth-config-lens)
+(normally r-propagate-auth-config-lens-from-auth-gate-refactor-stale-v1 stale-v1-auth-gate-refactor upstream-blocked-auth-config-lens)
+(normally r-propagate-auth-config-lens-from-auth-gate-refactor-timeout-v1 timeout-v1-auth-gate-refactor upstream-blocked-auth-config-lens)
+
+(claims agent:coder
+  :at "2026-05-15T02:57:27Z"
+  (given discovered-extractors-token-field-deferred-to-followup))

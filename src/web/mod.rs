@@ -353,6 +353,19 @@ pub async fn run(
 
     let asset_max_file_bytes = state.asset_max_file_bytes;
 
+    // SPEC-041 IMPL-041 Phase 0: build the default authenticator chain
+    // `[passkey, agent-token]` (REQ-4103 — reproduces pre-SPEC-041 behaviour
+    // exactly). Config-driven assembly from `[collab.auth]` lands in Phase 1
+    // (task-auth-chain-builder). The chain is `auth_resolve`'s own middleware
+    // state (ADR-4101); only `auth_resolve` needs it.
+    let auth_chain: auth::AuthChain = std::sync::Arc::new(vec![
+        Box::new(auth::passkey::PasskeyAuthenticator::new(state.sessions.clone()))
+            as Box<dyn auth::Authenticator + Send + Sync>,
+        Box::new(auth::agent_token::AgentTokenAuthenticator::new(
+            state.vault_root.clone(),
+        )) as Box<dyn auth::Authenticator + Send + Sync>,
+    ]);
+
     // ── Auth routes (always public, even in --collab mode) ───────────
     let auth_routes = Router::new()
         .route("/auth/login", get(routes::login_handler))
@@ -410,6 +423,12 @@ pub async fn run(
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             session::admin_gate,
+        ))
+        // SPEC-041 REQ-4104 / CON-4103: auth_resolve runs before admin_gate so
+        // the gate reads the resolved Principal from the request extensions.
+        .route_layer(middleware::from_fn_with_state(
+            auth_chain.clone(),
+            auth::resolve::auth_resolve,
         ));
 
     // ── Content routes (gated by collab_gate when --collab is active) ─
@@ -495,6 +514,14 @@ pub async fn run(
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             session::collab_gate,
+        ))
+        // SPEC-041 REQ-4104 / CON-4103: auth_resolve runs FIRST in the
+        // content-routes stack — its order here is load-bearing. Layered
+        // last → wraps the others → runs first, so collab_gate and csrf_guard
+        // read a populated Principal extension.
+        .route_layer(middleware::from_fn_with_state(
+            auth_chain.clone(),
+            auth::resolve::auth_resolve,
         ));
 
     // ── WebSocket routes (auth handled inside the handler via tickets) ──

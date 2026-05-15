@@ -221,11 +221,12 @@ pub(crate) fn verify_bearer_token(vault_root: &std::path::Path, token_b64: &str)
     .map(|claims| claims.user_id)
 }
 
-/// Middleware that gates routes behind session authentication when `--collab` is active.
+/// Middleware that gates routes behind authentication when `--collab` is active.
 ///
-/// In non-collab mode, all requests pass through unchanged.
-/// In collab mode, accepts either a valid session cookie or a valid Bearer agent token.
-/// Unauthenticated requests receive 401 Unauthorized.
+/// Per SPEC-041 REQ-4104 / ADR-4102, the principal has already been resolved
+/// upstream by `auth_resolve` and is read from the request extensions here —
+/// the gate no longer parses headers/cookies itself. Unauthenticated browsers
+/// are redirected to `/auth/login`; API clients receive 401.
 pub async fn collab_gate(
     State(state): State<super::WebState>,
     request: axum::http::Request<Body>,
@@ -235,21 +236,7 @@ pub async fn collab_gate(
         return next.run(request).await;
     }
 
-    // Check for valid session cookie
-    let has_session = token_from_cookies(request.headers())
-        .and_then(|t| state.sessions.validate(&t))
-        .is_some();
-
-    if has_session {
-        return next.run(request).await;
-    }
-
-    // Check for valid Bearer agent token
-    let has_bearer = bearer_token_from_headers(request.headers())
-        .and_then(|t| verify_bearer_token(&state.vault_root, &t))
-        .is_some();
-
-    if has_bearer {
+    if crate::web::auth::resolve::request_principal(request.extensions()).is_some() {
         return next.run(request).await;
     }
 
@@ -322,9 +309,14 @@ pub async fn csrf_guard(
         return next.run(request).await;
     }
 
-    // Exempt Bearer-authenticated requests
-    if bearer_token_from_headers(request.headers()).is_some() {
-        return next.run(request).await;
+    // Exempt stateless principals (Bearer / proxy-header / capability — anything
+    // not cookie-session-backed). Generalises the pre-SPEC-041 Bearer-only
+    // exemption to every method the authenticator chain declares stateless
+    // (REQ-4112).
+    if let Some(principal) = crate::web::auth::resolve::request_principal(request.extensions()) {
+        if !principal.cookie_session {
+            return next.run(request).await;
+        }
     }
 
     // Exempt WebSocket upgrade requests
@@ -465,8 +457,10 @@ where
 /// Middleware that gates `/_admin/*` routes behind a hardcoded owner-or-admin check.
 ///
 /// This runs *before* any SPL policy evaluation and cannot be overridden by access rules.
-/// Requires the user to be authenticated (session cookie or Bearer token) and their
-/// profile to have `owner == true` (which maps to `Role::Admin` via `Role::for_profile`).
+/// The principal is read from the request extensions where `auth_resolve` left it
+/// (SPEC-041 REQ-4104 / ADR-4102) — `admin_gate` no longer re-parses headers.
+/// Capability-URL principals never satisfy this gate regardless of the role
+/// encoded in the token (SPEC-041 REQ-4119).
 ///
 /// Returns 401 if unauthenticated, 403 if the user is not an owner/admin.
 pub async fn admin_gate(
@@ -474,17 +468,17 @@ pub async fn admin_gate(
     request: axum::http::Request<Body>,
     next: Next,
 ) -> Response {
-    // Resolve user_id from session cookie or Bearer token
-    let user_id = token_from_cookies(request.headers())
-        .and_then(|t| state.sessions.validate(&t))
-        .or_else(|| {
-            bearer_token_from_headers(request.headers())
-                .and_then(|t| verify_bearer_token(&state.vault_root, &t))
-        });
-
-    let user_id = match user_id {
-        Some(id) => id,
+    let principal = match crate::web::auth::resolve::request_principal(request.extensions()) {
+        Some(p) => p,
         None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
+
+    // REQ-4119: capability-URL principals are pseudonymous and never admin.
+    let user_id = match &principal.identity {
+        crate::web::auth::PrincipalId::User(id) => id.clone(),
+        crate::web::auth::PrincipalId::Capability(_) => {
+            return StatusCode::FORBIDDEN.into_response();
+        }
     };
 
     // Load profile and check owner/admin — hardcoded, not SPL-driven
@@ -829,9 +823,20 @@ mod tests {
         let user_id = create_test_user(tmp.path(), "Owner", true);
         let session_token = state.sessions.create(&user_id);
 
+        // SPEC-041 ADR-4102: admin_gate now reads the Principal from request
+        // extensions; the test layers auth_resolve in front of it so the
+        // resolution mirrors the production wiring in `src/web/mod.rs`.
+        let auth_chain: crate::web::auth::AuthChain = std::sync::Arc::new(vec![Box::new(
+            crate::web::auth::passkey::PasskeyAuthenticator::new(state.sessions.clone()),
+        )
+            as Box<dyn crate::web::auth::Authenticator + Send + Sync>]);
         let app = Router::new()
             .route("/test", get(|| async { "ok" }))
             .route_layer(middleware::from_fn_with_state(state.clone(), admin_gate))
+            .route_layer(middleware::from_fn_with_state(
+                auth_chain,
+                crate::web::auth::resolve::auth_resolve,
+            ))
             .with_state(state);
 
         let resp = app
@@ -859,9 +864,17 @@ mod tests {
         let user_id = create_test_user(tmp.path(), "Editor", false);
         let session_token = state.sessions.create(&user_id);
 
+        let auth_chain: crate::web::auth::AuthChain = std::sync::Arc::new(vec![Box::new(
+            crate::web::auth::passkey::PasskeyAuthenticator::new(state.sessions.clone()),
+        )
+            as Box<dyn crate::web::auth::Authenticator + Send + Sync>]);
         let app = Router::new()
             .route("/test", get(|| async { "ok" }))
             .route_layer(middleware::from_fn_with_state(state.clone(), admin_gate))
+            .route_layer(middleware::from_fn_with_state(
+                auth_chain,
+                crate::web::auth::resolve::auth_resolve,
+            ))
             .with_state(state);
 
         let resp = app
@@ -887,9 +900,17 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let state = test_web_state(tmp.path());
 
+        let auth_chain: crate::web::auth::AuthChain = std::sync::Arc::new(vec![Box::new(
+            crate::web::auth::passkey::PasskeyAuthenticator::new(state.sessions.clone()),
+        )
+            as Box<dyn crate::web::auth::Authenticator + Send + Sync>]);
         let app = Router::new()
             .route("/test", get(|| async { "ok" }))
             .route_layer(middleware::from_fn_with_state(state.clone(), admin_gate))
+            .route_layer(middleware::from_fn_with_state(
+                auth_chain,
+                crate::web::auth::resolve::auth_resolve,
+            ))
             .with_state(state);
 
         let resp = app

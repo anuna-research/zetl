@@ -16,7 +16,7 @@
 
 use axum::extract::{Request, State};
 use axum::http::request::Parts;
-use axum::http::StatusCode;
+use axum::http::{Extensions, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
@@ -95,16 +95,15 @@ pub(crate) async fn auth_resolve(
     next.run(Request::from_parts(parts, body)).await
 }
 
-/// Read the resolved [`Principal`] from request extensions.
+/// Read the resolved [`Principal`] from a request's extensions.
 ///
 /// Returns `Some` only when `auth_resolve` ran *and* an authenticator
 /// accepted. `None` covers both "ran, all abstained" and "middleware not in
 /// this route's stack" — callers that require authentication treat both the
-/// same way. This is the accessor `collab_gate` / `admin_gate` / the
-/// extractors use instead of re-parsing headers (REQ-4104).
-pub(crate) fn request_principal(parts: &Parts) -> Option<&Principal> {
-    parts
-        .extensions
+/// same way. Accepts `&Extensions` so middleware that holds a full `Request`
+/// and extractors that hold `Parts` can share one accessor (REQ-4104).
+pub(crate) fn request_principal(extensions: &Extensions) -> Option<&Principal> {
+    extensions
         .get::<Option<Principal>>()
         .and_then(|resolved| resolved.as_ref())
 }
@@ -258,15 +257,86 @@ mod tests {
         }
     }
 
+    /// TEST-4104 (middleware-ordering, CON-4103): `auth_resolve` runs before
+    /// the handler — the handler sees the populated `Option<Principal>`
+    /// extension. This is the wiring invariant `src/web/mod.rs` relies on for
+    /// `collab_gate` / `admin_gate` / `csrf_guard` to read the resolved
+    /// principal instead of re-parsing headers.
+    #[tokio::test]
+    async fn middleware_runs_before_handler_and_sets_extension() {
+        use axum::body::Body;
+        use axum::extract::Request as ExtractRequest;
+        use axum::http::Request as HttpRequest;
+        use axum::routing::get;
+        use axum::Router;
+        use std::sync::Arc;
+        use tower::ServiceExt;
+
+        async fn probe(req: ExtractRequest) -> String {
+            match req.extensions().get::<Option<Principal>>() {
+                Some(Some(p)) => format!("ok:{}:{}", p.method, p.identity.handle()),
+                Some(None) => "unauth".to_string(),
+                None => "missing-extension".to_string(),
+            }
+        }
+
+        // Always-accept chain proves the populated path.
+        let accept_chain: AuthChain = Arc::new(vec![Box::new(MockAuth {
+            id: "mock",
+            behaviour: Behaviour::Accept,
+        })]);
+        let app = Router::new().route("/probe", get(probe)).route_layer(
+            axum::middleware::from_fn_with_state(accept_chain, auth_resolve),
+        );
+        let resp = app
+            .oneshot(HttpRequest::get("/probe").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+        let body = axum::body::to_bytes(resp.into_body(), 1024).await.unwrap();
+        assert_eq!(&body[..], b"ok:mock:mock");
+
+        // All-abstain chain proves the unauthenticated path threads through
+        // to the handler with `Some(None)` in the extension.
+        let abstain_chain: AuthChain = Arc::new(vec![Box::new(MockAuth {
+            id: "mock",
+            behaviour: Behaviour::Abstain,
+        })]);
+        let app = Router::new().route("/probe", get(probe)).route_layer(
+            axum::middleware::from_fn_with_state(abstain_chain, auth_resolve),
+        );
+        let resp = app
+            .oneshot(HttpRequest::get("/probe").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+        let body = axum::body::to_bytes(resp.into_body(), 1024).await.unwrap();
+        assert_eq!(&body[..], b"unauth");
+
+        // Reject terminates with 401; the handler never runs.
+        let reject_chain: AuthChain = Arc::new(vec![Box::new(MockAuth {
+            id: "mock",
+            behaviour: Behaviour::Reject,
+        })]);
+        let app = Router::new().route("/probe", get(probe)).route_layer(
+            axum::middleware::from_fn_with_state(reject_chain, auth_resolve),
+        );
+        let resp = app
+            .oneshot(HttpRequest::get("/probe").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 401);
+    }
+
     /// TEST-4104: `request_principal` round-trips what `auth_resolve` would
     /// have inserted.
     #[test]
     fn request_principal_reads_extension() {
         let mut parts = empty_parts();
-        assert!(request_principal(&parts).is_none());
+        assert!(request_principal(&parts.extensions).is_none());
 
         parts.extensions.insert::<Option<Principal>>(None);
-        assert!(request_principal(&parts).is_none());
+        assert!(request_principal(&parts.extensions).is_none());
 
         let principal = Principal {
             identity: PrincipalId::User("alice".to_string()),
@@ -277,6 +347,6 @@ mod tests {
         parts
             .extensions
             .insert::<Option<Principal>>(Some(principal.clone()));
-        assert_eq!(request_principal(&parts), Some(&principal));
+        assert_eq!(request_principal(&parts.extensions), Some(&principal));
     }
 }
