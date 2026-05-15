@@ -6169,6 +6169,7 @@ fn cmd_serve(
     safe_mode: bool,
     asset_max_file_bytes: u64,
     asset_max_total_bytes: u64,
+    trust_proxy: bool,
 ) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
@@ -6432,7 +6433,7 @@ fn cmd_serve(
         verbose: cli.verbose > 0,
         collab,
         tls: false,
-        trust_proxy: false,
+        trust_proxy,
         sessions: zetl::web::session::SessionStore::new(),
         recovery_challenges: std::sync::Arc::new(
             zetl::user::recovery::RecoveryChallengeStore::new(),
@@ -11453,6 +11454,7 @@ fn main() -> anyhow::Result<()> {
             safe_mode,
             asset_max_file_bytes,
             asset_max_total_bytes,
+            trust_proxy,
             scan: _,
         } => cmd_serve(
             &cli,
@@ -11468,6 +11470,7 @@ fn main() -> anyhow::Result<()> {
             *safe_mode,
             *asset_max_file_bytes,
             *asset_max_total_bytes,
+            *trust_proxy,
         ),
         Command::Invite {
             as_user,

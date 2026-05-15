@@ -878,7 +878,7 @@ mod tests {
     #[tokio::test]
     async fn gate_enforces_scope_and_role() {
         use crate::web::auth::resolve::auth_resolve;
-        use crate::web::auth::AuthChain;
+        use crate::web::auth::{AuthChain, AuthResolveState};
         use axum::body::Body;
         use axum::http::{Method, Request as HttpRequest, StatusCode};
         use axum::routing::{get, put};
@@ -892,6 +892,10 @@ mod tests {
                 key.verifying_key(),
                 std::sync::Arc::new(tmp.path().to_path_buf()),
             ))]);
+        let auth_state = AuthResolveState {
+            chain,
+            vault_root: std::sync::Arc::new(tmp.path().to_path_buf()),
+        };
 
         // Build a router with auth_resolve + capability_gate + two routes.
         let app = Router::new()
@@ -900,7 +904,10 @@ mod tests {
                 get(|| async { "OK" }).put(|| async { "PUT-OK" }),
             )
             .route_layer(axum::middleware::from_fn(capability_gate))
-            .route_layer(axum::middleware::from_fn_with_state(chain, auth_resolve));
+            .route_layer(axum::middleware::from_fn_with_state(
+                auth_state,
+                auth_resolve,
+            ));
 
         let (reader_tok, _) = mint(&key, "shared/**", "reader", 60).unwrap();
         let (editor_tok, _) = mint(&key, "shared/**", "editor", 60).unwrap();

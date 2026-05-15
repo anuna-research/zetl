@@ -20,8 +20,8 @@ use axum::http::{Extensions, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
-use super::observability::{log_auth_event, AuthOutcomeClass};
-use super::{AuthChain, AuthOutcome, AuthRejection, Authenticator, Principal};
+use super::observability::{log_auth_event, write_audit_line, AuthOutcomeClass};
+use super::{AuthOutcome, AuthRejection, AuthResolveState, Authenticator, Principal};
 
 /// The result of walking the authenticator chain for one request.
 #[derive(Debug)]
@@ -69,18 +69,28 @@ pub(crate) fn resolve_chain(
 /// construction in `src/web/mod.rs` and a middleware-ordering test added in
 /// task-auth-gate-refactor.
 pub(crate) async fn auth_resolve(
-    State(chain): State<AuthChain>,
+    State(state): State<AuthResolveState>,
     request: Request,
     next: Next,
 ) -> Response {
     let (mut parts, body) = request.into_parts();
 
-    match resolve_chain(&chain, &parts) {
+    match resolve_chain(&state.chain, &parts) {
         ChainOutcome::Authenticated(principal) => {
             // SPEC-041 OBS-4103: emit the per-decision operator log line.
             // Identity is the resolved handle — never a token byte
             // (REQ-4115 redaction by construction).
             log_auth_event(
+                principal.method,
+                AuthOutcomeClass::Authenticated,
+                Some(principal.identity.handle()),
+                None,
+            );
+            // OBS-4104: persist to `.zetl/collab/auth-audit.log`. Abstains
+            // are intentionally not audited (noise floor); successes and
+            // rejects are.
+            write_audit_line(
+                &state.vault_root,
                 principal.method,
                 AuthOutcomeClass::Authenticated,
                 Some(principal.identity.handle()),
@@ -92,15 +102,23 @@ pub(crate) async fn auth_resolve(
         }
         ChainOutcome::Unauthenticated => {
             // OBS-4103: log abstain-to-end at a coarse "unauthenticated"
-            // tag — no specific authenticator owns the outcome.
+            // tag — no specific authenticator owns the outcome. No audit
+            // line (the audit log skips abstains).
             log_auth_event("none", AuthOutcomeClass::Abstained, None, None);
             parts.extensions.insert::<Option<Principal>>(None);
         }
         ChainOutcome::Rejected(AuthRejection { cause }) => {
-            // OBS-4103/OBS-4104: log + surface 401. The `cause` category
-            // is operator-channel only — never leaks to the response
-            // (SPEC-041 §1.3.8 cause-indistinguishability).
+            // OBS-4103/OBS-4104: log + surface 401 + audit. The `cause`
+            // category is operator-channel only — never leaks to the
+            // response (SPEC-041 §1.3.8 cause-indistinguishability).
             log_auth_event("chain", AuthOutcomeClass::Rejected, None, Some(cause));
+            write_audit_line(
+                &state.vault_root,
+                "chain",
+                AuthOutcomeClass::Rejected,
+                None,
+                Some(cause),
+            );
             return StatusCode::UNAUTHORIZED.into_response();
         }
     }
@@ -290,13 +308,18 @@ mod tests {
             }
         }
 
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mk_state = |behaviour: Behaviour| AuthResolveState {
+            chain: Arc::new(vec![Box::new(MockAuth {
+                id: "mock",
+                behaviour,
+            }) as Box<dyn Authenticator + Send + Sync>]),
+            vault_root: Arc::new(tmp.path().to_path_buf()),
+        };
+
         // Always-accept chain proves the populated path.
-        let accept_chain: AuthChain = Arc::new(vec![Box::new(MockAuth {
-            id: "mock",
-            behaviour: Behaviour::Accept,
-        })]);
         let app = Router::new().route("/probe", get(probe)).route_layer(
-            axum::middleware::from_fn_with_state(accept_chain, auth_resolve),
+            axum::middleware::from_fn_with_state(mk_state(Behaviour::Accept), auth_resolve),
         );
         let resp = app
             .oneshot(HttpRequest::get("/probe").body(Body::empty()).unwrap())
@@ -308,12 +331,8 @@ mod tests {
 
         // All-abstain chain proves the unauthenticated path threads through
         // to the handler with `Some(None)` in the extension.
-        let abstain_chain: AuthChain = Arc::new(vec![Box::new(MockAuth {
-            id: "mock",
-            behaviour: Behaviour::Abstain,
-        })]);
         let app = Router::new().route("/probe", get(probe)).route_layer(
-            axum::middleware::from_fn_with_state(abstain_chain, auth_resolve),
+            axum::middleware::from_fn_with_state(mk_state(Behaviour::Abstain), auth_resolve),
         );
         let resp = app
             .oneshot(HttpRequest::get("/probe").body(Body::empty()).unwrap())
@@ -324,12 +343,8 @@ mod tests {
         assert_eq!(&body[..], b"unauth");
 
         // Reject terminates with 401; the handler never runs.
-        let reject_chain: AuthChain = Arc::new(vec![Box::new(MockAuth {
-            id: "mock",
-            behaviour: Behaviour::Reject,
-        })]);
         let app = Router::new().route("/probe", get(probe)).route_layer(
-            axum::middleware::from_fn_with_state(reject_chain, auth_resolve),
+            axum::middleware::from_fn_with_state(mk_state(Behaviour::Reject), auth_resolve),
         );
         let resp = app
             .oneshot(HttpRequest::get("/probe").body(Body::empty()).unwrap())

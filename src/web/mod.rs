@@ -384,6 +384,13 @@ pub async fn run(
     .map_err(|e| anyhow::anyhow!("{e}"))?;
     eprintln!("{}", auth::config::format_chain_summary(&auth_cfg));
 
+    // OBS-4104: bundle the vault root with the chain so `auth_resolve` can
+    // write the audit log without WebState having to carry the chain.
+    let auth_state = auth::AuthResolveState {
+        chain: auth_chain.clone(),
+        vault_root: state.vault_root.clone(),
+    };
+
     // ── Auth routes (always public, even in --collab mode) ───────────
     let auth_routes = Router::new()
         .route("/auth/login", get(routes::login_handler))
@@ -454,7 +461,7 @@ pub async fn run(
         // SPEC-041 REQ-4104 / CON-4103: auth_resolve runs before admin_gate so
         // the gate reads the resolved Principal from the request extensions.
         .route_layer(middleware::from_fn_with_state(
-            auth_chain.clone(),
+            auth_state.clone(),
             auth::resolve::auth_resolve,
         ));
 
@@ -557,7 +564,7 @@ pub async fn run(
         // last → wraps the others → runs first, so collab_gate and csrf_guard
         // read a populated Principal extension.
         .route_layer(middleware::from_fn_with_state(
-            auth_chain.clone(),
+            auth_state.clone(),
             auth::resolve::auth_resolve,
         ));
 
@@ -613,7 +620,17 @@ pub async fn run(
     eprintln!("zetl serve  →  http://localhost:{port}");
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(listener, app).await?;
+    // SPEC-041 REQ-4106 (and pre-existing rate-limit per-IP code): inject
+    // `ConnectInfo<SocketAddr>` into the request extensions so middleware
+    // can check the immediate peer's IP. Without this, the proxy-header
+    // authenticator's `peer_allow` check always abstains (peer is unknown),
+    // and `extract_client_ip` in `rate_limit.rs` falls back to "unknown"
+    // for every request.
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }
 

@@ -324,6 +324,14 @@ pub enum Command {
         /// Maximum total asset storage in bytes (default: 100 MiB)
         #[arg(long, default_value_t = 100 * 1024 * 1024, requires = "collab")]
         asset_max_total_bytes: u64,
+        /// Trust an authenticating upstream proxy. Required for the
+        /// `[collab.auth.proxy_header]` method (zetl fails closed and
+        /// refuses to start if `proxy-header` is listed in `methods`
+        /// without this flag set). Also widens the IP source used by
+        /// `auth/*` rate limiters to honour `X-Forwarded-For` /
+        /// `X-Real-IP` from the immediate peer.
+        #[arg(long, requires = "collab")]
+        trust_proxy: bool,
         #[command(flatten)]
         scan: ScanArgs,
     },

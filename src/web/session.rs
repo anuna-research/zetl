@@ -832,11 +832,15 @@ mod tests {
                     state.sessions.clone(),
                 )) as Box<dyn crate::web::auth::Authenticator + Send + Sync>,
             ]);
+        let auth_state = crate::web::auth::AuthResolveState {
+            chain: auth_chain,
+            vault_root: state.vault_root.clone(),
+        };
         let app = Router::new()
             .route("/test", get(|| async { "ok" }))
             .route_layer(middleware::from_fn_with_state(state.clone(), admin_gate))
             .route_layer(middleware::from_fn_with_state(
-                auth_chain,
+                auth_state,
                 crate::web::auth::resolve::auth_resolve,
             ))
             .with_state(state);
@@ -872,11 +876,15 @@ mod tests {
                     state.sessions.clone(),
                 )) as Box<dyn crate::web::auth::Authenticator + Send + Sync>,
             ]);
+        let auth_state = crate::web::auth::AuthResolveState {
+            chain: auth_chain,
+            vault_root: state.vault_root.clone(),
+        };
         let app = Router::new()
             .route("/test", get(|| async { "ok" }))
             .route_layer(middleware::from_fn_with_state(state.clone(), admin_gate))
             .route_layer(middleware::from_fn_with_state(
-                auth_chain,
+                auth_state,
                 crate::web::auth::resolve::auth_resolve,
             ))
             .with_state(state);
@@ -910,11 +918,15 @@ mod tests {
                     state.sessions.clone(),
                 )) as Box<dyn crate::web::auth::Authenticator + Send + Sync>,
             ]);
+        let auth_state = crate::web::auth::AuthResolveState {
+            chain: auth_chain,
+            vault_root: state.vault_root.clone(),
+        };
         let app = Router::new()
             .route("/test", get(|| async { "ok" }))
             .route_layer(middleware::from_fn_with_state(state.clone(), admin_gate))
             .route_layer(middleware::from_fn_with_state(
-                auth_chain,
+                auth_state,
                 crate::web::auth::resolve::auth_resolve,
             ))
             .with_state(state);

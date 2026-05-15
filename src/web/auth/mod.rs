@@ -61,6 +61,16 @@ use super::WebState;
 /// extensions.
 pub(crate) type AuthChain = Arc<Vec<Box<dyn Authenticator + Send + Sync>>>;
 
+/// Middleware state carried by `auth_resolve` — the chain plus the vault
+/// root the audit-log writer needs to find `.zetl/collab/auth-audit.log`
+/// (OBS-4104). Bundled so the middleware can use `State<AuthResolveState>`
+/// without WebState having to carry the chain.
+#[derive(Clone)]
+pub(crate) struct AuthResolveState {
+    pub chain: AuthChain,
+    pub vault_root: Arc<std::path::PathBuf>,
+}
+
 /// The identity an [`Authenticator`] resolves a request to.
 ///
 /// Most methods produce a [`PrincipalId::User`] backed by a `UserProfile`. The
