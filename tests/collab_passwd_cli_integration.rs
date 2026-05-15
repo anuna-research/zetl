@@ -26,7 +26,13 @@ fn make_vault() -> tempfile::TempDir {
 fn passwd_list_empty_vault_succeeds_with_no_output() {
     let tmp = make_vault();
     let output = cargo_bin_cmd!("zetl")
-        .args(["--dir", tmp.path().to_str().unwrap(), "collab", "passwd", "list"])
+        .args([
+            "--dir",
+            tmp.path().to_str().unwrap(),
+            "collab",
+            "passwd",
+            "list",
+        ])
         .output()
         .expect("zetl spawn");
     assert!(
@@ -107,7 +113,13 @@ fn passwd_list_after_direct_upsert_shows_user() {
     zetl::web::auth::password::upsert(tmp.path(), "bob", "swordfish").unwrap();
 
     let output = cargo_bin_cmd!("zetl")
-        .args(["--dir", tmp.path().to_str().unwrap(), "collab", "passwd", "list"])
+        .args([
+            "--dir",
+            tmp.path().to_str().unwrap(),
+            "collab",
+            "passwd",
+            "list",
+        ])
         .output()
         .expect("zetl spawn");
     assert!(output.status.success());

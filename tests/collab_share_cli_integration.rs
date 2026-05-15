@@ -127,7 +127,13 @@ fn share_list_round_trip() {
     let tmp = make_vault();
     // Empty store
     let empty = cargo_bin_cmd!("zetl")
-        .args(["--dir", tmp.path().to_str().unwrap(), "collab", "share", "list"])
+        .args([
+            "--dir",
+            tmp.path().to_str().unwrap(),
+            "collab",
+            "share",
+            "list",
+        ])
         .output()
         .expect("zetl spawn");
     assert!(empty.status.success());
@@ -155,7 +161,13 @@ fn share_list_round_trip() {
     }
 
     let listed = cargo_bin_cmd!("zetl")
-        .args(["--dir", tmp.path().to_str().unwrap(), "collab", "share", "list"])
+        .args([
+            "--dir",
+            tmp.path().to_str().unwrap(),
+            "collab",
+            "share",
+            "list",
+        ])
         .output()
         .expect("zetl spawn");
     assert!(listed.status.success());
@@ -216,12 +228,21 @@ fn share_revoke_marks_revoked() {
     assert!(revoke.status.success(), "revoke failed: {:?}", revoke);
 
     let list = cargo_bin_cmd!("zetl")
-        .args(["--dir", tmp.path().to_str().unwrap(), "collab", "share", "list"])
+        .args([
+            "--dir",
+            tmp.path().to_str().unwrap(),
+            "collab",
+            "share",
+            "list",
+        ])
         .output()
         .expect("zetl spawn");
     let stdout = String::from_utf8_lossy(&list.stdout);
     assert!(stdout.contains(&jti));
-    assert!(stdout.contains("revoked"), "expected revoked status: {stdout}");
+    assert!(
+        stdout.contains("revoked"),
+        "expected revoked status: {stdout}"
+    );
 }
 
 #[test]

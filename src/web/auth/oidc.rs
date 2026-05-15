@@ -24,12 +24,10 @@
 //! `state` and `nonce` are single-use (`take_pending` removes on success);
 //! TTL pruning runs lazily on every store interaction.
 
-#![cfg(feature = "collab-oidc")]
-
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use axum::extract::{Query, State};
 use axum::http::request::Parts;
@@ -43,10 +41,10 @@ use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 
 use crate::web::auth::provision::{ensure_user, ProvisionOutcome, ProvisionPolicy};
-use crate::web::session::{session_cookie, token_from_cookies, SessionStore};
+use crate::web::session::{session_cookie, SessionStore};
 use crate::web::WebState;
 
-use super::{AuthOutcome, Authenticator, Principal, PrincipalId};
+use super::{AuthOutcome, Authenticator};
 
 // ── Config ────────────────────────────────────────────────────────────
 
@@ -295,7 +293,10 @@ async fn fetch_discovery(
     client: &reqwest::Client,
     issuer: &str,
 ) -> Result<DiscoveryDoc, OidcError> {
-    let url = format!("{}/.well-known/openid-configuration", issuer.trim_end_matches('/'));
+    let url = format!(
+        "{}/.well-known/openid-configuration",
+        issuer.trim_end_matches('/')
+    );
     client
         .get(&url)
         .send()
@@ -483,10 +484,7 @@ fn jwk_to_decoding_key(jwk: &serde_json::Value, alg: Algorithm) -> Result<Decodi
 /// values never enter the pending-state map) and callback_handler (the
 /// load-bearing sink-side check).
 fn safe_return_to(candidate: &str) -> String {
-    if candidate.starts_with('/')
-        && !candidate.starts_with("//")
-        && !candidate.starts_with("/\\")
-    {
+    if candidate.starts_with('/') && !candidate.starts_with("//") && !candidate.starts_with("/\\") {
         candidate.to_string()
     } else {
         "/".to_string()
@@ -628,9 +626,7 @@ async fn callback_handler(
         .and_then(|v| v.as_str())
     {
         Some(s) => s.to_string(),
-        None => {
-            return OidcError::ClaimMissing(shared.cfg.user_id_claim.clone()).into_response()
-        }
+        None => return OidcError::ClaimMissing(shared.cfg.user_id_claim.clone()).into_response(),
     };
 
     // Provision-or-lookup per REQ-4111 / ADR-4107.
@@ -692,9 +688,9 @@ mod tests {
     fn random_token_is_43_chars_base64url() {
         let t = random_token();
         assert_eq!(t.len(), 43);
-        assert!(t.chars().all(|c| {
-            c.is_ascii_alphanumeric() || c == '-' || c == '_'
-        }));
+        assert!(t
+            .chars()
+            .all(|c| { c.is_ascii_alphanumeric() || c == '-' || c == '_' }));
         // Two calls produce different values.
         assert_ne!(t, random_token());
     }
@@ -811,7 +807,10 @@ mod tests {
             Some("https://wiki.example.com/auth/oidc/callback".to_string())
         );
         // Missing host returns None.
-        assert_eq!(derive_redirect_uri(&axum::http::HeaderMap::new(), false), None);
+        assert_eq!(
+            derive_redirect_uri(&axum::http::HeaderMap::new(), false),
+            None
+        );
     }
 
     /// The authenticator declares cookie-session and exposes the
@@ -823,15 +822,6 @@ mod tests {
         assert_eq!(dummy.id(), "oidc");
         assert!(dummy.issues_cookie_session());
         assert_eq!(dummy.login_redirect(), Some("/auth/oidc/login"));
-    }
-
-    /// Suppress the unused-import warning for `UNIX_EPOCH`/`SystemTime` —
-    /// they're used by the live token-validation flow (`exp` check via
-    /// `Validation::validate_exp = true` is jsonwebtoken-internal; we keep
-    /// the imports for future iat skew handling).
-    #[test]
-    fn time_imports_referenced() {
-        let _ = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
     }
 
     /// Vuln 1 (post-OIDC-login open redirect): `safe_return_to` lets through

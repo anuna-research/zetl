@@ -5,8 +5,6 @@
 //! Nonces are tracked in `.zetl/collab/used-nonces.json` to enforce single-use.
 
 use anyhow::{Context, Result};
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use base64::Engine;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -231,8 +229,7 @@ pub fn decode_jwt(vault_root: &Path, token: &str) -> Result<InviteClaims> {
 /// delegated to the shared EdDSA-JWT recogniser (SPEC-041 REQ-4120). Only the
 /// expiry check, which is interpretation specific to invitations, stays here.
 pub fn decode_jwt_with_key(key: &VerifyingKey, token: &str) -> Result<InviteClaims> {
-    let jwt =
-        crate::web::auth::token::recognise(token, key).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let jwt = crate::web::auth::token::recognise(token, key).map_err(|e| anyhow::anyhow!("{e}"))?;
     let claims: InviteClaims = jwt
         .claims("zetl-invite")
         .map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -512,6 +509,8 @@ pub fn mark_invitation_consumed(vault_root: &Path, nonce: &str) -> Result<bool> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine;
     use tempfile::TempDir;
 
     #[test]

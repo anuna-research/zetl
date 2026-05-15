@@ -91,9 +91,7 @@ pub(crate) fn ensure_user(
     //    `load_profile` so an attacker cannot use a `..` user_id to read
     //    a sibling profile via the existing-profile branch either.
     if !is_safe_user_id(user_id) {
-        return ProvisionOutcome::Denied(DenyReason::InvalidUserId(
-            user_id.to_string(),
-        ));
+        return ProvisionOutcome::Denied(DenyReason::InvalidUserId(user_id.to_string()));
     }
 
     // 1. Existing profile? Pass through unchanged (idempotent).
@@ -114,9 +112,7 @@ pub(crate) fn ensure_user(
             return ProvisionOutcome::Denied(DenyReason::NoDomainForAllowlistCheck);
         };
         if !allow.iter().any(|d| d.eq_ignore_ascii_case(domain)) {
-            return ProvisionOutcome::Denied(DenyReason::DomainNotInAllowlist(
-                domain.to_string(),
-            ));
+            return ProvisionOutcome::Denied(DenyReason::DomainNotInAllowlist(domain.to_string()));
         }
     }
 
@@ -144,7 +140,10 @@ pub(crate) fn ensure_user(
 /// Extract the domain (rightmost `@`-tail) from a user_id, or `None` if the
 /// user_id contains no `@`.
 fn extract_domain(user_id: &str) -> Option<&str> {
-    user_id.rsplit_once('@').map(|(_, domain)| domain).filter(|d| !d.is_empty())
+    user_id
+        .rsplit_once('@')
+        .map(|(_, domain)| domain)
+        .filter(|d| !d.is_empty())
 }
 
 /// Returns `true` iff `user_id` is safe to use as a path component beneath
@@ -205,7 +204,10 @@ mod tests {
         let profile = load_profile(tmp.path(), "alice").unwrap().unwrap();
         assert!(!profile.owner);
         assert!(profile.invited_by.is_none());
-        assert_eq!(Role::for_profile_with_vault(&profile, tmp.path()), Role::Reader);
+        assert_eq!(
+            Role::for_profile_with_vault(&profile, tmp.path()),
+            Role::Reader
+        );
     }
 
     /// REQ-4111: existing profile is passed through unchanged regardless of
@@ -267,9 +269,7 @@ mod tests {
         let outcome = ensure_user(tmp.path(), "alice@evil.org", "oidc", &policy);
         assert_eq!(
             outcome,
-            ProvisionOutcome::Denied(DenyReason::DomainNotInAllowlist(
-                "evil.org".to_string()
-            ))
+            ProvisionOutcome::Denied(DenyReason::DomainNotInAllowlist("evil.org".to_string()))
         );
     }
 
@@ -317,7 +317,7 @@ mod tests {
         assert!(is_safe_user_id("a-b-c"));
         assert!(is_safe_user_id("...starts.with.dots")); // not `.` or `..` exactly
         assert!(is_safe_user_id("a")); // single char
-        // Reject empty + path-traversal components
+                                       // Reject empty + path-traversal components
         assert!(!is_safe_user_id(""));
         assert!(!is_safe_user_id("."));
         assert!(!is_safe_user_id(".."));
@@ -400,7 +400,8 @@ mod tests {
             for n in 0..10 {
                 let tmp = tempfile::TempDir::new().unwrap();
                 let uid = format!("user{i}-{n}@example.com");
-                if let ProvisionOutcome::Allowed = ensure_user(tmp.path(), &uid, "proxy-header", policy)
+                if let ProvisionOutcome::Allowed =
+                    ensure_user(tmp.path(), &uid, "proxy-header", policy)
                 {
                     let p = load_profile(tmp.path(), &uid).unwrap().unwrap();
                     let role = Role::for_profile_with_vault(&p, tmp.path());

@@ -601,9 +601,9 @@ pub enum Command {
         command: SkillCommand,
     },
 
-    /// Collaborative-mode operations (SPEC-041)
+    /// Manage collab credentials and share-by-link capability URLs
     #[command(
-        after_help = "Examples:\n  zetl collab passwd add alice       Set / change alice's password\n  zetl collab passwd list            List user_ids with passwords\n  zetl collab passwd remove alice    Drop alice's password record"
+        after_help = "Examples:\n  zetl collab passwd add alice       Set / change alice's password\n  zetl collab passwd list            List user_ids with passwords\n  zetl collab share mint --scope review/draft/** --role reader --site-url https://wiki.example.com\n  zetl collab share list             List minted capability URLs\n  zetl collab share revoke <jti>     Revoke a minted capability URL"
     )]
     Collab {
         #[command(subcommand)]
@@ -611,17 +611,15 @@ pub enum Command {
     },
 }
 
-/// Subcommands for `zetl collab` (SPEC-041 IMPL-041).
+/// Subcommands for `zetl collab`.
 #[derive(Subcommand)]
 pub enum CollabCommand {
-    /// Manage static-password credentials for `[collab.auth] methods = ["password", ...]`
-    /// (SPEC-041 REQ-4108, CON-4106).
+    /// Manage static-password credentials for the `password` auth method
     Passwd {
         #[command(subcommand)]
         command: PasswdCommand,
     },
     /// Mint, list, and revoke `?cap=<token>` capability-URL grants
-    /// (SPEC-041 REQ-4116/4117/4118, CON-4110).
     ///
     /// Each minted URL is a bearer token: anyone holding it has the granted
     /// scope+role until expiry or revocation. The mint command prints the

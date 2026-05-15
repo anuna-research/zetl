@@ -238,9 +238,8 @@ pub fn parse_duration(s: &str) -> Result<u64, CapabilityError> {
             ))
         }
     };
-    n.checked_mul(multiplier).ok_or_else(|| {
-        CapabilityError::Duration(s.to_string(), "duration overflow".to_string())
-    })
+    n.checked_mul(multiplier)
+        .ok_or_else(|| CapabilityError::Duration(s.to_string(), "duration overflow".to_string()))
 }
 
 /// REQ-4117 TTL bounds enforced by the mint CLI.
@@ -270,8 +269,8 @@ pub fn mint(
         exp: now + ttl_seconds,
         jti: generate_jti(),
     };
-    let token = token::encode(signing_key, &claims)
-        .map_err(|e| CapabilityError::Token(e.to_string()))?;
+    let token =
+        token::encode(signing_key, &claims).map_err(|e| CapabilityError::Token(e.to_string()))?;
     Ok((token, claims))
 }
 
@@ -556,8 +555,7 @@ mod tests {
     #[test]
     fn mint_and_verify_roundtrip() {
         let key = test_key();
-        let (token, claims_minted) =
-            mint(&key, "review/draft-7/**", "reader", 60).unwrap();
+        let (token, claims_minted) = mint(&key, "review/draft-7/**", "reader", 60).unwrap();
         let claims = verify_claims(&key.verifying_key(), &token).unwrap();
         assert_eq!(claims.sub, "zetl-capability");
         assert_eq!(claims.scope, "review/draft-7/**");
@@ -623,10 +621,7 @@ mod tests {
     #[test]
     fn parse_duration_rejects_garbage() {
         for bad in ["", "5", "5y", "abc", "-5d"] {
-            assert!(
-                parse_duration(bad).is_err(),
-                "should reject {bad:?}"
-            );
+            assert!(parse_duration(bad).is_err(), "should reject {bad:?}");
         }
     }
 
@@ -658,8 +653,7 @@ mod tests {
         use axum::extract::Request;
         let tmp = tempfile::TempDir::new().unwrap();
         let key = test_key();
-        let (token, claims) =
-            mint(&key, "shared/draft/**", "reader", 60).unwrap();
+        let (token, claims) = mint(&key, "shared/draft/**", "reader", 60).unwrap();
 
         let auth = CapabilityUrlAuthenticator::new(
             key.verifying_key(),
@@ -816,11 +810,11 @@ mod tests {
             "review/draft-7/x", // typical capability scope path
             "alice.bob",        // dot in middle of segment is fine
             "release-2.0/notes",
-            "..foo/bar",        // segment starts with `..` but isn't `..`
+            "..foo/bar", // segment starts with `..` but isn't `..`
             "foo/..bar",
-            "foo/.bar",         // dot-files (segment starts with `.` but isn't `.`)
-            "foo/...",          // three dots, not `..`
-            "foo%2ebar",        // encoded dot mid-segment decodes to `foo.bar` — fine
+            "foo/.bar",  // dot-files (segment starts with `.` but isn't `.`)
+            "foo/...",   // three dots, not `..`
+            "foo%2ebar", // encoded dot mid-segment decodes to `foo.bar` — fine
         ] {
             assert!(
                 !path_has_traversal_segment(ok),
@@ -893,21 +887,20 @@ mod tests {
 
         let tmp = tempfile::TempDir::new().unwrap();
         let key = test_key();
-        let chain: AuthChain = std::sync::Arc::new(vec![Box::new(
-            CapabilityUrlAuthenticator::new(
+        let chain: AuthChain =
+            std::sync::Arc::new(vec![Box::new(CapabilityUrlAuthenticator::new(
                 key.verifying_key(),
                 std::sync::Arc::new(tmp.path().to_path_buf()),
-            ),
-        )]);
+            ))]);
 
         // Build a router with auth_resolve + capability_gate + two routes.
         let app = Router::new()
-            .route("/{*path}", get(|| async { "OK" }).put(|| async { "PUT-OK" }))
+            .route(
+                "/{*path}",
+                get(|| async { "OK" }).put(|| async { "PUT-OK" }),
+            )
             .route_layer(axum::middleware::from_fn(capability_gate))
-            .route_layer(axum::middleware::from_fn_with_state(
-                chain,
-                auth_resolve,
-            ));
+            .route_layer(axum::middleware::from_fn_with_state(chain, auth_resolve));
 
         let (reader_tok, _) = mint(&key, "shared/**", "reader", 60).unwrap();
         let (editor_tok, _) = mint(&key, "shared/**", "editor", 60).unwrap();
@@ -1009,11 +1002,9 @@ mod tests {
         let resp = app
             .clone()
             .oneshot(
-                HttpRequest::get(format!(
-                    "/shared/%2e%2e/secret/page?cap={reader_tok}"
-                ))
-                .body(Body::empty())
-                .unwrap(),
+                HttpRequest::get(format!("/shared/%2e%2e/secret/page?cap={reader_tok}"))
+                    .body(Body::empty())
+                    .unwrap(),
             )
             .await
             .unwrap();
@@ -1027,11 +1018,7 @@ mod tests {
         //    Abstain ⇒ Principal=None ⇒ no capability grant to enforce.
         //    With auth_resolve in the stack, the handler still runs.
         let resp = app
-            .oneshot(
-                HttpRequest::get("/anywhere")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(HttpRequest::get("/anywhere").body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(

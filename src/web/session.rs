@@ -826,10 +826,12 @@ mod tests {
         // SPEC-041 ADR-4102: admin_gate now reads the Principal from request
         // extensions; the test layers auth_resolve in front of it so the
         // resolution mirrors the production wiring in `src/web/mod.rs`.
-        let auth_chain: crate::web::auth::AuthChain = std::sync::Arc::new(vec![Box::new(
-            crate::web::auth::passkey::PasskeyAuthenticator::new(state.sessions.clone()),
-        )
-            as Box<dyn crate::web::auth::Authenticator + Send + Sync>]);
+        let auth_chain: crate::web::auth::AuthChain =
+            std::sync::Arc::new(vec![
+                Box::new(crate::web::auth::passkey::PasskeyAuthenticator::new(
+                    state.sessions.clone(),
+                )) as Box<dyn crate::web::auth::Authenticator + Send + Sync>,
+            ]);
         let app = Router::new()
             .route("/test", get(|| async { "ok" }))
             .route_layer(middleware::from_fn_with_state(state.clone(), admin_gate))
@@ -864,10 +866,12 @@ mod tests {
         let user_id = create_test_user(tmp.path(), "Editor", false);
         let session_token = state.sessions.create(&user_id);
 
-        let auth_chain: crate::web::auth::AuthChain = std::sync::Arc::new(vec![Box::new(
-            crate::web::auth::passkey::PasskeyAuthenticator::new(state.sessions.clone()),
-        )
-            as Box<dyn crate::web::auth::Authenticator + Send + Sync>]);
+        let auth_chain: crate::web::auth::AuthChain =
+            std::sync::Arc::new(vec![
+                Box::new(crate::web::auth::passkey::PasskeyAuthenticator::new(
+                    state.sessions.clone(),
+                )) as Box<dyn crate::web::auth::Authenticator + Send + Sync>,
+            ]);
         let app = Router::new()
             .route("/test", get(|| async { "ok" }))
             .route_layer(middleware::from_fn_with_state(state.clone(), admin_gate))
@@ -900,10 +904,12 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let state = test_web_state(tmp.path());
 
-        let auth_chain: crate::web::auth::AuthChain = std::sync::Arc::new(vec![Box::new(
-            crate::web::auth::passkey::PasskeyAuthenticator::new(state.sessions.clone()),
-        )
-            as Box<dyn crate::web::auth::Authenticator + Send + Sync>]);
+        let auth_chain: crate::web::auth::AuthChain =
+            std::sync::Arc::new(vec![
+                Box::new(crate::web::auth::passkey::PasskeyAuthenticator::new(
+                    state.sessions.clone(),
+                )) as Box<dyn crate::web::auth::Authenticator + Send + Sync>,
+            ]);
         let app = Router::new()
             .route("/test", get(|| async { "ok" }))
             .route_layer(middleware::from_fn_with_state(state.clone(), admin_gate))

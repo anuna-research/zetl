@@ -81,9 +81,7 @@ impl Cidr {
             .map_err(|e| format!("invalid CIDR {s:?}: bad prefix: {e}"))?;
         let max = if network.is_ipv4() { 32 } else { 128 };
         if prefix > max {
-            return Err(format!(
-                "invalid CIDR {s:?}: prefix {prefix} exceeds {max}"
-            ));
+            return Err(format!("invalid CIDR {s:?}: prefix {prefix} exceeds {max}"));
         }
         Ok(Self { network, prefix })
     }
@@ -131,9 +129,9 @@ pub(crate) fn recognise_user_value(s: &str) -> Option<&str> {
     if s == "." || s == ".." {
         return None;
     }
-    if s.bytes().all(|b| {
-        b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b'@' | b'+')
-    }) {
+    if s.bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b'@' | b'+'))
+    {
         Some(s)
     } else {
         None
@@ -154,16 +152,11 @@ impl ProxyHeaderAuthenticator {
     /// Returns an error if any `peer_allow` entry fails CIDR parsing, or if
     /// the list is empty (REQ-4106 fail-closed: an empty allowlist would
     /// trust every peer, defeating the gate).
-    pub(crate) fn new(
-        cfg: &ProxyHeaderConfig,
-        vault_root: Arc<PathBuf>,
-    ) -> Result<Self, String> {
+    pub(crate) fn new(cfg: &ProxyHeaderConfig, vault_root: Arc<PathBuf>) -> Result<Self, String> {
         if cfg.peer_allow.is_empty() {
-            return Err(
-                "[collab.auth.proxy_header] peer_allow must not be empty — \
+            return Err("[collab.auth.proxy_header] peer_allow must not be empty — \
                  specify at least one CIDR for the trusted proxy hop"
-                    .to_string(),
-            );
+                .to_string());
         }
         let peer_allow: Vec<Cidr> = cfg
             .peer_allow
@@ -240,16 +233,12 @@ mod tests {
     use axum::extract::Request;
     use std::net::SocketAddr;
 
-    fn parts_with_peer_and_header(
-        peer: &str,
-        header: Option<(&'static str, &str)>,
-    ) -> Parts {
+    fn parts_with_peer_and_header(peer: &str, header: Option<(&'static str, &str)>) -> Parts {
         let mut req: Request<()> = Request::new(());
         let sock: SocketAddr = peer.parse().unwrap();
         req.extensions_mut().insert(ConnectInfo(sock));
         if let Some((name, value)) = header {
-            req.headers_mut()
-                .insert(name, value.parse().unwrap());
+            req.headers_mut().insert(name, value.parse().unwrap());
         }
         req.into_parts().0
     }
@@ -261,8 +250,7 @@ mod tests {
             peer_allow: peer_allow.iter().map(|s| s.to_string()).collect(),
             auto_provision,
         };
-        let auth =
-            ProxyHeaderAuthenticator::new(&cfg, Arc::new(tmp.path().to_path_buf())).unwrap();
+        let auth = ProxyHeaderAuthenticator::new(&cfg, Arc::new(tmp.path().to_path_buf())).unwrap();
         // Leak the tempdir so the path stays valid for the test (each test
         // function has its own); good enough for unit scope.
         std::mem::forget(tmp);
@@ -332,11 +320,11 @@ mod tests {
     fn recognise_rejects_out_of_grammar() {
         for bad in [
             "",
-            "alice bob",     // space
-            "a/b",           // slash
-            "alice;drop",    // semicolon
-            "alice\nadmin",  // newline
-            "\u{00e9}lise",  // non-ASCII
+            "alice bob",    // space
+            "a/b",          // slash
+            "alice;drop",   // semicolon
+            "alice\nadmin", // newline
+            "\u{00e9}lise", // non-ASCII
         ] {
             assert_eq!(recognise_user_value(bad), None, "should reject {bad:?}");
         }
@@ -419,10 +407,8 @@ mod tests {
     #[test]
     fn ungrammatical_header_value_abstains() {
         let auth = authenticator(&["10.0.0.0/8"], true);
-        let parts = parts_with_peer_and_header(
-            "10.1.2.3:54321",
-            Some(("X-Forwarded-User", "alice;drop")),
-        );
+        let parts =
+            parts_with_peer_and_header("10.1.2.3:54321", Some(("X-Forwarded-User", "alice;drop")));
         assert!(matches!(auth.authenticate(&parts), AuthOutcome::Abstain));
     }
 

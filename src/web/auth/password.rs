@@ -154,10 +154,7 @@ pub(crate) fn load_store(vault_root: &Path) -> Result<Vec<PasswordRecord>, Passw
 
 /// Persist the store atomically — write to a temp file in the same directory,
 /// chmod 0600, then rename (rename is atomic within the same filesystem).
-fn write_store_atomic(
-    vault_root: &Path,
-    records: &[PasswordRecord],
-) -> Result<(), PasswordError> {
+fn write_store_atomic(vault_root: &Path, records: &[PasswordRecord]) -> Result<(), PasswordError> {
     let dir = passwords_dir(vault_root);
     fs::create_dir_all(&dir)?;
     let final_path = passwords_path(vault_root);
@@ -190,11 +187,7 @@ fn write_store_atomic(
 ///
 /// `pub` (not `pub(crate)`) so the `zetl collab passwd add` CLI driver in
 /// `src/main.rs` can call it directly (SPEC-041 REQ-4108).
-pub fn upsert(
-    vault_root: &Path,
-    user_id: &str,
-    password: &str,
-) -> Result<String, PasswordError> {
+pub fn upsert(vault_root: &Path, user_id: &str, password: &str) -> Result<String, PasswordError> {
     let phc = hash(password)?;
     let mut records = load_store(vault_root)?;
     records.retain(|r| r.user_id != user_id);
@@ -313,8 +306,10 @@ impl Authenticator for PasswordAuthenticator {
         // handlers because route handlers re-read them from WebState (the
         // chain ALWAYS shares the same WebState's sessions/vault_root).
         let _ = (&self.sessions, &self.vault_root); // declare the dependency
-        Router::new()
-            .route("/auth/password", get(password_form_handler).post(password_submit_handler))
+        Router::new().route(
+            "/auth/password",
+            get(password_form_handler).post(password_submit_handler),
+        )
     }
 }
 
@@ -343,10 +338,7 @@ fn generic_login_failure() -> Response {
 }
 
 /// `POST /auth/password` — recognise body, verify, mint session, redirect.
-async fn password_submit_handler(
-    State(state): State<WebState>,
-    body: String,
-) -> Response {
+async fn password_submit_handler(State(state): State<WebState>, body: String) -> Response {
     // CON-4105 grammar recognition before any hash work (REQ-4120).
     let Some(parsed) = recognise_form_body(&body) else {
         // Constant-time delay would be ideal here; for now we accept the
@@ -401,8 +393,7 @@ fn dummy_phc() -> &'static str {
     DUMMY.get_or_init(|| {
         // Fallback to a deliberately-invalid PHC if hashing somehow fails —
         // a wrong-user request will then short-circuit rather than panic.
-        hash("zetl-unknown-user-dummy")
-            .unwrap_or_else(|_| "$argon2id$invalid".to_string())
+        hash("zetl-unknown-user-dummy").unwrap_or_else(|_| "$argon2id$invalid".to_string())
     })
 }
 
@@ -448,10 +439,7 @@ pub(crate) fn recognise_form_body(body: &str) -> Option<LoginForm> {
     if !is_form_value(user_value) || user_value.is_empty() || user_value.len() > 64 {
         return None;
     }
-    if !is_form_value(password_value)
-        || password_value.is_empty()
-        || password_value.len() > 256
-    {
+    if !is_form_value(password_value) || password_value.is_empty() || password_value.len() > 256 {
         return None;
     }
 
@@ -699,10 +687,7 @@ mod tests {
             "user=alice & password=hunter2",
         ];
         for bad in cases {
-            assert!(
-                recognise_form_body(bad).is_none(),
-                "should reject {bad:?}"
-            );
+            assert!(recognise_form_body(bad).is_none(), "should reject {bad:?}");
         }
     }
 
@@ -730,8 +715,10 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let auth = PasswordAuthenticator::new(store, Arc::new(tmp.path().to_path_buf()));
         let mut req: Request<()> = Request::new(());
-        req.headers_mut()
-            .insert(header::COOKIE, format!("zetl_session={token}").parse().unwrap());
+        req.headers_mut().insert(
+            header::COOKIE,
+            format!("zetl_session={token}").parse().unwrap(),
+        );
         let parts = req.into_parts().0;
         match auth.authenticate(&parts) {
             AuthOutcome::Authenticated(p) => {
@@ -748,10 +735,8 @@ mod tests {
     fn authenticator_no_cookie_abstains() {
         use axum::extract::Request;
         let tmp = tempfile::TempDir::new().unwrap();
-        let auth = PasswordAuthenticator::new(
-            SessionStore::new(),
-            Arc::new(tmp.path().to_path_buf()),
-        );
+        let auth =
+            PasswordAuthenticator::new(SessionStore::new(), Arc::new(tmp.path().to_path_buf()));
         let parts = Request::<()>::new(()).into_parts().0;
         assert!(matches!(auth.authenticate(&parts), AuthOutcome::Abstain));
     }
@@ -766,7 +751,10 @@ mod tests {
         let phc = dummy_phc();
         // `verify("", phc)` should return false (wrong password) — and it
         // should do the full argon2 work, not bail out at parse time.
-        assert!(phc.starts_with("$argon2id$"), "dummy_phc not parseable: {phc}");
+        assert!(
+            phc.starts_with("$argon2id$"),
+            "dummy_phc not parseable: {phc}"
+        );
         assert!(!verify("", phc));
     }
 

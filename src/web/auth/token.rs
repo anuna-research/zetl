@@ -65,7 +65,10 @@ impl std::fmt::Display for TokenError {
             TokenError::Signature => write!(f, "JWT signature verification failed"),
             TokenError::Payload(d) => write!(f, "invalid JWT payload: {d}"),
             TokenError::WrongSubject { expected, found } => {
-                write!(f, "JWT sub mismatch: expected {expected:?}, found {found:?}")
+                write!(
+                    f,
+                    "JWT sub mismatch: expected {expected:?}, found {found:?}"
+                )
             }
         }
     }

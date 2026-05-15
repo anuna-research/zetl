@@ -11701,9 +11701,7 @@ fn main() -> anyhow::Result<()> {
         Command::Collab { command } => match command {
             zetl::cli::CollabCommand::Passwd { command } => match command {
                 zetl::cli::PasswdCommand::Add { user } => cmd_collab_passwd_add(&cli, user),
-                zetl::cli::PasswdCommand::Remove { user } => {
-                    cmd_collab_passwd_remove(&cli, user)
-                }
+                zetl::cli::PasswdCommand::Remove { user } => cmd_collab_passwd_remove(&cli, user),
                 zetl::cli::PasswdCommand::List => cmd_collab_passwd_list(&cli),
             },
             zetl::cli::CollabCommand::Share { command } => match command {
@@ -11712,17 +11710,9 @@ fn main() -> anyhow::Result<()> {
                     role,
                     expires,
                     site_url,
-                } => cmd_collab_share_mint(
-                    &cli,
-                    scope,
-                    role,
-                    expires.as_deref(),
-                    site_url,
-                ),
+                } => cmd_collab_share_mint(&cli, scope, role, expires.as_deref(), site_url),
                 zetl::cli::ShareCommand::List => cmd_collab_share_list(&cli),
-                zetl::cli::ShareCommand::Revoke { jti } => {
-                    cmd_collab_share_revoke(&cli, jti)
-                }
+                zetl::cli::ShareCommand::Revoke { jti } => cmd_collab_share_revoke(&cli, jti),
             },
         },
     }
@@ -11739,8 +11729,8 @@ fn cmd_collab_share_mint(
     site_url: &str,
 ) -> Result<()> {
     use zetl::web::auth::capability_url::{
-        mint, parse_duration, record_mint, ShareRecord, TTL_DEFAULT_SECONDS,
-        TTL_MAX_SECONDS, TTL_MIN_SECONDS,
+        mint, parse_duration, record_mint, ShareRecord, TTL_DEFAULT_SECONDS, TTL_MAX_SECONDS,
+        TTL_MIN_SECONDS,
     };
 
     let vault_root = std::fs::canonicalize(&cli.dir)
@@ -11748,11 +11738,10 @@ fn cmd_collab_share_mint(
 
     // Resolve TTL — REQ-4117 bounds.
     let ttl = match expires {
-        Some(s) => parse_duration(s)
-            .with_context(|| format!("invalid --expires {s:?}"))?,
+        Some(s) => parse_duration(s).with_context(|| format!("invalid --expires {s:?}"))?,
         None => TTL_DEFAULT_SECONDS,
     };
-    if ttl < TTL_MIN_SECONDS || ttl > TTL_MAX_SECONDS {
+    if !(TTL_MIN_SECONDS..=TTL_MAX_SECONDS).contains(&ttl) {
         anyhow::bail!(
             "--expires out of bounds: {ttl}s not in [{TTL_MIN_SECONDS}, {TTL_MAX_SECONDS}] \
              (5m..90d)"
@@ -11853,7 +11842,10 @@ fn cmd_collab_passwd_add(cli: &zetl::cli::Cli, user: &str) -> Result<()> {
     // created on first write within it.
     let collab_dir = vault_root.join(".zetl/collab");
     std::fs::create_dir_all(&collab_dir).with_context(|| {
-        format!("failed to create {} (is this a zetl vault?)", collab_dir.display())
+        format!(
+            "failed to create {} (is this a zetl vault?)",
+            collab_dir.display()
+        )
     })?;
 
     // Ensure a UserProfile exists. Re-use the user-id slug helper so the

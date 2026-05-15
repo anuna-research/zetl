@@ -25,7 +25,7 @@
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
 use std::sync::Mutex;
 
 const AUDIT_LOG_RELATIVE: &str = ".zetl/collab/auth-audit.log";
@@ -100,10 +100,7 @@ pub(crate) fn write_audit_line(
     }
     let path = audit_log_path(vault_root);
     let now = crate::user::access_request::now_iso8601();
-    let mut line = format!(
-        "{now} method={method_id} outcome={}",
-        outcome.as_str()
-    );
+    let mut line = format!("{now} method={method_id} outcome={}", outcome.as_str());
     if let Some(id) = identity {
         let safe = sanitise_identity(id);
         line.push_str(" identity=");
@@ -129,10 +126,7 @@ fn append_atomic(path: &Path, body: &[u8]) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)?;
+    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -187,11 +181,7 @@ impl AuthCounters {
         *map.entry((method, outcome)).or_insert(0) += 1;
     }
 
-    pub(crate) fn outcome_count(
-        &self,
-        method: &'static str,
-        outcome: AuthOutcomeClass,
-    ) -> u64 {
+    pub(crate) fn outcome_count(&self, method: &'static str, outcome: AuthOutcomeClass) -> u64 {
         let map = self.outcomes.lock().unwrap_or_else(|e| e.into_inner());
         map.get(&(method, outcome)).copied().unwrap_or(0)
     }
@@ -200,6 +190,7 @@ impl AuthCounters {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::Ordering;
 
     /// REQ-4115: identity sanitiser strips whitespace, controls, and
     /// audit-format-breaking chars; length-caps at 128.
@@ -274,13 +265,8 @@ mod tests {
     fn write_audit_line_has_safe_signature() {
         // Just a compile-check: this would not compile if we accidentally
         // changed the signature to take raw bytes / a token.
-        let _: fn(
-            &Path,
-            &'static str,
-            AuthOutcomeClass,
-            Option<&str>,
-            Option<&'static str>,
-        ) = write_audit_line;
+        let _: fn(&Path, &'static str, AuthOutcomeClass, Option<&str>, Option<&'static str>) =
+            write_audit_line;
     }
 
     /// OBS-4102: outcome counter increments per (method, outcome) pair.
@@ -292,9 +278,15 @@ mod tests {
         c.record_outcome("passkey", AuthOutcomeClass::Abstained);
         c.record_outcome("agent-token", AuthOutcomeClass::Rejected);
 
-        assert_eq!(c.outcome_count("passkey", AuthOutcomeClass::Authenticated), 2);
+        assert_eq!(
+            c.outcome_count("passkey", AuthOutcomeClass::Authenticated),
+            2
+        );
         assert_eq!(c.outcome_count("passkey", AuthOutcomeClass::Abstained), 1);
-        assert_eq!(c.outcome_count("agent-token", AuthOutcomeClass::Rejected), 1);
+        assert_eq!(
+            c.outcome_count("agent-token", AuthOutcomeClass::Rejected),
+            1
+        );
         assert_eq!(c.outcome_count("oidc", AuthOutcomeClass::Authenticated), 0);
     }
 

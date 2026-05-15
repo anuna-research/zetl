@@ -140,8 +140,7 @@ pub(crate) struct ConfigError(pub String);
 /// `toml` crate is the declared recogniser (REQ-4120 grammar = RFC-8259-adjacent
 /// TOML); the typed lens is the schema layered on top.
 pub(crate) fn parse(toml_body: &str) -> Result<CollabAuthConfig, ConfigError> {
-    let lens: ConfigLens =
-        toml::from_str(toml_body).map_err(|e| ConfigError(e.to_string()))?;
+    let lens: ConfigLens = toml::from_str(toml_body).map_err(|e| ConfigError(e.to_string()))?;
     Ok(lens.collab.and_then(|c| c.auth).unwrap_or_default())
 }
 
@@ -195,9 +194,7 @@ pub(crate) fn build_chain(
     for method in &cfg.methods {
         let authenticator: Box<dyn Authenticator + Send + Sync> = match method {
             MethodId::Passkey => Box::new(PasskeyAuthenticator::new(sessions.clone())),
-            MethodId::AgentToken => {
-                Box::new(AgentTokenAuthenticator::new(vault_root.clone()))
-            }
+            MethodId::AgentToken => Box::new(AgentTokenAuthenticator::new(vault_root.clone())),
             MethodId::ProxyHeader => {
                 // REQ-4106: proxy-header requires --trust-proxy. Refusing to
                 // start without it is the fail-closed mitigation against a
@@ -221,8 +218,7 @@ pub(crate) fn build_chain(
                     )
                 })?;
                 Box::new(
-                    ProxyHeaderAuthenticator::new(phc, vault_root.clone())
-                        .map_err(ConfigError)?,
+                    ProxyHeaderAuthenticator::new(phc, vault_root.clone()).map_err(ConfigError)?,
                 )
             }
             MethodId::Password => Box::new(PasswordAuthenticator::new(
@@ -256,14 +252,13 @@ pub(crate) fn build_chain(
                                 .to_string(),
                         )
                     })?;
-                    let oidc_cfg: super::oidc::OidcConfig = oidc_value
-                        .clone()
-                        .try_into()
-                        .map_err(|e: toml::de::Error| {
-                            ConfigError(format!(
-                                "[collab.auth.oidc] schema error: {e}"
-                            ))
-                        })?;
+                    let oidc_cfg: super::oidc::OidcConfig =
+                        oidc_value
+                            .clone()
+                            .try_into()
+                            .map_err(|e: toml::de::Error| {
+                                ConfigError(format!("[collab.auth.oidc] schema error: {e}"))
+                            })?;
                     Box::new(
                         super::oidc::OidcAuthenticator::new(
                             oidc_cfg,
@@ -338,11 +333,11 @@ pub(crate) fn format_chain_summary(cfg: &CollabAuthConfig) -> String {
 /// Always includes `"collab"` when this code is reachable; conditional
 /// `"collab-oidc"` joins it once Phase 5 lands.
 fn compiled_auth_features() -> Vec<&'static str> {
+    // `mut` is conditionally needed (only under `collab-oidc`).
+    #[allow(unused_mut)]
     let mut features = vec!["collab"];
     #[cfg(feature = "collab-oidc")]
-    {
-        features.push("collab-oidc");
-    }
+    features.push("collab-oidc");
     features
 }
 
@@ -589,7 +584,11 @@ mod tests {
             Ok(_) => panic!("expected missing-subtable error"),
             Err(e) => e,
         };
-        assert!(err.0.contains("[collab.auth.proxy_header]"), "got: {}", err.0);
+        assert!(
+            err.0.contains("[collab.auth.proxy_header]"),
+            "got: {}",
+            err.0
+        );
     }
 
     /// REQ-4105 / REQ-4106: with trust_proxy on and a valid sub-table,
@@ -635,8 +634,7 @@ mod tests {
     #[test]
     fn build_chain_from_vault_absent_file_uses_default() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (chain, cfg) =
-            build_chain_from_vault(tmp.path(), SessionStore::new(), false).unwrap();
+        let (chain, cfg) = build_chain_from_vault(tmp.path(), SessionStore::new(), false).unwrap();
         assert_eq!(chain.len(), 2);
         assert_eq!(cfg.methods, vec![MethodId::Passkey, MethodId::AgentToken]);
     }

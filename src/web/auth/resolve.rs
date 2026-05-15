@@ -47,9 +47,7 @@ pub(crate) fn resolve_chain(
 ) -> ChainOutcome {
     for authenticator in chain {
         match authenticator.authenticate(parts) {
-            AuthOutcome::Authenticated(principal) => {
-                return ChainOutcome::Authenticated(principal)
-            }
+            AuthOutcome::Authenticated(principal) => return ChainOutcome::Authenticated(principal),
             AuthOutcome::Reject(rejection) => return ChainOutcome::Rejected(rejection),
             AuthOutcome::Abstain => continue,
         }
@@ -88,7 +86,9 @@ pub(crate) async fn auth_resolve(
                 Some(principal.identity.handle()),
                 None,
             );
-            parts.extensions.insert::<Option<Principal>>(Some(principal));
+            parts
+                .extensions
+                .insert::<Option<Principal>>(Some(principal));
         }
         ChainOutcome::Unauthenticated => {
             // OBS-4103: log abstain-to-end at a coarse "unauthenticated"
@@ -152,9 +152,7 @@ mod tests {
                     cookie_session: false,
                     capability: None,
                 }),
-                Behaviour::Reject => AuthOutcome::Reject(AuthRejection {
-                    cause: self.id,
-                }),
+                Behaviour::Reject => AuthOutcome::Reject(AuthRejection { cause: self.id }),
             }
         }
         fn issues_cookie_session(&self) -> bool {
@@ -162,14 +160,13 @@ mod tests {
         }
     }
 
-    fn chain(behaviours: &[(&'static str, Behaviour)]) -> Vec<Box<dyn Authenticator + Send + Sync>> {
+    fn chain(
+        behaviours: &[(&'static str, Behaviour)],
+    ) -> Vec<Box<dyn Authenticator + Send + Sync>> {
         behaviours
             .iter()
             .map(|(id, b)| {
-                Box::new(MockAuth {
-                    id,
-                    behaviour: *b,
-                }) as Box<dyn Authenticator + Send + Sync>
+                Box::new(MockAuth { id, behaviour: *b }) as Box<dyn Authenticator + Send + Sync>
             })
             .collect()
     }
