@@ -23,6 +23,7 @@ use serde::Deserialize;
 use crate::web::session::SessionStore;
 
 use super::agent_token::AgentTokenAuthenticator;
+use super::capability_url::CapabilityUrlAuthenticator;
 use super::passkey::PasskeyAuthenticator;
 use super::password::PasswordAuthenticator;
 use super::proxy_header::{ProxyHeaderAuthenticator, ProxyHeaderConfig};
@@ -228,7 +229,23 @@ pub(crate) fn build_chain(
                 sessions.clone(),
                 vault_root.clone(),
             )),
-            MethodId::CapabilityUrl | MethodId::Oidc => {
+            MethodId::CapabilityUrl => {
+                // Token verification needs the vault's Ed25519 signing key —
+                // load or create it on the same code path the SPEC-020 invite
+                // flow uses (REQ-4114 sub-table check).
+                let verifying_key = crate::user::invite::server_verifying_key(&vault_root)
+                    .map_err(|e| {
+                        ConfigError(format!(
+                            "[collab.auth] capability-url cannot load vault \
+                             server key: {e}"
+                        ))
+                    })?;
+                Box::new(CapabilityUrlAuthenticator::new(
+                    verifying_key,
+                    vault_root.clone(),
+                ))
+            }
+            MethodId::Oidc => {
                 return Err(ConfigError(format!(
                     "[collab.auth] method {:?} is not yet implemented in this \
                      build — remove it from `methods` or upgrade zetl \
@@ -469,7 +486,7 @@ mod tests {
     /// message naming the offending method.
     #[test]
     fn build_chain_rejects_unimplemented_methods() {
-        for unimplemented in ["capability-url", "oidc"] {
+        for unimplemented in ["oidc"] {
             let body = format!(
                 r#"
                 [collab.auth]

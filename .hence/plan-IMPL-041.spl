@@ -799,3 +799,32 @@
   (normally r-cl-state-v1-auth-passwd-cli claim-v1-auth-passwd-cli state-claimed-v1-auth-passwd-cli)
   (normally r-cl-chain-v1-auth-passwd-cli state-claimed-v1-auth-passwd-cli claimed-auth-passwd-cli)
 )
+
+(claims agent:coder
+  :at "2026-05-15T03:36:35Z"
+  (given completed-auth-passwd-cli))
+
+(claims agent:coder
+  :at "2026-05-15T03:38:38Z"
+  (given claim-v1-auth-capability-impl)
+  (normally r-cl-state-v1-auth-capability-impl claim-v1-auth-capability-impl state-claimed-v1-auth-capability-impl)
+  (normally r-cl-chain-v1-auth-capability-impl state-claimed-v1-auth-capability-impl claimed-auth-capability-impl)
+)
+
+;; Propagation rules: failures in 'auth-capability-impl' block downstream tasks
+(normally r-propagate-auth-capability-acl-from-auth-capability-impl-failed failed-auth-capability-impl upstream-blocked-auth-capability-acl)
+(normally r-propagate-auth-capability-acl-from-auth-capability-impl-permanently-failed permanently-failed-auth-capability-impl upstream-blocked-auth-capability-acl)
+(normally r-propagate-auth-capability-acl-from-auth-capability-impl-stale-v1 stale-v1-auth-capability-impl upstream-blocked-auth-capability-acl)
+(normally r-propagate-auth-capability-acl-from-auth-capability-impl-timeout-v1 timeout-v1-auth-capability-impl upstream-blocked-auth-capability-acl)
+(normally r-propagate-auth-docs-from-auth-capability-impl-failed failed-auth-capability-impl upstream-blocked-auth-docs)
+(normally r-propagate-auth-docs-from-auth-capability-impl-permanently-failed permanently-failed-auth-capability-impl upstream-blocked-auth-docs)
+(normally r-propagate-auth-docs-from-auth-capability-impl-stale-v1 stale-v1-auth-capability-impl upstream-blocked-auth-docs)
+(normally r-propagate-auth-docs-from-auth-capability-impl-timeout-v1 timeout-v1-auth-capability-impl upstream-blocked-auth-docs)
+(normally r-propagate-auth-observability-from-auth-capability-impl-failed failed-auth-capability-impl upstream-blocked-auth-observability)
+(normally r-propagate-auth-observability-from-auth-capability-impl-permanently-failed permanently-failed-auth-capability-impl upstream-blocked-auth-observability)
+(normally r-propagate-auth-observability-from-auth-capability-impl-stale-v1 stale-v1-auth-capability-impl upstream-blocked-auth-observability)
+(normally r-propagate-auth-observability-from-auth-capability-impl-timeout-v1 timeout-v1-auth-capability-impl upstream-blocked-auth-observability)
+(normally r-propagate-auth-share-cli-from-auth-capability-impl-failed failed-auth-capability-impl upstream-blocked-auth-share-cli)
+(normally r-propagate-auth-share-cli-from-auth-capability-impl-permanently-failed permanently-failed-auth-capability-impl upstream-blocked-auth-share-cli)
+(normally r-propagate-auth-share-cli-from-auth-capability-impl-stale-v1 stale-v1-auth-capability-impl upstream-blocked-auth-share-cli)
+(normally r-propagate-auth-share-cli-from-auth-capability-impl-timeout-v1 timeout-v1-auth-capability-impl upstream-blocked-auth-share-cli)

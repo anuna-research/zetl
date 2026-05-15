@@ -311,6 +311,24 @@ pub fn build_slug_map(files: &[ParsedFile]) -> (HashMap<String, String>, HashSet
     (page_slug_map, collision_names)
 }
 
+/// SPEC-041 ADR-4110(c) — set `Referrer-Policy: no-referrer` on responses to
+/// requests whose URL carried a `?cap=` parameter, so the capability token
+/// does not leak via the `Referer` header to outbound links. Detection is a
+/// cheap query-string scan; the token itself is otherwise opaque here.
+async fn capability_referrer_policy(
+    request: axum::http::Request<axum::body::Body>,
+    next: Next,
+) -> Response {
+    let has_cap = auth::capability_url::request_has_cap_param(request.uri());
+    let mut response = next.run(request).await;
+    if has_cap {
+        response
+            .headers_mut()
+            .insert(header::REFERRER_POLICY, "no-referrer".parse().unwrap());
+    }
+    response
+}
+
 pub async fn run(
     state: WebState,
     port: u16,
@@ -524,6 +542,11 @@ pub async fn run(
             state.clone(),
             session::collab_gate,
         ))
+        // SPEC-041 ADR-4110(c): set `Referrer-Policy: no-referrer` on the
+        // response to any request whose URL carries `?cap=` — keeps the
+        // capability token from leaking via the `Referer` header to outbound
+        // links. Cheap query-string scan; does not parse the token.
+        .route_layer(middleware::from_fn(capability_referrer_policy))
         // SPEC-041 REQ-4104 / CON-4103: auth_resolve runs FIRST in the
         // content-routes stack — its order here is load-bearing. Layered
         // last → wraps the others → runs first, so collab_gate and csrf_guard

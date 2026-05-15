@@ -24,6 +24,9 @@
 #![allow(dead_code)]
 
 pub(crate) mod agent_token;
+/// `pub` so the `zetl collab share` CLI can drive token minting + revocation
+/// (SPEC-041 task-auth-share-cli).
+pub mod capability_url;
 pub(crate) mod config;
 pub(crate) mod passkey;
 /// `pub` (not `pub(crate)`) so the `zetl collab passwd` CLI in `src/main.rs`
