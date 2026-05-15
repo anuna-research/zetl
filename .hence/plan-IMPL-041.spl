@@ -905,3 +905,20 @@
 (normally r-propagate-auth-adversarial-review-from-auth-observability-permanently-failed permanently-failed-auth-observability upstream-blocked-auth-adversarial-review)
 (normally r-propagate-auth-adversarial-review-from-auth-observability-stale-v1 stale-v1-auth-observability upstream-blocked-auth-adversarial-review)
 (normally r-propagate-auth-adversarial-review-from-auth-observability-timeout-v1 timeout-v1-auth-observability upstream-blocked-auth-adversarial-review)
+
+(claims agent:coder
+  :at "2026-05-15T04:13:23Z"
+  (given completed-auth-observability))
+
+(claims agent:docs-writer
+  :at "2026-05-15T04:13:32Z"
+  (given claim-v1-auth-docs)
+  (normally r-cl-state-v1-auth-docs claim-v1-auth-docs state-claimed-v1-auth-docs)
+  (normally r-cl-chain-v1-auth-docs state-claimed-v1-auth-docs claimed-auth-docs)
+)
+
+;; Propagation rules: failures in 'auth-docs' block downstream tasks
+(normally r-propagate-auth-changelog-mark-from-auth-docs-failed failed-auth-docs upstream-blocked-auth-changelog-mark)
+(normally r-propagate-auth-changelog-mark-from-auth-docs-permanently-failed permanently-failed-auth-docs upstream-blocked-auth-changelog-mark)
+(normally r-propagate-auth-changelog-mark-from-auth-docs-stale-v1 stale-v1-auth-docs upstream-blocked-auth-changelog-mark)
+(normally r-propagate-auth-changelog-mark-from-auth-docs-timeout-v1 timeout-v1-auth-docs upstream-blocked-auth-changelog-mark)
