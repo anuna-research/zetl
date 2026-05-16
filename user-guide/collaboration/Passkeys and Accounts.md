@@ -5,7 +5,9 @@ tags: [collaboration, auth, recovery]
 
 # Passkeys and Accounts
 
-zetl doesn't do passwords. Instead, every collab account is backed by one or more **WebAuthn passkeys** — Touch ID, Face ID, Windows Hello, a YubiKey, or any FIDO2 authenticator. A 12-word BIP39 **recovery phrase** is the break-glass fallback, and the same phrase deterministically derives the collab server's signing key and a git SSH key.
+zetl's default is passwordless: every collab account is backed by one or more **WebAuthn passkeys** — Touch ID, Face ID, Windows Hello, a YubiKey, or any FIDO2 authenticator. A 12-word BIP39 **recovery phrase** is the break-glass fallback, and the same phrase deterministically derives the collab server's signing key and a git SSH key.
+
+If you'd rather log in with a different method — passwords, SSO (OIDC), reverse-proxy headers, or share-by-link capability URLs — see [[Authentication Methods]]. The default `[collab.auth] methods = ["passkey", "agent-token"]` is what this page describes; everything else is opt-in via `.zetl/config.toml`.
 
 ## Why passkeys
 

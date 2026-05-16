@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Pluggable `--collab` authentication** ([SPEC-041](specs/SPEC-041-pluggable-collab-auth.md)).
+  `[collab.auth] methods = [...]` in `.zetl/config.toml` selects from
+  six authenticators that share one `Authenticator` trait and one
+  `auth_resolve` middleware:
+  - **`passkey`** (default) — pre-SPEC-041 WebAuthn behaviour, unchanged.
+  - **`agent-token`** (default) — pre-SPEC-041 Bearer behaviour, unchanged.
+  - **`proxy-header`** — `X-Forwarded-User` from a trusted upstream
+    proxy. Three-layer trust gate: `--trust-proxy` + `peer_allow` CIDR
+    list + strict header-value grammar.
+  - **`password`** — argon2id static passwords in
+    `.zetl/collab/passwords.json` (0600). New `zetl collab passwd
+    add/remove/list` CLI; TTY-only password entry.
+  - **`capability-url`** — signed `?cap=<EdDSA-JWT>` bearer URLs bound
+    to a scope glob and a role. New `zetl collab share
+    mint/list/revoke` CLI. Pseudonymous scope-capped principals — never
+    satisfy `admin_gate` regardless of encoded role. `Referrer-Policy:
+    no-referrer` set on responses so the token does not leak via the
+    `Referer` header.
+  - **`oidc`** — OpenID Connect Authorization Code Flow with PKCE
+    (`--features collab,collab-oidc`). Discovery + JWKS + ID-token
+    validation rolled by hand on `jsonwebtoken` + `reqwest` to keep
+    the dependency surface auditable. The default `--features collab`
+    build gains zero new dependencies (NFR-4102).
+
+  A vault with no `[collab.auth]` block behaves exactly as before
+  (`methods = ["passkey", "agent-token"]` default). Operator guide:
+  [`docs/collab-auth.md`](docs/collab-auth.md). Threat model:
+  [`research/SPEC-041-threat-model.md`](research/SPEC-041-threat-model.md).
+
+  SPEC-041 itself remains `draft` / `0.1.0-strawman` pending the
+  cross-model Tier-1 review of the implementation (the in-session
+  self-review checkpoint is at
+  [`.hence/reviews/auth-tier1-2026-05-15.md`](.hence/reviews/auth-tier1-2026-05-15.md)).
+
 ## [0.7.2] - 2026-05-13
 
 ### Added

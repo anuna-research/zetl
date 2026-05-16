@@ -6169,6 +6169,7 @@ fn cmd_serve(
     safe_mode: bool,
     asset_max_file_bytes: u64,
     asset_max_total_bytes: u64,
+    trust_proxy: bool,
 ) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
@@ -6432,7 +6433,7 @@ fn cmd_serve(
         verbose: cli.verbose > 0,
         collab,
         tls: false,
-        trust_proxy: false,
+        trust_proxy,
         sessions: zetl::web::session::SessionStore::new(),
         recovery_challenges: std::sync::Arc::new(
             zetl::user::recovery::RecoveryChallengeStore::new(),
@@ -11453,6 +11454,7 @@ fn main() -> anyhow::Result<()> {
             safe_mode,
             asset_max_file_bytes,
             asset_max_total_bytes,
+            trust_proxy,
             scan: _,
         } => cmd_serve(
             &cli,
@@ -11468,6 +11470,7 @@ fn main() -> anyhow::Result<()> {
             *safe_mode,
             *asset_max_file_bytes,
             *asset_max_total_bytes,
+            *trust_proxy,
         ),
         Command::Invite {
             as_user,
@@ -11698,7 +11701,216 @@ fn main() -> anyhow::Result<()> {
         Command::Skill { command } => match command {
             zetl::cli::SkillCommand::Init { user } => zetl::skill::cmd_skill_init(*user),
         },
+        Command::Collab { command } => match command {
+            zetl::cli::CollabCommand::Passwd { command } => match command {
+                zetl::cli::PasswdCommand::Add { user } => cmd_collab_passwd_add(&cli, user),
+                zetl::cli::PasswdCommand::Remove { user } => cmd_collab_passwd_remove(&cli, user),
+                zetl::cli::PasswdCommand::List => cmd_collab_passwd_list(&cli),
+            },
+            zetl::cli::CollabCommand::Share { command } => match command {
+                zetl::cli::ShareCommand::Mint {
+                    scope,
+                    role,
+                    expires,
+                    site_url,
+                } => cmd_collab_share_mint(&cli, scope, role, expires.as_deref(), site_url),
+                zetl::cli::ShareCommand::List => cmd_collab_share_list(&cli),
+                zetl::cli::ShareCommand::Revoke { jti } => cmd_collab_share_revoke(&cli, jti),
+            },
+        },
     }
+}
+
+// ── `zetl collab share` handlers (SPEC-041 REQ-4116/4117/4118, CON-4110) ──
+
+/// `zetl collab share mint` — sign a fresh capability token + record + print URL.
+fn cmd_collab_share_mint(
+    cli: &zetl::cli::Cli,
+    scope: &str,
+    role: &str,
+    expires: Option<&str>,
+    site_url: &str,
+) -> Result<()> {
+    use zetl::web::auth::capability_url::{
+        mint, parse_duration, record_mint, ShareRecord, TTL_DEFAULT_SECONDS, TTL_MAX_SECONDS,
+        TTL_MIN_SECONDS,
+    };
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("cannot resolve vault directory: {}", cli.dir))?;
+
+    // Resolve TTL — REQ-4117 bounds.
+    let ttl = match expires {
+        Some(s) => parse_duration(s).with_context(|| format!("invalid --expires {s:?}"))?,
+        None => TTL_DEFAULT_SECONDS,
+    };
+    if !(TTL_MIN_SECONDS..=TTL_MAX_SECONDS).contains(&ttl) {
+        anyhow::bail!(
+            "--expires out of bounds: {ttl}s not in [{TTL_MIN_SECONDS}, {TTL_MAX_SECONDS}] \
+             (5m..90d)"
+        );
+    }
+
+    // Load (or create) the vault signing key — shared with SPEC-020 invites.
+    let signing_key = zetl::user::invite::load_or_create_server_key(&vault_root)
+        .context("failed to load vault signing key")?;
+
+    let (token, claims) =
+        mint(&signing_key, scope, role, ttl).context("failed to mint capability token")?;
+
+    // Record the mint so `share list` can surface it.
+    let now_iso = zetl::user::access_request::now_iso8601();
+    let record = ShareRecord {
+        jti: claims.jti.clone(),
+        scope: claims.scope.clone(),
+        role: claims.role.clone(),
+        exp: claims.exp,
+        created_at: now_iso,
+    };
+    record_mint(&vault_root, &record).context("failed to record minted capability")?;
+
+    // Bearer-authority security notice on stderr (REQ-4116).
+    let trimmed = site_url.trim_end_matches('/');
+    let url = format!("{trimmed}/?cap={token}");
+
+    eprintln!(
+        "⚠  SECURITY: this URL is a bearer token. Anyone who holds it has the granted\n\
+         \x20  access (scope={:?} role={}) until it expires or is revoked.\n\
+         \x20  Send it only via channels you trust. Do NOT paste it through URL\n\
+         \x20  shorteners, link previewers, or chat with bot integrations.\n\
+         \x20  Revoke with: zetl collab share revoke {}\n",
+        claims.scope, claims.role, claims.jti
+    );
+    println!("{url}");
+    Ok(())
+}
+
+/// `zetl collab share list` — emit live + revoked records (no token bytes).
+fn cmd_collab_share_list(cli: &zetl::cli::Cli) -> Result<()> {
+    use zetl::web::auth::capability_url::{load_revoked, load_shares};
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("cannot resolve vault directory: {}", cli.dir))?;
+    let shares = load_shares(&vault_root).context("failed to read mint registry")?;
+    let revoked = load_revoked(&vault_root).context("failed to read revocation set")?;
+
+    if shares.is_empty() {
+        return Ok(());
+    }
+    // One line per record. CSV-ish so it pipes cleanly through `column -t`
+    // or jq-style transformations.
+    println!("jti\tscope\trole\texp\tstatus");
+    for r in shares {
+        let status = if revoked.contains(&r.jti) {
+            "revoked"
+        } else {
+            "live"
+        };
+        println!("{}\t{}\t{}\t{}\t{}", r.jti, r.scope, r.role, r.exp, status);
+    }
+    Ok(())
+}
+
+/// `zetl collab share revoke <jti>` — add to the revocation set.
+fn cmd_collab_share_revoke(cli: &zetl::cli::Cli, jti: &str) -> Result<()> {
+    use zetl::web::auth::capability_url::{load_shares, revoke};
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("cannot resolve vault directory: {}", cli.dir))?;
+
+    // CON-4110 error model: revoke of an unknown jti errors.
+    let shares = load_shares(&vault_root).context("failed to read mint registry")?;
+    if !shares.iter().any(|r| r.jti == jti) {
+        anyhow::bail!("no capability with jti {jti:?} in the mint registry");
+    }
+    revoke(&vault_root, jti).with_context(|| format!("failed to revoke {jti:?}"))?;
+    eprintln!("[zetl] revoked capability {jti:?}");
+    Ok(())
+}
+
+// ── `zetl collab passwd` handlers (SPEC-041 REQ-4108, CON-4106) ──
+
+/// `zetl collab passwd add <user>` — TTY-prompted password setter.
+///
+/// Creates the `UserProfile` for `<user>` if it does not yet exist, then
+/// writes (or replaces) the argon2id PHC record in
+/// `.zetl/collab/passwords.json`. Per REQ-4108, the password is read only
+/// from a TTY prompt — never from argv, never from env.
+fn cmd_collab_passwd_add(cli: &zetl::cli::Cli, user: &str) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("cannot resolve vault directory: {}", cli.dir))?;
+
+    // CON-4106 pre-condition: vault must be collab-initialised. Use the
+    // presence of `.zetl/collab/` as a soft proxy; `passwords.json` is
+    // created on first write within it.
+    let collab_dir = vault_root.join(".zetl/collab");
+    std::fs::create_dir_all(&collab_dir).with_context(|| {
+        format!(
+            "failed to create {} (is this a zetl vault?)",
+            collab_dir.display()
+        )
+    })?;
+
+    // Ensure a UserProfile exists. Re-use the user-id slug helper so the
+    // CLI accepts a friendly id and creates a minimal profile if missing.
+    let existing = zetl::user::load_profile(&vault_root, user)
+        .with_context(|| format!("failed to read profile for {user:?}"))?;
+    if existing.is_none() {
+        let profile = zetl::user::UserProfile {
+            id: user.to_string(),
+            name: user.to_string(),
+            created_at: zetl::user::access_request::now_iso8601(),
+            invited_by: None,
+            owner: false,
+            credentials: Vec::new(),
+            recovery_pubkey: String::new(),
+            agent_token_generation: 0,
+        };
+        zetl::user::save_profile(&vault_root, &profile)
+            .with_context(|| format!("failed to create profile for {user:?}"))?;
+        eprintln!("[zetl] created profile for {user:?} (Reader role)");
+    }
+
+    // REQ-4108: TTY-only password input. `rpassword` reads from /dev/tty so
+    // a pipe or non-tty stdin is rejected by the library itself.
+    let pw1 = rpassword::prompt_password(format!("Password for {user}: "))
+        .with_context(|| "failed to read password from TTY")?;
+    let pw2 = rpassword::prompt_password("Confirm password: ")
+        .with_context(|| "failed to read password from TTY")?;
+    if pw1 != pw2 {
+        anyhow::bail!("passwords did not match");
+    }
+    if pw1.is_empty() {
+        anyhow::bail!("password may not be empty");
+    }
+
+    zetl::web::auth::password::upsert(&vault_root, user, &pw1)
+        .with_context(|| format!("failed to write password record for {user:?}"))?;
+    eprintln!("[zetl] password set for {user:?}");
+    Ok(())
+}
+
+/// `zetl collab passwd remove <user>` — drop the password record.
+fn cmd_collab_passwd_remove(cli: &zetl::cli::Cli, user: &str) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("cannot resolve vault directory: {}", cli.dir))?;
+    zetl::web::auth::password::remove(&vault_root, user)
+        .with_context(|| format!("failed to remove password record for {user:?}"))?;
+    eprintln!("[zetl] removed password record for {user:?}");
+    Ok(())
+}
+
+/// `zetl collab passwd list` — print user_ids that have password records.
+/// Never prints hashes (CON-4106).
+fn cmd_collab_passwd_list(cli: &zetl::cli::Cli) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("cannot resolve vault directory: {}", cli.dir))?;
+    let ids = zetl::web::auth::password::list(&vault_root)
+        .with_context(|| "failed to read password store")?;
+    for id in ids {
+        println!("{id}");
+    }
+    Ok(())
 }
 
 /// Exit code emitted by `zetl cap` stubs whose implementation has not

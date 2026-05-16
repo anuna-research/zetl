@@ -324,6 +324,14 @@ pub enum Command {
         /// Maximum total asset storage in bytes (default: 100 MiB)
         #[arg(long, default_value_t = 100 * 1024 * 1024, requires = "collab")]
         asset_max_total_bytes: u64,
+        /// Trust an authenticating upstream proxy. Required for the
+        /// `[collab.auth.proxy_header]` method (zetl fails closed and
+        /// refuses to start if `proxy-header` is listed in `methods`
+        /// without this flag set). Also widens the IP source used by
+        /// `auth/*` rate limiters to honour `X-Forwarded-For` /
+        /// `X-Real-IP` from the immediate peer.
+        #[arg(long, requires = "collab")]
+        trust_proxy: bool,
         #[command(flatten)]
         scan: ScanArgs,
     },
@@ -600,6 +608,89 @@ pub enum Command {
         #[command(subcommand)]
         command: SkillCommand,
     },
+
+    /// Manage collab credentials and share-by-link capability URLs
+    #[command(
+        after_help = "Examples:\n  zetl collab passwd add alice       Set / change alice's password\n  zetl collab passwd list            List user_ids with passwords\n  zetl collab share mint --scope review/draft/** --role reader --site-url https://wiki.example.com\n  zetl collab share list             List minted capability URLs\n  zetl collab share revoke <jti>     Revoke a minted capability URL"
+    )]
+    Collab {
+        #[command(subcommand)]
+        command: CollabCommand,
+    },
+}
+
+/// Subcommands for `zetl collab`.
+#[derive(Subcommand)]
+pub enum CollabCommand {
+    /// Manage static-password credentials for the `password` auth method
+    Passwd {
+        #[command(subcommand)]
+        command: PasswdCommand,
+    },
+    /// Mint, list, and revoke `?cap=<token>` capability-URL grants
+    ///
+    /// Each minted URL is a bearer token: anyone holding it has the granted
+    /// scope+role until expiry or revocation. The mint command prints the
+    /// security notice on stderr.
+    Share {
+        #[command(subcommand)]
+        command: ShareCommand,
+    },
+}
+
+/// `zetl collab share` subcommands (SPEC-041 CON-4110).
+#[derive(Subcommand)]
+pub enum ShareCommand {
+    /// Mint a fresh capability URL — signed token bound to `<scope>` +
+    /// `<role>`, expiring after `--expires` (default 7d, max 90d). Prints
+    /// one URL to stdout and a bearer-authority security notice to stderr.
+    Mint {
+        /// Folder/page glob the capability is bound to.
+        #[arg(long)]
+        scope: String,
+        /// Role encoded in the token. `reader` or `editor`. A capability
+        /// principal never satisfies `admin_gate` regardless of this value.
+        #[arg(long, value_parser = ["reader", "editor"])]
+        role: String,
+        /// Token lifetime — `<N>(s|m|h|d)`. Bounded to [5m, 90d].
+        #[arg(long)]
+        expires: Option<String>,
+        /// Public base URL of the vault (e.g. `https://wiki.example.com`).
+        /// The minted URL is `<site-url>/?cap=<token>`.
+        #[arg(long)]
+        site_url: String,
+    },
+    /// List live capability records — jti, scope, role, expiry, status.
+    /// Never prints the token bytes.
+    List,
+    /// Revoke a previously-minted capability by its `jti`. Subsequent
+    /// presentations of any URL carrying that jti receive the generic
+    /// auth-failure result.
+    Revoke {
+        /// The 32-char hex `jti` of the capability to revoke.
+        jti: String,
+    },
+}
+
+/// `zetl collab passwd` subcommands (SPEC-041 CON-4106).
+#[derive(Subcommand)]
+pub enum PasswdCommand {
+    /// Set or change the password for `<user>`. Reads the password from a
+    /// TTY prompt — never from argv or env (REQ-4108). Creates the
+    /// `UserProfile` if it does not yet exist.
+    Add {
+        /// The `user_id` whose password to set.
+        user: String,
+    },
+    /// Remove the password record for `<user>`. Exits non-zero if no record
+    /// exists.
+    Remove {
+        /// The `user_id` whose password record to drop.
+        user: String,
+    },
+    /// List the `user_id`s that have a password record. Never prints hashes
+    /// or any other credential material.
+    List,
 }
 
 /// Subcommands for `zetl skill` — self-bootstrap a Claude Code skill

@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod build;
 pub mod context;
 pub mod engine;
@@ -310,6 +311,24 @@ pub fn build_slug_map(files: &[ParsedFile]) -> (HashMap<String, String>, HashSet
     (page_slug_map, collision_names)
 }
 
+/// SPEC-041 ADR-4110(c) — set `Referrer-Policy: no-referrer` on responses to
+/// requests whose URL carried a `?cap=` parameter, so the capability token
+/// does not leak via the `Referer` header to outbound links. Detection is a
+/// cheap query-string scan; the token itself is otherwise opaque here.
+async fn capability_referrer_policy(
+    request: axum::http::Request<axum::body::Body>,
+    next: Next,
+) -> Response {
+    let has_cap = auth::capability_url::request_has_cap_param(request.uri());
+    let mut response = next.run(request).await;
+    if has_cap {
+        response
+            .headers_mut()
+            .insert(header::REFERRER_POLICY, "no-referrer".parse().unwrap());
+    }
+    response
+}
+
 pub async fn run(
     state: WebState,
     port: u16,
@@ -352,6 +371,26 @@ pub async fn run(
 
     let asset_max_file_bytes = state.asset_max_file_bytes;
 
+    // SPEC-041 IMPL-041 Phase 1: assemble the authenticator chain from
+    // `[collab.auth]` in `.zetl/config.toml`. Absent block ⇒ default chain
+    // `[passkey, agent-token]` reproducing pre-SPEC-041 behaviour exactly
+    // (REQ-4103). Methods naming an unshipped phase or invalid keys fail
+    // startup (REQ-4114). OBS-4105 startup line emitted to stderr.
+    let (auth_chain, auth_cfg) = auth::config::build_chain_from_vault(
+        &state.vault_root,
+        state.sessions.clone(),
+        state.trust_proxy,
+    )
+    .map_err(|e| anyhow::anyhow!("{e}"))?;
+    eprintln!("{}", auth::config::format_chain_summary(&auth_cfg));
+
+    // OBS-4104: bundle the vault root with the chain so `auth_resolve` can
+    // write the audit log without WebState having to carry the chain.
+    let auth_state = auth::AuthResolveState {
+        chain: auth_chain.clone(),
+        vault_root: state.vault_root.clone(),
+    };
+
     // ── Auth routes (always public, even in --collab mode) ───────────
     let auth_routes = Router::new()
         .route("/auth/login", get(routes::login_handler))
@@ -387,6 +426,15 @@ pub async fn run(
             "/auth/accept",
             get(routes::accept_invite_handler).post(routes::accept_invite_submit_handler),
         )
+        // SPEC-041 REQ-4113: each authenticator may contribute its own
+        // public routes (e.g. /auth/password POST, OIDC callbacks). Merge
+        // them before the rate-limit layer so they inherit the same per-IP
+        // protection.
+        .merge(
+            auth_chain
+                .iter()
+                .fold(Router::new(), |acc, a| acc.merge(a.routes())),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit::auth_ip_rate_limit,
@@ -409,6 +457,12 @@ pub async fn run(
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             session::admin_gate,
+        ))
+        // SPEC-041 REQ-4104 / CON-4103: auth_resolve runs before admin_gate so
+        // the gate reads the resolved Principal from the request extensions.
+        .route_layer(middleware::from_fn_with_state(
+            auth_state.clone(),
+            auth::resolve::auth_resolve,
         ));
 
     // ── Content routes (gated by collab_gate when --collab is active) ─
@@ -494,6 +548,24 @@ pub async fn run(
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             session::collab_gate,
+        ))
+        // SPEC-041 REQ-4117/4119: enforce capability-URL principals' scope
+        // glob + role on every content request. Runs AFTER auth_resolve so
+        // the Principal extension is set; pass-through for every other
+        // principal type.
+        .route_layer(middleware::from_fn(auth::capability_url::capability_gate))
+        // SPEC-041 ADR-4110(c): set `Referrer-Policy: no-referrer` on the
+        // response to any request whose URL carries `?cap=` — keeps the
+        // capability token from leaking via the `Referer` header to outbound
+        // links. Cheap query-string scan; does not parse the token.
+        .route_layer(middleware::from_fn(capability_referrer_policy))
+        // SPEC-041 REQ-4104 / CON-4103: auth_resolve runs FIRST in the
+        // content-routes stack — its order here is load-bearing. Layered
+        // last → wraps the others → runs first, so collab_gate and csrf_guard
+        // read a populated Principal extension.
+        .route_layer(middleware::from_fn_with_state(
+            auth_state.clone(),
+            auth::resolve::auth_resolve,
         ));
 
     // ── WebSocket routes (auth handled inside the handler via tickets) ──
@@ -548,7 +620,17 @@ pub async fn run(
     eprintln!("zetl serve  →  http://localhost:{port}");
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(listener, app).await?;
+    // SPEC-041 REQ-4106 (and pre-existing rate-limit per-IP code): inject
+    // `ConnectInfo<SocketAddr>` into the request extensions so middleware
+    // can check the immediate peer's IP. Without this, the proxy-header
+    // authenticator's `peer_allow` check always abstains (peer is unknown),
+    // and `extract_client_ip` in `rate_limit.rs` falls back to "unknown"
+    // for every request.
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }
 

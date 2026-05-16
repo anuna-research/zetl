@@ -181,7 +181,7 @@ Or open the folder in Obsidian, Logseq, Foam, or Dendron — wikilinks work ever
 - [[What is Defeasible Reasoning]] · [[Writing SPL]] · [[Running Queries]] · [[Proof Trees]] · [[What-if and Abduction]]
 
 ### Collaboration
-- [[Running a Team Server]] · [[Passkeys and Accounts]] · [[Invitations]] · [[Co-editing]] · [[Access Control]] · [[Capability URLs]]
+- [[Running a Team Server]] · [[Authentication Methods]] · [[Passkeys and Accounts]] · [[Invitations]] · [[Co-editing]] · [[Access Control]] · [[Capability URLs]]
 
 ### Automation & extensibility
 - [[Lifecycle Hooks]] · [[Render Pipeline Hooks]] · [[Plugin Ecosystems]] · [[MCP Server]]

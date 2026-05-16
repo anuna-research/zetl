@@ -106,7 +106,7 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 
 ### Collaboration
 
-- **Passkey auth** — WebAuthn (Touch ID, security keys); no passwords
+- **Pluggable authentication** — `[collab.auth] methods = [...]` selects from six methods that share one trait + one middleware: passkey (default, WebAuthn), agent-token (Bearer, default), reverse-proxy header (oauth2-proxy / Authelia / Tailscale Serve / Cloudflare Access), static password (argon2id), capability-URL (share-by-link, scope+role+expiry), and OIDC (Google Workspace / Okta / Entra, behind `--features collab-oidc`). Default `--collab` build adds zero new deps; SSO is opt-in
 - **Role-based access** — reader / editor / admin, with per-page scoping via glob or SPL deontic rules
 - **Invitation links** — Ed25519-signed, single-use, optional expiry, optional page scope
 - **CRDT co-editing** — Peritext engine over WebSocket; auto-commit to git on save with author attribution
