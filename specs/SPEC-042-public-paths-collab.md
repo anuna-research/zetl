@@ -121,6 +121,14 @@ pages.
 
 - A `[collab.auth] public_paths` glob list (TOML) that bypasses
   `collab_gate` for matching request paths.
+- A **`zetl collab public-paths preview` CLI** ([[#REQ-4211]],
+  [[#CON-4205]]) that resolves the configured globs against the vault
+  scan and prints (a) every page slug that would be served
+  unauthenticated, (b) the titles a `/search` request would surface
+  for an anonymous visitor, (c) any glob that matches zero pages
+  (likely a typo), and (d) any startup warnings (REQ-4206 dangerous
+  shapes, REQ-4208 unreachable-SPL). **Operators MUST be able to
+  preview the public surface before bringing a `--collab` server up.**
 - Safe-method restriction at the gate.
 - Startup validation rejecting dangerous globs.
 - Interaction with the [[Capability URL]] authenticator: a capability
@@ -208,8 +216,8 @@ the unchanged [[SPEC-041]] test suite ([[#TEST-4205]]).
 
 ### 3.2 HP2: Public Landing + Private Vault
 
-**Preconditions:** Operator wants `/` and `/about/**` public; everything
-else gated.
+**Preconditions:** Operator wants the root index + everything under
+`/about/` public; everything else gated.
 
 **Steps:**
 
@@ -217,19 +225,43 @@ else gated.
    ```toml
    [collab.auth]
    methods       = ["passkey", "agent-token"]
-   public_paths  = ["/", "/about/**"]
+   public_paths  = ["/", "/about", "/about/**"]
    ```
-2. Operator restarts `zetl serve --collab`. Startup line gains a
-   `public=…` segment (OBS-4205).
-3. Anonymous visitor opens `https://wiki.example.com/`. `collab_gate`
+   (Note: `/` alone matches only the root path `/`. `/about` matches
+   the bare `/about` page; `/about/**` matches everything under it.
+   See [[#CON-4201|the common-patterns table]] for what each shape
+   captures — getting this right is the most common operator
+   stumble.)
+2. Operator runs **`zetl collab public-paths preview`** ([[#REQ-4211]])
+   to confirm the configured globs match the intended page set BEFORE
+   starting the server. Output names every page slug that will be
+   served unauthenticated and every page title that would surface in
+   anonymous search.
+3. Operator restarts `zetl serve --collab`. Startup line gains a
+   `public=…` segment (OBS-4205); a startup WARN line per glob that
+   matches zero pages (OBS-4207) catches typos.
+4. Anonymous visitor opens `https://wiki.example.com/`. `collab_gate`
    matches the path against the glob → public → request proceeds. The
-   page renders.
-4. Anonymous visitor follows a link to `/private/notes`. The path
-   doesn't match the glob → gate runs normally → 307 redirect to the
-   login surface.
+   landing page renders.
+5. The landing page contains a `[[Welcome]]` wikilink, which renders as
+   `<a href="/Welcome">`. The visitor clicks. `/Welcome` does NOT match
+   any of `["/", "/about", "/about/**"]` → gate runs normally → 307
+   redirect to `/auth/login`. **This is the cliff most operators
+   stumble on:** wikilinks off a public page that target slugs outside
+   the public_paths gate the visitor. The preview output catches the
+   inverse (private pages the operator forgot to gate) but not this
+   side directly — fix is to broaden `public_paths` (e.g. add `/Welcome`
+   or use `/*` for "every top-level page"), OR redesign the landing
+   not to link to gated pages.
+6. Anonymous visitor follows a link to `/about/team/alice`. Glob
+   `/about/**` matches → public → renders.
+7. Anonymous visitor follows a link to `/private/notes`. No glob
+   matches → 307 redirect to the login surface.
 
-**Postconditions:** Public pages reachable without auth; private pages
-still gated. No principal in the public request's extensions.
+**Postconditions:** Pages within the declared `public_paths` reachable
+without auth; everything else gated. No principal in public requests'
+extensions. The preview run from step 2 gave the operator the full
+picture before they exposed anything to the network.
 
 ### 3.3 HP3: Authenticated User on a Public Path
 
@@ -294,6 +326,68 @@ make everything public).
 
 **Postconditions:** Misconfiguration is a startup error, not a silent
 catastrophe.
+
+### 3.7 HP7: Preview Before Deploy
+
+**Preconditions:** Operator has configured `public_paths` and wants to
+audit the public surface before exposing it. The vault has 47 pages,
+some sensitive.
+
+**Steps:**
+
+1. Operator runs `zetl collab public-paths preview`. The CLI scans the
+   vault, compiles the globs, matches each page slug, and prints:
+
+   ```
+   [zetl] public_paths preview — .zetl/config.toml
+
+   Configured globs (in [collab.auth]):
+     "/"           → 1 page
+       /
+
+     "/about"      → 1 page
+       /about
+
+     "/about/**"   → 5 pages
+       /about/contact
+       /about/team
+       /about/team/alice
+       /about/team/bob
+       /about/values
+
+   Summary: 7 pages public, 40 pages gated, 0 globs match zero pages.
+
+   Anonymous search (/search, /api/search) would surface these page
+   titles to unauthenticated visitors (REQ-4207 boundary):
+     About                  /about
+     Contact us             /about/contact
+     The team               /about/team
+     Alice's bio            /about/team/alice
+     Bob's bio              /about/team/bob
+     Our values             /about/values
+     [vault root]           /
+
+   Validation:
+     ✓ No dangerous globs (REQ-4206)
+     ✓ No glob matches zero pages
+     ✓ No SPL rule references an "anonymous" subject (REQ-4208)
+   ```
+2. Operator notices that `/about/values` was meant to be private,
+   adjusts the glob to `/about/team/**` only, re-runs `preview`,
+   confirms `/about/values` no longer appears in the output.
+3. Operator restarts the server with the corrected config.
+
+**Postconditions:** The operator deployed exactly the public surface
+they intended; surprises were caught before any anonymous visitor saw
+a private page. `--json` (`-f json` / piped) emits the same data
+machine-readable for CI gating ("fail the deploy if the public-page
+count exceeds N" or "fail if any page tagged `private` appears in the
+public set").
+
+**Failure modes (enumerated by [[DESIGN-042-public-paths-collab]]
+task `happy-paths`):** glob that matches zero pages → WARN line + non-
+zero exit when `--strict`; dangerous glob → same hard error as the
+server's startup-time check, so preview and startup agree.
 
 ---
 
@@ -406,6 +500,32 @@ specific cause.
 
 **Trace:** [[#TEST-4209]], [[#OBS-4202]], [[#OBS-4203]]; [[#3.4 HP4]];
 [[SPEC-041]] [[#REQ-4115|REQ-4115]] redaction contract still applies.
+
+### REQ-4211: `zetl collab public-paths preview` CLI
+
+The system SHALL provide `zetl collab public-paths preview` that, given
+the current `.zetl/config.toml`, resolves the configured globs against
+the vault scan and prints:
+
+* every page slug that matches any glob (sorted within each glob,
+  globs presented in declared order);
+* the page titles that would surface in an anonymous `/search` or
+  `/api/search` response (the [[#REQ-4207]] / [[#CON-4204]] filter
+  output);
+* per-glob page-count summary AND a vault-wide `public / gated / total`
+  summary;
+* validation results: dangerous globs ([[#REQ-4206]]), globs matching
+  zero pages (typo signal), SPL rules referencing an unreachable
+  "anonymous" subject ([[#REQ-4208]]).
+
+The command SHALL NOT start a server, open any network socket, or
+modify any file. It is read-only with respect to the vault and idempotent.
+
+Output respects the existing `-f json` / `-f table` (default `auto`)
+convention. `--strict` SHALL exit non-zero if ANY validation entry is
+a WARN or higher, so the command can gate a CI deploy.
+
+**Trace:** [[#TEST-4211]], [[#CON-4205]], [[#ADR-4206]]; [[#3.7 HP7]].
 
 ### REQ-4210: Input Grammar for `public_paths`
 
@@ -540,6 +660,36 @@ anonymous* via this mechanism — but that's already the case (anonymous
 sees public pages; a capability holder also sees public pages plus
 their scope).
 
+### ADR-4206: Preview CLI Over Startup-Warning-Only
+
+**Status:** Proposed (strawman default — operator-experience-first)
+
+**Context:** Two ways to help the operator understand what they're
+about to expose: (a) print warnings at server-startup time (cheap, no
+new surface), (b) ship a separate `zetl collab public-paths preview`
+CLI that resolves globs against the vault scan and lists pages +
+anonymous-search titles before the server is up.
+
+**Decision:** Both, but the preview is the load-bearing tool. (a) is
+necessary (typos + dangerous globs MUST stop the server cold) but
+insufficient — at startup the operator is already "going live" and may
+miss a WARN line in the noise. (b) lets the operator iterate locally
+(`vim config.toml && zetl collab public-paths preview` until it
+matches the intended page set), gate CI deploys (`--strict` exits
+non-zero on any WARN), and audit the public surface as the vault
+grows over time (re-run weekly).
+
+**Consequences:** (+) Operators see exactly which page slugs and
+which search titles go public BEFORE any anonymous visitor does — the
+[[#Threat Model B]] leakage surface becomes visible in dry-run, not
+post-incident. (+) Mirrors the existing `zetl cap check` /
+`zetl hook dry-run` pattern; consistent operator muscle memory. (−)
+One more surface to maintain. (−) Preview output drifts from runtime
+behaviour if the vault scan and the gate use different path
+canonicalisation — the implementation must share the canonicaliser
+between the two (deferred to [[DESIGN-042-public-paths-collab]] task
+`preview-cli` to validate against a fixture vault).
+
 ### ADR-4205: SPL Doesn't See Anonymous (Path Glob *Is* the Policy)
 
 **Status:** Proposed (strawman default — minimal coupling)
@@ -572,12 +722,34 @@ Documented limitation.
 
 ```toml
 [collab.auth]
-public_paths = ["/", "/about/**", "/blog/*", "/docs/**"]
+public_paths = ["/", "/about", "/about/**", "/blog/*", "/docs/**"]
 ```
 
 `Option<Vec<String>>`, default `None`. The string-element grammar is
 [[#REQ-4210]]. The parent `[collab.auth]` table's `deny_unknown_fields`
 remains; a misspelt `publicpaths` is a startup error per [[SPEC-041]].
+
+**Common patterns** (a table operators should consult before deploying;
+mirrored in `docs/collab-auth.md` and surfaced by `zetl collab
+public-paths preview` per [[#REQ-4211]]):
+
+| Glob              | Matches                                   | Use case                                              |
+| ----------------- | ----------------------------------------- | ----------------------------------------------------- |
+| `/`               | ONLY the root path `/`                    | Bare landing page; visitors must log in for anything else |
+| `/file`           | The literal path `/file`                  | A single named page                                   |
+| `/*`              | Single-segment paths (`/file`, `/About`)  | Root index + every top-level page (no descent)        |
+| `/about`          | The literal path `/about`                 | The bare `about` page (no children)                   |
+| `/about/*`        | Direct children of `/about` only          | `/about/contact` matches; `/about/team/alice` does not |
+| `/about/**`       | `/about` AND everything under it          | `about` section, recursive                            |
+| `/blog/*.html`    | One-deep `*.html` files under `/blog`     | Published `.html` only, no draft sub-folders          |
+| `/**`             | (REJECTED at startup)                     | Use `zetl serve` without `--collab` instead           |
+
+Semantics inherit from [[globset]]'s `gitignore`-style globs: each
+pattern is anchored to the full request path; `*` matches one path
+segment (no descent into `/`); `**` matches zero-or-more components.
+**Most operator stumbles are about not anchoring the path the way they
+expected** — run [[#REQ-4211|preview]] first and the surprises surface
+before the server is up.
 
 **Pre-conditions:** Read once at startup.
 
@@ -654,6 +826,50 @@ SPEC-041 [[#REQ-4117|REQ-4117]] enforcement is unchanged.
 
 **Implements:** [[#REQ-4204]]. **Verified by:** [[#TEST-4204]].
 
+### CON-4205: CLI — `zetl collab public-paths preview`
+
+**Endpoint:** `zetl collab public-paths preview [--strict] [--json]`.
+Reads `.zetl/config.toml`, scans the vault, and emits the structured
+output described in [[#3.7 HP7]]. The command is read-only (no file
+writes, no network).
+
+**Output schema** (JSON form, also reflected in the table form):
+
+```json
+{
+  "globs": [
+    { "pattern": "/about/**", "pages": ["/about/contact", "/about/team", ...] }
+  ],
+  "summary": { "public": 7, "gated": 40, "total": 47, "zero_match_globs": 0 },
+  "anonymous_search_titles": [
+    { "title": "About", "slug": "/about" }
+  ],
+  "validation": {
+    "dangerous_globs":          [],
+    "zero_match_globs":         [],
+    "unreachable_anonymous_spl": []
+  },
+  "exit_code": 0
+}
+```
+
+**Pre-conditions:** vault is scannable; `[collab.auth]` parses.
+
+**Post-conditions:** (REQ-4211) every matching slug + every anonymous-
+search title is listed; per-glob counts and a vault total are emitted;
+validation results name any dangerous glob, zero-match glob, or
+unreachable-anonymous-SPL rule. `--strict` causes exit code 2 if any
+WARN-level entry appears; without it, exit code is 0 on a successful
+run regardless of warnings (operator can run for visibility without
+gating).
+
+**Error model:** non-zero exit + stderr for: vault not scannable,
+`.zetl/config.toml` parse error (same error message as the server
+startup would emit for byte-for-byte consistency), feature mismatch
+(unimplemented method named in `methods`).
+
+**Implements:** [[#REQ-4211]]. **Verified by:** [[#TEST-4211]].
+
 ### CON-4204: Anonymous-Aware Search / Backlinks Filtering
 
 The search and backlinks query paths gain an `is_anonymous: bool` flag
@@ -694,6 +910,7 @@ matching `public_paths`. Authenticated responses are unchanged.
 | [[#TEST-4208]]        | example                   | SPL `(forbidden read (subject anonymous) …)` rule surfaces startup warning           | [[#REQ-4208]]                      |
 | [[#TEST-4209]]        | example                   | Anonymous request → operator log + audit line with `method=anonymous identity=-`     | [[#REQ-4209]]                      |
 | [[#TEST-4210]]        | fuzz + property           | Random byte sequences against the public-path-glob recogniser: no panics, no acceptance of out-of-grammar input | [[#REQ-4210]] |
+| [[#TEST-4211]]        | example + snapshot        | Preview CLI emits expected slug + title + summary + validation sections against a fixture vault; `--json` is structurally stable; `--strict` exits non-zero on WARN; no file writes; output agrees with the actual gate's runtime behaviour | [[#REQ-4211]]                      |
 | [[#TEST-NFR-4201]]    | benchmark                 | Hot-path match ≤ 50 µs 95p for 256-pattern GlobSet                                   | [[#NFR-4201]]                      |
 | [[#TEST-NFR-4202]]    | benchmark                 | Startup glob compilation ≤ 100 ms for 256 patterns                                    | [[#NFR-4202]]                      |
 | TEST-mutation-gate    | mutation                  | Mutation kill rate ≥ 90% on the public-path branch of `collab_gate`                  | [[#REQ-4202]] robustness           |
@@ -713,6 +930,7 @@ matching `public_paths`. Authenticated responses are unchanged.
 | [[#OBS-4204]]  | log    | Audit log: same shape as SPEC-041 [[#OBS-4104|OBS-4104]] but with `method=anonymous identity=-` | [[#REQ-4209]]                      |
 | [[#OBS-4205]]  | log    | Startup line gains a `public=[<glob>, <glob>, …]` segment listing the configured patterns        | [[#REQ-4201]]                      |
 | [[#OBS-4206]]  | log    | Startup WARN line per SPL rule referencing an unreachable "anonymous" subject (REQ-4208)         | [[#REQ-4208]]                      |
+| [[#OBS-4207]]  | log    | Startup WARN line per glob that matches zero pages in the current vault (typo signal) — same data the preview surfaces, surfaced again at server-up time for operators who skipped the dry-run | [[#REQ-4206]], [[#REQ-4211]] |
 
 > The `glob` label on OBS-4202 is **operator-channel only**; it MUST
 > NOT be exposed on any unauthenticated HTTP-readable metrics endpoint,
@@ -866,19 +1084,42 @@ task completes.
 > section is the human-readable summary. **No phase begins** before the
 > Tier-1 human-expert review of this specification.
 
-### Phase 0 — Pure-Core + Config Lens
+### Phase 0 — Pure-Core + Config Lens + Preview Resolver
 
-**Goal:** the pure pieces, no wiring.
+**Goal:** the pure pieces, no server wiring; preview can already be
+useful against a vault even before the gate is wired.
 
 - New `src/web/auth/public_paths.rs`: `PublicPathsConfig` (typed
   `Vec<String>`), `parse` (REQ-4210 grammar), `validate` (REQ-4206
   dangerous-shape rules), `compile` (→ `globset::GlobSet`), `is_public`
   (hot-path predicate).
+- New `resolve(set: &GlobSet, vault: &VaultData) -> PreviewReport`
+  (pure): walks the vault page index, returns per-glob matches +
+  zero-match-globs + the title list for anonymous search.
 - Extend [[SPEC-041]] `CollabAuthConfig` with
   `public_paths: Option<Vec<String>>`.
 - Unit tests: grammar accept/reject matrix, dangerous-shape rejection
-  matrix, compile+match round-trip.
+  matrix, compile+match round-trip, resolver against a fixture vault.
 - **Gate:** [[#TEST-4201]], [[#TEST-4206]], [[#TEST-4210]] green.
+
+### Phase 0.5 — Preview CLI
+
+**Goal:** operators can audit the public surface before any server is
+up. Independently useful even before Phase 1 ships the gate.
+
+- `src/cli.rs`: extend the [[SPEC-041]] `CollabCommand` with
+  `PublicPaths { command: PublicPathsCommand }` and
+  `PublicPathsCommand::Preview { strict, /* output flags inherited */ }`.
+  Variant doc-comments scrubbed of SPEC-IDs per the existing
+  `test_help_no_spec_references` constraint.
+- `src/main.rs`: handler that loads config, scans the vault, calls the
+  Phase-0 `resolve`, renders the `[[#3.7 HP7|preview output]]` (table
+  or JSON per the existing `-f` flag).
+- Integration tests via `assert_cmd` against fixture vaults: happy
+  path, glob-with-zero-matches, dangerous-glob (same error byte-for-
+  byte as the server's startup-time error per [[#CON-4205]]),
+  `--strict` exit behaviour.
+- **Gate:** [[#TEST-4211]] green.
 
 ### Phase 1 — Gate Bypass
 
@@ -926,12 +1167,15 @@ task completes.
 
 ### Sequencing Rationale
 
-Phase 0 is pure data + grammar; trivially reversible. Phase 1 ships
-the operator-visible feature with the leak-safe property (anonymous
-requests can't write, can't search private titles via the gate
-mechanism — Phase 2 closes the search-result side). Phase 2 closes
-the search/backlinks leak surface and makes the feature complete.
-Phase 3 is hardening + docs + review.
+Phase 0 is pure data + grammar; trivially reversible. **Phase 0.5
+ships the preview CLI before the gate is wired** — operators get a
+"show me what this WOULD do" tool with no server change, so the
+SPEC-042 design can be evaluated against real vaults before any code
+path actually exposes a page anonymously. Phase 1 ships the operator-
+visible feature with the leak-safe property (anonymous requests can't
+write, can't search private titles via the gate mechanism). Phase 2
+closes the search/backlinks leak surface and makes the feature
+complete. Phase 3 is hardening + docs + review.
 
 ---
 
