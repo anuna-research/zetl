@@ -1,7 +1,7 @@
 ---
 id: SPEC-042
 title: "Public Paths for `zetl --collab` — mixed unauthenticated + authenticated routing"
-version: 0.1.0-strawman
+version: 0.2.0-strawman
 status: draft
 date: 2026-05-17
 audience: agent, human
@@ -12,6 +12,17 @@ related:
   - SPEC-034  # Capability mode (parallel public-distribution story)
   - SPEC-005  # SPL / defeasible reasoning (authorization layer)
 plan: DESIGN-042-public-paths-collab
+revision_notes:
+  - v0.1.0 (initial strawman): treated `public_paths` as a gate-level
+    TOML matcher parallel to SPL; documented Threat Model E ("two
+    policy surfaces") as residual.
+  - v0.2.0 (this revision): re-architected `public_paths` as SUGAR
+    over SPL — TOML config compiles to `(given (can-read "anonymous"
+    PATTERN))` facts; the page-ACL pipeline gains `Option<user_id>`
+    mirroring the existing asset-ACL pipeline. One policy surface;
+    Threat Model E + Threat Model I resolved by construction. Adds
+    REQ-4208 revised, REQ-4214, ADR-4208; supersedes ADR-4205.
+    Adds Phase 0.7 (page-ACL refactor) to the implementation plan.
 ---
 
 # SPEC-042: Public Paths for `zetl --collab`
@@ -34,7 +45,7 @@ plan: DESIGN-042-public-paths-collab
 | -------------- | ---------------------------------------------------------------------- |
 | Document ID    | [[SPEC-042-public-paths-collab\|SPEC-042]]                              |
 | Title          | Public Paths for `zetl --collab`                                       |
-| Version        | 0.1.0-strawman                                                         |
+| Version        | 0.2.0-strawman (v0.1.0 had TOML+SPL two-surface design; v0.2.0 unifies as TOML-sugar-over-SPL — see `revision_notes` in YAML frontmatter) |
 | Status         | Draft (strawman; pending [[DESIGN-042-public-paths-collab]] execution) |
 | Author         | Agent (Claude Opus 4.7, [[PROTO-001\|USDD Agent Protocol]] v1.7.0)      |
 | Date           | 2026-05-17                                                             |
@@ -72,74 +83,131 @@ architecture that doesn't match their mental model.
 
 ### 1.2 Core Insight
 
-**The path-vs-principal decision is already made before any
-authentication logic runs.** A request's URL tells us — without
-consulting the [[AuthChain]] or [[SPL]] — whether the page is something
-the operator marked public. The [[Authenticator]] chain and the
-authorization layer don't need to learn anything new; we just teach
-`collab_gate` to peek at the request path against an operator-declared
-allowlist and bypass itself on match.
+**Anonymous-readability is a form of access control, and zetl already
+has an access-control system.** The first cut of this spec
+(strawman v0.1.0) treated `public_paths` as a *gate-level TOML
+allowlist* parallel to [[SPL]] — creating two policy surfaces ([[SPL]]
+for authenticated subjects, TOML for anonymous), warning operators
+about the confusion via Threat Model E, and shipping the smell. The
+revised insight (v0.2.0): the [[SPL]] page-ACL pipeline can be
+extended to handle anonymous subjects the same way the *asset*-ACL
+pipeline (`check_can_read_assets`, `src/acl.rs:1351–1370`) already
+does — by accepting `Option<user_id>`, mapping `None` →
+`("anonymous", false)`, and evaluating built-in defaults that
+consult an `(authenticated …)` predicate. The asset path has done
+this since SPEC-020; we follow its pattern for pages.
 
-This is the same invariant SPEC-041 §1.2 names — authorization is the
-seam that doesn't move. Anonymous-public requests skip the gate; the
-[[Principal]] extension stays `None`; the chain didn't authenticate, and
-SPL doesn't need to evaluate. The path glob *is* the policy for public
-pages.
+So the architecture is:
+
+* `[collab.auth] public_paths = ["/about/**"]` in TOML is **sugar**
+  that compiles at startup to [[SPL]] facts of the shape
+  `(given (can-read "anonymous" "/about/**"))`.
+* `collab_gate` consults [[SPL]] for anonymous requests instead of
+  pattern-matching a separate GlobSet. Same engine, same rule
+  language, same fact store.
+* Operators with `--features reason` *off* get a degenerate
+  GlobSet matcher driven by the same TOML config — no SPL evaluation,
+  but the operator-facing config shape is identical.
+* Operators with `--features reason` *on* can express anything SPL
+  can express: "anonymous can read `/about/**` BUT NOT
+  `/about/draft/**`", per-time-of-day rules, per-IP via proxy-header
+  facts, etc. The TOML knob is the easy path; SPL is the
+  expressiveness escape hatch.
+
+[[SPEC-041]] §1.2's invariant — "authorization is the seam that
+doesn't move" — still holds. We are not *adding* a new policy
+surface; we are *unifying* an apparent new one with the existing one.
 
 ### 1.3 Design Principles
 
-1. **Authorization is invariant.** The [[AuthChain]] doesn't change. SPL
-   doesn't see anonymous requests. The path glob is a gate, not a
-   policy. Anyone implementing per-page rules in [[SPL]] can ignore
-   public_paths entirely.
-2. **Default is today's behaviour.** A vault with no `public_paths` in
-   `[collab.auth]` authenticates exactly as the SPEC-041 release does.
-3. **One gate, one decision.** `collab_gate` makes the public-vs-gated
-   decision in one place, before delegating to the principal check.
-   `csrf_guard`, `admin_gate`, and the extractors are untouched — they
-   only run when the gate let the request through.
-4. **Safe methods only.** Anonymous `POST`/`PUT`/`DELETE` is forbidden
-   in v1. Public paths are read-only ports — write attribution
-   ([[SPEC-020]] §every-edit-is-attributed) cannot be satisfied for
-   anonymous principals. State-changing requests against a public path
-   are 405 / 403, not 200.
-5. **Fail closed on configuration ambiguity.** A glob that matches the
-   admin surface, or one too broad to be plausibly intentional (`/**`,
-   `/_*`), is a startup error, not a silent surprise.
-6. **All input is recognised before it is acted on.** Per [[PROTO-001]]
-   Constitutional Principle 14 ([[LangSec]]), the `public_paths`
-   patterns parse against a declared grammar and reject anything outside
-   it (REQ-4210).
-7. **Search and backlinks must learn.** If `/private/**` is gated,
-   anonymous-visible search results and backlink lists must not leak
-   private titles. The default for anonymous visitors is "scoped to
-   public_paths."
+1. **One policy surface.** Anonymous-readability is access control;
+   access control lives in [[SPL]]. `public_paths` is operator-
+   friendly TOML sugar that compiles to [[SPL]] facts. There is one
+   evaluator, one fact store, one query language.
+2. **Default is today's behaviour.** A vault with no `public_paths`
+   in `[collab.auth]` AND no anonymous-allowing SPL rule
+   authenticates exactly as the SPEC-041 release does.
+3. **Graceful feature-flag degradation.** Under `--features reason`
+   *off*, the SPL evaluator isn't compiled in — but operators still
+   need anonymous read access. The TOML config drives a GlobSet
+   matcher in that case (today's strawman design); the operator-
+   facing config is identical, only the *evaluation* differs.
+4. **Read-side widening only.** `public_paths` is sugar for
+   `(can-read "anonymous" PATH)` facts. It does NOT mint
+   `(can-edit "anonymous" PATH)` facts. Anonymous writes require an
+   operator to explicitly author the SPL rule — making the
+   attribution-story decision explicit, not implicit. The default
+   built-in `(forbidden edit (subject anonymous) (any))` rule
+   ensures anonymous-edit defaults to deny under all configurations.
+5. **`collab_gate` becomes a thin SPL caller.** The gate's job is
+   "query SPL for `(can-read PRINCIPAL PATH)`; pass on permit,
+   401/403 on deny." Path-matching, role-checking, and capability-
+   scope-checking move into SPL facts and built-in rules. The gate
+   stays the single decision site (one call, one answer), but it
+   doesn't pattern-match itself anymore.
+6. **Fail closed on configuration ambiguity.** A glob that matches
+   the admin surface, or one too broad to be plausibly intentional
+   (`/**`, `/_*`), is a startup error before the TOML→SPL
+   compilation runs — the SPL fact store never sees the dangerous
+   shape.
+7. **All input is recognised before it is acted on.** Per
+   [[PROTO-001]] Constitutional Principle 14 ([[LangSec]]), the
+   `public_paths` patterns parse against a declared grammar and
+   reject anything outside it (REQ-4210) BEFORE compiling to SPL
+   facts.
+8. **Search and backlinks share the same predicate.** If `(can-read
+   "anonymous" "/private/runbook")` returns deny, the search filter
+   omits `/private/runbook` from anonymous responses — same query,
+   same answer, same code path. This also closes [[#Threat Model I]]
+   (per-role search filtering) for free: a Reader's search results
+   come from the same `(can-read READER_USER_ID …)` query.
 
 ### 1.4 Scope
 
 **In scope:**
 
-- A `[collab.auth] public_paths` glob list (TOML) that bypasses
-  `collab_gate` for matching request paths.
+- A `[collab.auth] public_paths` glob list (TOML) that **compiles at
+  startup to [[SPL]] facts of the shape `(given (can-read "anonymous"
+  PATTERN))`** under `--features reason`, OR drives a degenerate
+  GlobSet matcher under the default build. The operator-facing
+  config shape is identical either way.
+- Extension of the page-ACL pipeline (`src/acl.rs::evaluate`) to
+  accept `Option<user_id>` and map `None` → `("anonymous", false)`,
+  mirroring the existing `check_can_read_assets` anonymous-aware
+  pattern (`src/acl.rs:1351–1370`).
+- A built-in default SPL rule `(forbidden edit (subject anonymous)
+  (any))` to ensure anonymous-edit defaults to deny under all
+  configurations (REQ-4203).
 - A **`zetl collab public-paths preview` CLI** ([[#REQ-4211]],
-  [[#CON-4205]]) that resolves the configured globs against the vault
-  scan and prints (a) every page slug that would be served
-  unauthenticated, (b) the titles a `/search` request would surface
-  for an anonymous visitor, (c) any glob that matches zero pages
-  (likely a typo), and (d) any startup warnings (REQ-4206 dangerous
-  shapes, REQ-4208 unreachable-SPL). **Operators MUST be able to
-  preview the public surface before bringing a `--collab` server up.**
-- Safe-method restriction at the gate.
-- Startup validation rejecting dangerous globs.
-- Interaction with the [[Capability URL]] authenticator: a capability
-  principal's scope check is skipped on public paths (the page is
-  public for everyone; the capability adds nothing).
+  [[#CON-4205]]) that compiles the TOML config, runs the same
+  evaluator the live gate uses against the vault scan, and prints
+  (a) every page slug an anonymous visitor would be permitted to
+  read, (b) the titles a `/search` request would surface for an
+  anonymous visitor, (c) any glob that matches zero pages (likely
+  typo), (d) any startup warnings (REQ-4206 dangerous shapes,
+  REQ-4208 SPL rule conflicts). **Operators MUST be able to preview
+  the public surface before bringing a `--collab` server up.**
+- Safe-method restriction enforced at the gate via the built-in
+  `(forbidden edit (subject anonymous) (any))` rule.
+- Startup validation rejecting dangerous globs before TOML→SPL
+  compilation runs.
+- Interaction with the [[Capability URL]] authenticator: a
+  capability principal's scope check is skipped for safe methods on
+  paths where SPL says `(can-read "anonymous" PATH)` is permitted
+  (the page is public for everyone; the capability adds nothing on
+  reads). Writes still enforce capability scope (REQ-4204).
 - Interaction with [[#REQ-4112|REQ-4112 CSRF exemption]] from
   [[SPEC-041]]: anonymous requests have no cookie session, so the
-  CSRF guard is a no-op for them — but the safe-method restriction
-  means it never gets the chance to matter.
-- Anonymous-aware search-result + backlink filtering (REQ-4207).
-- Audit + operator-log entries naming public-path requests (REQ-4209).
+  CSRF guard is a no-op for them — anonymous-write defaults to
+  forbidden via the built-in SPL rule, so CSRF never gets the chance
+  to matter for them.
+- Anonymous-aware search-result + backlink filtering (REQ-4207),
+  using the same `(can-read PRINCIPAL SLUG)` query as per-page
+  authorization — this also closes [[#Threat Model I]] (Reader-role
+  per-result filtering) for free.
+- Cache-Control / Vary headers on anonymous responses (REQ-4212).
+- Audit + operator-log entries naming public-path requests
+  (REQ-4209).
 
 **Out of scope:**
 
@@ -519,15 +587,48 @@ appear in any response served to an anonymous request.
 
 **Trace:** [[#TEST-4207]], [[#ADR-4203]]; [[#3.5 HP5]]; [[#Threat Model B]].
 
-### REQ-4208: SPL Invariant (Anonymous Requests Don't Reach SPL)
+### REQ-4208: SPL Invariant — Anonymous DOES Reach SPL (revised)
 
-[[SPL]] policy SHALL NOT be evaluated for an anonymous request that
-the public-path gate admitted. The path glob is the policy for these
-requests. Existing SPL rules that reference an "anonymous" subject (if
-any) MUST surface as a startup warning so the operator notices that the
-policy is unreachable.
+[[SPL]] policy SHALL be evaluated for anonymous requests when
+`--features reason` is compiled in (the standard zetl build that
+includes the SPL engine — `cargo build --features collab,reason`).
+The page-ACL pipeline accepts `Option<user_id>`; anonymous maps to
+`("anonymous", false)` in the same shape as the existing
+`check_can_read_assets` pipeline (`src/acl.rs:1351–1370`).
 
-**Trace:** [[#TEST-4208]], [[#ADR-4205]].
+Built-in defaults the system ships AS SPL FACTS at startup:
+
+```spl
+;; anonymous-edit defaults to deny (REQ-4203, ADR-4202).
+(forbidden edit (subject anonymous) (any))
+
+;; compiled-from-TOML for each `[collab.auth] public_paths` entry.
+(given (can-read "anonymous" "/about/**"))
+(given (can-read "anonymous" "/blog/*"))
+;; … one fact per public_paths entry.
+```
+
+Operator-authored SPL rules that reference an `"anonymous"` subject
+or `(not (authenticated …))` predicate are now FIRST-CLASS — they
+fire against anonymous requests and compose with the compiled-from-
+TOML facts. The startup warning the v0.1.0 draft of this REQ
+mandated ("SPL rule referencing anonymous is unreachable") is
+INVERTED: such rules are now reachable. The startup warning that
+DOES still fire is "an operator-authored SPL rule about anonymous
+*directly conflicts* with a compiled-from-TOML fact" — e.g.,
+operator writes `(forbidden read (subject anonymous) (page-glob
+"/about/**"))` AND has `[collab.auth] public_paths = ["/about/**"]`.
+The conflict is resolved by SPL's normal defeasibility (operator-
+authored `(forbidden …)` outranks system-generated `(given (can-read
+…))` because explicit forbidden defeats default permit); the warning
+surfaces so the operator notices the implicit override.
+
+Under `--features reason` *off*, [[#REQ-4214]] specifies the fast-
+path matcher equivalent.
+
+**Trace:** [[#TEST-4208]], [[#ADR-4205]] (revised), [[#ADR-4208]].
+This REQ supersedes the v0.1.0 draft which said "SPL doesn't see
+anonymous"; see [[#ADR-4205]] for the architectural reasoning.
 
 ### REQ-4209: Audit and Operator-Log of Anonymous Accesses
 
@@ -642,6 +743,67 @@ the real titles).
 
 **Trace:** [[#TEST-4213]], [[#Threat Model B]], [[#ADR-4207]];
 [[#15. Open Questions Surfaced by This Strawman]] Q8.
+
+### REQ-4214: Feature-Flag Behaviour — `--features reason` On vs Off
+
+The system SHALL produce equivalent operator-observable behaviour
+under both feature configurations, differing only in *evaluation
+shape*, not in *what is permitted*:
+
+**Build A: `cargo build --features collab,reason` (SPL engine
+present).**
+
+- TOML `[collab.auth] public_paths` is parsed + validated, then
+  compiled to [[SPL]] facts per [[#ADR-4208]] and inserted into the
+  fact store alongside the built-in `(forbidden edit (subject
+  anonymous) (any))`.
+- `collab_gate` calls `evaluate(AclQuery{ user: Anonymous,
+  action: Read, page: <slug> })`; permit → next, deny → 401.
+- Anonymous-edit attempts trigger the built-in `(forbidden edit
+  …)` → 401.
+- Operator-authored SPL rules that reference anonymous subjects
+  FIRE and compose with the compiled facts via SPL defeasibility.
+- Search + backlinks share `(can-read PRINCIPAL SLUG)` query
+  (closes [[#Threat Model I]] for free).
+- Preview CLI runs SPL against the vault scan; output reflects
+  EXACTLY what the live gate would permit.
+
+**Build B: `cargo build --features collab` (default; SPL engine
+absent).**
+
+- TOML `[collab.auth] public_paths` is parsed + validated, then
+  compiled to a `globset::GlobSet` (today's strawman-v0.1.0 design).
+- `collab_gate` does:
+  ```
+  if anonymous && path matches GlobSet:
+      if safe method → next, with REQ-4212 cache headers
+      else            → 401 (hardcoded equivalent of the built-in
+                             `(forbidden edit (subject anonymous) (any))`)
+  if anonymous && path does NOT match GlobSet:
+      → 401 / login redirect
+  ```
+- Operator-authored SPL rules don't exist (the engine isn't
+  compiled in); the TOML config IS the policy.
+- Search + backlinks consult the GlobSet directly (the
+  [[#REQ-4207]] response-boundary filter degrades to GlobSet
+  match instead of SPL query).
+- Preview CLI runs the GlobSet matcher; output equivalent to
+  Build A for any vault whose operator hasn't authored anonymous-
+  referencing SPL rules.
+
+**Equivalence invariant:** For any vault that uses *only* the TOML
+`[collab.auth] public_paths` knob (no operator-authored SPL rules
+about anonymous), Build A and Build B SHALL admit and deny the
+same requests. A vault that adds operator-authored anonymous SPL
+rules will diverge — Build A applies them; Build B silently
+ignores them. The startup banner under Build B MUST warn
+"`.zetl/collab/access.spl` exists but `--features reason` is off;
+operator-authored SPL rules will not fire" so operators don't
+mistake silent-ignore for evaluated-and-permitted.
+
+**Trace:** [[#TEST-4214]], [[#ADR-4208]]; closes the build-
+configuration-equivalence concern raised by the path-C
+re-architecture.
 
 ---
 
@@ -811,26 +973,43 @@ canonicalisation — the implementation must share the canonicaliser
 between the two (deferred to [[DESIGN-042-public-paths-collab]] task
 `preview-cli` to validate against a fixture vault).
 
-### ADR-4205: SPL Doesn't See Anonymous (Path Glob *Is* the Policy)
+### ADR-4205: SPL *Does* See Anonymous (Unified Policy Surface)
 
-**Status:** Proposed (strawman default — minimal coupling)
+**Status:** Revised — withdraws the strawman-v0.1.0 position ("SPL
+doesn't see anonymous"). The earlier position created two policy
+surfaces (TOML `public_paths` and [[SPL]]) and admitted the
+resulting confusion as [[#Threat Model E]]. The revised position
+unifies them — see [[#ADR-4208]] for the architectural shift.
 
-**Context:** Could [[SPL]] rules reference an "anonymous" subject to
-e.g. forbid certain pages even for anonymous visitors? Technically yes;
-but it would create two policy surfaces (`public_paths` and SPL
-`(forbidden read (subject anonymous) …)`) that could conflict.
+**Context:** The strawman-v0.1.0 reasoning was: "extending SPL to
+handle anonymous would be a big refactor; gate-level TOML config is
+smaller; we can warn operators about the two-surface confusion."
 
-**Decision:** v1 routes anonymous requests around SPL entirely. The
-`public_paths` glob is the policy for these requests. SPL rules that
-reference an "anonymous" subject (if any exist in a vault) surface as
-a startup warning so the operator knows their rule is unreachable.
+The flaw: the *asset*-ACL pipeline (`check_can_read_assets`,
+`src/acl.rs:1351–1370`) already extends SPL to handle anonymous —
+it accepts `Option<&str>`, maps `None` → `("anonymous", false)`,
+passes `is_authenticated: bool`, and ships built-in defaults like
+`(normally r-public-read-assets (and (visibility-mode transparent)
+(not (authenticated "user_id"))) (can-read-assets "anonymous" "*"))`.
+The pattern is established and shipped; we're not inventing it.
 
-**Consequences:** (+) One source of truth for "what's public." (+)
-Existing SPL libraries don't have to learn about anonymous. (−)
-Operators who want layered policy (e.g., "public except this private
-sub-folder") express it via the glob (`"!/about/secret/**"` if
-[[globset]] supports negation; otherwise narrow the positive glob).
-Documented limitation.
+**Decision:** The page-ACL pipeline gains the same `Option<user_id>`
+treatment. SPL rules CAN reference anonymous subjects via the same
+`(not (authenticated …))` predicate the asset rules already use.
+TOML `public_paths` becomes sugar — it compiles to SPL facts
+([[#ADR-4208]]); the SPL engine is the single evaluator.
+
+**Consequences:** (+) One policy surface. (+) [[#Threat Model E]]
+becomes "no longer applicable" — there is no second surface to
+conflict with. (+) Layered policy ("public except this sub-folder")
+becomes natural SPL ("`(can-read "anonymous" "/about/**")` AND
+`(forbidden read (subject anonymous) (page-glob "/about/draft/**"))`").
+(+) Per-role search filtering ([[#Threat Model I]]) becomes the same
+machinery — the predicate widens from "is the request anonymous?" to
+"what can this principal read?", same query. (−) The page-ACL
+pipeline gains an `Option<user_id>` parameter, threading through
+every call site — a medium-sized refactor. The asset path proves
+it's feasible; the diff shape is established.
 
 ### ADR-4207: Wikilink-on-Public-Page Rendering Policy
 
@@ -871,6 +1050,80 @@ view-only. This means an editor previewing their own draft sees the
 real titles; an anonymous visitor in a private window sees the
 redacted view. Operators verify-before-deploy by viewing the public
 page in an incognito tab.
+
+### ADR-4208: `public_paths` Is Sugar — Compiles to [[SPL]] Facts
+
+**Status:** Proposed (strawman v0.2.0 — supersedes the v0.1.0
+ADR-4205 "SPL doesn't see anonymous" position)
+
+**Context:** The strawman-v0.1.0 design treated `public_paths` as a
+**gate-level GlobSet** that pattern-matched the request path before
+[[SPL]] was consulted. The result was two policy surfaces — TOML
+`public_paths` AND [[SPL]] — with overlapping concerns and explicit
+operator confusion documented as [[#Threat Model E]]. The
+*asset*-ACL pipeline (`src/acl.rs::check_can_read_assets`,
+`src/acl.rs:1351–1370`) already proves zetl's [[SPL]] engine can
+handle anonymous subjects via `Option<&str>` + `is_authenticated:
+bool` + built-in defaults referencing `(not (authenticated …))`. The
+page-ACL pipeline can do the same.
+
+**Decision:** `[collab.auth] public_paths` is a **sugar layer**, not
+a separate policy. At startup:
+
+1. Parse + validate the TOML `public_paths` list (REQ-4206 dangerous-
+   glob rejection runs here, BEFORE any compilation).
+2. Compile each entry to an [[SPL]] fact:
+   ```spl
+   (given (can-read "anonymous" "/about/**"))
+   (given (can-read "anonymous" "/blog/*"))
+   ```
+   plus a single built-in default the system always ships:
+   ```spl
+   (forbidden edit (subject anonymous) (any))
+   ```
+   so anonymous-edit defaults to deny regardless of operator config
+   (preserves REQ-4203 by construction, makes the anonymous-write
+   decision an explicit operator opt-in via SPL rather than an
+   implicit gate-side restriction).
+3. Insert the compiled facts into the same fact store the existing
+   page-ACL evaluator already consults. The evaluator's query
+   `(can-read PRINCIPAL PATH)` works unchanged — `PRINCIPAL` is just
+   `"anonymous"` instead of a user ID.
+
+`collab_gate` rewrites to: "resolve principal (possibly None);
+query SPL `(can-read PRINCIPAL_OR_ANONYMOUS PATH)`; permit → next;
+deny → 401 if anonymous, 403 if authenticated-but-unauthorized."
+
+Under `--features reason` **off** (default zetl build that doesn't
+compile the SPL engine), the same TOML config drives a `globset`-
+based fast path matcher — the operator-facing config is identical,
+the in-process evaluation degrades to "match path against
+GlobSet → permit; default deny." Built-in `(forbidden edit
+(subject anonymous) (any))` becomes a hardcoded "anonymous + non-
+safe method → 401" check in the fast path. See [[#REQ-4214]] for
+the precise behavioural contract under each feature configuration.
+
+**Consequences:** (+) One policy surface — TOML is just sugar.
+[[#Threat Model E]] is no longer applicable. (+) Search +
+backlinks share the same `(can-read PRINCIPAL SLUG)` query —
+[[#Threat Model I]] (per-role result filtering) is solved by the
+same machinery for free. (+) Operators who outgrow the TOML knob
+can drop into raw SPL ("`(can-read "anonymous" "/about/**")` AND
+`(forbidden read (subject anonymous) (page-glob "/about/draft/**"))`")
+without needing a new config surface. (+) The asset-path pattern is
+established; the diff shape for the page-ACL refactor is known.
+(−) The page-ACL pipeline's `evaluate()` function signature gains
+`Option<&str>` for `user_id` — every call site needs touching.
+Mitigated by the asset-path precedent. (−) Anyone reading the SPL
+fact store sees `(given (can-read "anonymous" …))` entries they
+didn't author; the preview CLI ([[#REQ-4211]]) and SPL trace
+viewer ([[hence query explain]]) both list provenance
+(`from: public_paths`) so the operator can trace the fact back to
+its TOML source.
+
+**Trace:** [[#REQ-4214]], [[#REQ-4201]], [[#REQ-4202]]; supersedes
+[[#ADR-4205]] v0.1.0; closes [[#Threat Model E]]; resolves
+[[#Threat Model I]].
 
 ---
 
@@ -921,11 +1174,12 @@ and the dangerous-shape rejects, OR startup fails naming the pattern.
 **Implements:** [[#REQ-4201]], [[#REQ-4206]], [[#REQ-4210]].
 **Verified by:** [[#TEST-4201]], [[#TEST-4206]], [[#TEST-4210]].
 
-### CON-4202: `collab_gate` Public-Path Bypass
+### CON-4202: `collab_gate` Becomes a Thin SPL Caller (with Fast-Path Fallback)
 
-The gate's decision tree gains a public-path branch that considers
-BOTH the request path AND the resolved principal (post-revision of
-REQ-4203 / ADR-4202):
+The gate becomes a thin caller into the shared ACL evaluator. The
+*decision* (permit/deny) is owned by SPL (Build A) or a degenerate
+GlobSet matcher (Build B); the gate's job is to translate that
+decision into an HTTP response with the right headers.
 
 ```rust
 pub async fn collab_gate(
@@ -935,61 +1189,86 @@ pub async fn collab_gate(
 ) -> Response {
     if !state.collab { return next.run(request).await; }
 
-    let is_public = state.public_paths.is_match(request.uri().path());
     let principal = request.extensions().get::<Principal>().cloned();
+    let path = request.uri().path().to_string();
+    let action = action_from_method(request.method()); // Read | Edit
 
-    if is_public {
-        match (principal.is_some(), request.method()) {
-            // anonymous + safe → pass through (the feature)
-            (false, &Method::GET) | (false, &Method::HEAD) => {
-                apply_anonymous_cache_headers(next.run(request).await)
-            }
-            // anonymous + non-safe → 401 (writes still need auth)
-            (false, _) => unauthorized_response(&state),
-            // authenticated + any method → pass through; handler/
-            // SPL/capability_gate enforces role-based authorization.
-            (true, _) => next.run(request).await,
+    // `decide` is the unified entry point — Build A delegates to the
+    // SPL evaluator with Option<user_id>; Build B uses the compiled
+    // GlobSet + hardcoded anonymous-edit deny.
+    let outcome = state.acl.decide(principal.as_ref(), action, &path);
+
+    match (outcome, principal.is_some(), request.method()) {
+        (Decision::Permit, false, m) if is_safe(m) => {
+            // anonymous safe-method read on a permitted path.
+            apply_anonymous_cache_headers(next.run(request).await)
         }
-    } else {
-        // … pre-SPEC-042 logic unchanged: require Principal,
-        // redirect / 401 on miss.
-        gate_non_public(state, request, next).await
+        (Decision::Permit, true, _) => {
+            // authenticated principal — handler / capability_gate /
+            // any further per-page SPL runs as today.
+            next.run(request).await
+        }
+        (Decision::Deny, false, _) => unauthorized_response(&state),
+        (Decision::Deny, true, _)  => forbidden_response(&state),
+        // Permit + anonymous + non-safe is impossible — the built-in
+        // `(forbidden edit (subject anonymous) (any))` rule (Build A)
+        // or the hardcoded equivalent (Build B) returns Deny first.
+        _ => unauthorized_response(&state),
     }
-}
-
-fn apply_anonymous_cache_headers(mut res: Response) -> Response {
-    // REQ-4212 — anonymous-aware Cache-Control + Vary.
-    res.headers_mut().insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("public, max-age=0, must-revalidate"),
-    );
-    res.headers_mut().insert(
-        header::VARY,
-        HeaderValue::from_static("Cookie, Authorization"),
-    );
-    res
 }
 ```
 
+`AclEvaluator::decide`:
+
+* **Build A (`--features reason`)**: maps `principal: None` →
+  `("anonymous", false)`, constructs an `AclQuery` (the same
+  shape `evaluate()` already uses for authenticated callers),
+  and consults the SPL fact store (which contains the compiled-
+  from-TOML `(given (can-read "anonymous" …))` facts +
+  operator-authored `.zetl/collab/access.spl` + built-in
+  defaults).
+* **Build B (default)**: a degenerate matcher with two branches —
+  `Action::Read` checks the compiled `globset::GlobSet`,
+  `Action::Edit` always returns `Deny` for anonymous (the
+  hardcoded equivalent of `(forbidden edit (subject anonymous)
+  (any))`); authenticated principals always permit (the gate
+  has no further role machinery without SPL — per-page handlers
+  do their own role checks today).
+
+This is the architectural shift from the strawman-v0.1.0 design,
+where the gate pattern-matched the request path against a local
+`GlobSet` and made its own decision. The v0.2.0 design pushes the
+decision into a single evaluator, accessed via a common
+`AclEvaluator::decide` interface that the page-handler ACL calls
+also use.
+
 **Pre-conditions:** `auth_resolve` has already run (the Principal
-extension may be `Some` or `None`). `state.public_paths` is a
-pre-compiled [[globset::GlobSet]].
+extension may be `Some` or `None`). `state.acl` is the shared
+ACL evaluator (Build A → SPL; Build B → GlobSet matcher).
 
 **Post-conditions:**
-- (REQ-4202) public path + safe method + anonymous → pass through.
-- (REQ-4203) public path + non-safe method + anonymous → 401.
-- (REQ-4203) public path + any method + authenticated → pass
-  through; downstream handlers / SPL / capability_gate enforce
-  role-based authorization unchanged.
-- (REQ-4205) absent or empty `public_paths` reproduces pre-SPEC-042
-  behaviour.
-- (REQ-4212) anonymous public-path responses carry the cache
-  headers; authenticated responses do not (they keep per-route
-  headers).
+- (REQ-4202) anonymous + safe + decision Permit → pass through.
+- (REQ-4203) anonymous + non-safe → Deny → 401 (via built-in
+  `(forbidden edit (subject anonymous) (any))` Build A, or
+  hardcoded Build B).
+- (REQ-4203) authenticated + any method → pass through; downstream
+  handlers / per-page SPL / capability_gate enforce role-based
+  authorization unchanged.
+- (REQ-4205) absent or empty `public_paths` AND no anonymous-
+  permitting SPL rule → anonymous Permit returns false everywhere
+  → pre-SPEC-042 behaviour.
+- (REQ-4208) operator-authored `.zetl/collab/access.spl` rules
+  about anonymous fire (Build A) and compose with compiled facts
+  via SPL defeasibility.
+- (REQ-4212) anonymous-permit responses carry cache headers;
+  authenticated responses do not.
+- (REQ-4214) Build A and Build B produce equivalent outcomes for
+  any vault using only TOML config.
 
 **Implements:** [[#REQ-4202]], [[#REQ-4203]], [[#REQ-4205]],
-[[#REQ-4212]]. **Verified by:** [[#TEST-4202]], [[#TEST-4203]],
-[[#TEST-4205]], [[#TEST-4212]].
+[[#REQ-4208]], [[#REQ-4212]], [[#REQ-4214]]. **Verified by:**
+[[#TEST-4202]], [[#TEST-4203]], [[#TEST-4205]], [[#TEST-4208]],
+[[#TEST-4212]], [[#TEST-4214]].
 
 ### CON-4203: Capability-Gate Asymmetric Public-Path Bypass
 
@@ -1070,23 +1349,44 @@ startup would emit for byte-for-byte consistency), feature mismatch
 
 **Implements:** [[#REQ-4211]]. **Verified by:** [[#TEST-4211]].
 
-### CON-4204: Anonymous-Aware Search / Backlinks Filtering
+### CON-4204: Principal-Aware Search / Backlinks Filtering via Shared ACL Query
 
-The search and backlinks query paths gain an `is_anonymous: bool` flag
-derived from `request_principal(extensions).is_none()`. When `true`,
-the result set is filtered through the same [[globset::GlobSet]] used
-by the gate; only pages whose slug matches `public_paths` survive into
-the response body. The filter is applied *after* the search engine
-returns results but *before* serialisation, so titles, slugs, and
-excerpts of private pages never leave the process.
+The search and backlinks query paths gain a per-result filter that
+consults the same `AclEvaluator::decide(principal, Action::Read,
+slug)` interface `collab_gate` uses ([[#CON-4202]]). Pages for
+which the evaluator returns `Decision::Deny` are omitted from the
+response body BEFORE serialisation, so titles, slugs, and excerpts
+never leave the process.
 
-**Pre-conditions:** A search / backlinks request has been authorised
-by `collab_gate` (either via Principal or via public-path bypass).
+* **Anonymous request:** filter via `decide(None, Read, slug)`.
+  Build A → SPL query `(can-read "anonymous" slug)`; Build B →
+  compiled GlobSet membership.
+* **Authenticated request (User principal):** filter via
+  `decide(Some(user), Read, slug)`. Build A → SPL query
+  `(can-read USER_ID slug)`; this CLOSES [[#Threat Model I]] for
+  free — a Reader's results omit Editor-only pages exactly as
+  per-page authorization would. Build B → no per-role filtering
+  (the SPL engine is absent); current SPEC-020 behaviour preserved.
+* **Authenticated request (Capability principal):** filter via
+  `decide(Some(cap_principal), Read, slug)` — Build A SPL rules
+  for capability principals decide; Build B uses the existing
+  capability_gate scope check applied per-result.
 
-**Post-conditions:** (REQ-4207) anonymous responses contain only pages
-matching `public_paths`. Authenticated responses are unchanged.
+The filter point is the response boundary. The search engine still
+indexes the full corpus; only the SERIALISED set differs by
+principal.
+
+**Pre-conditions:** A search / backlinks request reached the
+handler. The handler holds the request's Principal extension AND
+the shared `AclEvaluator` from `WebState`.
+
+**Post-conditions:** (REQ-4207) responses contain only slugs the
+principal is permitted to read. The same query that decides
+in-page authorization decides search-result emission — there is no
+risk of the two views disagreeing.
 
 **Implements:** [[#REQ-4207]]. **Verified by:** [[#TEST-4207]].
+**Closes:** [[#Threat Model I]] under Build A.
 
 ---
 
@@ -1107,12 +1407,14 @@ matching `public_paths`. Authenticated responses are unchanged.
 | [[#TEST-4205]]        | snapshot                  | No `public_paths` ⇒ SPEC-041 / SPEC-020 collab suites pass unchanged                  | [[#REQ-4205]]                      |
 | [[#TEST-4206]]        | example + neg-input       | Each dangerous-glob shape (`/**`, `/_admin/**`, `/auth/**`, bad syntax) → startup error naming pattern | [[#REQ-4206]]    |
 | [[#TEST-4207]]        | example                   | Anonymous search omits private slugs; authenticated search returns full set            | [[#REQ-4207]]                      |
-| [[#TEST-4208]]        | example                   | SPL `(forbidden read (subject anonymous) …)` rule surfaces startup warning           | [[#REQ-4208]]                      |
+| [[#TEST-4208]]        | example                   | Build A: operator-authored `.zetl/collab/access.spl` rule about anonymous fires + composes with compiled-from-TOML facts via SPL defeasibility; conflicting rules surface a startup warning. Build B: `.zetl/collab/access.spl` ignored, startup banner warns | [[#REQ-4208]]                      |
 | [[#TEST-4209]]        | example                   | Anonymous request → operator log + audit line with `method=anonymous identity=-`     | [[#REQ-4209]]                      |
 | [[#TEST-4210]]        | fuzz + property           | Random byte sequences against the public-path-glob recogniser: no panics, no acceptance of out-of-grammar input | [[#REQ-4210]] |
 | [[#TEST-4211]]        | example + snapshot        | Preview CLI emits expected slug + title + summary + validation sections against a fixture vault; `--json` is structurally stable; `--strict` exits non-zero on WARN; no file writes; output agrees with the actual gate's runtime behaviour | [[#REQ-4211]]                      |
 | [[#TEST-4212]]        | example                   | Anonymous GET on public path → response carries `Cache-Control: public, max-age=0, must-revalidate` AND `Vary: Cookie, Authorization`; authenticated GET on same path → existing per-route headers, NO anonymous-cache headers | [[#REQ-4212]]                      |
 | [[#TEST-4213]]        | example + neg-output      | Public page containing `[[Private Page]]` rendered to anonymous viewer → HTML contains NEITHER "Private Page" NOR the private page's slug; rendered to authenticated Reader → contains the title and link | [[#REQ-4213]]                      |
+| [[#TEST-4214]]        | parity                    | Same TOML config (no operator SPL rules) under Build A and Build B admits/denies the same anonymous requests; presence of operator SPL rules with `--features reason` off triggers startup banner | [[#REQ-4214]], [[#ADR-4208]]       |
+| TEST-4214-spl-sugar   | example                   | TOML `public_paths = ["/about/**"]` compiles to `(given (can-read "anonymous" "/about/**"))` in the fact store under Build A; `hence query explain` traces back to `from: public_paths` provenance | [[#REQ-4214]], [[#ADR-4208]]       |
 | [[#TEST-NFR-4201]]    | benchmark                 | Hot-path match ≤ 50 µs 95p for 256-pattern GlobSet                                   | [[#NFR-4201]]                      |
 | [[#TEST-NFR-4202]]    | benchmark                 | Startup glob compilation ≤ 100 ms for 256 patterns                                    | [[#NFR-4202]]                      |
 | TEST-mutation-gate    | mutation                  | Mutation kill rate ≥ 90% on the public-path branch of `collab_gate`                  | [[#REQ-4202]] robustness           |
@@ -1261,16 +1563,30 @@ that's a SPEC-041 follow-up, not new for SPEC-042. **Per the
 [[PROTO-001]] §Security-Review exclusions**, DoS is out of scope for
 this spec.
 
-### Threat Model E — SPL / `public_paths` Policy Confusion
+### Threat Model E — SPL / `public_paths` Policy Confusion *(resolved)*
 
 > An operator writes both a `public_paths` glob and an SPL rule
 > referencing "anonymous", expecting layered policy. SPL doesn't fire
 > for public requests; the operator's expectation isn't met.
 
-**Mitigation:** [[#REQ-4208]] surfaces a startup warning for any SPL
-rule referencing the "anonymous" subject when `public_paths` is set.
-Documentation explicitly states "public_paths is the policy for
-anonymous requests; SPL does not evaluate."
+**Status: NO LONGER APPLICABLE under the v0.2.0 architecture.**
+
+The v0.1.0 strawman shipped this confusion because it treated
+`public_paths` as a gate-level TOML matcher parallel to (and
+ignoring) [[SPL]]. The v0.2.0 architecture ([[#ADR-4208]],
+[[#REQ-4208]] revised) compiles `public_paths` into [[SPL]] facts
+that flow through the existing evaluator alongside operator-
+authored rules. There is now ONE policy surface; operator
+expectations of layered policy are satisfied by SPL's normal
+defeasibility (operator's explicit `(forbidden …)` defeats the
+compiled-from-TOML `(given (can-read …))`). A startup warning
+still fires when an operator-authored rule *directly* conflicts
+with a compiled-from-TOML fact — but to surface the implicit
+override, not because the rule is unreachable.
+
+**Historical note:** kept in the threat list (rather than deleted)
+to preserve the trace from v0.1.0 reviews; the resolution itself
+is what's load-bearing.
 
 ### Threat Model F — Capability-URL Operator Confusion (skipped scope)
 
@@ -1342,31 +1658,34 @@ feature for content you might want to retract."
 **Residual risk:** operator misunderstanding remains the dominant
 risk. No technical mitigation possible.
 
-### Threat Model I — Authenticated-Search Per-Result Role Gating Gap
+### Threat Model I — Authenticated-Search Per-Result Role Gating Gap *(resolved by unification)*
 
 > A vault uses SPL to restrict `/internal/runbook` to Editor-or-
 > higher. A Reader-role authenticated user searches for "runbook" —
 > they get a search hit on `/internal/runbook` even though clicking
 > the result 403s. The hit reveals the page's title and excerpt.
 
-This is **pre-existing in SPEC-020 / SPEC-041** (zetl search doesn't
-currently consult SPL per-result) — it is not introduced by SPEC-042.
-But the SPEC-042 anonymous-aware filter machinery in REQ-4207 is
-the natural place to layer per-role filtering on top in a follow-up,
-so it's worth naming.
+This was **pre-existing in SPEC-020 / SPEC-041** under the
+v0.1.0 strawman framing. It is **resolved by the v0.2.0
+re-architecture** ([[#ADR-4208]]) as a side-effect of unifying
+the policy surface.
 
-**Mitigation in this spec:** none — explicitly out of scope.
+**Mitigation:** The [[#REQ-4207]] response-boundary filter now
+uses the same `(can-read PRINCIPAL SLUG)` SPL query as per-page
+authorization — the predicate is the same, the answer is the
+same. Under Build A (`--features reason` on), a Reader's search
+results are filtered through `(can-read READER_USER_ID SLUG)`;
+restricted pages are omitted exactly as they are at click-time.
+Anonymous visitors' results are filtered through `(can-read
+"anonymous" SLUG)`. Same machinery; the principal substitution
+is all that varies. Under Build B, search consults the GlobSet
+for anonymous filtering; per-role search filtering is N/A
+because role-based SPL rules don't exist without the engine.
 
-**Mitigation path:** a follow-up REQ (Phase 4+ or a separate small
-SPEC) extends the response-boundary filter from "is the request
-anonymous?" to "what does the requesting principal's role permit
-them to see?" via the existing SPL evaluator. The shape of the
-filter is the same; the predicate widens.
-
-**Residual risk for SPEC-042 itself:** zero — this risk is not
-introduced or worsened by the feature. Naming it here to ensure the
-follow-up isn't lost in a Phase-2 audit conversation that focuses
-on the anonymous-only filter.
+**Residual risk:** zero under Build A. Under Build B, the
+pre-existing gap remains for role-restricted pages — but Build B
+is the *no-SPL* configuration, so there are no per-role rules to
+enforce; the residual is a non-issue.
 
 ---
 
@@ -1409,15 +1728,19 @@ useful against a vault even before the gate is wired.
 
 - New `src/web/auth/public_paths.rs`: `PublicPathsConfig` (typed
   `Vec<String>`), `parse` (REQ-4210 grammar), `validate` (REQ-4206
-  dangerous-shape rules), `compile` (→ `globset::GlobSet`), `is_public`
-  (hot-path predicate).
-- New `resolve(set: &GlobSet, vault: &VaultData) -> PreviewReport`
-  (pure): walks the vault page index, returns per-glob matches +
-  zero-match-globs + the title list for anonymous search.
+  dangerous-shape rules), `compile` (→ `globset::GlobSet`).
+- New `compile_to_spl_facts(&PublicPathsConfig) -> Vec<SplFact>`
+  (Build A) — converts each entry to `(given (can-read "anonymous"
+  PATTERN))` with `from: public_paths` provenance metadata.
+- New `resolve(evaluator: &AclEvaluator, vault: &VaultData) ->
+  PreviewReport` (pure): walks the vault page index, calls
+  `decide(None, Read, slug)` per page, returns per-glob matches +
+  zero-match-globs + the anonymous-search title list.
 - Extend [[SPEC-041]] `CollabAuthConfig` with
   `public_paths: Option<Vec<String>>`.
 - Unit tests: grammar accept/reject matrix, dangerous-shape rejection
-  matrix, compile+match round-trip, resolver against a fixture vault.
+  matrix, compile-to-SPL-facts round-trip, GlobSet fallback for
+  Build B, resolver against a fixture vault.
 - **Gate:** [[#TEST-4201]], [[#TEST-4206]], [[#TEST-4210]] green.
 
 ### Phase 0.5 — Preview CLI
@@ -1439,37 +1762,75 @@ up. Independently useful even before Phase 1 ships the gate.
   `--strict` exit behaviour.
 - **Gate:** [[#TEST-4211]] green.
 
-### Phase 1 — Gate Bypass
+### Phase 0.7 — Page-ACL `Option<user_id>` Refactor (Build A only)
 
-**Goal:** mixed public/auth pages work; SPEC-041 chains untouched.
+**Goal:** unify the page-ACL pipeline with the asset-ACL pipeline so
+SPL can evaluate anonymous subjects.
 
-- Add `pub public_paths: Arc<globset::GlobSet>` to `WebState` (Arc so
-  it's cheap to clone). Compiled once in `web::run` from the
-  Phase-0 config.
-- Modify `src/web/session.rs::collab_gate` per [[#CON-4202]].
+- `src/acl.rs::AclQuery` gains `user_id: Option<String>` (was
+  `String`); construct sites that already had `Option<String>` from
+  `extract_session_user_id` stop unwrapping.
+- `evaluate()`: when `user_id.is_none()`, inject `("anonymous",
+  false)` and skip the `(given (authenticated …))` fact — exactly
+  mirroring `check_can_read_assets` at `src/acl.rs:1351–1370`.
+- Built-in defaults: ship `(forbidden edit (subject anonymous)
+  (any))` as a hardcoded SPL fact in `built_in_defaults()`.
+- New `AclEvaluator::decide(principal: Option<&Principal>, action:
+  Action, page: &str) -> Decision` — the unified entry point both
+  `collab_gate` and per-page handlers consult. Wraps `evaluate()`.
+- Build B (`--features reason` off): `AclEvaluator::decide` is a
+  separate impl that consults the compiled GlobSet for reads,
+  hardcoded deny for anonymous-edit, permit-all for authenticated
+  (preserves current SPEC-020 behaviour where per-page role checks
+  live in handlers).
+- Re-run the entire SPEC-020 and SPEC-041 test suite — no behavioural
+  regressions for authenticated callers.
+- **Gate:** existing SPEC-020 / SPEC-041 suites green; new tests for
+  `decide(None, …)` shape.
+
+### Phase 1 — Gate Becomes a Thin SPL Caller
+
+**Goal:** mixed public/auth pages work via the unified ACL evaluator.
+
+- `WebState` gains `pub acl: Arc<AclEvaluator>` (replaces the
+  Phase-0-only `public_paths: Arc<GlobSet>` if it landed earlier).
+  Compiled once in `web::run` from the loaded config + the vault's
+  `.zetl/collab/access.spl` (Build A) or the GlobSet (Build B).
+- Modify `src/web/session.rs::collab_gate` per [[#CON-4202]] — call
+  `state.acl.decide(principal, action, path)`, translate
+  permit/deny to next/401/403.
 - Modify `src/web/auth/capability_url.rs::capability_gate` per
-  [[#CON-4203]] — apply asymmetric scope check (skip on safe
-  methods, enforce on non-safe) per the revised [[#REQ-4204]].
-- Add the [[#REQ-4212]] cache-header layer to anonymous public-path
-  responses (`Cache-Control: public, max-age=0, must-revalidate` +
-  `Vary: Cookie, Authorization`). Authenticated responses on public
-  paths keep their per-route headers.
-- OBS-4203 / OBS-4204 / OBS-4205 wiring.
+  [[#CON-4203]] — asymmetric scope check (skip on safe methods,
+  enforce on non-safe) per the revised [[#REQ-4204]].
+- Add the [[#REQ-4212]] cache-header layer to anonymous-permit
+  responses.
+- Build A: load + compile `.zetl/collab/access.spl` at startup;
+  startup-banner warning per [[#REQ-4208]] for operator rules that
+  conflict with compiled-from-TOML facts.
+- Build B: startup-banner warning per [[#REQ-4214]] when
+  `.zetl/collab/access.spl` exists but the engine isn't compiled in.
+- OBS-4203 / OBS-4204 / OBS-4205 wiring; OBS for compiled-fact
+  provenance ("`from: public_paths`" annotation visible in
+  `hence query explain` and the preview CLI).
 - Integration tests against an axum mock router for the gate matrix
   (including the editor-PUT-on-public-page case from HP4 and the
-  cap-URL write-rejected case from REQ-4204).
+  cap-URL write-rejected case from REQ-4204). Run the matrix under
+  both Build A and Build B.
 - **Gate:** [[#TEST-4202]], [[#TEST-4203]], [[#TEST-4204]],
-  [[#TEST-4205]], [[#TEST-4209]], [[#TEST-4212]] green. Existing
-  SPEC-041 suite unchanged.
+  [[#TEST-4205]], [[#TEST-4208]], [[#TEST-4209]], [[#TEST-4212]],
+  [[#TEST-4214]] green under both build configurations. Existing
+  SPEC-041 + SPEC-020 suites unchanged.
 
-### Phase 2 — Anonymous-Aware Search / Backlinks
+### Phase 2 — Principal-Aware Search / Backlinks Filtering
 
-**Goal:** no title / slug / excerpt leakage to anonymous visitors.
+**Goal:** no title / slug / excerpt leakage to anyone who shouldn't
+see them — anonymous OR Reader-role.
 
-- Thread `is_anonymous: bool` into the search + backlinks query
+- Thread `principal: Option<&Principal>` (was `is_anonymous: bool`
+  in the v0.1.0 strawman) into the search + backlinks query
   pipelines.
-- Add the per-result `is_public` filter at the response boundary
-  ([[#CON-4204]]).
+- Add the per-result `decide(principal, Read, slug)` filter at the
+  response boundary ([[#CON-4204]]). Same query the gate uses.
 - Audit every endpoint that emits page-name lists (the [[#Threat
   Model B]] inventory table is the canonical checklist): `/api/search`,
   `/search`, `/api/backlinks/*`, `/api/graph`, `/llms.txt`, RSS
@@ -1480,22 +1841,29 @@ up. Independently useful even before Phase 1 ships the gate.
 - Implement [[#REQ-4213]] wikilink-on-public-page rendering — the
   render-time half of [[#Threat Model B]]. Author the missing
   [[#ADR-4207]] (strike-through vs plain-text vs omit) before
-  implementing.
+  implementing. Render-time predicate is also `decide(principal,
+  Read, target_slug)`.
 - Add a CI lint that flags new endpoints which return
   `Vec<PageName>`-shaped responses without going through the
-  shared `is_public` filter (defence-in-depth against future SPECs
+  shared `decide()` filter (defence-in-depth against future SPECs
   forgetting the filter).
 - **Gate:** [[#TEST-4207]], [[#TEST-4213]] green; targeted property
-  test that no private slug appears in any anonymous response across
-  the full endpoint inventory.
+  test that no slug outside the principal's `(can-read)` set
+  appears in any response across the full endpoint inventory, for
+  both anonymous and Reader-role principals.
 
-### Phase 3 — SPL Coherence + Docs + Review
+### Phase 3 — Docs + Review
 
-- SPL startup-warning for unreachable-anonymous rules ([[#REQ-4208]]).
 - `docs/collab-auth.md` extended with a "Public + Private Pages"
-  section, the threat-model summary, and the dangerous-glob list.
-- `user-guide/collaboration/Authentication Methods.md` extended with
-  a `public_paths` subsection.
+  section: the TOML sugar, the SPL escape hatch, the threat-model
+  summary, the dangerous-glob list, the Build A vs Build B
+  distinction.
+- `docs/collab-public-paths.md` (new) — dedicated operator guide
+  covering the CDN/cache footgun (Threat Model G), persistent
+  exposure (Threat Model H), and the endpoint-inventory exemption
+  list from Phase 2.
+- `user-guide/collaboration/Authentication Methods.md` extended
+  with a `public_paths` subsection.
 - CHANGELOG entry under `[Unreleased]`.
 - TEST-adversarial-042 — cross-model adversarial review of the
   deliverable (PROTO-001 Principle 12, fresh context, different
@@ -1507,11 +1875,16 @@ Phase 0 is pure data + grammar; trivially reversible. **Phase 0.5
 ships the preview CLI before the gate is wired** — operators get a
 "show me what this WOULD do" tool with no server change, so the
 SPEC-042 design can be evaluated against real vaults before any code
-path actually exposes a page anonymously. Phase 1 ships the operator-
-visible feature with the leak-safe property (anonymous requests can't
-write, can't search private titles via the gate mechanism). Phase 2
-closes the search/backlinks leak surface and makes the feature
-complete. Phase 3 is hardening + docs + review.
+path actually exposes a page anonymously. **Phase 0.7 is the
+load-bearing architectural shift** — the page-ACL `Option<user_id>`
+refactor unifies the policy surface (closes Threat Model E by
+construction, sets up Threat Model I resolution). The asset-ACL
+path proves the diff shape; risk is mostly about disciplined
+audit of every call site. Phase 1 ships the operator-visible feature
+on top of the unified evaluator — the gate becomes a thin caller,
+not a parallel decision maker. Phase 2 closes the search/backlinks
+leak surface using the same evaluator (so anonymous + Reader-role
+filtering share machinery). Phase 3 is docs + review.
 
 ---
 
