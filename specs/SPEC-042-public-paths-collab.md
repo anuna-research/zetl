@@ -280,21 +280,37 @@ cookie.
 **Postconditions:** Anonymous and authenticated users get the same page
 body; the handler may differentiate (login chrome, edit links).
 
-### 3.4 HP4: Anonymous POST Rejected
+### 3.4 HP4: Anonymous POST Rejected; Authenticated Editor Passes Through
 
-**Preconditions:** Same config; anonymous visitor attempts to `POST` to
-`/` or `/about/comment`.
+**Preconditions:** Same config; `/about` is public.
 
-**Steps:**
+**Steps (anonymous):**
 
-1. `collab_gate` sees method is `POST` and request path is in
-   `public_paths`. REQ-4203 forbids state-changing methods on public
-   paths.
-2. Response: `405 Method Not Allowed` with a documented `Allow: GET,
-   HEAD` header.
+1. Anonymous visitor sends `POST /about/comment`.
+2. `collab_gate` classifies the path as public; recognises that the
+   request carries no [[Principal]] AND uses a non-safe method.
+3. Response: `401 Unauthorized` with `WWW-Authenticate` per the
+   configured [[SPEC-041]] chain. Writing requires auth even on a
+   page anyone can read.
 
-**Postconditions:** No write side-effect; the audit log records the
-attempt (REQ-4209).
+**Steps (authenticated Editor):**
+
+1. Editor (logged in via passkey) sends `PUT /about` to update the
+   public landing.
+2. `auth_resolve` runs, attaches `Principal { id: User("alice"),
+   method: "passkey", ... }`.
+3. `collab_gate` sees public path + authenticated principal +
+   non-safe method → passes through (public_paths is read-side
+   bypass; it doesn't narrow authority).
+4. The PUT handler runs; the role check inside the handler /
+   [[SPEC-041]] [[#REQ-4204|capability_gate]] enforces Editor-or-
+   higher; git commit attributes the edit to `alice`.
+5. Response: `200 OK`. The audit log records `method=passkey
+   user=alice path=/about result=ok` (REQ-4209).
+
+**Postconditions:** No anonymous write side-effect; legitimate
+operator workflow ("editor logged in, updating the public landing")
+is unaffected.
 
 ### 3.5 HP5: Search Doesn't Leak Private Titles
 
@@ -416,26 +432,50 @@ exactly as the SPEC-041 implementation does today.
 
 **Trace:** [[#TEST-4202]], [[#CON-4202]], [[#ADR-4201]]; [[#3.2 HP2]].
 
-### REQ-4203: Safe-Method Restriction on Public Paths
+### REQ-4203: Anonymous Writes Forbidden; Authenticated Writes Pass Through
 
-WHEN a request whose path matches `public_paths` uses a method other
-than `GET` or `HEAD`, `collab_gate` SHALL respond `405 Method Not
-Allowed` with an `Allow: GET, HEAD` header AND SHALL NOT invoke the
-downstream handler. This restriction applies even when the request
-carries an authenticated [[Principal]] — the public-path classification
-takes precedence to keep semantics unambiguous.
+`public_paths` is a **read-side** bypass: it widens *anonymous* access
+for safe methods (GET / HEAD); it does NOT restrict what authenticated
+principals can do.
 
-**Trace:** [[#TEST-4203]], [[#ADR-4202]]; [[#3.4 HP4]].
+Specifically:
+
+* **Anonymous + safe method on public path** → pass through, page renders.
+* **Anonymous + non-safe method (POST / PUT / DELETE / PATCH) on public
+  path** → `401 Unauthorized` (REST-correct; writing requires
+  authentication, even on an otherwise-public page).
+* **Authenticated + any method on public path** → pass through; the
+  downstream handler / SPL / [[#REQ-4204|capability_gate]] applies
+  role-based authorization as for any other route. An Editor logged
+  into a vault where `/about` is public can still `PUT /about` to
+  edit the public landing; a Reader cannot. Attribution flows normally
+  (the edit is git-committed as the authenticated user, not as
+  anonymous).
+
+This corrects an earlier strawman over-restriction that 405'd writes
+even for authenticated editors. The earlier "public-path classification
+takes precedence" rule was the wrong intuition: public_paths classifies
+the *anonymity* of reads, not the *forbiddenness* of writes.
+
+**Trace:** [[#TEST-4203]], [[#ADR-4202]]; [[#3.4 HP4]]; [[SPEC-020]]
+"every edit is attributed" invariant preserved.
 
 ### REQ-4204: Capability-URL Principal + Public Path Interaction
 
 WHEN a request whose path matches `public_paths` carries a
 [[Capability URL]] principal, the capability-scope check (SPEC-041
-[[#REQ-4117|REQ-4117]] / `capability_gate`) SHALL be skipped — the
-page is public for everyone, and re-asserting scope would inconsistently
-403 capability holders on pages anonymous visitors can read. The
-principal still flows to the handler; `admin_gate` is unchanged
-(capability principals never satisfy it).
+[[#REQ-4117|REQ-4117]] / `capability_gate`) SHALL apply asymmetrically:
+
+* **Safe methods (GET / HEAD):** scope check SKIPPED — the page is
+  public for everyone, and re-asserting scope would inconsistently 403
+  capability holders on pages anonymous visitors can freely read.
+* **Non-safe methods (POST / PUT / DELETE / PATCH):** scope check
+  ENFORCED exactly as for non-public paths. A capability scoped to
+  `/shared/**` CANNOT write to `/about` even if `/about` is public.
+  The capability's write authority is bounded by its declared scope.
+
+The principal still flows to the handler in both cases; `admin_gate`
+is unchanged (capability principals never satisfy it).
 
 **Trace:** [[#TEST-4204]], [[#ADR-4204]].
 
@@ -548,6 +588,61 @@ filesystem-canonical path representation.
 
 **Trace:** [[#TEST-4210]], [[#CON-4201]]; [[PROTO-001]] §LangSec.
 
+### REQ-4212: Anonymous-Aware Cache-Control Headers
+
+WHEN `collab_gate` admits an anonymous request to a public path,
+the response SHALL carry, at minimum:
+
+* `Cache-Control: public, max-age=0, must-revalidate` (default;
+  operator may override at a reverse proxy if they understand the
+  cache-poisoning implications);
+* `Vary: Cookie, Authorization` (so any intermediary that DOES cache
+  cannot conflate an anonymous cached entry with the response served
+  to an authenticated principal carrying a cookie or bearer token).
+
+WHEN `collab_gate` serves an *authenticated* response on a public
+path (the editor-PUT case per [[#REQ-4203]]), the existing per-route
+`Cache-Control` headers apply unchanged — most authenticated content
+routes today set `Cache-Control: private, no-store` and that path is
+preserved.
+
+Operators who terminate TLS at a CDN / reverse proxy that adds its
+own caching MUST be warned in [[docs/collab-public-paths.md]] about
+the standard mixed-auth caching footgun: an intermediary that ignores
+`Vary` can serve an anonymous cached entry to an authenticated user.
+The recommendation is "don't enable shared-cache CDN caching of
+zetl-served content unless you've audited the `Vary` story"; the
+spec doesn't try to enforce CDN behaviour.
+
+**Trace:** [[#TEST-4212]], [[#Threat Model G]]; [[SPEC-041]]
+§Threat Model F — Cache Poisoning, which this REQ closes.
+
+### REQ-4213: Wikilink Rendering on Public Pages Referencing Private Pages
+
+WHEN a public page renders a `[[wikilink]]` that points to a private
+(non-public-path) page, the rendered HTML SHALL NOT expose the
+target page's title text to an anonymous viewer.
+
+The implementation choice (strike-through, render as plain text with
+no link, omit the link entirely, render as `[[unknown]]`) is left to
+[[#ADR-4207]] (to be filed); the invariant is "no private page title
+appears in HTML served anonymously, regardless of where the rendering
+decision lives." This includes:
+
+* inline wikilinks in the page body;
+* the backlink panel rendered inline on the page;
+* OpenGraph / Twitter Card metadata in `<head>` for links to private
+  pages;
+* recent-changes / sidebar widgets if rendered into a public page;
+* the search result snippet view if it embeds linked-page titles.
+
+Authenticated views of the same public page render the wikilinks
+normally (so an editor previewing their public-landing draft sees
+the real titles).
+
+**Trace:** [[#TEST-4213]], [[#Threat Model B]], [[#ADR-4207]];
+[[#15. Open Questions Surfaced by This Strawman]] Q8.
+
 ---
 
 ## 5. Non-Functional Requirements
@@ -597,26 +692,42 @@ single decision site; new routes inherit gating behaviour by default.
 for "public requests" still has to read the [[Principal]] extension to
 notice it's anonymous — no compile-time hint.
 
-### ADR-4202: Forbid State-Changing Methods on Public Paths (v1)
+### ADR-4202: `public_paths` Widens Anonymous *Reads* Only; Writes Unchanged
 
-**Status:** Proposed (strawman default)
+**Status:** Proposed (strawman default — revised from "forbid all
+non-safe methods" after the read/edit-distinction review)
 
-**Context:** Could anonymous visitors POST to a public page (e.g.,
-submit a comment, sign a guestbook)? In principle yes; in practice
-[[SPEC-020]]'s "every edit is attributed" invariant means a write
-without a [[Principal]] has no author. Synthesising an "anonymous"
-git-author identity raises its own privacy + spam questions.
+**Context:** Could anonymous visitors POST to a public page (comments,
+sign a guestbook)? Could an *authenticated* Editor PUT to a public
+page they need to maintain (e.g., update the public landing)? An
+earlier draft of REQ-4203 said "no" to both — 405 across the board on
+non-safe methods, regardless of principal. The reasoning was crispness.
+The cost was breaking the legitimate "editor maintains the public
+page" workflow.
 
-**Decision:** v1 forbids non-safe methods (anything other than `GET` /
-`HEAD`) on public paths, with a `405 Method Not Allowed` response.
-Comment / form / submission flows that need anonymous writes are a
-clean follow-up spec — they require an attribution story that doesn't
+**Decision:** Reframe `public_paths` as a *read-side widening only*:
+
+* Anonymous + GET/HEAD on public path → pass through (the feature).
+* Anonymous + non-safe method on public path → `401 Unauthorized`
+  (REST-correct; you still need to authenticate to write).
+* Authenticated principal + any method on public path → pass through;
+  the downstream handler / SPL / [[#REQ-4204|capability_gate]]
+  applies role-based authorization exactly as for any other route.
+  Public-paths classification does NOT narrow authority.
+
+Comment / form / submission flows that need *anonymous* writes are
+still a clean follow-up spec — they require an attribution story
+(the [[SPEC-020]] "every edit is attributed" invariant) that doesn't
 exist today.
 
-**Consequences:** (+) Crisp semantics; no surprise writes. (+) Attack
-surface stays narrow (no anonymous POST = no anonymous CSRF concerns
-on public paths). (−) Operators who want public comment forms must use
-a separate service or wait for the follow-up.
+**Consequences:** (+) Legitimate workflow preserved — the operator
+who set the public path can still edit it. (+) Attack surface stays
+narrow (anonymous POST = 401, not 405; no anonymous CSRF concerns).
+(+) Audit trail attribution unchanged — authenticated edits on public
+paths log the user, exactly as today. (−) The gate has to inspect
+both path AND principal before deciding the response code, where the
+earlier "405 across the board" rule looked at path only. Trade-off
+worth it for not breaking the obvious workflow.
 
 ### ADR-4203: Default Anonymous-Search Behaviour — Scoped, Not Refused
 
@@ -637,22 +748,32 @@ ranking may degrade against the smaller corpus; document as expected.
 (−) Operators who want anonymous search disabled outright can set
 `[access.search] mode = "off"` ([[SPEC-034]]) as today.
 
-### ADR-4204: Capability Principals Get Public Access (No Scope Check)
+### ADR-4204: Capability Scope Skipped for *Reads* on Public Paths; Enforced for Writes
 
-**Status:** Proposed (strawman default)
+**Status:** Proposed (strawman default — revised alongside
+[[#ADR-4202]] to apply the same read/write distinction)
 
-**Context:** If `/` is public AND a capability-URL holder requests it,
-should `capability_gate` evaluate the scope? Per SPEC-041's strict
-scope check, a capability bound to `/shared/**` would 403 on `/`
-because `/` isn't in scope — even though every anonymous visitor can
-read `/`.
+**Context:** If `/` is public AND a capability-URL holder scoped to
+`/shared/**` requests it, should `capability_gate` evaluate the scope?
+Per [[SPEC-041]]'s strict scope check, the request would 403 because
+`/` isn't in scope — even though every anonymous visitor can read it.
+But what if the capability holder tries to `PUT /about` (a public
+page outside their scope)? Skipping scope outright would let a cap
+URL with role=editor write to any public page anywhere.
 
-**Decision:** Skip the capability-scope check when the path matches
-`public_paths`. Reasoning: the capability adds no authority above
-"anyone with the URL can read it" for public pages; failing closed
-would be operationally confusing ("the link I sent doesn't work on the
-home page"). `admin_gate` is unchanged — capability principals still
-can't reach `/_admin/*`.
+**Decision:** Skip capability-scope check for **safe methods only**:
+
+* Capability principal + GET/HEAD on public path → scope skipped;
+  pass through (the page is public to everyone — the capability adds
+  nothing on the read side, failing closed is operationally confusing).
+* Capability principal + non-safe method on public path → scope check
+  applies exactly as for non-public paths. A capability scoped to
+  `/shared/**` CANNOT write to `/about` even if `/about` is public.
+  The capability's write authority is bounded by its declared scope,
+  full stop.
+
+`admin_gate` is unchanged — capability principals still can't reach
+`/_admin/*`, public or otherwise.
 
 **Consequences:** (+) Capability URLs work intuitively on mixed
 sites. (−) A capability holder cannot be *more restricted than
@@ -711,6 +832,46 @@ sub-folder") express it via the glob (`"!/about/secret/**"` if
 [[globset]] supports negation; otherwise narrow the positive glob).
 Documented limitation.
 
+### ADR-4207: Wikilink-on-Public-Page Rendering Policy
+
+**Status:** **Open** — decision deferred to a follow-up task before
+Phase 2 implementation. [[#REQ-4213]] captures the invariant ("no
+private title in HTML served anonymously"); this ADR captures the
+choice of rendering shape.
+
+**Context:** When `[[Internal Memo]]` appears on a public page and
+the visitor is anonymous, the rendered HTML must not contain the
+text "Internal Memo" (REQ-4213). Several shapes satisfy that:
+
+| Shape | Rendered HTML (anonymous) | Pros | Cons |
+|---|---|---|---|
+| (a) Strike-through | `<s class="zetl-redacted">[[unknown]]</s>` | Explicit; visitor sees a gap; layout preserved | Visual noise; signals "there's something here" |
+| (b) Plain text literal | `[[Internal Memo]]` rendered as plain text | Faithful to source; no extra UI | Title leaks via the literal — defeats REQ-4213 |
+| (c) Omit entirely | Wikilink + surrounding whitespace removed | No leak; invisible | Layout shifts; reader doesn't know content was removed |
+| (d) 404-link | `<a href="/internal-memo">[unknown]</a>` | Linked but title-less | Slug leaks via href |
+| (e) Generic placeholder | `<span class="zetl-redacted">[redacted]</span>` | No leak; explicit | Same noise as (a) |
+
+**Strawman lean:** (a) or (e). Both preserve layout, both signal
+the redaction explicitly so the visitor doesn't think they're
+seeing the whole picture, neither leaks title or slug. (b) is the
+rejected default — it defeats the requirement. (c) is too quiet —
+operators preview-rendering their public landing won't notice they've
+silently removed paragraphs. (d) leaks the slug, which is often a
+human-readable variant of the title.
+
+**Decision:** Deferred. The right way to pick is to render the same
+public page under each shape against a real vault and ask the
+operator. The follow-up task ([[DESIGN-042-public-paths-collab]]
+sub-task `wikilink-redaction-shape`) decides before Phase 2 wires
+[[#REQ-4213]] into the renderer.
+
+**Consequences (any choice):** Authenticated views of the same
+public page render wikilinks normally — the redaction is anonymous-
+view-only. This means an editor previewing their own draft sees the
+real titles; an anonymous visitor in a private window sees the
+redacted view. Operators verify-before-deploy by viewing the public
+page in an incognito tab.
+
 ---
 
 ## 7. Contracts
@@ -762,7 +923,9 @@ and the dangerous-shape rejects, OR startup fails naming the pattern.
 
 ### CON-4202: `collab_gate` Public-Path Bypass
 
-The gate's decision tree gains one branch at the top:
+The gate's decision tree gains a public-path branch that considers
+BOTH the request path AND the resolved principal (post-revision of
+REQ-4203 / ADR-4202):
 
 ```rust
 pub async fn collab_gate(
@@ -772,19 +935,39 @@ pub async fn collab_gate(
 ) -> Response {
     if !state.collab { return next.run(request).await; }
 
-    // SPEC-042 — public-path bypass. Cheap GlobSet match on the
-    // request path; on hit, safe-method check then pass-through.
-    if state.public_paths.is_match(request.uri().path()) {
-        let method = request.method();
-        if method != Method::GET && method != Method::HEAD {
-            return (StatusCode::METHOD_NOT_ALLOWED,
-                    [("allow", "GET, HEAD")]).into_response();
-        }
-        return next.run(request).await;
-    }
+    let is_public = state.public_paths.is_match(request.uri().path());
+    let principal = request.extensions().get::<Principal>().cloned();
 
-    // … pre-SPEC-042 logic unchanged: check Principal extension,
-    // redirect / 401 on miss.
+    if is_public {
+        match (principal.is_some(), request.method()) {
+            // anonymous + safe → pass through (the feature)
+            (false, &Method::GET) | (false, &Method::HEAD) => {
+                apply_anonymous_cache_headers(next.run(request).await)
+            }
+            // anonymous + non-safe → 401 (writes still need auth)
+            (false, _) => unauthorized_response(&state),
+            // authenticated + any method → pass through; handler/
+            // SPL/capability_gate enforces role-based authorization.
+            (true, _) => next.run(request).await,
+        }
+    } else {
+        // … pre-SPEC-042 logic unchanged: require Principal,
+        // redirect / 401 on miss.
+        gate_non_public(state, request, next).await
+    }
+}
+
+fn apply_anonymous_cache_headers(mut res: Response) -> Response {
+    // REQ-4212 — anonymous-aware Cache-Control + Vary.
+    res.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=0, must-revalidate"),
+    );
+    res.headers_mut().insert(
+        header::VARY,
+        HeaderValue::from_static("Cookie, Authorization"),
+    );
+    res
 }
 ```
 
@@ -792,37 +975,54 @@ pub async fn collab_gate(
 extension may be `Some` or `None`). `state.public_paths` is a
 pre-compiled [[globset::GlobSet]].
 
-**Post-conditions:** (REQ-4202) public-path matches with a safe method
-proceed; non-safe methods return 405. (REQ-4205) absent or empty
-`public_paths` reproduces pre-SPEC-042 behaviour.
+**Post-conditions:**
+- (REQ-4202) public path + safe method + anonymous → pass through.
+- (REQ-4203) public path + non-safe method + anonymous → 401.
+- (REQ-4203) public path + any method + authenticated → pass
+  through; downstream handlers / SPL / capability_gate enforce
+  role-based authorization unchanged.
+- (REQ-4205) absent or empty `public_paths` reproduces pre-SPEC-042
+  behaviour.
+- (REQ-4212) anonymous public-path responses carry the cache
+  headers; authenticated responses do not (they keep per-route
+  headers).
 
-**Implements:** [[#REQ-4202]], [[#REQ-4203]], [[#REQ-4205]].
-**Verified by:** [[#TEST-4202]], [[#TEST-4203]], [[#TEST-4205]].
+**Implements:** [[#REQ-4202]], [[#REQ-4203]], [[#REQ-4205]],
+[[#REQ-4212]]. **Verified by:** [[#TEST-4202]], [[#TEST-4203]],
+[[#TEST-4205]], [[#TEST-4212]].
 
-### CON-4203: Capability-Gate Public-Path Bypass
+### CON-4203: Capability-Gate Asymmetric Public-Path Bypass
 
-`capability_gate` gains a symmetric early-return:
+`capability_gate` gains a method-aware early-return (post-revision
+of REQ-4204 / ADR-4204):
 
 ```rust
 pub async fn capability_gate(req, next) -> Response {
-    // unchanged — read Principal, peek at capability grant
     let Some(grant) = principal.capability else { return next.run(req).await; };
 
-    // SPEC-042 — skip scope/role check on public paths.
-    if PUBLIC_PATHS.is_match(req.uri().path()) {
+    // SPEC-042 — skip scope/role check ONLY for safe methods on
+    // public paths. Writes still respect cap scope even when the
+    // path is public.
+    if PUBLIC_PATHS.is_match(req.uri().path())
+        && matches!(req.method(), &Method::GET | &Method::HEAD)
+    {
         return next.run(req).await;
     }
 
-    // …existing scope + role checks unchanged.
+    // …existing scope + role checks apply unchanged for:
+    //   - non-public paths (any method)
+    //   - public paths + non-safe methods
 }
 ```
 
 **Pre-conditions:** Principal carries a [[CapabilityGrant]]; gate is
 not a no-op.
 
-**Post-conditions:** (REQ-4204) on public-path match, scope + role
-checks are skipped — the request proceeds. Off public paths,
-SPEC-041 [[#REQ-4117|REQ-4117]] enforcement is unchanged.
+**Post-conditions:** (REQ-4204) on public-path match + safe method,
+scope + role checks are skipped — the request proceeds. On public-
+path match + non-safe method, the SPEC-041 scope+role check applies
+exactly as for non-public paths. Off public paths, SPEC-041
+[[#REQ-4117|REQ-4117]] enforcement is unchanged.
 
 **Implements:** [[#REQ-4204]]. **Verified by:** [[#TEST-4204]].
 
@@ -902,8 +1102,8 @@ matching `public_paths`. Authenticated responses are unchanged.
 | --------------------- | ------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------- |
 | [[#TEST-4201]]        | example + neg-input       | Valid `public_paths` parses to a non-empty list; invalid TOML shapes fail              | [[#REQ-4201]]                      |
 | [[#TEST-4202]]        | example                   | Path in glob → 200 / pass-through; path not in glob → 307 / 401                       | [[#REQ-4202]]                      |
-| [[#TEST-4203]]        | example + neg-output      | POST/PUT/DELETE on public path → 405 with `Allow: GET, HEAD`                          | [[#REQ-4203]]                      |
-| [[#TEST-4204]]        | example                   | Capability principal hits public path → 200 (scope check skipped); off public path → REQ-4117 unchanged | [[#REQ-4204]]   |
+| [[#TEST-4203]]        | example + neg-output      | Anonymous POST/PUT/DELETE on public path → 401; authenticated Editor PUT on public path → 200 + git-attributed; authenticated Reader PUT → 403 from handler | [[#REQ-4203]]                      |
+| [[#TEST-4204]]        | example                   | Cap principal scoped `/shared/**` GET `/about` (public) → 200 (scope skipped); same cap PUT `/about` → 403 (scope enforced on writes); off-public-path behaviour → REQ-4117 unchanged | [[#REQ-4204]]   |
 | [[#TEST-4205]]        | snapshot                  | No `public_paths` ⇒ SPEC-041 / SPEC-020 collab suites pass unchanged                  | [[#REQ-4205]]                      |
 | [[#TEST-4206]]        | example + neg-input       | Each dangerous-glob shape (`/**`, `/_admin/**`, `/auth/**`, bad syntax) → startup error naming pattern | [[#REQ-4206]]    |
 | [[#TEST-4207]]        | example                   | Anonymous search omits private slugs; authenticated search returns full set            | [[#REQ-4207]]                      |
@@ -911,6 +1111,8 @@ matching `public_paths`. Authenticated responses are unchanged.
 | [[#TEST-4209]]        | example                   | Anonymous request → operator log + audit line with `method=anonymous identity=-`     | [[#REQ-4209]]                      |
 | [[#TEST-4210]]        | fuzz + property           | Random byte sequences against the public-path-glob recogniser: no panics, no acceptance of out-of-grammar input | [[#REQ-4210]] |
 | [[#TEST-4211]]        | example + snapshot        | Preview CLI emits expected slug + title + summary + validation sections against a fixture vault; `--json` is structurally stable; `--strict` exits non-zero on WARN; no file writes; output agrees with the actual gate's runtime behaviour | [[#REQ-4211]]                      |
+| [[#TEST-4212]]        | example                   | Anonymous GET on public path → response carries `Cache-Control: public, max-age=0, must-revalidate` AND `Vary: Cookie, Authorization`; authenticated GET on same path → existing per-route headers, NO anonymous-cache headers | [[#REQ-4212]]                      |
+| [[#TEST-4213]]        | example + neg-output      | Public page containing `[[Private Page]]` rendered to anonymous viewer → HTML contains NEITHER "Private Page" NOR the private page's slug; rendered to authenticated Reader → contains the title and link | [[#REQ-4213]]                      |
 | [[#TEST-NFR-4201]]    | benchmark                 | Hot-path match ≤ 50 µs 95p for 256-pattern GlobSet                                   | [[#NFR-4201]]                      |
 | [[#TEST-NFR-4202]]    | benchmark                 | Startup glob compilation ≤ 100 ms for 256 patterns                                    | [[#NFR-4202]]                      |
 | TEST-mutation-gate    | mutation                  | Mutation kill rate ≥ 90% on the public-path branch of `collab_gate`                  | [[#REQ-4202]] robustness           |
@@ -985,33 +1187,66 @@ plus-narrowing as the safer pattern. **Residual risk:** an operator who
 genuinely intends `"/**"` would have to remove the safeguard manually;
 not a default-state vulnerability.
 
-### Threat Model B — Title / Slug / Excerpt Leakage via Search
+### Threat Model B — Title / Slug / Excerpt Leakage via Adjacent Endpoints
 
-> Anonymous visitor hits `/search?q=*`; if search isn't scoped to
-> `public_paths`, private titles and excerpts leak.
+> Anonymous visitor hits `/search?q=*`, `/api/graph`, `/feed.xml`,
+> `/sitemap.xml`, `/llms.txt`, or any other endpoint that emits a
+> page-name list; if those endpoints aren't scoped to `public_paths`,
+> private titles, slugs, excerpts, and graph-edge endpoints leak.
 
-**Mitigation:** [[#REQ-4207]] / [[#CON-4204]] — search engine results
-are filtered through the same GlobSet before serialisation. The
-filter applies at the response boundary, not at the index, so the
-search engine still uses the full corpus; only the OUTPUT changes.
+This is **the load-bearing risk class for SPEC-042** — broader than
+"just /search". The full enumeration of leak surfaces a Phase-2 audit
+MUST close before the spec status flips to `implemented`:
 
-**Residual risk:** if a future feature adds another endpoint that
-emits page-name lists (e.g. a sitemap, an RSS feed, an autocomplete
-endpoint) and forgets to filter, it leaks. Mitigation: documentation +
-a `is_public` predicate that's easy to thread through every new
-list-emitting endpoint. A linter / static-analysis check could catch
-this in CI.
+| Surface | Leak content | Filter point |
+|---|---|---|
+| `/search`, `/api/search` | titles, slugs, excerpts | response boundary, REQ-4207 |
+| `/api/backlinks/<slug>` | titles of pages linking to slug | response boundary, REQ-4207 |
+| `/api/graph` | every page slug + every edge | response boundary, needs Phase-2 wiring |
+| `/llms.txt` | typically full vault index | response boundary, needs Phase-2 wiring |
+| `/feed.xml`, `/feed.atom` (SPEC-038) | titles + excerpts of recent edits | response boundary |
+| `/sitemap.xml` | every URL | response boundary |
+| `robots.txt` | could leak via negative-space `Disallow:` | operator-authored, document the trap |
+| Wikilink rendering on a public page | linked private page's title text | render-time, REQ-4213 |
+| Backlink panel rendered inline on public page | linker titles | render-time, REQ-4213 |
+| Recent-changes sidebar | titles of recently-edited private pages | render-time, REQ-4213 |
+| `<title>` / OpenGraph / Twitter Card metadata | could embed linked-page titles | render-time, REQ-4213 |
+| HTML error pages (`<title>404 — MyPrivateWiki</title>`) | vault name | minor; document |
+
+**Primary mitigation:** [[#REQ-4207]] / [[#CON-4204]] for the
+response-boundary endpoints + [[#REQ-4213]] for the render-time
+cases. The filter applies at the response boundary, not at the index,
+so the search engine still uses the full corpus; only the OUTPUT
+changes.
+
+**Defence-in-depth:** a single `is_public(slug)` predicate that every
+list-emitting endpoint MUST thread through, plus a CI lint that
+flags new endpoints which produce `Vec<PageName>`-shaped responses
+without consulting it. The Phase-2 endpoint audit is the gating
+deliverable — without a complete inventory we can't know we've
+closed every leak.
+
+**Residual risk:** new endpoints added in future SPECs forget the
+filter. Mitigation is operational discipline (the CI lint) + the
+endpoint inventory living next to the GlobSet so reviewers see the
+list whenever they add a list-emitting handler.
 
 ### Threat Model C — Anonymous State Mutation
 
 > Anonymous visitor crafts a POST to a public path expecting to mutate
 > server state.
 
-**Mitigation:** [[#REQ-4203]] — POST / PUT / DELETE on public paths
-return 405. The gate enforces this BEFORE any handler runs, so even a
-handler that legitimately accepts unauthenticated writes (none exist
-today) couldn't be exploited via this mechanism. **Residual risk:**
-none beyond the deferred "anonymous comment forms" use case.
+**Mitigation:** [[#REQ-4203]] (post-revision) — POST / PUT / DELETE
+on public paths from an anonymous principal return `401 Unauthorized`.
+The gate enforces this BEFORE any handler runs, so even a handler
+that legitimately accepts unauthenticated writes (none exist today)
+couldn't be exploited via this mechanism. Authenticated writes pass
+through and are subject to normal role-based authorization — an
+authenticated Editor can still PUT a public page they maintain,
+which is the legitimate workflow [[#ADR-4202]] preserves.
+
+**Residual risk:** none beyond the deferred "anonymous comment
+forms" use case.
 
 ### Threat Model D — Glob-Match Performance DoS
 
@@ -1046,9 +1281,92 @@ anonymous requests; SPL does not evaluate."
 > home page."
 
 **Mitigation:** The home page was already public for everyone; the
-capability adds nothing. Documentation explains the principle ("public
-is public; capability adds authority on TOP of that, not BELOW").
-**Residual risk:** operator UX confusion only; no security weakening.
+capability adds nothing on the read side. The revised [[#ADR-4204]]
+preserves scope enforcement on the WRITE side, so a cap URL scoped
+to `/shared/**` cannot write to `/about` even if `/about` is public.
+Documentation explains the principle ("public is public on reads;
+writes still respect cap scope").
+
+**Residual risk:** operator UX confusion only on the read side; no
+security weakening.
+
+### Threat Model G — Cache Poisoning via Intermediary CDN
+
+> A CDN or reverse proxy sits between visitors and zetl. The
+> anonymous response to a public-path GET is cached. A logged-in user
+> requests the same path; the CDN serves the cached anonymous response
+> instead of the per-principal one. Worse: a config error briefly
+> exposes `/private/secret`; the CDN caches it; even after the operator
+> narrows the glob, the cached version stays accessible until TTL.
+
+This is the classic mixed-auth caching footgun. zetl's current
+collab-mode posture is "every response is authenticated, so caching
+is bounded per-session" — public_paths breaks that posture by
+introducing genuinely-cacheable responses on shared URLs.
+
+**Mitigation:** [[#REQ-4212]] — every anonymous public-path response
+carries `Cache-Control: public, max-age=0, must-revalidate` and
+`Vary: Cookie, Authorization` by default. Authenticated responses on
+public paths inherit the existing per-route `private, no-store`
+headers. Operators are warned in [[docs/collab-public-paths.md]]
+about the standard CDN footgun.
+
+**Residual risk:** an operator overrides the cache headers at their
+reverse proxy without understanding the implications. The spec
+cannot enforce CDN behaviour; the mitigation is operator-facing
+warnings + a worked example in the operator guide. Operators on
+shared CDNs (Cloudflare, Fastly, CloudFront) MUST be told to either
+disable shared caching or audit their `Vary` story.
+
+### Threat Model H — Persistent Exposure via Web Crawlers / Archive.org
+
+> An operator marks `/blog/**` public, runs the server for a week,
+> then narrows the glob to remove a specific page. Search engines
+> (Google, Bing, Kagi) and archive.org have already indexed and
+> cached the page. Narrowing the glob doesn't reach back through
+> those caches.
+
+This is operational, not technical — the feature does what it says
+on the tin (make these pages public). The risk is operator-expectation
+mismatch: operators who treat `public_paths` as a soft "I'll
+un-public this later" knob will be surprised that retraction is
+hard.
+
+**Mitigation:** Operator-doc warning in [[docs/collab-public-paths.md]]:
+"Anything reachable via `public_paths` for any length of time should
+be assumed cached externally. Retraction means narrowing the glob
+AND requesting removal from major search-engine caches AND noting
+that archive.org has its own takedown process. Don't use this
+feature for content you might want to retract."
+
+**Residual risk:** operator misunderstanding remains the dominant
+risk. No technical mitigation possible.
+
+### Threat Model I — Authenticated-Search Per-Result Role Gating Gap
+
+> A vault uses SPL to restrict `/internal/runbook` to Editor-or-
+> higher. A Reader-role authenticated user searches for "runbook" —
+> they get a search hit on `/internal/runbook` even though clicking
+> the result 403s. The hit reveals the page's title and excerpt.
+
+This is **pre-existing in SPEC-020 / SPEC-041** (zetl search doesn't
+currently consult SPL per-result) — it is not introduced by SPEC-042.
+But the SPEC-042 anonymous-aware filter machinery in REQ-4207 is
+the natural place to layer per-role filtering on top in a follow-up,
+so it's worth naming.
+
+**Mitigation in this spec:** none — explicitly out of scope.
+
+**Mitigation path:** a follow-up REQ (Phase 4+ or a separate small
+SPEC) extends the response-boundary filter from "is the request
+anonymous?" to "what does the requesting principal's role permit
+them to see?" via the existing SPL evaluator. The shape of the
+filter is the same; the predicate widens.
+
+**Residual risk for SPEC-042 itself:** zero — this risk is not
+introduced or worsened by the feature. Naming it here to ensure the
+follow-up isn't lost in a Phase-2 audit conversation that focuses
+on the anonymous-only filter.
 
 ---
 
@@ -1130,12 +1448,19 @@ up. Independently useful even before Phase 1 ships the gate.
   Phase-0 config.
 - Modify `src/web/session.rs::collab_gate` per [[#CON-4202]].
 - Modify `src/web/auth/capability_url.rs::capability_gate` per
-  [[#CON-4203]].
+  [[#CON-4203]] — apply asymmetric scope check (skip on safe
+  methods, enforce on non-safe) per the revised [[#REQ-4204]].
+- Add the [[#REQ-4212]] cache-header layer to anonymous public-path
+  responses (`Cache-Control: public, max-age=0, must-revalidate` +
+  `Vary: Cookie, Authorization`). Authenticated responses on public
+  paths keep their per-route headers.
 - OBS-4203 / OBS-4204 / OBS-4205 wiring.
-- Integration tests against an axum mock router for the gate matrix.
+- Integration tests against an axum mock router for the gate matrix
+  (including the editor-PUT-on-public-page case from HP4 and the
+  cap-URL write-rejected case from REQ-4204).
 - **Gate:** [[#TEST-4202]], [[#TEST-4203]], [[#TEST-4204]],
-  [[#TEST-4205]], [[#TEST-4209]] green. Existing SPEC-041 suite
-  unchanged.
+  [[#TEST-4205]], [[#TEST-4209]], [[#TEST-4212]] green. Existing
+  SPEC-041 suite unchanged.
 
 ### Phase 2 — Anonymous-Aware Search / Backlinks
 
@@ -1145,13 +1470,24 @@ up. Independently useful even before Phase 1 ships the gate.
   pipelines.
 - Add the per-result `is_public` filter at the response boundary
   ([[#CON-4204]]).
-- Audit every endpoint that emits page-name lists (`/api/search`,
+- Audit every endpoint that emits page-name lists (the [[#Threat
+  Model B]] inventory table is the canonical checklist): `/api/search`,
   `/search`, `/api/backlinks/*`, `/api/graph`, `/llms.txt`, RSS
-  feeds, sitemap if present). Each gets the filter or a documented
-  exemption.
-- **Gate:** [[#TEST-4207]] green; targeted property test that no
-  private slug appears in any anonymous response across the full
-  endpoint inventory.
+  feeds (SPEC-038), `/sitemap.xml` if present, `<title>` / OpenGraph /
+  Twitter Card metadata, error-page titles. Each gets the
+  response-boundary filter or a documented exemption recorded in
+  `docs/collab-public-paths.md`.
+- Implement [[#REQ-4213]] wikilink-on-public-page rendering — the
+  render-time half of [[#Threat Model B]]. Author the missing
+  [[#ADR-4207]] (strike-through vs plain-text vs omit) before
+  implementing.
+- Add a CI lint that flags new endpoints which return
+  `Vec<PageName>`-shaped responses without going through the
+  shared `is_public` filter (defence-in-depth against future SPECs
+  forgetting the filter).
+- **Gate:** [[#TEST-4207]], [[#TEST-4213]] green; targeted property
+  test that no private slug appears in any anonymous response across
+  the full endpoint inventory.
 
 ### Phase 3 — SPL Coherence + Docs + Review
 
@@ -1210,16 +1546,20 @@ complete. Phase 3 is hardening + docs + review.
 2. **Anonymous comment forms / sign-this-page** — explicit deferral
    from [[#ADR-4202]]. Worth a follow-up spec when the use case has a
    concrete adopter.
-3. **Cache headers on public responses.** Should the gate add
-   `Cache-Control: public, max-age=…` on admitted public requests so
-   intermediary CDNs / reverse proxies can cache? Probably operator
-   choice (some operators set their own at the proxy layer); strawman
-   defers.
+3. **Cache headers on public responses.** ~~Strawman deferred~~ —
+   resolved by [[#REQ-4212]] after the [[#Threat Model G]] review.
+   Default is `public, max-age=0, must-revalidate` + `Vary: Cookie,
+   Authorization`; operators can override at their reverse proxy if
+   they understand the caching implications.
 4. **`robots.txt` and search-engine indexability.** Public pages
    probably want to be indexable; private pages should be
    `Disallow:`'d. Should the gate emit a generated `/robots.txt`
    reflecting `public_paths`? Likely yes; small adjacency, may belong
-   in a follow-up.
+   in a follow-up. Beware: a `robots.txt` listing every private path
+   under `Disallow:` is a negative-space leak — adversaries scrape
+   `robots.txt` first to discover hidden URLs. Recommended pattern:
+   generate `Allow: <public glob>` lines + a single `Disallow: /`
+   below them, instead of enumerating private paths.
 5. **Multi-IdP / multi-realm** (out-of-scope reminder). [[SPEC-041]]
    §15.4 already flags this; SPEC-042 doesn't change that picture.
 6. **Per-glob role override** (out-of-scope reminder). The
@@ -1236,3 +1576,30 @@ complete. Phase 3 is hardening + docs + review.
    Strawman position: public-path routes MUST NOT use authentication-
    requiring extractors; a Phase-1 audit lists which routes need to be
    reviewed.
+8. **Wikilink-on-public-page rendering policy** (filed as
+   [[#REQ-4213]]; ADR-4207 still TBD). When a public page renders a
+   `[[wikilink]]` to a private page, what does the anonymous viewer
+   see? Candidates: (a) strike-through with the title text removed
+   (`[[unknown]]`-style); (b) plain text of the link literal
+   (`[[Internal Memo]]` rendered as plain text, no link); (c) the
+   link omitted entirely (text reflows around it); (d) rendered as a
+   404-link (title removed, target stays as the page slug). Each has
+   different UX (strike is most explicit; omit is most invisible;
+   plain-text leaks the wikilink target but not the title; 404-link
+   leaks the slug). The strawman doesn't pick — operator feedback on
+   the real corpus is the right way to decide; ADR-4207 captures the
+   decision before Phase 2 implements.
+9. **Per-result role-aware filtering for authenticated search**
+   (Threat Model I follow-up). Search currently doesn't consult SPL
+   per-result, so a Reader-role user can see search hits on
+   Editor-restricted pages. SPEC-042's response-boundary filter is
+   the natural place to layer this on top — same machinery, the
+   predicate widens from "is the request anonymous?" to "what does
+   the requesting principal's role permit?". Out of scope for
+   SPEC-042 itself; flagged for a small follow-up SPEC.
+10. **Authenticated-edit attribution on public paths after revised
+    REQ-4203.** The revised REQ-4203 lets authenticated editors PUT
+    public pages; the audit log records the user, git attributes the
+    commit. Operators should verify their public-page edit workflow
+    AFTER the revised semantics ship — pre-revision, this path was
+    405'd, so no operator has exercised it.
