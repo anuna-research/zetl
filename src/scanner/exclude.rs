@@ -21,6 +21,12 @@ pub struct ScanOptions {
     /// When true, disables the level-2 dotdir default exclusion. Level-1
     /// force-ignores are unaffected.
     pub include_hidden: bool,
+    /// When true (SPEC-043), the walker does not read `.gitignore` files at
+    /// any level — git's ignore opinion is removed entirely and `.zetlignore`
+    /// (plus levels 1–2 and `--exclude`) becomes the sole vault-scoping
+    /// authority. Decouples the corpus boundary from the git-tracking
+    /// boundary. Level-1 force-ignores and the dotdir default are unaffected.
+    pub no_gitignore: bool,
     /// Emit OBS-200 `[zetl] scan: skipped ...` lines on stderr when an
     /// entry is excluded. Wired to the global `--verbose` flag.
     pub verbose: bool,
@@ -38,6 +44,11 @@ impl ScanOptions {
 
     pub fn with_include_hidden(mut self, include_hidden: bool) -> Self {
         self.include_hidden = include_hidden;
+        self
+    }
+
+    pub fn with_no_gitignore(mut self, no_gitignore: bool) -> Self {
+        self.no_gitignore = no_gitignore;
         self
     }
 
