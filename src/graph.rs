@@ -737,30 +737,103 @@ pub fn serialize_graph_index(
     node_entries.sort_by(|a, b| a.0.cmp(&b.0));
     let nodes_out: Vec<serde_json::Value> = node_entries.into_iter().map(|(_, v)| v).collect();
 
-    let mut seen_edges: HashSet<(String, String)> = HashSet::new();
-    let mut edge_entries: Vec<(String, serde_json::Value)> = Vec::new();
-    for edge_ref in graph.graph.edge_references() {
-        let source_name = &graph.graph[edge_ref.source()];
-        let target_name = &graph.graph[edge_ref.target()];
-        let source_slug = slug_for(source_name);
-        let target_slug = slug_for(target_name);
-        let pair = (source_slug.clone(), target_slug.clone());
-        if !seen_edges.insert(pair) {
-            continue;
-        }
-        let key = format!("{source_slug}->{target_slug}");
-        edge_entries.push((
-            key.clone(),
-            serde_json::json!({
-                "key": key,
-                "source": source_slug,
-                "target": target_slug,
-                "attributes": {},
-            }),
-        ));
+    // SPEC-045 REQ-4517 / CON-4508: backward-compatible SUPERSET feed, mirroring
+    // `serialize_graph_index_ctx` so `zetl build` and `zetl serve` carry the
+    // same typed edges. With NO typed edges the output is byte-identical to the
+    // pre-SPEC-045 CON-101 path (untyped branch below). With typed edges the
+    // feed becomes a multigraph (`multi:true`) with predicate-qualified keys and
+    // per-edge `predicate`/`annotation` attributes.
+    struct FeedEdge {
+        source: String,
+        target: String,
+        predicate: Option<String>,
+        annotation: Option<String>,
+        line: u32,
     }
-    edge_entries.sort_by(|a, b| a.0.cmp(&b.0));
-    let edges_out: Vec<serde_json::Value> = edge_entries.into_iter().map(|(_, v)| v).collect();
+    let mut all_edges: Vec<FeedEdge> = Vec::new();
+    for edge_ref in graph.graph.edge_references() {
+        let meta = edge_ref.weight();
+        all_edges.push(FeedEdge {
+            source: slug_for(&graph.graph[edge_ref.source()]),
+            target: slug_for(&graph.graph[edge_ref.target()]),
+            predicate: meta.predicate.clone(),
+            annotation: meta.annotation.clone(),
+            line: meta.line,
+        });
+    }
+    let has_typed = all_edges.iter().any(|e| e.predicate.is_some());
+
+    let (edges_out, multi): (Vec<serde_json::Value>, bool) = if !has_typed {
+        // ── Untyped: pre-SPEC-045 CON-101 path, kept verbatim. ──
+        let mut seen_edges: HashSet<(String, String)> = HashSet::new();
+        let mut edge_entries: Vec<(String, serde_json::Value)> = Vec::new();
+        for e in &all_edges {
+            if !seen_edges.insert((e.source.clone(), e.target.clone())) {
+                continue;
+            }
+            let key = format!("{}->{}", e.source, e.target);
+            edge_entries.push((
+                key.clone(),
+                serde_json::json!({
+                    "key": key,
+                    "source": e.source,
+                    "target": e.target,
+                    "attributes": {},
+                }),
+            ));
+        }
+        edge_entries.sort_by(|a, b| a.0.cmp(&b.0));
+        (edge_entries.into_iter().map(|(_, v)| v).collect(), false)
+    } else {
+        // ── Typed: multigraph superset, identity (source, target, predicate). ──
+        all_edges.sort_by(|a, b| {
+            a.source
+                .cmp(&b.source)
+                .then_with(|| a.target.cmp(&b.target))
+                .then_with(|| a.predicate.cmp(&b.predicate))
+                .then_with(|| a.line.cmp(&b.line))
+        });
+        all_edges.dedup_by(|a, b| {
+            a.source == b.source && a.target == b.target && a.predicate == b.predicate
+        });
+        let mut used_keys: HashSet<String> = HashSet::new();
+        let edges_json: Vec<serde_json::Value> = all_edges
+            .iter()
+            .map(|e| {
+                let pred_part = e.predicate.as_deref().unwrap_or("__untyped");
+                let mut key = format!("{}--{}--{}", e.source, e.target, pred_part);
+                if used_keys.contains(&key) {
+                    let mut suffix = 1u32;
+                    loop {
+                        let candidate = format!("{key}#{suffix}");
+                        if !used_keys.contains(&candidate) {
+                            key = candidate;
+                            break;
+                        }
+                        suffix += 1;
+                    }
+                }
+                used_keys.insert(key.clone());
+                let predicate = e
+                    .predicate
+                    .as_ref()
+                    .map(|p| serde_json::Value::String(p.clone()))
+                    .unwrap_or(serde_json::Value::Null);
+                let annotation = e
+                    .annotation
+                    .as_ref()
+                    .map(|a| serde_json::Value::String(a.clone()))
+                    .unwrap_or(serde_json::Value::Null);
+                serde_json::json!({
+                    "key": key,
+                    "source": e.source,
+                    "target": e.target,
+                    "attributes": { "predicate": predicate, "annotation": annotation },
+                })
+            })
+            .collect();
+        (edges_json, true)
+    };
 
     let pages_count = graph.resolved.len();
     let links_count = edges_out.len();
@@ -768,7 +841,7 @@ pub fn serialize_graph_index(
     serde_json::json!({
         "options": {
             "type": "directed",
-            "multi": false,
+            "multi": multi,
             "allowSelfLoops": true,
         },
         "attributes": {
