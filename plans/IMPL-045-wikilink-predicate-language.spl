@@ -223,3 +223,20 @@
 (normally r-propagate-rdf-export-from-predicates-toml-stale-v1 stale-v1-predicates-toml upstream-blocked-rdf-export)
 (normally r-propagate-rdf-export-from-predicates-toml-timeout-v1 timeout-v1-predicates-toml upstream-blocked-rdf-export)
 (normally r-propagate-rdf-export-from-predicates-toml-blocked upstream-blocked-predicates-toml upstream-blocked-rdf-export)
+
+(claims agent:claude
+  :at "2026-06-09T14:07:56Z"
+  (given completed-predicates-toml))
+
+(claims agent:claude
+  :at "2026-06-09T14:08:11Z"
+  (given claim-v1-template-vars)
+  (normally r-cl-state-v1-template-vars claim-v1-template-vars state-claimed-v1-template-vars)
+  (normally r-cl-chain-v1-template-vars state-claimed-v1-template-vars claimed-template-vars)
+)
+
+;; Propagation rules: failures in 'template-vars' block downstream tasks
+(normally r-propagate-backlink-render-from-template-vars-failed failed-template-vars upstream-blocked-backlink-render)
+(normally r-propagate-backlink-render-from-template-vars-permanently-failed permanently-failed-template-vars upstream-blocked-backlink-render)
+(normally r-propagate-backlink-render-from-template-vars-stale-v1 stale-v1-template-vars upstream-blocked-backlink-render)
+(normally r-propagate-backlink-render-from-template-vars-timeout-v1 timeout-v1-template-vars upstream-blocked-backlink-render)

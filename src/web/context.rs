@@ -57,6 +57,10 @@ pub struct VaultContext {
     /// configured; defaults are `/feed.xml`, `/atom.xml`, `/feed.json`.
     #[serde(default)]
     pub feed_paths: FeedPathsContext,
+    /// SPEC-045 REQ-4515: the observed predicate set with counts (the
+    /// `zetl edges --by-predicate` data) for nav / legend / tag-cloud widgets.
+    #[serde(default)]
+    pub predicates: Vec<VaultPredicateEntry>,
 }
 
 #[derive(Serialize, Default, Clone, Debug)]
@@ -109,6 +113,62 @@ pub struct BacklinkEntry {
     /// RFC 3339 timestamp of the earliest snapshot where this backlink existed.
     /// `null` (JSON) when history is unavailable.
     pub since: Option<String>,
+    /// SPEC-045 REQ-4515: predicate of the incoming edge (`null` ⇒ untyped).
+    /// When a source links via several predicates the entry carries the first;
+    /// the per-predicate grouping lives in `backlinks_by_predicate`.
+    #[serde(default)]
+    pub predicate: Option<String>,
+    /// Auto-derived (or strict-overridden) display label; `null` for untyped.
+    #[serde(default)]
+    pub label: Option<String>,
+    /// Edge annotation (`null` ⇒ absent).
+    #[serde(default)]
+    pub annotation: Option<String>,
+}
+
+/// SPEC-045 REQ-4515 / CON-4506: one outgoing typed-or-untyped edge, exposed
+/// to templates as `page.edges[i]`.
+#[derive(Serialize, Clone)]
+pub struct EdgeVar {
+    /// `null` ⇒ untyped edge.
+    pub predicate: Option<String>,
+    /// Auto-derived display (`null` for untyped; "See also" is the renderer's
+    /// label for the untyped bucket).
+    pub label: Option<String>,
+    pub target: String,
+    pub target_slug: String,
+    /// Ghost / unresolved target.
+    pub is_dead: bool,
+    pub annotation: Option<String>,
+    pub line: usize,
+    /// RESERVED: always `null` in v1 (every edge is self-authored). Reserved
+    /// for the deferred named-inverse (Q4).
+    pub authored_by: Option<String>,
+}
+
+/// SPEC-045 REQ-4515: one incoming typed-or-untyped edge, exposed under
+/// `page.backlinks_by_predicate`.
+#[derive(Serialize, Clone)]
+pub struct TypedBacklinkVar {
+    pub predicate: Option<String>,
+    pub label: Option<String>,
+    /// Source page title.
+    pub source: String,
+    pub slug: String,
+    pub annotation: Option<String>,
+    pub line: usize,
+}
+
+/// The reserved sentinel key for untyped edges in the `*_by_predicate` maps
+/// (CON-4506). Collision-safe: no valid predicate can start with `_`.
+pub const UNTYPED_KEY: &str = "__untyped";
+
+/// SPEC-045 REQ-4515: one entry of `vault.predicates` — the observed predicate
+/// set with counts.
+#[derive(Serialize, Clone)]
+pub struct VaultPredicateEntry {
+    pub predicate: String,
+    pub count: usize,
 }
 
 #[derive(Serialize)]
@@ -138,6 +198,16 @@ pub struct PageContext {
     /// Page snapshot history summary available as `page.history` in templates.
     /// `null` (JSON) when history is unavailable.
     pub history: serde_json::Value,
+    /// SPEC-045 REQ-4515: outgoing typed-or-untyped edges (`page.edges`).
+    #[serde(default)]
+    pub edges: Vec<EdgeVar>,
+    /// SPEC-045 REQ-4515: `page.edges_by_predicate` — untyped edges bucket
+    /// under the `__untyped` sentinel key (CON-4506).
+    #[serde(default)]
+    pub edges_by_predicate: BTreeMap<String, Vec<EdgeVar>>,
+    /// SPEC-045 REQ-4515: `page.backlinks_by_predicate`.
+    #[serde(default)]
+    pub backlinks_by_predicate: BTreeMap<String, Vec<TypedBacklinkVar>>,
 }
 
 // ── Folder-specific structs ─────────────────────────────────────────
@@ -287,6 +357,20 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
 
     let sidebar_tree = build_sidebar_tree(&pages);
 
+    // SPEC-045 REQ-4515: observed predicate set with counts (`vault.predicates`),
+    // sorted by descending count then predicate name for stable legend ordering.
+    let mut pred_counts: BTreeMap<String, usize> = BTreeMap::new();
+    for e in data.graph.all_edges() {
+        if let Some(p) = e.predicate {
+            *pred_counts.entry(p).or_insert(0) += 1;
+        }
+    }
+    let mut predicates: Vec<VaultPredicateEntry> = pred_counts
+        .into_iter()
+        .map(|(predicate, count)| VaultPredicateEntry { predicate, count })
+        .collect();
+    predicates.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.predicate.cmp(&b.predicate)));
+
     let stats = StatsContext {
         total_pages: graph_stats.pages,
         total_links: graph_stats.links,
@@ -305,6 +389,7 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
         feed_discovery: Vec::new(),
         feed_json_enabled: false,
         feed_paths: FeedPathsContext::default(),
+        predicates,
     }
 }
 
@@ -400,19 +485,49 @@ pub fn build_page_context(
     // anchored at the earliest line, with `count` reflecting the total.
     let mut backlinks: Vec<BacklinkEntry> = Vec::new();
     let mut backlink_index: HashMap<String, usize> = HashMap::new();
+    // SPEC-045 REQ-4515: per-predicate backlink grouping, NOT deduped by source
+    // (a source may link via several predicates, each its own typed backlink).
+    let mut backlinks_by_predicate: BTreeMap<String, Vec<TypedBacklinkVar>> = BTreeMap::new();
     for bl in data.graph.backlinks(page_name) {
-        if let Some(&i) = backlink_index.get(&bl.source) {
-            backlinks[i].count += 1;
-            if (bl.line as usize) < backlinks[i].line {
-                backlinks[i].line = bl.line as usize;
-            }
-            continue;
-        }
         let bl_slug = data
             .page_slug_map
             .get(&bl.source)
             .cloned()
             .unwrap_or_default();
+        let label = bl
+            .predicate
+            .as_deref()
+            .map(crate::predicates::auto_label);
+        backlinks_by_predicate
+            .entry(
+                bl.predicate
+                    .clone()
+                    .unwrap_or_else(|| UNTYPED_KEY.to_string()),
+            )
+            .or_default()
+            .push(TypedBacklinkVar {
+                predicate: bl.predicate.clone(),
+                label: label.clone(),
+                source: bl.source.clone(),
+                slug: bl_slug.clone(),
+                annotation: bl.annotation.clone(),
+                line: bl.line as usize,
+            });
+
+        if let Some(&i) = backlink_index.get(&bl.source) {
+            backlinks[i].count += 1;
+            if (bl.line as usize) < backlinks[i].line {
+                backlinks[i].line = bl.line as usize;
+            }
+            // Keep the first-seen predicate/label/annotation on the deduped
+            // entry; promote them if the first occurrence was untyped.
+            if backlinks[i].predicate.is_none() && bl.predicate.is_some() {
+                backlinks[i].predicate = bl.predicate.clone();
+                backlinks[i].label = label;
+                backlinks[i].annotation = bl.annotation.clone();
+            }
+            continue;
+        }
         backlink_index.insert(bl.source.clone(), backlinks.len());
         backlinks.push(BacklinkEntry {
             title: bl.source,
@@ -420,6 +535,9 @@ pub fn build_page_context(
             line: bl.line as usize,
             count: 1,
             since: None,
+            predicate: bl.predicate.clone(),
+            label,
+            annotation: bl.annotation,
         });
     }
 
@@ -448,6 +566,44 @@ pub fn build_page_context(
         })
         .collect();
 
+    // SPEC-045 REQ-4515: outgoing typed-or-untyped edges (`page.edges`) and the
+    // per-predicate grouping (`page.edges_by_predicate`, `__untyped` sentinel).
+    let mut edges: Vec<EdgeVar> = Vec::new();
+    let mut edges_by_predicate: BTreeMap<String, Vec<EdgeVar>> = BTreeMap::new();
+    for fl in data.graph.forward_links(page_name) {
+        let is_dead = !data.resolved.contains(&fl.target);
+        let target_slug = data
+            .page_slug_map
+            .get(&fl.target)
+            .cloned()
+            .unwrap_or_default();
+        let label = fl
+            .meta
+            .predicate
+            .as_deref()
+            .map(crate::predicates::auto_label);
+        let edge = EdgeVar {
+            predicate: fl.meta.predicate.clone(),
+            label,
+            target: fl.target.clone(),
+            target_slug,
+            is_dead,
+            annotation: fl.meta.annotation.clone(),
+            line: fl.meta.line as usize,
+            authored_by: None,
+        };
+        edges_by_predicate
+            .entry(
+                fl.meta
+                    .predicate
+                    .clone()
+                    .unwrap_or_else(|| UNTYPED_KEY.to_string()),
+            )
+            .or_default()
+            .push(edge.clone());
+        edges.push(edge);
+    }
+
     let breadcrumbs = build_breadcrumbs(slug);
     let is_new = !data.resolved.contains(page_name);
     let frontmatter = parse_frontmatter(content_raw);
@@ -467,6 +623,9 @@ pub fn build_page_context(
         is_new,
         raw_escaped: None,
         history: serde_json::Value::Null,
+        edges,
+        edges_by_predicate,
+        backlinks_by_predicate,
     }
 }
 
@@ -693,6 +852,105 @@ mod tests {
             page_slug_map_lower,
             collision_names: std::collections::HashSet::new(),
         }
+    }
+
+    /// Like `make_file` but each link tuple is `(target, line, predicates)`.
+    fn make_typed_file(name: &str, links: Vec<(&str, u32, Vec<&str>)>) -> ParsedFile {
+        let mut f = make_file(name, vec![]);
+        f.links = links
+            .into_iter()
+            .map(|(target, line, preds)| WikiLink {
+                target_page: target.to_string(),
+                raw_target: target.to_string(),
+                heading: None,
+                block_ref: None,
+                alias: None,
+                is_embed: false,
+                predicates: preds.into_iter().map(|p| p.to_string()).collect(),
+                line,
+                column: 1,
+            })
+            .collect();
+        f
+    }
+
+    #[test]
+    fn spec045_page_edges_and_groups() {
+        let files = vec![
+            make_typed_file(
+                "Decision Log",
+                vec![
+                    ("Retro", 5, vec!["derived_from", "informed_by"]),
+                    ("Move Fast", 7, vec!["contradicts"]),
+                    ("Loose", 9, vec![]),
+                ],
+            ),
+            make_file("Retro", vec![]),
+            make_file("Move Fast", vec![]),
+            make_file("Loose", vec![]),
+        ];
+        let data = make_vault_data(files);
+        let ctx = build_page_context(&data, "Decision Log", "Decision Log", "", "");
+
+        // page.edges: 2 typed (derived_from + informed_by) + contradicts + 1 untyped.
+        assert_eq!(ctx.edges.len(), 4);
+        // Auto-derived labels (CON-4506).
+        let derived = ctx
+            .edges
+            .iter()
+            .find(|e| e.predicate.as_deref() == Some("derived_from"))
+            .unwrap();
+        assert_eq!(derived.label.as_deref(), Some("Derived from"));
+        assert_eq!(derived.target, "Retro");
+        // Untyped edge: predicate + label null, reserved authored_by null.
+        let untyped = ctx.edges.iter().find(|e| e.predicate.is_none()).unwrap();
+        assert!(untyped.label.is_none());
+        assert!(untyped.authored_by.is_none());
+
+        // edges_by_predicate buckets typed keys + the __untyped sentinel.
+        assert!(ctx.edges_by_predicate.contains_key("derived_from"));
+        assert!(ctx.edges_by_predicate.contains_key("contradicts"));
+        assert_eq!(ctx.edges_by_predicate.get(UNTYPED_KEY).map(|v| v.len()), Some(1));
+    }
+
+    #[test]
+    fn spec045_typed_backlinks_grouped() {
+        let files = vec![
+            make_typed_file("Decision Log", vec![("Move Fast", 7, vec!["contradicts"])]),
+            make_file("Move Fast", vec![]),
+        ];
+        let data = make_vault_data(files);
+        let ctx = build_page_context(&data, "Move Fast", "Move Fast", "", "");
+        // Extended backlink carries the predicate + label.
+        assert_eq!(ctx.backlinks.len(), 1);
+        assert_eq!(ctx.backlinks[0].predicate.as_deref(), Some("contradicts"));
+        assert_eq!(ctx.backlinks[0].label.as_deref(), Some("Contradicts"));
+        // Grouped map keys by predicate.
+        assert_eq!(
+            ctx.backlinks_by_predicate.get("contradicts").map(|v| v.len()),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn spec045_vault_predicates_counts() {
+        let files = vec![
+            make_typed_file(
+                "A",
+                vec![("B", 1, vec!["contradicts"]), ("C", 2, vec!["contradicts"])],
+            ),
+            make_typed_file("D", vec![("B", 1, vec!["derived_from"])]),
+            make_file("B", vec![]),
+            make_file("C", vec![]),
+        ];
+        let data = make_vault_data(files);
+        let ctx = build_vault_context(&data, "v");
+        // Sorted by descending count: contradicts(2) before derived_from(1).
+        assert_eq!(ctx.predicates.len(), 2);
+        assert_eq!(ctx.predicates[0].predicate, "contradicts");
+        assert_eq!(ctx.predicates[0].count, 2);
+        assert_eq!(ctx.predicates[1].predicate, "derived_from");
+        assert_eq!(ctx.predicates[1].count, 1);
     }
 
     #[test]

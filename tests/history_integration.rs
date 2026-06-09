@@ -1768,6 +1768,7 @@ fn test_125_vault_history_null_when_no_history() {
     ).unwrap();
 
     let vault_ctx = VaultContext {
+        predicates: Vec::new(),
         name: "test".to_owned(),
         pages: vec![],
         sidebar_tree: vec![],
@@ -1822,6 +1823,7 @@ fn test_126_vault_history_populated_in_template() {
     };
 
     let mut vault_ctx = VaultContext {
+        predicates: Vec::new(),
         name: "test".to_owned(),
         pages: vec![],
         sidebar_tree: vec![],
@@ -2061,6 +2063,7 @@ fn test_130_page_history_null_in_template() {
     ).unwrap();
 
     let vault_ctx = VaultContext {
+        predicates: Vec::new(),
         name: "test".to_owned(),
         pages: vec![],
         sidebar_tree: vec![],
@@ -2076,6 +2079,9 @@ fn test_130_page_history_null_in_template() {
     };
 
     let page_ctx = PageContext {
+        edges: Vec::new(),
+        edges_by_predicate: std::collections::BTreeMap::new(),
+        backlinks_by_predicate: std::collections::BTreeMap::new(),
         title: "TestPage".to_owned(),
         slug: "TestPage".to_owned(),
         content_html: String::new(),
@@ -2130,6 +2136,7 @@ fn test_131_page_history_populated_in_template() {
     };
 
     let vault_ctx = VaultContext {
+        predicates: Vec::new(),
         name: "test".to_owned(),
         pages: vec![],
         sidebar_tree: vec![],
@@ -2145,6 +2152,9 @@ fn test_131_page_history_populated_in_template() {
     };
 
     let mut page_ctx = PageContext {
+        edges: Vec::new(),
+        edges_by_predicate: std::collections::BTreeMap::new(),
+        backlinks_by_predicate: std::collections::BTreeMap::new(),
         title: "TestPage".to_owned(),
         slug: "TestPage".to_owned(),
         content_html: String::new(),
