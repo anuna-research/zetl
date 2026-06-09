@@ -347,6 +347,7 @@ mod tests {
             line: 1,
             column: 1,
             predicates: predicates.iter().map(|s| s.to_string()).collect(),
+            annotation: None,
         }
     }
 

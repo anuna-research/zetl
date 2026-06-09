@@ -836,6 +836,7 @@ fn make_parsed_file(page_name: &str, link_targets: &[&str]) -> zetl::types::Pars
                 alias: None,
                 is_embed: false,
                 predicates: Vec::new(),
+                annotation: None,
                 line: 1,
                 column: 1,
             })
@@ -1914,6 +1915,7 @@ fn test_128_build_page_history_context_summary_fields() {
                     alias: None,
                     is_embed: false,
                     predicates: Vec::new(),
+                    annotation: None,
                     line: i as u32 + 1,
                     column: 1,
                 })
@@ -2003,6 +2005,7 @@ fn test_129_sample_page_trend_oldest_first() {
                 alias: None,
                 is_embed: false,
                 predicates: Vec::new(),
+                annotation: None,
                 line: i as u32 + 1,
                 column: 1,
             })

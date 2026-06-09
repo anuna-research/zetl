@@ -406,6 +406,7 @@ mod tests {
             alias: None,
             is_embed: false,
             predicates: Vec::new(),
+            annotation: None,
             line: 1,
             column: 9,
         });
@@ -453,6 +454,7 @@ mod tests {
             alias: None,
             is_embed: false,
             predicates: Vec::new(),
+            annotation: None,
             line: 1,
             column: 9,
         });
@@ -585,6 +587,7 @@ mod tests {
             alias: None,
             is_embed: false,
             predicates: Vec::new(),
+            annotation: None,
             line: 1,
             column: 9,
         });

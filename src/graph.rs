@@ -195,7 +195,7 @@ impl LinkGraph {
                     block_ref: link.block_ref.clone(),
                     is_embed: link.is_embed,
                     predicate: None,
-                    annotation: None,
+                    annotation: link.annotation.clone(),
                 };
 
                 // SPEC-045 REQ-4506: a K-predicate wikilink expands to K
@@ -964,6 +964,7 @@ mod tests {
                     alias: None,
                     is_embed: false,
                     predicates: Vec::new(),
+                    annotation: None,
                     line,
                     column: 1,
                 })
@@ -992,6 +993,7 @@ mod tests {
                     alias: None,
                     is_embed: false,
                     predicates: preds.into_iter().map(|p| p.to_string()).collect(),
+                    annotation: None,
                     line,
                     column: 1,
                 })
@@ -1233,6 +1235,7 @@ mod tests {
             alias: alias.map(|s| s.to_string()),
             is_embed,
             predicates: Vec::new(),
+            annotation: None,
             line,
             column: 1,
         }

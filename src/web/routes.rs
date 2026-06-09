@@ -7228,6 +7228,7 @@ mod tests {
                 alias: None,
                 is_embed: false,
                 predicates: Vec::new(),
+                annotation: None,
                 line: 4,
                 column: 1,
             }],

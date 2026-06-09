@@ -25,6 +25,7 @@ fn link(target: &str, predicates: &[&str], line: u32) -> WikiLink {
         line,
         column: 1,
         predicates: predicates.iter().map(|s| s.to_string()).collect(),
+        annotation: None,
     }
 }
 

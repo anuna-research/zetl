@@ -456,6 +456,45 @@ fn recognise_predicates(line_prefix: &str) -> Option<Vec<String>> {
     }
 }
 
+/// SPEC-045 REQ-4504: capture the annotation of a list-item named edge — the
+/// nested block content (indented sub-bullets) beneath the list item on
+/// `item_line_idx`. Returns the joined, marker-stripped text, or `None` when
+/// there is no nested content. The heuristic mirrors Markdown list nesting: a
+/// following line belongs to the annotation when it is indented strictly
+/// deeper than the list item's own indentation; a blank line is tolerated
+/// inside the block but a subsequent line at the item's indent (or shallower)
+/// ends it.
+fn capture_annotation(lines: &[&str], item_line_idx: usize) -> Option<String> {
+    let item_line = lines.get(item_line_idx)?;
+    let item_indent = item_line.len() - item_line.trim_start().len();
+
+    let mut captured: Vec<String> = Vec::new();
+    for line in lines.iter().skip(item_line_idx + 1) {
+        if line.trim().is_empty() {
+            continue; // a blank line may sit between nested blocks.
+        }
+        let indent = line.len() - line.trim_start().len();
+        if indent <= item_indent {
+            break; // dedent → the nested block has ended.
+        }
+        let mut text = line.trim();
+        // Strip one leading list marker so a sub-bullet reads as prose.
+        for marker in ["- ", "* ", "+ "] {
+            if let Some(rest) = text.strip_prefix(marker) {
+                text = rest.trim_start();
+                break;
+            }
+        }
+        captured.push(text.to_string());
+    }
+
+    if captured.is_empty() {
+        None
+    } else {
+        Some(captured.join(" "))
+    }
+}
+
 /// Extract wikilinks from raw text.
 ///
 /// Finds all `!?[[...]]` patterns and parses the inner content to extract
@@ -465,6 +504,9 @@ pub fn extract_wikilinks(content: &str) -> Vec<WikiLink> {
     // Match optional ! followed by [[ ... ]]
     // The inner content must not contain [ or ] characters.
     let re = Regex::new(r"(!?)\[\[([^\[\]]+)\]\]").expect("invalid wikilink regex");
+
+    // SPEC-045 annotation capture needs line-addressable access to the source.
+    let lines: Vec<&str> = content.lines().collect();
 
     let mut links = Vec::new();
 
@@ -501,6 +543,15 @@ pub fn extract_wikilinks(content: &str) -> Vec<WikiLink> {
         } else {
             let line_prefix = &content[line_starts[line_idx]..match_start];
             recognise_predicates(line_prefix).unwrap_or_default()
+        };
+
+        // SPEC-045 REQ-4504: a named edge in list-item form may carry an
+        // annotation in its nested sub-content. Only typed list-item edges
+        // get one (a bare link or inline edge has no annotation).
+        let annotation = if predicates.is_empty() {
+            None
+        } else {
+            capture_annotation(&lines, line_idx)
         };
 
         // Split on the FIRST `|` to separate target from alias.
@@ -564,6 +615,7 @@ pub fn extract_wikilinks(content: &str) -> Vec<WikiLink> {
             line,
             column,
             predicates,
+            annotation,
         });
     }
 
@@ -2143,6 +2195,40 @@ mod tests {
         // Documented v1 limitation: only the leading position is recognised.
         // A mid-sentence predicate falls through to an untyped link.
         assert!(preds("See also derived_from::[[X]]").is_empty());
+    }
+
+    #[test]
+    fn spec045_annotation_captured_from_nested_subbullet() {
+        // HP2: a list-item named edge with a nested sub-bullet annotation.
+        let content = "## Provenance\n\n\
+            - contradicts::[[Move Fast Doctrine]]\n  \
+              - Specifically rejects the design-doc clause.\n\
+            - supersedes::[[Decision Log 2025]]\n";
+        let links = extract_wikilinks(content);
+        let contradicts = links
+            .iter()
+            .find(|l| l.predicates == vec!["contradicts".to_string()])
+            .unwrap();
+        assert_eq!(
+            contradicts.annotation.as_deref(),
+            Some("Specifically rejects the design-doc clause.")
+        );
+        // The following edge has no nested content → no annotation.
+        let supersedes = links
+            .iter()
+            .find(|l| l.predicates == vec!["supersedes".to_string()])
+            .unwrap();
+        assert!(supersedes.annotation.is_none());
+    }
+
+    #[test]
+    fn spec045_untyped_link_has_no_annotation() {
+        // A bare list-item link carries no predicate, hence no annotation even
+        // with nested content.
+        let content = "- [[Plain]]\n  - some nested note\n";
+        let links = extract_wikilinks(content);
+        assert!(links[0].predicates.is_empty());
+        assert!(links[0].annotation.is_none());
     }
 
     #[test]

@@ -809,6 +809,7 @@ mod tests {
                     alias: None,
                     is_embed: false,
                     predicates: Vec::new(),
+                    annotation: None,
                     line,
                     column: 1,
                 })
@@ -867,6 +868,7 @@ mod tests {
                 alias: None,
                 is_embed: false,
                 predicates: preds.into_iter().map(|p| p.to_string()).collect(),
+                annotation: None,
                 line,
                 column: 1,
             })

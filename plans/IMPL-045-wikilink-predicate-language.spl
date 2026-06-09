@@ -252,3 +252,15 @@
 (claims agent:claude
   :at "2026-06-09T14:54:07Z"
   (given completed-spl-projection))
+
+(claims agent:claude
+  :at "2026-06-09T14:54:18Z"
+  (given completed-ast-predicates))
+
+(claims agent:claude
+  :at "2026-06-09T15:02:08Z"
+  (given completed-graph-feed))
+
+(claims agent:claude
+  :at "2026-06-09T15:02:08Z"
+  (given completed-backlink-render))

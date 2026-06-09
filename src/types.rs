@@ -44,6 +44,11 @@ pub struct WikiLink {
     /// pre-SPEC-045 default). Embeds (`![[…]]`) never carry predicates.
     #[serde(default)]
     pub predicates: Vec<String>,
+    /// SPEC-045 edge annotation (REQ-4504): the nested sub-content beneath a
+    /// list-item named edge, captured for progressive disclosure. `None` when
+    /// the link is not a list-item named edge or carries no nested content.
+    #[serde(default)]
+    pub annotation: Option<String>,
 }
 
 /// Parsed result for a single file
