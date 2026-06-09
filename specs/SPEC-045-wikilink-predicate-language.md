@@ -1,7 +1,7 @@
 ---
 id: SPEC-045
 title: "Wikilink Predicate Language — typed named edges over `[[wikilinks]]`"
-version: 0.1.1-strawman
+version: 0.1.2-strawman
 status: draft
 date: 2026-06-09
 audience: agent, human
@@ -35,6 +35,14 @@ revision_notes:
     CON-4506) for theme exposure. Rewrites REQ-4507, REQ-4508, REQ-4511,
     ADR-4502, CON-4502; vocabulary governance otherwise defers to
     [[SPEC-044]].
+  - v0.1.2 (design-conversation revision, 2026-06-09): resolves Open
+    Question Q1 — **multiple predicates per link are supported**, chained
+    on the `::` separator (`derived_from::informed_by::[[X]]`). The AST
+    `Wikilink.predicate` (singular) becomes `predicates` (array); the
+    graph expands one K-predicate link to K typed edges (dedup key
+    `(source,target,predicate)`); set is order-insensitive + deduped.
+    Updates REQ-4501/4503/4506, CON-4501/4505, HP2, the disposition
+    matrix, and the `predicate-duplicate` lint.
 ---
 
 # SPEC-045: Wikilink Predicate Language
@@ -404,19 +412,23 @@ lists the same edge set as `zetl links`. Verified by the unchanged
    ```markdown
    ## Provenance
 
-   - derived_from::[[2026 Q1 Retro]]
-     - The retro's "ship smaller" finding is the seed of this decision.
+   - derived_from::informed_by::[[2026 Q1 Retro]]
+     - The retro both seeded and shaped this decision.
    - supersedes::[[Decision Log 2025]]
    - contradicts::[[Move Fast Doctrine]]
      - Specifically rejects the "skip the design doc" clause.
    ```
-2. They run `zetl check`. No file, no fuss — the three predicates join
-   the emergent vocabulary; each is used consistently, so no
+   (The first link carries **two** predicates — `derived_from` and
+   `informed_by` — to the one target, chained on `::` ([[#REQ-4503]]).)
+2. They run `zetl check`. No file, no fuss — the predicates join the
+   emergent vocabulary; each is used consistently, so no
    `predicate-drift` note fires.
-3. They run `zetl edges --from "Decision Log"`:
+3. They run `zetl edges --from "Decision Log"` (the multi-predicate link
+   expands to one row per predicate, [[#REQ-4506]]):
    ```
    Decision Log
      derived_from  → 2026 Q1 Retro
+     informed_by   → 2026 Q1 Retro
      supersedes    → Decision Log 2025
      contradicts   → Move Fast Doctrine
    ```
@@ -549,9 +561,16 @@ immediately precedes a `[[wikilink]]` in a page body, in two forms:
 * **Inline form:** `predicate::[[Target]]` appearing inline within a
   paragraph or other inline context.
 
-The predicate binds to the single wikilink it immediately precedes. A
-`[[wikilink]]` with no preceding predicate token is an **untyped edge**
-(`predicate: null`) and is recognised exactly as today.
+The predicate(s) bind to the single wikilink they immediately precede.
+
+**One or more predicates** MAY precede a single wikilink, chained on the
+`::` separator: `derived_from::informed_by::[[Target]]` asserts BOTH
+relations to the one target (REQ-4503, [[#CON-4501]]). The predicate set
+is **order-insensitive** (a set, not a sequence) and de-duplicated;
+canonicalised (sorted) wherever determinism matters (projection, export).
+A `[[wikilink]]` with no preceding predicate is an **untyped edge**
+(`predicates: []`) and is recognised exactly as today. (Resolves Open
+Question Q1 — see [[#13. Open Questions]].)
 
 Recognition occurs at the same parse boundary that already extracts
 wikilinks (`src/scanner.rs:394`, `src/hooks/ast/parse.rs:689`); named
@@ -582,13 +601,18 @@ the disposition table in [[#CON-4501]].
 ### REQ-4503: Additive AST Representation
 
 The [[zetl-ext AST]] [[Wikilink]] node ([[SPEC-032]] schema,
-`src/hooks/ast/mod.rs:419`) SHALL gain an OPTIONAL `predicate` field
-(`string` | `null`, `null` when absent). The field SHALL be additive
-per the [[SPEC-032#NFR-3206]] additive-only evolution rule: the AST
-schema minor version increments (e.g. `1.0` → `1.1`); existing hooks
-that do not read `predicate` continue to round-trip the node unchanged;
-the `Embed` node (`![[…]]`) does NOT gain a predicate (transclusion is
-not a typed relationship — [[#ADR-4501]]).
+`src/hooks/ast/mod.rs:419`) SHALL gain an OPTIONAL `predicates` field —
+an **array of strings** (the authored predicate set, possibly empty;
+empty/absent ⇒ untyped). A multi-predicate link
+(`derived_from::informed_by::[[X]]`) is ONE [[Wikilink]] node carrying
+`predicates: ["derived_from","informed_by"]` (source fidelity); the
+[[Link Graph]] then expands it to one typed edge per predicate
+([[#REQ-4506]]). The field SHALL be additive per the
+[[SPEC-032#NFR-3206]] additive-only evolution rule: the AST schema minor
+version increments (`1.0` → `1.1`); existing hooks that do not read
+`predicates` round-trip the node unchanged; the `Embed` node (`![[…]]`)
+does NOT gain predicates (transclusion is not a typed relationship —
+[[#ADR-4501]]).
 
 **Trace:** [[#TEST-4503]], [[#CON-4505]], [[#ADR-4501]]; [[SPEC-032]].
 
@@ -616,7 +640,8 @@ WHEN a vault contains no named edges (no `predicate::[[…]]` token) and
 no `.zetl/predicates.toml`, the system SHALL behave exactly as the
 pre-SPEC-045 release: identical link graph, identical backlinks,
 identical search results, identical web output. Every edge carries
-`predicate: null`; `zetl edges` lists the same edges as `zetl links`.
+`predicate: null` (empty `predicates`); `zetl edges` lists the same edges
+as `zetl links`.
 
 **Trace:** [[#TEST-4505]]; [[#3.1 HP1]].
 
@@ -624,7 +649,11 @@ identical search results, identical web output. Every edge carries
 
 The [[Link Graph]] ([[graph.rs|`LinkGraph`]]) SHALL carry the predicate
 on each edge (`EdgeMeta.predicate: Option<String>`, `src/graph.rs:18`).
-The following SHALL gain a predicate dimension:
+**One graph edge carries exactly one predicate**: a wikilink authored
+with K predicates (REQ-4503) **expands to K typed edges** sharing
+source/target/line/annotation (K = 0 ⇒ one untyped edge). The dedup key
+is therefore `(source, target, predicate)`, not `(source, target)`. The
+following SHALL gain a predicate dimension:
 
 * **Backlinks** (`backlinks(page)`, `src/graph.rs:190`) — each
   `BacklinkResult` SHALL carry the predicate and annotation of the
@@ -694,6 +723,8 @@ registry to compare against, so the corpus is the reference:
   [[#CON-4501]]) whose `prefix` is not declared in `[prefixes]`
   ([[#CON-4502]]); the edge is still valid (opaque), but RDF export
   ([[#REQ-4516]]) will fall back to the vault namespace.
+* `predicate-duplicate` — the same predicate chained twice on one link
+  (`a::a::[[X]]`, [[#CON-4501]]); de-duplicated to one edge + a hint.
 
 WHEN a **strict** file is present (`enforce = true`, [[#REQ-4507]]):
 
@@ -1116,7 +1147,7 @@ declared formally and recognised before any edge is constructed.
 **Grammar (ABNF):**
 
 ```abnf
-named-edge      = predicate "::" wikilink
+named-edge      = 1*( predicate "::" ) wikilink   ; one OR MORE predicates
 predicate       = snake-pred / curie-pred
 snake-pred      = lower *( lower / DIGIT / "_" )   ; emergent default
 curie-pred      = prefix ":" localname            ; standard-vocab opt-in
@@ -1143,10 +1174,20 @@ predicate is distinct from the `::` separator. A **bare** camelCase token
 standard terms MUST be namespaced — so plain lowercase-snake remains the
 only un-prefixed form and no accidental capitalised predicates arise.
 
-**Binding rule:** the predicate binds to the single `wikilink` that
-*immediately* follows the `::` with no intervening character (including
-whitespace). `derived_from:: [[X]]` (space after `::`) is NOT a named
-edge — it is the text `derived_from::` followed by an untyped wikilink.
+**Multiple predicates (REQ-4503):** one or more predicates may be chained
+on `::` before a single wikilink — `derived_from::informed_by::[[X]]` →
+`predicates = ["derived_from","informed_by"]`. The recogniser keys on the
+final `::[[`, then walks back over the `1*( predicate "::" )` run; every
+segment must satisfy the predicate grammar or the whole run fails to text
+(conservative). The set is order-insensitive and de-duplicated
+(`a::a::[[X]]` → `["a"]` + a `predicate-duplicate` lint); canonicalised
+(sorted) for the projection ([[#CON-4504]]) and export ([[#CON-4507]]).
+
+**Binding rule:** the predicate run binds to the single `wikilink` that
+*immediately* follows the final `::` with no intervening character
+(including whitespace). `derived_from:: [[X]]` (space after `::`) is NOT a
+named edge — it is the text `derived_from::` followed by an untyped
+wikilink.
 
 **Pre-conditions:**
 - Input is a recognised page body (frontmatter, fenced code, inline
@@ -1163,9 +1204,10 @@ edge — it is the text `derived_from::` followed by an untyped wikilink.
 
 | Source | Disposition |
 |---|---|
-| `derived_from::[[X]]` | named edge, `predicate="derived_from"` |
-| `prov:wasDerivedFrom::[[X]]` | named edge (CURIE), `predicate="prov:wasDerivedFrom"`; `predicate-undeclared-prefix` lint if `prov` not in `[prefixes]` |
-| `[[X]]` | untyped edge, `predicate=null` |
+| `derived_from::[[X]]` | named edge, `predicates=["derived_from"]` |
+| `derived_from::informed_by::[[X]]` | named edge, `predicates=["derived_from","informed_by"]` (→ two graph edges) |
+| `prov:wasDerivedFrom::[[X]]` | named edge (CURIE), `predicates=["prov:wasDerivedFrom"]`; `predicate-undeclared-prefix` lint if `prov` not in `[prefixes]` |
+| `[[X]]` | untyped edge, `predicates=[]` |
 | `derived_from:: [[X]]` (space) | text `derived_from::` + untyped edge |
 | `wasDerivedFrom::[[X]]` (bare camelCase, no prefix) | NOT a predicate (un-prefixed terms are lowercase-snake); text + untyped edge |
 | `Derived_From::[[X]]` (uppercase, no prefix) | NOT a predicate; text + untyped edge |
@@ -1320,17 +1362,19 @@ target)` — projection is information-preserving on the triple
 (`tools/zetl-ast-schema-v1.json`, `src/hooks/ast/mod.rs:419`).
 
 **Pre/post-conditions:**
-- Adds OPTIONAL property `predicate: { type: ["string","null"] }`;
-  `null` when absent. The node's `required` set is UNCHANGED (the field
-  is optional), preserving additive evolution ([[SPEC-032#NFR-3206]]).
+- Adds OPTIONAL property `predicates: { type: "array", items: { type:
+  "string" } }` (default `[]`); empty/absent ⇒ untyped. A multi-predicate
+  link is one node with multiple array entries (REQ-4503). The node's
+  `required` set is UNCHANGED (the field is optional), preserving additive
+  evolution ([[SPEC-032#NFR-3206]]).
 - Schema minor version increments (`ast_version` `1.0` → `1.1`).
-- A hook that does not read `predicate` round-trips the node byte-
+- A hook that does not read `predicates` round-trips the node byte-
   stably (the additive-evolution property test in
-  `tests/ast_schema_integration.rs` gains a predicate case).
+  `tests/ast_schema_integration.rs` gains a predicates case).
 
-**Error model:** a `predicate` value that violates the [[#CON-4501]]
-grammar is a schema-validation failure (the schema SHOULD carry the
-`pattern: "^[a-z][a-z0-9_]*$|^[a-z][a-z0-9]*:[A-Za-z][A-Za-z0-9_-]*$"`
+**Error model:** a `predicates` item that violates the [[#CON-4501]]
+grammar is a schema-validation failure (the schema SHOULD carry, on
+`items`, `pattern: "^[a-z][a-z0-9_]*$|^[a-z][a-z0-9]*:[A-Za-z][A-Za-z0-9_-]*$"`
 — snake OR CURIE — so the AST contract enforces the grammar, not just the
 parser; defence in depth at the hook boundary).
 
@@ -1628,10 +1672,17 @@ report — [[PROTO-001]] §Key Technical Concepts).
 
 ## 13. Open Questions Surfaced by This Strawman
 
-1. **Q1 — Multiple predicates on one link.** Can `derived_from::
-   informed_by::[[X]]` express two relations to one target? The guide
-   doesn't, and the AST field is singular. Lean: no (write two list
-   items); confirm in [[DESIGN-045-wikilink-predicate-language]].
+1. **Q1 — Multiple predicates on one link. RESOLVED (2026-06-09): yes,
+   supported.** `derived_from::informed_by::[[X]]` chains predicates on
+   the `::` separator and asserts both relations to the one target
+   ([[#REQ-4501]], [[#REQ-4503]], [[#CON-4501]]). The AST node carries a
+   `predicates` array; the graph expands to one edge per predicate
+   ([[#REQ-4506]]); the set is order-insensitive + de-duplicated. This
+   matches [[SPEC-044]]'s SPO model (multiple triples sharing
+   source+target). Remaining sub-question for
+   [[DESIGN-045-wikilink-predicate-language]]: confirm chained-`::` over
+   a comma-list (`a,b::[[X]]`) reads better for authors — the AST/graph
+   shape is identical either way.
 2. **Q2 — Predicate on an `![[embed]]`.** [[#ADR-4501]] says no
    (transclusion isn't a typed relation). Is there a real use case for
    `summarises::![[X]]`? Lean: no; revisit if a profile demands it.
