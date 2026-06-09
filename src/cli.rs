@@ -144,9 +144,9 @@ pub enum Command {
         with_conclusions: bool,
     },
 
-    /// Query the typed link graph by predicate, direction, source, or target
-    /// (SPEC-045). A strict superset of `zetl links`: with no filter it lists
-    /// every edge, typed and untyped.
+    /// Query the typed link graph by predicate, direction, source, or target.
+    /// A strict superset of `zetl links`: with no filter it lists every edge,
+    /// typed and untyped.
     #[command(
         after_help = "Examples:\n  zetl edges                         All edges (typed + untyped)\n  zetl edges --predicate contradicts Only `contradicts::` edges\n  zetl edges --from \"Decision Log\"    Outgoing edges of a page\n  zetl edges --by-predicate          Vocabulary distribution histogram"
     )]

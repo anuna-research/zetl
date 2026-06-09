@@ -676,6 +676,7 @@ fn parse_wikilink_like(v: &Value) -> Result<Option<Inline>, TranslationError> {
             alias,
             heading,
             block_id,
+            predicates: Vec::new(),
         })))
     } else {
         Ok(Some(Inline::Wikilink(Wikilink {
@@ -684,6 +685,7 @@ fn parse_wikilink_like(v: &Value) -> Result<Option<Inline>, TranslationError> {
             alias,
             heading,
             block_id,
+            predicates: Vec::new(),
         })))
     }
 }
@@ -862,6 +864,7 @@ mod tests {
                     alias: Some("alt".into()),
                     heading: Some("Sec".into()),
                     block_id: None,
+                    predicates: Vec::new(),
                 }),
                 text(" and "),
                 Inline::Strong(Strong {
@@ -882,7 +885,7 @@ mod tests {
         // `Document`. Zetl's AST schema version is preserved in a
         // non-namespace-collision-prone field.
         assert_eq!(mdast["type"], "root");
-        assert_eq!(mdast["zetl_ast_version"], "1.0");
+        assert_eq!(mdast["zetl_ast_version"], "1.1");
         let back = t.foreign_to_zetl(mdast).unwrap();
         assert_eq!(back, doc);
     }
@@ -895,6 +898,7 @@ mod tests {
             alias: Some("A".into()),
             heading: Some("H".into()),
             block_id: Some("B".into()),
+            predicates: Vec::new(),
         })])]);
         let t = MdastTranslator;
         let mdast = t.zetl_to_foreign(&doc).unwrap();
@@ -1055,6 +1059,7 @@ mod tests {
                     alias: if a.is_empty() { None } else { Some(a) },
                     heading: None,
                     block_id: None,
+                    predicates: Vec::new(),
                 }
             )),
         ]

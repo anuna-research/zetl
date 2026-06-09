@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://zetl.dev/schemas/ast/v1/zetl-ast-schema-v1.json",
-  "title": "zetl-ext AST (v1.0.0)",
+  "title": "zetl-ext AST (v1.1.0)",
   "description": "Versioned JSON Schema for zetl's native Markdown AST used on the transform-stage hook boundary. Covers the CommonMark subset plus zetl extensions (Wikilink, Embed, SplBlock, FrontMatter) and source positions. Normative per SPEC-032 REQ-3202 / CON-3202; the schema wins against any prose that disagrees. Schema version is additive-only within major 1 per NFR-3206.",
   "$ref": "#/$defs/Document",
   "$defs": {
@@ -369,7 +369,20 @@
         "target":    { "type": "string" },
         "alias":     { "type": ["string", "null"] },
         "heading":   { "type": ["string", "null"] },
-        "block_id":  { "type": ["string", "null"] }
+        "block_id":  { "type": ["string", "null"] },
+        "predicates": {
+          "description": "Typed named edges declared on the link (SPEC-045, schema v1.1). Optional and additive: absent on untyped links. `inverse` is reserved and always null in v1.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["predicate", "inverse"],
+            "properties": {
+              "predicate": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$|^[a-z][a-z0-9]*:[A-Za-z][A-Za-z0-9_-]*$" },
+              "inverse": { "type": ["string", "null"] }
+            }
+          }
+        }
       },
       "required": ["type", "position", "target", "alias", "heading", "block_id"],
       "additionalProperties": false

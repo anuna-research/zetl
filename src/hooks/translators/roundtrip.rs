@@ -138,6 +138,7 @@ mod sanity {
                             alias: Some("alt".into()),
                             heading: None,
                             block_id: None,
+                            predicates: Vec::new(),
                         }),
                     ],
                 }),

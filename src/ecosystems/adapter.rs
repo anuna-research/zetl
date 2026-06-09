@@ -694,6 +694,7 @@ pub fn default_fixtures() -> Vec<ConformanceFixture> {
             alias: None,
             heading: None,
             block_id: None,
+            predicates: Vec::new(),
         })
     }
 

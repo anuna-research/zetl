@@ -240,3 +240,15 @@
 (normally r-propagate-backlink-render-from-template-vars-permanently-failed permanently-failed-template-vars upstream-blocked-backlink-render)
 (normally r-propagate-backlink-render-from-template-vars-stale-v1 stale-v1-template-vars upstream-blocked-backlink-render)
 (normally r-propagate-backlink-render-from-template-vars-timeout-v1 timeout-v1-template-vars upstream-blocked-backlink-render)
+
+(claims agent:claude
+  :at "2026-06-09T14:16:37Z"
+  (given completed-template-vars))
+
+(claims agent:claude
+  :at "2026-06-09T14:54:07Z"
+  (given completed-search-predicate))
+
+(claims agent:claude
+  :at "2026-06-09T14:54:07Z"
+  (given completed-spl-projection))

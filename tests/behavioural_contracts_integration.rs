@@ -47,6 +47,7 @@ fn text(s: &str) -> Inline {
 
 fn wikilink(target: &str) -> Inline {
     Inline::Wikilink(Wikilink {
+        predicates: Vec::new(),
         position: Position::origin(),
         target: target.to_string(),
         alias: None,

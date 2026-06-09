@@ -82,6 +82,7 @@ pub fn arb_wikilink() -> impl Strategy<Value = Wikilink> {
             alias,
             heading,
             block_id,
+            predicates: Vec::new(),
         })
 }
 

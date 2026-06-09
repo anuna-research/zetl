@@ -43,7 +43,7 @@ pub use parse::parse_markdown;
 /// The exact two-component schema version this crate emits at the root of
 /// every `Document`. Bumped additively per NFR-3206; a new major here is a
 /// breaking change to every hook that declares `ast_version = "1.x"`.
-pub const AST_VERSION: &str = "1.0";
+pub const AST_VERSION: &str = "1.1";
 
 // ── Position ────────────────────────────────────────────────────────────────
 
@@ -422,6 +422,21 @@ pub struct Wikilink {
     pub alias: Option<String>,
     pub heading: Option<String>,
     pub block_id: Option<String>,
+    /// Typed named edges declared on the link (SPEC-045, REQ-4503). Optional
+    /// and additive: an empty vec is omitted on serialisation so untyped links
+    /// round-trip byte-stably with the pre-1.1 shape.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub predicates: Vec<PredicateSpec>,
+}
+
+/// A single typed-edge declaration on a [`Wikilink`] (SPEC-045 CON-4505).
+/// `inverse` is RESERVED in schema v1.1 and is always `null`/`None`, but it
+/// always serialises as the key `"inverse"` (it is `required` in the schema).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PredicateSpec {
+    pub predicate: String,
+    pub inverse: Option<String>,
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -445,8 +460,9 @@ mod tests {
     }
 
     #[test]
-    fn ast_version_is_v1_0() {
-        assert_eq!(AST_VERSION, "1.0");
+    fn ast_version_is_v1_1() {
+        // Bumped 1.0 → 1.1 for SPEC-045 additive `predicates` (NFR-3206).
+        assert_eq!(AST_VERSION, "1.1");
     }
 
     #[test]
@@ -454,7 +470,7 @@ mod tests {
         let doc = Document::empty();
         let v = serde_json::to_value(&doc).unwrap();
         assert_eq!(v["type"], "Document");
-        assert_eq!(v["ast_version"], "1.0");
+        assert_eq!(v["ast_version"], "1.1");
         assert!(v.get("frontmatter").is_none(), "absent frontmatter omitted");
         roundtrip(&doc);
     }
@@ -552,6 +568,7 @@ mod tests {
             alias: None,
             heading: None,
             block_id: None,
+            predicates: Vec::new(),
         });
         let v = serde_json::to_value(&link).unwrap();
         // Per CON-3202 canonical example, alias/heading/block_id are
@@ -573,8 +590,55 @@ mod tests {
             alias: Some("alias text".into()),
             heading: Some("Section".into()),
             block_id: Some("abc123".into()),
+            predicates: Vec::new(),
         });
         let v = serde_json::to_value(&link).unwrap();
+        let back: Inline = serde_json::from_value(v).unwrap();
+        assert_eq!(back, link);
+    }
+
+    #[test]
+    fn wikilink_predicates_roundtrip_and_emit_null_inverse() {
+        // SPEC-045 REQ-4503 / CON-4505: typed edges round-trip and each spec
+        // serialises `inverse` as an explicit null key (reserved in v1).
+        let link = Inline::Wikilink(Wikilink {
+            position: pos(),
+            target: "Decision".into(),
+            alias: None,
+            heading: None,
+            block_id: None,
+            predicates: vec![
+                PredicateSpec {
+                    predicate: "derived_from".into(),
+                    inverse: None,
+                },
+                PredicateSpec {
+                    predicate: "informed_by".into(),
+                    inverse: None,
+                },
+            ],
+        });
+        let v = serde_json::to_value(&link).unwrap();
+        assert_eq!(v["predicates"][0]["predicate"], "derived_from");
+        assert!(v["predicates"][0].get("inverse").is_some() && v["predicates"][0]["inverse"].is_null());
+        assert_eq!(v["predicates"][1]["predicate"], "informed_by");
+        let back: Inline = serde_json::from_value(v).unwrap();
+        assert_eq!(back, link);
+    }
+
+    #[test]
+    fn wikilink_empty_predicates_omit_key() {
+        // Additive evolution (NFR-3206): untyped links keep the pre-1.1 shape.
+        let link = Inline::Wikilink(Wikilink {
+            position: pos(),
+            target: "Bare".into(),
+            alias: None,
+            heading: None,
+            block_id: None,
+            predicates: Vec::new(),
+        });
+        let v = serde_json::to_value(&link).unwrap();
+        assert!(v.get("predicates").is_none(), "empty predicates omitted: {v}");
         let back: Inline = serde_json::from_value(v).unwrap();
         assert_eq!(back, link);
     }
@@ -840,6 +904,7 @@ mod tests {
                                     alias: Some("alt".into()),
                                     heading: None,
                                     block_id: None,
+                                    predicates: Vec::new(),
                                 }),
                             ],
                         })],
@@ -913,6 +978,7 @@ mod tests {
                         alias,
                         heading,
                         block_id,
+                        predicates: Vec::new(),
                     }
                 )),
         ];
