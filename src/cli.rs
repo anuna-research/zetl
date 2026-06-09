@@ -469,6 +469,12 @@ pub enum Command {
         command: HookCommand,
     },
 
+    /// Predicate-vocabulary tooling (SPEC-045 named edges)
+    Predicates {
+        #[command(subcommand)]
+        command: PredicatesCommand,
+    },
+
     /// Plugin-ecosystem introspection (Pandoc filters, mdBook preprocessors, remark plugins)
     #[command(
         after_help = "Examples:\n  zetl ecosystem check               Report runtimes + configured hooks\n  zetl ecosystem check --json        Machine-readable report for CI pre-flight"
@@ -931,7 +937,23 @@ pub enum CapCommand {
     EmergencyShutdown,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
+pub enum PredicatesCommand {
+    /// Report frontmatter `tags:` entries that name a vault page and could
+    /// become body predicates (SPEC-045 REQ-4513). Read-only — reports, never
+    /// rewrites. Only `--dry-run` is supported in v1.
+    Migrate {
+        /// Required in v1 — the command refuses to run without it (it never
+        /// modifies files).
+        #[arg(long)]
+        dry_run: bool,
+        /// Frontmatter scalar-list keys to scan (repeatable). Defaults to `tags`.
+        #[arg(long = "key", value_name = "KEY")]
+        keys: Vec<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 pub enum ThemeCommand {
     /// List available themes (bundled + installed)
     List,

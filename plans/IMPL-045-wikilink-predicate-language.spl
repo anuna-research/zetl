@@ -272,3 +272,7 @@
 (claims agent:claude
   :at "2026-06-09T15:16:41Z"
   (given completed-graph-styling))
+
+(claims agent:claude
+  :at "2026-06-09T15:21:07Z"
+  (given completed-check-lints))

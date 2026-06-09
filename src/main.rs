@@ -1548,6 +1548,112 @@ fn cmd_edges(
     Ok(())
 }
 
+/// SPEC-045 REQ-4513 / ADR-4505: read-only `tags:`→predicate migration helper.
+/// Scans frontmatter scalar-list keys (default `tags`) and REPORTS which
+/// entries name a real vault page and could become a body predicate. Never
+/// rewrites a file; without `--dry-run` it refuses to run.
+fn cmd_predicates_migrate(cli: &Cli, dry_run: bool, keys: &[String]) -> Result<()> {
+    if !dry_run {
+        eprintln!("zetl predicates migrate is read-only: only --dry-run is supported in v1.");
+        eprintln!("It reports candidate conversions; an author edits the files. Re-run with --dry-run.");
+        std::process::exit(2);
+    }
+
+    let pipeline = run_pipeline(cli)?;
+    let scan_keys: Vec<String> = if keys.is_empty() {
+        vec!["tags".to_string()]
+    } else {
+        keys.to_vec()
+    };
+
+    // Normalised index of real page names → canonical page name, so a tag like
+    // `deep-context` can match the page "Deep Context Architecture" only when it
+    // actually names a page (we match on exact normalised equality).
+    let normalise = |s: &str| -> String {
+        s.to_lowercase()
+            .chars()
+            .map(|c| if c == '-' || c == '_' { ' ' } else { c })
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let mut page_index: HashMap<String, String> = HashMap::new();
+    for page in &pipeline.graph_resolved {
+        page_index.entry(normalise(page)).or_insert_with(|| page.clone());
+        let slug = page.to_lowercase().replace(' ', "-");
+        page_index.entry(normalise(&slug)).or_insert_with(|| page.clone());
+    }
+
+    #[derive(Serialize)]
+    struct MigrationCandidate {
+        file: String,
+        key: String,
+        tag: String,
+        candidate_predicate: String,
+        candidate_target: String,
+    }
+
+    let mut candidates: Vec<MigrationCandidate> = Vec::new();
+    for file in &pipeline.files {
+        let content = match std::fs::read_to_string(pipeline.vault_root.join(&file.path)) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let fm = zetl::web::markdown::parse_frontmatter(&content);
+        for key in &scan_keys {
+            let Some(arr) = fm.get(key).and_then(|v| v.as_array()) else {
+                continue;
+            };
+            for tag in arr.iter().filter_map(|v| v.as_str()) {
+                if let Some(page) = page_index.get(&normalise(tag)) {
+                    candidates.push(MigrationCandidate {
+                        file: file.path.to_string_lossy().to_string(),
+                        key: key.clone(),
+                        tag: tag.to_string(),
+                        // A conservative suggestion; the author picks the real
+                        // predicate (the guide's example is `in_domain::`).
+                        candidate_predicate: "in_domain".to_string(),
+                        candidate_target: page.clone(),
+                    });
+                }
+            }
+        }
+    }
+    candidates.sort_by(|a, b| {
+        a.file
+            .cmp(&b.file)
+            .then_with(|| a.tag.cmp(&b.tag))
+            .then_with(|| a.candidate_target.cmp(&b.candidate_target))
+    });
+
+    match cli.format {
+        OutputFormat::Json => print_json(&candidates)?,
+        _ => {
+            if candidates.is_empty() {
+                println!("No frontmatter tags name a vault page — nothing to migrate.");
+            } else {
+                let mut table = Table::new();
+                table.set_header(vec!["File", "Key", "Tag", "Candidate", "Target Page"]);
+                for c in &candidates {
+                    table.add_row(vec![
+                        Cell::new(&c.file),
+                        Cell::new(&c.key),
+                        Cell::new(&c.tag),
+                        Cell::new(format!("{}::[[{}]]", c.candidate_predicate, c.candidate_target)),
+                        Cell::new(&c.candidate_target),
+                    ]);
+                }
+                println!("Candidate tag→predicate conversions (dry-run — no files modified):");
+                println!("{table}");
+                println!("\nThese are suggestions; edit the body yourself and choose a specific predicate.");
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn cmd_backlinks(
     cli: &Cli,
     page: &str,
@@ -11589,6 +11695,11 @@ fn main() -> anyhow::Result<()> {
             } => cmd_theme_install(&cli, source, path.as_deref(), name.as_deref(), *force),
             ThemeCommand::Remove { name } => cmd_theme_remove(&cli, name),
             ThemeCommand::Export { name, force } => cmd_theme_export(&cli, name, *force),
+        },
+        Command::Predicates { command } => match command {
+            zetl::cli::PredicatesCommand::Migrate { dry_run, keys } => {
+                cmd_predicates_migrate(&cli, *dry_run, keys)
+            }
         },
         Command::Hook { command } => match command {
             HookCommand::List { theme } => cmd_hook_list(&cli, theme),
