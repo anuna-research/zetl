@@ -23,6 +23,9 @@ struct Fields {
     page_name: Field,
     path: Field,
     body: Field,
+    /// SPEC-045 REQ-4512: one stored, raw-token value per distinct outgoing
+    /// typed-edge predicate of the page. Untyped-only pages carry zero values.
+    predicate: Field,
 }
 
 /// Tantivy-backed full-text search index stored at `.zetl/search/`.
@@ -73,6 +76,19 @@ impl SearchIndex {
             doc.add_text(fields.page_name, &file.page_name);
             doc.add_text(fields.path, file.path.to_string_lossy());
             doc.add_text(fields.body, &body);
+
+            // SPEC-045 REQ-4512: index one `predicate` value per distinct
+            // outgoing typed-edge predicate, de-duplicated across the page's
+            // links, preserving first-seen author order.
+            let mut seen = std::collections::HashSet::new();
+            for link in &file.links {
+                for predicate in &link.predicates {
+                    if seen.insert(predicate.as_str()) {
+                        doc.add_text(fields.predicate, predicate);
+                    }
+                }
+            }
+
             writer
                 .add_document(doc)
                 .with_context(|| format!("indexing {:?}", file.path))?;
@@ -154,11 +170,16 @@ impl SearchIndex {
 /// - `page_name`: STRING | STORED — indexed (raw token) for filtering, stored for retrieval.
 /// - `path`:      STORED          — stored only, not indexed.
 /// - `body`:      TEXT | STORED   — full-text indexed with default tokenizer, stored.
+/// - `predicate`: STRING | STORED — raw-token indexed for faceted filtering,
+///   stored for retrieval. Multi-valued: one value per distinct outgoing
+///   typed-edge predicate of the page (SPEC-045 REQ-4512). Additive — old
+///   indexes simply lack the field and are re-indexed on upgrade.
 fn make_schema() -> Schema {
     let mut builder = SchemaBuilder::new();
     builder.add_text_field("page_name", STRING | STORED);
     builder.add_text_field("path", STORED);
     builder.add_text_field("body", TEXT | STORED);
+    builder.add_text_field("predicate", STRING | STORED);
     builder.build()
 }
 
@@ -175,6 +196,9 @@ fn fields_from_index(index: &Index) -> Result<Fields> {
         body: schema
             .get_field("body")
             .context("field 'body' missing from search schema")?,
+        predicate: schema
+            .get_field("predicate")
+            .context("field 'predicate' missing from search schema")?,
     })
 }
 
@@ -309,6 +333,97 @@ mod tests {
 
         let beta_hits = index.query("unique_beta_word", 10).unwrap();
         assert_eq!(beta_hits.len(), 1);
+    }
+
+    /// Build a `WikiLink` with the given target and predicates for tests.
+    fn link_with_predicates(target: &str, predicates: &[&str]) -> crate::types::WikiLink {
+        crate::types::WikiLink {
+            target_page: target.to_string(),
+            raw_target: target.to_string(),
+            heading: None,
+            block_ref: None,
+            alias: None,
+            is_embed: false,
+            line: 1,
+            column: 1,
+            predicates: predicates.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    /// Collect the stored `predicate` values for the document whose stored
+    /// `page_name` matches `page_name`. Mirrors how `query` reads `page_name`.
+    fn stored_predicates(index: &SearchIndex, page_name: &str) -> Vec<String> {
+        use tantivy::collector::TopDocs;
+        use tantivy::query::AllQuery;
+
+        let reader = index.reader().unwrap();
+        let searcher = reader.searcher();
+        let top = searcher
+            .search(&AllQuery, &TopDocs::with_limit(100))
+            .unwrap();
+        for (_score, addr) in top {
+            let doc: TantivyDocument = searcher.doc(addr).unwrap();
+            if owned_str(doc.get_first(index.fields.page_name)) == page_name {
+                return doc
+                    .get_all(index.fields.predicate)
+                    .filter_map(|v| match v {
+                        OwnedValue::Str(s) => Some(s.clone()),
+                        _ => None,
+                    })
+                    .collect();
+            }
+        }
+        Vec::new()
+    }
+
+    #[test]
+    fn build_indexes_outgoing_predicates() {
+        let dir = TempDir::new().unwrap();
+
+        // Page with a typed edge `contradicts::[[Other]]` and a bare `[[Plain]]`.
+        let mut typed = make_parsed_file(
+            dir.path(),
+            "claim.md",
+            "# Claim\n\n- contradicts::[[Other]]\n\nSee also [[Plain]].\n",
+        );
+        typed.links = vec![
+            link_with_predicates("Other", &["contradicts"]),
+            link_with_predicates("Plain", &[]),
+        ];
+
+        // Page with only untyped links — no predicate values expected.
+        let mut untyped = make_parsed_file(dir.path(), "plain.md", "Just a [[Bare]] link.\n");
+        untyped.links = vec![link_with_predicates("Bare", &[])];
+
+        let index = SearchIndex::build(dir.path(), &[typed, untyped]).unwrap();
+
+        // The typed page carries exactly the `contradicts` predicate and nothing
+        // for the untyped `[[Plain]]` link.
+        let claim_preds = stored_predicates(&index, "claim");
+        assert_eq!(claim_preds, vec!["contradicts".to_string()]);
+
+        // The untyped-only page carries zero predicate values.
+        let plain_preds = stored_predicates(&index, "plain");
+        assert!(
+            plain_preds.is_empty(),
+            "untyped-only page should have no predicate values, got {plain_preds:?}"
+        );
+    }
+
+    #[test]
+    fn build_dedups_repeated_predicates() {
+        let dir = TempDir::new().unwrap();
+        let mut file = make_parsed_file(dir.path(), "multi.md", "body\n");
+        file.links = vec![
+            link_with_predicates("A", &["supports"]),
+            link_with_predicates("B", &["supports", "refines"]),
+            link_with_predicates("C", &["refines"]),
+        ];
+        let index = SearchIndex::build(dir.path(), &[file]).unwrap();
+
+        let mut preds = stored_predicates(&index, "multi");
+        preds.sort();
+        assert_eq!(preds, vec!["refines".to_string(), "supports".to_string()]);
     }
 
     #[test]
