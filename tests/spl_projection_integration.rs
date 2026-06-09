@@ -191,3 +191,40 @@ fn empty_edges_equivalent_to_plain_build_theory() {
     assert_eq!(plain.summary.fact_count, with_edges.summary.fact_count);
     assert_eq!(plain.conclusions.len(), with_edges.conclusions.len());
 }
+
+// ── CLI wiring regression (the gap playtesting caught) ──────────────────────
+// `zetl reason` must actually FOLD projected edge facts into the theory it
+// evaluates — not just expose a projection function. This drives the HP5
+// happy path end-to-end through `build_or_load_theory`.
+#[test]
+fn reason_status_sees_projected_edge_facts() {
+    use assert_cmd::cargo::cargo_bin_cmd;
+    use std::fs;
+
+    let dir = tempfile::TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("Decision Log.md"),
+        "# Decision Log\n\n- supersedes::[[Decision Log 2025]]\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("Review Policy.md"),
+        "# Review Policy\n\n```spl\n(normally r-superseded-stale\n  (supersedes ?new ?old)\n  (stale ?old))\n```\n",
+    )
+    .unwrap();
+
+    let out = cargo_bin_cmd!("zetl")
+        .args(["--no-cache", "-d", dir.path().to_str().unwrap(), "reason", "status"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(out.get_output().stdout.clone()).unwrap();
+    // The projected fact reached the reasoner and the rule fired.
+    assert!(
+        stdout.contains("supersedes(Decision Log, Decision Log 2025)"),
+        "projected edge fact missing from reason output:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("stale(Decision Log 2025)"),
+        "rule did not fire over the projected fact:\n{stdout}"
+    );
+}

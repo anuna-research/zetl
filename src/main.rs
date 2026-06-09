@@ -7228,7 +7228,7 @@ fn build_or_load_theory(
         build_theory_cache, collect_spl_ast_hashes, load_theory_cache, save_theory_cache,
         theory_cache_valid,
     };
-    use zetl::reason::{build_theory, build_theory_from_cache};
+    use zetl::reason::{build_theory_from_cache, build_theory_with_edges};
 
     let total_start = Instant::now();
 
@@ -7244,8 +7244,17 @@ fn build_or_load_theory(
         .filter(|f| !f.spl_blocks.is_empty())
         .count();
 
-    // Try loading from theory cache (unless --no-cache).
-    if !no_cache {
+    // SPEC-045 REQ-4510: project the vault's typed edges to provenance-tagged
+    // SPL facts so the reasoner can query them. The theory cache is keyed on
+    // SPL-block hashes only — edge facts derive from page links, which it does
+    // NOT fingerprint — so a vault with typed edges bypasses the cache to avoid
+    // serving stale edge facts. Untyped vaults keep the fast cached path.
+    let edge_projection =
+        zetl::reason::projection::project_edges_to_facts(&pipeline.graph, &pipeline.files);
+    let has_typed_edges = !edge_projection.facts.is_empty();
+
+    // Try loading from theory cache (unless --no-cache or typed edges present).
+    if !no_cache && !has_typed_edges {
         if let Ok(Some(cache)) = load_theory_cache(&pipeline.vault_root) {
             let current_spl_hashes = collect_spl_ast_hashes(&pipeline.files);
             if theory_cache_valid(&current_spl_hashes, &cache) {
@@ -7271,13 +7280,14 @@ fn build_or_load_theory(
         }
     }
 
-    // Cache miss: full build.
+    // Cache miss: full build, including any projected typed-edge facts.
     let build_start = Instant::now();
-    let result = build_theory(&spl_blocks)?;
+    let result = build_theory_with_edges(&spl_blocks, &edge_projection.facts)?;
     let build_elapsed = build_start.elapsed();
 
-    // Save to theory cache.
-    if !no_cache {
+    // Save to theory cache only when no typed edges were folded in (the cache
+    // key does not cover edge facts — see the bypass above).
+    if !no_cache && !has_typed_edges {
         let cache = build_theory_cache(
             &result.theory,
             &result.diagnostics,
