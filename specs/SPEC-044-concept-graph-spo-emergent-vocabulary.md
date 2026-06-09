@@ -26,7 +26,7 @@ related:
 | Title        | Concept Graph — SPO Relations, Emergent Vocabulary, In-Situ Ratification |
 | Version      | 0.2.0 (strawman)                                                       |
 | Status       | Strawman                                                               |
-| Author       | Anuna R&D                                                              |
+| Author       | Mat Mytka & Kairos (m3-kairos dyad)                                    |
 | Date         | 2026-06-09                                                             |
 
 ---
