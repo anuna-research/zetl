@@ -1078,9 +1078,13 @@ pub fn build_graph_index_context<'a>(
         .map(|e| {
             let src_name = &graph.graph[e.source()];
             let tgt_name = &graph.graph[e.target()];
+            let meta = e.weight();
             GraphIndexEdge {
                 source: resolve_slug(src_name),
                 target: resolve_slug(tgt_name),
+                predicate: meta.predicate.clone(),
+                annotation: meta.annotation.clone(),
+                line: meta.line,
             }
         })
         .collect();

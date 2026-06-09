@@ -658,6 +658,15 @@ pub struct GraphIndexEdge {
     pub source: String,
     /// Slug of the target node.
     pub target: String,
+    /// SPEC-045 named-edge predicate (`None` ⇒ untyped edge). When every edge
+    /// in the feed is untyped the serialiser stays byte-identical to the
+    /// pre-SPEC-045 CON-101 shape.
+    pub predicate: Option<String>,
+    /// SPEC-045 edge annotation (`None` ⇒ absent).
+    pub annotation: Option<String>,
+    /// Source line of the link occurrence — used only to disambiguate
+    /// graphology edge keys for parallel untyped edges in a typed feed.
+    pub line: u32,
 }
 
 /// All data needed to produce the graph index JSON.
@@ -801,22 +810,115 @@ pub fn serialize_graph_index_ctx(ctx: &GraphIndexContext) -> serde_json::Value {
         })
         .collect();
 
+    // SPEC-045 REQ-4517 / CON-4508: the feed is a backward-compatible SUPERSET
+    // of the CON-101 graphology shape. When the vault has NO typed edges the
+    // output is BYTE-IDENTICAL to the pre-SPEC-045 feed — the untyped branch
+    // below reproduces it verbatim (no `multi`, no predicate-qualified keys, no
+    // `predicate`/`annotation` attributes). When the vault HAS typed edges we
+    // switch to a multigraph: parallel edges between the same (source,target)
+    // become distinct entries keyed by `(source, target, predicate)`, each
+    // carrying `predicate`/`annotation` under `attributes`, and `options.multi`
+    // is flipped to `true` so graphology accepts the parallel edges.
+    let has_typed = ctx.edges.iter().any(|e| e.predicate.is_some());
+
+    if !has_typed {
+        // ── Untyped: pre-SPEC-045 CON-101 path, kept verbatim. ──
+        let mut edges = ctx.edges.clone();
+        edges.sort_by(|a, b| {
+            let key_a = format!("{}->{}", a.source, a.target);
+            let key_b = format!("{}->{}", b.source, b.target);
+            key_a.cmp(&key_b)
+        });
+        edges.dedup_by(|a, b| a.source == b.source && a.target == b.target);
+
+        let edges_json: Vec<serde_json::Value> = edges
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "key": format!("{}->{}", e.source, e.target),
+                    "source": e.source,
+                    "target": e.target,
+                    "attributes": {}
+                })
+            })
+            .collect();
+
+        return serde_json::json!({
+            "attributes": {
+                "format": "zetl-graph/v1",
+                "vault": {
+                    "name": ctx.vault_name,
+                    "pages": ctx.total_pages,
+                    "links": ctx.total_links,
+                }
+            },
+            "options": {
+                "type": "directed",
+                "multi": false,
+                "allowSelfLoops": true,
+            },
+            "nodes": nodes_json,
+            "edges": edges_json,
+        });
+    }
+
+    // ── Typed: multigraph superset. ──
+    // Identity is (source, target, predicate). A K-predicate wikilink yields K
+    // parallel edges; untyped edges between the same pair are de-duplicated to
+    // a single entry (predicate = None). The key is predicate-qualified, and a
+    // monotonic suffix guarantees uniqueness should the same identity recur.
     let mut edges = ctx.edges.clone();
     edges.sort_by(|a, b| {
-        let key_a = format!("{}->{}", a.source, a.target);
-        let key_b = format!("{}->{}", b.source, b.target);
-        key_a.cmp(&key_b)
+        a.source
+            .cmp(&b.source)
+            .then_with(|| a.target.cmp(&b.target))
+            .then_with(|| a.predicate.cmp(&b.predicate))
+            .then_with(|| a.line.cmp(&b.line))
     });
-    edges.dedup_by(|a, b| a.source == b.source && a.target == b.target);
+    // Collapse exact (source, target, predicate) duplicates — a typed edge is
+    // identified by that triple, not by line.
+    edges.dedup_by(|a, b| {
+        a.source == b.source && a.target == b.target && a.predicate == b.predicate
+    });
 
+    let mut used_keys: HashSet<String> = HashSet::new();
     let edges_json: Vec<serde_json::Value> = edges
         .iter()
         .map(|e| {
+            let pred_part = e.predicate.as_deref().unwrap_or("__untyped");
+            let mut key = format!("{}--{}--{}", e.source, e.target, pred_part);
+            // Defensive uniqueness guard (should not trigger after the dedup
+            // above, but keeps keys unique under any input).
+            if used_keys.contains(&key) {
+                let mut suffix = 1u32;
+                loop {
+                    let candidate = format!("{key}#{suffix}");
+                    if !used_keys.contains(&candidate) {
+                        key = candidate;
+                        break;
+                    }
+                    suffix += 1;
+                }
+            }
+            used_keys.insert(key.clone());
+            let predicate = e
+                .predicate
+                .as_ref()
+                .map(|p| serde_json::Value::String(p.clone()))
+                .unwrap_or(serde_json::Value::Null);
+            let annotation = e
+                .annotation
+                .as_ref()
+                .map(|a| serde_json::Value::String(a.clone()))
+                .unwrap_or(serde_json::Value::Null);
             serde_json::json!({
-                "key": format!("{}->{}", e.source, e.target),
+                "key": key,
                 "source": e.source,
                 "target": e.target,
-                "attributes": {}
+                "attributes": {
+                    "predicate": predicate,
+                    "annotation": annotation,
+                }
             })
         })
         .collect();
@@ -832,7 +934,7 @@ pub fn serialize_graph_index_ctx(ctx: &GraphIndexContext) -> serde_json::Value {
         },
         "options": {
             "type": "directed",
-            "multi": false,
+            "multi": true,
             "allowSelfLoops": true,
         },
         "nodes": nodes_json,
@@ -967,6 +1069,151 @@ mod tests {
         assert_eq!(dead.len(), 1);
         assert_eq!(dead[0].target, "Nonexistent");
         assert_eq!(dead[0].predicate.as_deref(), Some("supersedes"));
+    }
+
+    // ── SPEC-045 REQ-4517 / CON-4508: graph-feed superset ───────────────────
+
+    /// Helper: an untyped edge for the graph-index context.
+    fn idx_edge(source: &str, target: &str) -> GraphIndexEdge {
+        GraphIndexEdge {
+            source: source.to_string(),
+            target: target.to_string(),
+            predicate: None,
+            annotation: None,
+            line: 1,
+        }
+    }
+
+    fn empty_ctx<'a>(edges: Vec<GraphIndexEdge>) -> GraphIndexContext<'a> {
+        GraphIndexContext {
+            vault_name: "Vault",
+            total_pages: 2,
+            total_links: edges.len(),
+            nodes: vec![
+                GraphIndexNode {
+                    label: "A".to_string(),
+                    slug: "a".to_string(),
+                    outlink_count: 1,
+                    backlink_count: 0,
+                    is_orphan: true,
+                    is_dead: false,
+                    tags: vec![],
+                },
+                GraphIndexNode {
+                    label: "B".to_string(),
+                    slug: "b".to_string(),
+                    outlink_count: 0,
+                    backlink_count: 1,
+                    is_orphan: false,
+                    is_dead: false,
+                    tags: vec![],
+                },
+            ],
+            edges,
+        }
+    }
+
+    #[test]
+    fn spec045_feed_no_typed_edges_is_con101_byte_identical() {
+        // An untyped feed must reproduce the pre-SPEC-045 CON-101 output exactly:
+        // multi == false, edge keys are `<src>-><tgt>`, and edge attributes are
+        // the empty object (no `predicate`/`annotation`).
+        let ctx = empty_ctx(vec![idx_edge("a", "b")]);
+        let val = serialize_graph_index_ctx(&ctx);
+
+        assert_eq!(val["options"]["multi"], serde_json::json!(false));
+        let edges = val["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0]["key"], "a->b");
+        assert_eq!(edges[0]["source"], "a");
+        assert_eq!(edges[0]["target"], "b");
+        // Attributes must be the empty object — no predicate key present.
+        assert_eq!(edges[0]["attributes"], serde_json::json!({}));
+        assert!(edges[0]["attributes"].get("predicate").is_none());
+    }
+
+    #[test]
+    fn spec045_feed_typed_edge_flips_multi_and_carries_predicate() {
+        let ctx = empty_ctx(vec![GraphIndexEdge {
+            source: "a".to_string(),
+            target: "b".to_string(),
+            predicate: Some("contradicts".to_string()),
+            annotation: Some("see §3".to_string()),
+            line: 7,
+        }]);
+        let val = serialize_graph_index_ctx(&ctx);
+
+        assert_eq!(val["options"]["multi"], serde_json::json!(true));
+        let edges = val["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0]["attributes"]["predicate"], "contradicts");
+        assert_eq!(edges[0]["attributes"]["annotation"], "see §3");
+        assert_eq!(edges[0]["key"], "a--b--contradicts");
+    }
+
+    #[test]
+    fn spec045_feed_k_predicate_produces_k_parallel_edges_distinct_keys() {
+        // Two predicates on the same (a,b) pair → two parallel edges, distinct
+        // keys, both present in a multigraph feed.
+        let ctx = empty_ctx(vec![
+            GraphIndexEdge {
+                source: "a".to_string(),
+                target: "b".to_string(),
+                predicate: Some("derived_from".to_string()),
+                annotation: None,
+                line: 3,
+            },
+            GraphIndexEdge {
+                source: "a".to_string(),
+                target: "b".to_string(),
+                predicate: Some("informed_by".to_string()),
+                annotation: None,
+                line: 3,
+            },
+        ]);
+        let val = serialize_graph_index_ctx(&ctx);
+
+        assert_eq!(val["options"]["multi"], serde_json::json!(true));
+        let edges = val["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), 2);
+        let mut keys: Vec<&str> = edges.iter().map(|e| e["key"].as_str().unwrap()).collect();
+        keys.sort();
+        assert_eq!(keys, vec!["a--b--derived_from", "a--b--informed_by"]);
+        // All endpoints unchanged for plain source/target consumers.
+        for e in edges {
+            assert_eq!(e["source"], "a");
+            assert_eq!(e["target"], "b");
+        }
+    }
+
+    #[test]
+    fn spec045_feed_mixed_typed_and_untyped_keys_unique() {
+        // A typed feed that also contains an untyped edge between the same pair:
+        // the untyped edge gets the `__untyped` key segment and a null predicate.
+        let ctx = empty_ctx(vec![
+            GraphIndexEdge {
+                source: "a".to_string(),
+                target: "b".to_string(),
+                predicate: Some("contradicts".to_string()),
+                annotation: None,
+                line: 7,
+            },
+            idx_edge("a", "b"), // untyped, same pair
+        ]);
+        let val = serialize_graph_index_ctx(&ctx);
+
+        let edges = val["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), 2);
+        let keys: HashSet<&str> = edges.iter().map(|e| e["key"].as_str().unwrap()).collect();
+        assert_eq!(keys.len(), 2, "keys must be unique");
+        assert!(keys.contains("a--b--contradicts"));
+        assert!(keys.contains("a--b--__untyped"));
+        // The untyped parallel edge carries a null predicate (not the empty obj).
+        let untyped = edges
+            .iter()
+            .find(|e| e["key"] == "a--b--__untyped")
+            .unwrap();
+        assert_eq!(untyped["attributes"]["predicate"], serde_json::Value::Null);
     }
 
     /// Helper: build a WikiLink with all options
