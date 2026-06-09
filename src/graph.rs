@@ -73,6 +73,22 @@ pub struct Orphan {
     pub forward_links: usize,
 }
 
+/// A single directed edge of the typed graph, flattened for the `zetl edges`
+/// query surface (SPEC-045 REQ-4509 / CON-4503).
+#[derive(Debug, Clone, Serialize)]
+pub struct EdgeRecord {
+    pub source: String,
+    pub target: String,
+    /// `None` ⇒ untyped edge.
+    pub predicate: Option<String>,
+    /// `None` ⇒ no annotation.
+    pub annotation: Option<String>,
+    pub line: u32,
+    /// `true` when the target does not resolve to a real vault page (a typed
+    /// or untyped ghost edge, REQ-4514).
+    pub is_ghost: bool,
+}
+
 #[derive(Debug, Serialize)]
 pub struct PathResult {
     pub from: String,
@@ -244,6 +260,42 @@ impl LinkGraph {
                 }
             })
             .collect()
+    }
+
+    /// Whether a real (resolved) page with this name exists, case-insensitively.
+    pub fn has_page(&self, page: &str) -> bool {
+        self.resolved.iter().any(|p| p.eq_ignore_ascii_case(page))
+    }
+
+    /// Enumerate every directed edge in the graph as an [`EdgeRecord`]
+    /// (SPEC-045 REQ-4509). Output is sorted deterministically by
+    /// `(source, target, predicate, line)` so `zetl edges` is reproducible.
+    pub fn all_edges(&self) -> Vec<EdgeRecord> {
+        let mut records: Vec<EdgeRecord> = self
+            .graph
+            .edge_references()
+            .map(|edge_ref| {
+                let source = self.graph[edge_ref.source()].clone();
+                let target_name = &self.graph[edge_ref.target()];
+                let meta = edge_ref.weight();
+                EdgeRecord {
+                    source,
+                    target: target_name.clone(),
+                    predicate: meta.predicate.clone(),
+                    annotation: meta.annotation.clone(),
+                    line: meta.line,
+                    is_ghost: !self.resolved.contains(target_name),
+                }
+            })
+            .collect();
+        records.sort_by(|a, b| {
+            a.source
+                .cmp(&b.source)
+                .then_with(|| a.target.cmp(&b.target))
+                .then_with(|| a.predicate.cmp(&b.predicate))
+                .then_with(|| a.line.cmp(&b.line))
+        });
+        records
     }
 
     /// Find dead links: edges whose target is a phantom node (not backed by a real file).

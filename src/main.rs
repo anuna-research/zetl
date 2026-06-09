@@ -1431,6 +1431,123 @@ fn cmd_links(
     Ok(())
 }
 
+/// SPEC-045 REQ-4509 / CON-4503: query the typed link graph. Read-only,
+/// idempotent, opens no socket. With no filter, a strict superset of
+/// `zetl links` (every edge, typed and untyped).
+#[allow(clippy::too_many_arguments)]
+fn cmd_edges(
+    cli: &Cli,
+    predicate: &[String],
+    from: Option<&str>,
+    to: Option<&str>,
+    by_predicate: bool,
+    untyped: bool,
+    annotated: bool,
+) -> Result<()> {
+    let pipeline = run_pipeline(cli)?;
+    let all = pipeline.graph.all_edges();
+
+    // --by-predicate: group-and-count over the whole vault (the vocabulary
+    // distribution audit). Untyped edges bucket under "(untyped)".
+    if by_predicate {
+        let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+        for e in &all {
+            let key = e.predicate.clone().unwrap_or_else(|| "(untyped)".to_string());
+            *counts.entry(key).or_insert(0) += 1;
+        }
+        #[derive(Serialize)]
+        struct PredCount {
+            predicate: String,
+            count: usize,
+        }
+        let rows: Vec<PredCount> = counts
+            .into_iter()
+            .map(|(predicate, count)| PredCount { predicate, count })
+            .collect();
+        match cli.format {
+            OutputFormat::Json => print_json(&rows)?,
+            _ => {
+                let mut table = Table::new();
+                table.set_header(vec!["Predicate", "Count"]);
+                for r in &rows {
+                    table.add_row(vec![Cell::new(&r.predicate), Cell::new(r.count)]);
+                }
+                println!("{table}");
+            }
+        }
+        return Ok(());
+    }
+
+    // Apply row filters (all AND-combined; --predicate is OR within itself).
+    let filtered: Vec<&zetl::graph::EdgeRecord> = all
+        .iter()
+        .filter(|e| {
+            if untyped && e.predicate.is_some() {
+                return false;
+            }
+            if annotated && e.annotation.is_none() {
+                return false;
+            }
+            if !predicate.is_empty() {
+                match &e.predicate {
+                    Some(p) if predicate.iter().any(|f| f == p) => {}
+                    _ => return false,
+                }
+            }
+            if let Some(f) = from {
+                if !e.source.eq_ignore_ascii_case(f) {
+                    return false;
+                }
+            }
+            if let Some(t) = to {
+                if !e.target.eq_ignore_ascii_case(t) {
+                    return false;
+                }
+            }
+            true
+        })
+        .collect();
+
+    // A nonexistent --from / --to page yields zero rows + a stderr note
+    // (CON-4503 error model — not an error).
+    if filtered.is_empty() {
+        if let Some(f) = from {
+            if !pipeline.graph.has_page(f) {
+                eprintln!("note: no page named '{f}' in the vault");
+            }
+        }
+        if let Some(t) = to {
+            if !pipeline.graph.has_page(t) {
+                eprintln!("note: no page named '{t}' in the vault");
+            }
+        }
+    }
+
+    match cli.format {
+        OutputFormat::Json => print_json(&filtered)?,
+        _ => {
+            let mut table = Table::new();
+            table.set_header(vec!["Source", "Predicate", "Target", "Line", "Annotation"]);
+            for e in &filtered {
+                table.add_row(vec![
+                    Cell::new(&e.source),
+                    Cell::new(e.predicate.as_deref().unwrap_or("-")),
+                    Cell::new(if e.is_ghost {
+                        format!("{} (ghost)", e.target)
+                    } else {
+                        e.target.clone()
+                    }),
+                    Cell::new(e.line),
+                    Cell::new(e.annotation.as_deref().unwrap_or("")),
+                ]);
+            }
+            println!("{table}");
+        }
+    }
+
+    Ok(())
+}
+
 fn cmd_backlinks(
     cli: &Cli,
     page: &str,
@@ -11316,6 +11433,22 @@ fn main() -> anyhow::Result<()> {
             depth,
             with_conclusions,
         } => cmd_links(&cli, page, *fuzzy, *context, *depth, *with_conclusions),
+        Command::Edges {
+            predicate,
+            from,
+            to,
+            by_predicate,
+            untyped,
+            annotated,
+        } => cmd_edges(
+            &cli,
+            predicate,
+            from.as_deref(),
+            to.as_deref(),
+            *by_predicate,
+            *untyped,
+            *annotated,
+        ),
         Command::Backlinks {
             page,
             fuzzy,

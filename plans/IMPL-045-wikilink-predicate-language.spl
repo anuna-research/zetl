@@ -196,3 +196,7 @@
 (normally r-propagate-template-vars-from-graph-edges-permanently-failed permanently-failed-graph-edges upstream-blocked-template-vars)
 (normally r-propagate-template-vars-from-graph-edges-stale-v1 stale-v1-graph-edges upstream-blocked-template-vars)
 (normally r-propagate-template-vars-from-graph-edges-timeout-v1 timeout-v1-graph-edges upstream-blocked-template-vars)
+
+(claims agent:claude
+  :at "2026-06-09T14:02:14Z"
+  (given completed-graph-edges))

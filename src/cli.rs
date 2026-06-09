@@ -144,6 +144,34 @@ pub enum Command {
         with_conclusions: bool,
     },
 
+    /// Query the typed link graph by predicate, direction, source, or target
+    /// (SPEC-045). A strict superset of `zetl links`: with no filter it lists
+    /// every edge, typed and untyped.
+    #[command(
+        after_help = "Examples:\n  zetl edges                         All edges (typed + untyped)\n  zetl edges --predicate contradicts Only `contradicts::` edges\n  zetl edges --from \"Decision Log\"    Outgoing edges of a page\n  zetl edges --by-predicate          Vocabulary distribution histogram"
+    )]
+    Edges {
+        /// Filter to edges carrying this predicate (repeatable for OR).
+        #[arg(long, value_name = "NAME")]
+        predicate: Vec<String>,
+        /// Filter to edges whose source is this page.
+        #[arg(long, value_name = "PAGE")]
+        from: Option<String>,
+        /// Filter to edges whose target is this page.
+        #[arg(long, value_name = "PAGE")]
+        to: Option<String>,
+        /// Group-and-count the whole vault's edges by predicate (the
+        /// vocabulary-distribution audit).
+        #[arg(long)]
+        by_predicate: bool,
+        /// Only untyped (`predicate: null`) edges.
+        #[arg(long)]
+        untyped: bool,
+        /// Only edges carrying an annotation.
+        #[arg(long)]
+        annotated: bool,
+    },
+
     /// Query backlinks to a page
     Backlinks {
         /// Page name (case-insensitive)
