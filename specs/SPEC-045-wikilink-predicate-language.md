@@ -1,7 +1,7 @@
 ---
 id: SPEC-045
 title: "Wikilink Predicate Language — typed named edges over `[[wikilinks]]`"
-version: 0.1.6-strawman
+version: 0.1.7-strawman
 status: draft
 date: 2026-06-09
 audience: agent, human
@@ -71,6 +71,13 @@ revision_notes:
     graph feed) to enable typed-edge FILTERING in the widget; the filter/
     colour UI stays a SPEC-028/SPEC-037 amendment. Q10's data-contract part
     is now committed; rendering/UI remains open.
+  - v0.1.7 (2026-06-09): per direction "don't edit old specs — add to
+    SPEC-045", the graph filter/styling BEHAVIOUR is now specified here as
+    REQ-4518 (filter-by-predicate, legend, colour, arrowheads, annotation-
+    on-hover, within SPEC-028 FPS/LCP budgets) and applied to
+    SPEC-028/SPEC-037 WITHOUT amending them. Q10 resolved in SPEC-045
+    (no longer an external amendment); only palette/placement left as
+    implementation detail.
 ---
 
 # SPEC-045: Wikilink Predicate Language
@@ -336,10 +343,11 @@ that already exists.**
   [[#REQ-4515]] template vars ([[#REQ-4511]]).
 - **Predicate-aware search** — predicate as a filterable field on the
   search index ([[#REQ-4512]]).
-- **Typed-edge graph-data feed** — `predicate` + `annotation` per edge in
-  the interactive-graph feed ([[SPEC-028]]/[[SPEC-037]]), enabling
-  filter-by-predicate in the widget ([[#REQ-4517]], [[#CON-4508]]); the
-  filter/colour UI is a graph-spec amendment.
+- **Typed edges in the interactive graph** — `predicate`/`annotation` in
+  the graph-data feed ([[#REQ-4517]], [[#CON-4508]]) AND filter-by-
+  predicate + colour/legend/arrowhead styling ([[#REQ-4518]]), both
+  specified here and applied to [[SPEC-028]]/[[SPEC-037]] without amending
+  them.
 - **Semantic-web interop export** — `zetl export
   --format {jsonld,turtle,ntriples}` projecting typed edges to RDF
   (PROV-O provenance, SKOS vocabulary), with optional `[prefixes]` /
@@ -996,14 +1004,50 @@ show/hide and style edges by predicate (e.g. "only `contradicts`", "hide
 `relates_to`"), mirroring `zetl edges --predicate` ([[#REQ-4509]]).
 
 The addition is additive: consumers reading only `source`/`target` are
-unaffected ([[#REQ-4505]]). SPEC-045 owns this **data contract**; the
-filter/legend/colour **UI and interaction** are an amendment to
-[[SPEC-028]]/[[SPEC-037]] (see [[#13. Open Questions]] Q10). Filtering is
-also a performance win — hiding a predicate reduces rendered edges,
-helping the [[SPEC-028]] FPS/LCP gates rather than straining them.
+unaffected ([[#REQ-4505]]). The feed is the *data contract*; the
+filtering/styling *behaviour* is [[#REQ-4518]] — both specified **here in
+SPEC-045**, applied to the [[SPEC-028]] / [[SPEC-037]] graph components
+without modifying those specs. Filtering is also a performance win —
+hiding a predicate reduces rendered edges, helping the [[SPEC-028]]
+FPS/LCP gates rather than straining them.
 
 **Trace:** [[#TEST-4517]], [[#CON-4508]]; [[SPEC-028]], [[SPEC-037]];
 [[#13. Open Questions]] Q10.
+
+### REQ-4518: Typed-Edge Filtering & Styling in the Graph View
+
+Reading the [[#REQ-4517]] feed, the interactive graph view ([[SPEC-028]])
+and the 3D space graph ([[SPEC-037]]) SHALL support typed-edge filtering
+and styling. This requirement is specified **in SPEC-045** and applies to
+those components as the consumer of the feed; it does not amend their
+specifications. The behaviour:
+
+* **Filter by predicate** — the user can show/hide edges per predicate
+  (multi-select), with an explicit **"untyped"** bucket for `predicate:
+  null` edges. Default: all predicates visible (REQ-4505 continuity).
+* **Predicate legend** — a key listing the predicates present (from
+  `vault.predicates`, [[#REQ-4515]]), each entry a colour swatch + a
+  show/hide toggle; counts shown per predicate.
+* **Colour-by-predicate** by default; **colour-by-`category`** when a
+  strict file ([[#CON-4502]]) supplies categories; untyped edges a neutral
+  colour.
+* **Direction** — edges render with arrowheads (edges are directed,
+  [[#REQ-4506]]).
+* **Annotation on demand** — an edge's annotation surfaces on
+  hover/selection (progressive disclosure), NOT as an always-on label
+  (labels are expensive in force layouts).
+
+**Performance:** filtering and per-predicate colour SHALL NOT regress the
+[[SPEC-028]] LCP/FPS budgets ([[SPEC-028]] TEST-201/TEST-202); colour is
+a cheap per-edge attribute and hiding a predicate *reduces* the rendered
+edge count. Exact palette, arrowhead style, and legend placement are
+implementation details for [[DESIGN-045-wikilink-predicate-language]].
+
+WHEN a vault has no typed edges, the graph renders exactly as the
+pre-SPEC-045 view (REQ-4505).
+
+**Trace:** [[#TEST-4518]], [[#REQ-4517]], [[#CON-4508]]; [[SPEC-028]],
+[[SPEC-037]]; [[#13. Open Questions]] Q10.
 
 ---
 
@@ -1811,6 +1855,7 @@ REQ-4514 ──→ TEST-4514                (ghost/external edges)
 REQ-4515 ──→ TEST-4515 ──→ CON-4506   (template variables)
 REQ-4516 ──→ TEST-4516 ──→ CON-4507   (RDF/JSON-LD interop export)
 REQ-4517 ──→ TEST-4517 ──→ CON-4508   (graph-data feed; enables filtering)
+REQ-4518 ──→ TEST-4518 ──→ CON-4508   (graph filter + styling behaviour)
 NFR-4501 ──→ TEST-NFR-4501 ──→ OBS-4501
 NFR-4502 ──→ TEST-NFR-4502 ──→ OBS-4502
 NFR-4503 ──→ TEST-NFR-4503 ──→ OBS-4503
@@ -1895,26 +1940,17 @@ report — [[PROTO-001]] §Key Technical Concepts).
    → `prov__wasDerivedFrom`) recorded in the projection contract;
    confirm against the SPL parser in
    [[DESIGN-045-wikilink-predicate-language]].
-10. **Q10 — Typed edges in the interactive graph view. DATA CONTRACT
-    COMMITTED; rendering/UI OPEN.** **Committed:** the graph-data feed
-    carries `predicate` + `annotation` per edge ([[#REQ-4517]],
-    [[#CON-4508]]), specifically so the [[SPEC-028]] / [[SPEC-037]] widget
-    can **filter edges by predicate** (the confirmed-wanted capability —
-    "only `contradicts`", "hide `relates_to`"). **Open** (an amendment to
-    [[SPEC-028]]/[[SPEC-037]] + theme/[[SPEC-044]], not this spec):
-    - the **filter UI** itself (toggles, a legend from `vault.predicates`
-      [[#REQ-4515]]) — confirmed wanted, design TBD;
-    - **colour-by-predicate** (cheap) vs colour-by-`category`; untyped a
-      neutral colour;
-    - **directional arrowheads** (edges are now meaningfully directed);
-    - **annotation on hover/selection** (progressive disclosure) — labels
-      are expensive in force layouts, so colour by default + labels on
-      interaction, to stay inside [[SPEC-028]]'s LCP/FPS gates (filtering
-      *helps* these by reducing rendered edges).
-    Scope split: SPEC-045 owns the data feed ([[#REQ-4517]]); the graph
-    specs own rendering/interaction. Resolve the rendering design in a
-    [[SPEC-028]]/[[SPEC-037]] amendment via
-    [[DESIGN-045-wikilink-predicate-language]].
+10. **Q10 — Typed edges in the interactive graph view. RESOLVED (in
+    SPEC-045).** Both the data feed ([[#REQ-4517]], [[#CON-4508]]) and the
+    filtering/styling behaviour ([[#REQ-4518]]) are specified **here in
+    SPEC-045** and applied to the [[SPEC-028]] / [[SPEC-037]] graph
+    components *without amending those specs*. Committed: filter-by-
+    predicate (with an "untyped" bucket), a predicate legend from
+    `vault.predicates`, colour-by-predicate (or `category`), directional
+    arrowheads, annotation on hover/selection, all inside the [[SPEC-028]]
+    FPS/LCP budgets. Remaining are implementation details for
+    [[DESIGN-045-wikilink-predicate-language]] (exact palette, arrowhead
+    style, legend placement), not open design questions.
 
 > **Process note (not a design question):** the
 > [[DESIGN-045-wikilink-predicate-language]] plan still describes the
