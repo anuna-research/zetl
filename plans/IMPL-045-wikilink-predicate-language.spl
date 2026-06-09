@@ -200,3 +200,26 @@
 (claims agent:claude
   :at "2026-06-09T14:02:14Z"
   (given completed-graph-edges))
+
+(claims agent:claude
+  :at "2026-06-09T14:05:34Z"
+  (given completed-edges-cli))
+
+(claims agent:claude
+  :at "2026-06-09T14:05:55Z"
+  (given claim-v1-predicates-toml)
+  (normally r-cl-state-v1-predicates-toml claim-v1-predicates-toml state-claimed-v1-predicates-toml)
+  (normally r-cl-chain-v1-predicates-toml state-claimed-v1-predicates-toml claimed-predicates-toml)
+)
+
+;; Propagation rules: failures in 'predicates-toml' block downstream tasks
+(normally r-propagate-check-lints-from-predicates-toml-failed failed-predicates-toml upstream-blocked-check-lints)
+(normally r-propagate-check-lints-from-predicates-toml-permanently-failed permanently-failed-predicates-toml upstream-blocked-check-lints)
+(normally r-propagate-check-lints-from-predicates-toml-stale-v1 stale-v1-predicates-toml upstream-blocked-check-lints)
+(normally r-propagate-check-lints-from-predicates-toml-timeout-v1 timeout-v1-predicates-toml upstream-blocked-check-lints)
+(normally r-propagate-check-lints-from-predicates-toml-blocked upstream-blocked-predicates-toml upstream-blocked-check-lints)
+(normally r-propagate-rdf-export-from-predicates-toml-failed failed-predicates-toml upstream-blocked-rdf-export)
+(normally r-propagate-rdf-export-from-predicates-toml-permanently-failed permanently-failed-predicates-toml upstream-blocked-rdf-export)
+(normally r-propagate-rdf-export-from-predicates-toml-stale-v1 stale-v1-predicates-toml upstream-blocked-rdf-export)
+(normally r-propagate-rdf-export-from-predicates-toml-timeout-v1 timeout-v1-predicates-toml upstream-blocked-rdf-export)
+(normally r-propagate-rdf-export-from-predicates-toml-blocked upstream-blocked-predicates-toml upstream-blocked-rdf-export)
