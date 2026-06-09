@@ -23,6 +23,16 @@ pub struct EdgeMeta {
     pub heading: Option<String>,
     pub block_ref: Option<String>,
     pub is_embed: bool,
+    /// SPEC-045 named-edge predicate for this directed edge. `None` ⇒ an
+    /// untyped edge (the pre-SPEC-045 default). A K-predicate wikilink expands
+    /// to K edges, each carrying exactly one predicate (REQ-4506).
+    #[serde(default)]
+    pub predicate: Option<String>,
+    /// SPEC-045 edge annotation (REQ-4504) — the indented sub-content under a
+    /// list-item named edge, captured at the graph layer for progressive
+    /// disclosure. `None` when absent.
+    #[serde(default)]
+    pub annotation: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +48,12 @@ pub struct BacklinkResult {
     pub context: Option<String>,
     pub alias: Option<String>,
     pub is_embed: bool,
+    /// SPEC-045 predicate of the incoming edge (`None` ⇒ untyped).
+    #[serde(default)]
+    pub predicate: Option<String>,
+    /// SPEC-045 annotation of the incoming edge (`None` ⇒ absent).
+    #[serde(default)]
+    pub annotation: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -45,6 +61,10 @@ pub struct DeadLink {
     pub source: String,
     pub line: u32,
     pub target: String,
+    /// SPEC-045 predicate of the dead typed edge (`None` ⇒ untyped) — lets a
+    /// curator see "3 dead `supersedes::` targets" (REQ-4506 / REQ-4514).
+    #[serde(default)]
+    pub predicate: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -151,16 +171,31 @@ impl LinkGraph {
                     .entry(target_name.clone())
                     .or_insert_with(|| graph.add_node(target_name.clone()));
 
-                let meta = EdgeMeta {
+                let base_meta = EdgeMeta {
                     source_file: file.path.to_string_lossy().to_string(),
                     line: link.line,
                     alias: link.alias.clone(),
                     heading: link.heading.clone(),
                     block_ref: link.block_ref.clone(),
                     is_embed: link.is_embed,
+                    predicate: None,
+                    annotation: None,
                 };
 
-                graph.add_edge(source_idx, target_idx, meta);
+                // SPEC-045 REQ-4506: a K-predicate wikilink expands to K
+                // directed edges S→X, each carrying one predicate; an untyped
+                // link yields a single untyped edge (predicate: None). This
+                // keeps an untyped vault byte-identical to the pre-SPEC-045
+                // graph (one edge per link occurrence).
+                if link.predicates.is_empty() {
+                    graph.add_edge(source_idx, target_idx, base_meta);
+                } else {
+                    for predicate in &link.predicates {
+                        let mut meta = base_meta.clone();
+                        meta.predicate = Some(predicate.clone());
+                        graph.add_edge(source_idx, target_idx, meta);
+                    }
+                }
             }
         }
 
@@ -204,6 +239,8 @@ impl LinkGraph {
                     context: None,
                     alias: meta.alias.clone(),
                     is_embed: meta.is_embed,
+                    predicate: meta.predicate.clone(),
+                    annotation: meta.annotation.clone(),
                 }
             })
             .collect()
@@ -226,6 +263,7 @@ impl LinkGraph {
                     source: source_name.clone(),
                     line: meta.line,
                     target: target_name.clone(),
+                    predicate: meta.predicate.clone(),
                 });
             }
         }
@@ -782,6 +820,101 @@ mod tests {
             merkle_leaves: vec![],
             file_merkle: None,
         }
+    }
+
+    /// Helper: build a ParsedFile whose links carry SPEC-045 predicates.
+    /// Each tuple is `(target, line, predicates)`.
+    fn make_typed_file(name: &str, links: Vec<(&str, u32, Vec<&str>)>) -> ParsedFile {
+        ParsedFile {
+            path: PathBuf::from(format!("{name}.md")),
+            page_name: name.to_string(),
+            links: links
+                .into_iter()
+                .map(|(target, line, preds)| crate::types::WikiLink {
+                    target_page: target.to_string(),
+                    raw_target: target.to_string(),
+                    heading: None,
+                    block_ref: None,
+                    alias: None,
+                    is_embed: false,
+                    predicates: preds.into_iter().map(|p| p.to_string()).collect(),
+                    line,
+                    column: 1,
+                })
+                .collect(),
+            spl_blocks: vec![],
+            diagnostics: vec![],
+            mtime: SystemTime::now(),
+            merkle_leaves: vec![],
+            file_merkle: None,
+        }
+    }
+
+    #[test]
+    fn spec045_k_predicate_link_expands_to_k_edges() {
+        // `derived_from::informed_by::[[Retro]]` on "Decision Log" → two
+        // directed typed edges, plus one untyped edge for a bare link.
+        let mut resolved = HashMap::new();
+        resolved.insert("retro".to_string(), "Retro".to_string());
+        resolved.insert("loose".to_string(), "Loose".to_string());
+        let files = vec![make_typed_file(
+            "Decision Log",
+            vec![
+                ("Retro", 3, vec!["derived_from", "informed_by"]),
+                ("Loose", 5, vec![]), // untyped
+            ],
+        )];
+        let graph = LinkGraph::build(&files, &resolved);
+        let fwd = graph.forward_links("Decision Log");
+        assert_eq!(fwd.len(), 3, "2 typed + 1 untyped");
+
+        let mut typed: Vec<_> = fwd
+            .iter()
+            .filter_map(|f| f.meta.predicate.as_deref().map(|p| (p, f.target.as_str())))
+            .collect();
+        typed.sort();
+        assert_eq!(
+            typed,
+            vec![("derived_from", "Retro"), ("informed_by", "Retro")]
+        );
+        // The bare link stays untyped.
+        assert_eq!(
+            fwd.iter().filter(|f| f.meta.predicate.is_none()).count(),
+            1
+        );
+    }
+
+    #[test]
+    fn spec045_typed_backlink_carries_predicate() {
+        let mut resolved = HashMap::new();
+        resolved.insert("move fast doctrine".to_string(), "Move Fast Doctrine".to_string());
+        let files = vec![
+            make_typed_file(
+                "Decision Log",
+                vec![("Move Fast Doctrine", 7, vec!["contradicts"])],
+            ),
+            make_typed_file("Move Fast Doctrine", vec![]),
+        ];
+        let graph = LinkGraph::build(&files, &resolved);
+        let bl = graph.backlinks("Move Fast Doctrine");
+        assert_eq!(bl.len(), 1);
+        assert_eq!(bl[0].source, "Decision Log");
+        assert_eq!(bl[0].predicate.as_deref(), Some("contradicts"));
+    }
+
+    #[test]
+    fn spec045_dead_typed_edge_reports_predicate() {
+        // A typed edge to a phantom target is a typed ghost edge (REQ-4514).
+        let resolved = HashMap::new();
+        let files = vec![make_typed_file(
+            "Plan",
+            vec![("Nonexistent", 2, vec!["supersedes"])],
+        )];
+        let graph = LinkGraph::build(&files, &resolved);
+        let dead = graph.dead_links();
+        assert_eq!(dead.len(), 1);
+        assert_eq!(dead[0].target, "Nonexistent");
+        assert_eq!(dead[0].predicate.as_deref(), Some("supersedes"));
     }
 
     /// Helper: build a WikiLink with all options
