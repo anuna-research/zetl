@@ -3857,8 +3857,27 @@ fn cmd_blocks_resolve(cli: &Cli, hash_prefix: &str) -> Result<()> {
     Ok(())
 }
 
-fn cmd_export(cli: &Cli) -> Result<()> {
+fn cmd_export(cli: &Cli, rdf_format: Option<zetl::cli::RdfFormat>, base_iri: &str) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
+
+    // SPEC-045 REQ-4516: `--format {jsonld,turtle,ntriples}` projects typed
+    // edges to RDF instead of the default link-graph export.
+    if let Some(format) = rdf_format {
+        let cfg = zetl::predicates::PredicatesConfig::load_from_vault(&pipeline.vault_root)
+            .unwrap_or_else(|e| {
+                eprintln!("warning: {e}");
+                None
+            });
+        let rdf = zetl::rdf_export::export_rdf(
+            &pipeline.graph,
+            &pipeline.files,
+            cfg.as_ref(),
+            base_iri,
+            format,
+        );
+        print!("{rdf}");
+        return Ok(());
+    }
 
     #[derive(Serialize)]
     struct NodeEntry {
@@ -11679,7 +11698,7 @@ fn main() -> anyhow::Result<()> {
             block_type,
             resolve,
         } => cmd_blocks(&cli, page.as_deref(), block_type, resolve.as_deref()),
-        Command::Export => cmd_export(&cli),
+        Command::Export { rdf, base_iri } => cmd_export(&cli, *rdf, base_iri),
         Command::View {
             page,
             context_lines,

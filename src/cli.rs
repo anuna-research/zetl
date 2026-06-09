@@ -289,8 +289,21 @@ pub enum Command {
         max_depth: usize,
     },
 
-    /// Export the complete link graph
-    Export,
+    /// Export the complete link graph, or project typed edges to RDF
+    #[command(
+        after_help = "Examples:\n  zetl export                       Link graph as JSON\n  zetl export --rdf turtle          Typed edges as RDF/Turtle\n  zetl export --rdf jsonld          Typed edges as JSON-LD\n  zetl export --rdf ntriples        Typed edges as N-Triples"
+    )]
+    Export {
+        /// Project typed edges to an RDF serialisation (SPEC-045). Omit for the
+        /// default link-graph export. (Named `--rdf` because the global
+        /// `-f/--format` already selects the table/json output format.)
+        #[arg(long, value_enum, value_name = "FORMAT")]
+        rdf: Option<RdfFormat>,
+        /// Base IRI for minting page / un-mapped-predicate IRIs in the vault's
+        /// own namespace.
+        #[arg(long, default_value = "http://localhost/zetl/", value_name = "IRI")]
+        base_iri: String,
+    },
 
     /// List Merkle blocks for a page (forward mode) or resolve a block by hash
     Blocks {
@@ -935,6 +948,14 @@ pub enum CapCommand {
     /// Print the operator checklist for removing the wiki from service
     /// (REQ-3431). Does not modify any files.
     EmergencyShutdown,
+}
+
+/// RDF serialisation formats for `zetl export --format` (SPEC-045 REQ-4516).
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RdfFormat {
+    Jsonld,
+    Turtle,
+    Ntriples,
 }
 
 #[derive(Subcommand, Debug)]
