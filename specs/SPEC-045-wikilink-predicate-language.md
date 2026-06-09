@@ -1,7 +1,7 @@
 ---
 id: SPEC-045
 title: "Wikilink Predicate Language — typed named edges over `[[wikilinks]]`"
-version: 0.1.3-strawman
+version: 0.1.4-strawman
 status: draft
 date: 2026-06-09
 audience: agent, human
@@ -52,6 +52,16 @@ revision_notes:
     becomes an array of `{predicate, inverse}` specs. Adds the
     Threat-Model-A escalation (S creating an outgoing edge on X).
     Updates REQ-4501/4503/4506, CON-4501/4505, the disposition matrix.
+  - v0.1.4 (design-conversation revision, 2026-06-09): correction +
+    de-scope. The plain `predicate::[[X]]` edge is already BIDIRECTIONAL
+    (navigable + visible from both ends via backlinks); only the
+    predicate's *reading* is directional. The materialised named-inverse
+    (`forward/inverse::`, v0.1.3) is therefore DEFERRED out of committed
+    v1 — its job is covered by inverse-labels + SPL, and it carried the
+    sole "page writes an outgoing edge onto another page" escalation. The
+    AST keeps a reserved `inverse` field (null in v1) for additive
+    re-introduction. Reverts the `/` grammar/expansion to deferred; Q4
+    now "partly resolved, rest deferred".
 ---
 
 # SPEC-045: Wikilink Predicate Language
@@ -581,24 +591,30 @@ A `[[wikilink]]` with no preceding predicate is an **untyped edge**
 (`predicates: []`) and is recognised exactly as today. (Resolves Open
 Question Q1 — see [[#13. Open Questions]].)
 
-**Edges are directed; a named inverse is opt-in.** Each predicate spec is
-`forward[/inverse]`:
+**The edge is bidirectional; the predicate's *meaning* is directional.**
+`derived_from::[[X]]` on page S:
 
-* `derived_from::[[X]]` (no slash) — a single **directed** edge `S→X`.
-  The reverse is reachable via backlinks ([[#REQ-4511]]) but is NOT a
-  materialised outgoing edge on X.
-* `derived_from/has_derivative::[[X]]` (with slash) — materialises BOTH
-  directions as named directed edges: `S --derived_from--> X` AND
-  `X --has_derivative--> S`. This is the **only** way to author a
-  bidirectional relation; it is authoring sugar for two directed edges,
-  NOT a global inverse declaration (no semantics enter the predicate
-  system — [[#ADR-4502]]). (Resolves Open Question Q4.)
+* is **bidirectionally navigable** — S→X by following the link, X→S via
+  backlinks (zetl's core property); and
+* is **visible from both ends** — X's typed-backlink panel shows the edge
+  (`← derived_from — S`, [[#REQ-4511]]). So X *sees* the relation.
+* What is directional is only the predicate's *reading* (the edge means
+  "S derived_from X", never the converse) and which end owns it as an
+  *outgoing* relation (S does; X sees it incoming).
 
-There is no symmetric shorthand: a genuinely symmetric relation
-(`contradicts`, `relates_to`) is served by backlink traversal, or by
-authoring the predicate on both pages, or by an SPL inverse rule —
-materialising a reverse edge with the same name buys nothing a backlink
-does not already give ([[#13. Open Questions]] Q4).
+A page therefore does **not** need extra syntax to make a relation
+bidirectional — it already is. Where the reverse should read in X's *own*
+words (`superseded_by` rather than an incoming `supersedes`), the
+intended mechanisms are an **inverse-*label*** (presentation —
+[[#REQ-4511]]) or, for a genuine reverse *fact*, an **SPL inverse rule**
+(`(has_derivative ?t ?s) <- (derived_from ?s ?t)`) — meaning stays in
+SPL, not the predicate layer ([[#ADR-4502]]).
+
+A *materialised* named-inverse authoring form (`from/to::[[X]]` minting
+an outgoing edge `X→S`) is **deferred** — see Open Question Q4
+([[#13. Open Questions]]) and its trust-boundary note. It is not part of
+the committed v1 surface; the data model reserves an `inverse` field
+([[#CON-4505]]) so it can be added additively if a concrete need appears.
 
 Recognition occurs at the same parse boundary that already extracts
 wikilinks (`src/scanner.rs:394`, `src/hooks/ast/parse.rs:689`); named
@@ -632,15 +648,18 @@ The [[zetl-ext AST]] [[Wikilink]] node ([[SPEC-032]] schema,
 `src/hooks/ast/mod.rs:419`) SHALL gain an OPTIONAL `predicates` field —
 an **array of predicate specs** (the authored set, possibly empty;
 empty/absent ⇒ untyped). Each spec is an object `{ "predicate": string,
-"inverse": string | null }` carrying source fidelity for both forms:
+"inverse": string | null }`:
 
 ```jsonc
 // derived_from::informed_by::[[X]]
 "predicates": [ { "predicate": "derived_from", "inverse": null },
                 { "predicate": "informed_by",  "inverse": null } ]
-// derived_from/has_derivative::[[X]]
-"predicates": [ { "predicate": "derived_from", "inverse": "has_derivative" } ]
 ```
+
+The `inverse` field is **reserved and always `null` in committed v1** —
+it exists so the deferred materialised named-inverse form (Q4) can be
+added *additively* (populating a field, not changing the array's item
+type) without breaking hooks. v1 authoring never sets it.
 
 The [[Link Graph]] expands each spec to directed edges ([[#REQ-4506]]):
 the `predicate` → `S→X`, and (when present) the `inverse` → `X→S`. The
@@ -686,14 +705,14 @@ as `zetl links`.
 The [[Link Graph]] ([[graph.rs|`LinkGraph`]]) SHALL carry the predicate
 on each edge (`EdgeMeta.predicate: Option<String>`, `src/graph.rs:18`).
 **One graph edge carries exactly one predicate, in one direction.** A
-wikilink authored on page S expands (REQ-4503) as: each forward predicate
-→ an edge `S→X`; each `/inverse` → an additional edge `X→S`. So a
-`from/to::[[X]]` spec yields two edges; a plain K-predicate link yields K
-edges; an untyped link yields one untyped edge. All edges share
-line/annotation and are **provenance-tagged to S** — including the
-inverse edge `X→S`, whose graph-*source* is X though S authored it
-([[#Threat Model A]]). The dedup key is `(source, target, predicate)`,
-not `(source, target)`. The following SHALL gain a predicate dimension:
+wikilink authored on page S expands (REQ-4503) to one directed edge `S→X`
+per predicate: a K-predicate link yields K edges, an untyped link yields
+one untyped edge. All edges share line/annotation and are
+provenance-tagged to S. The dedup key is `(source, target, predicate)`,
+not `(source, target)`. (A *reverse* edge `X→S` from a materialised
+named-inverse is DEFERRED — Q4; v1 produces forward edges only, and the
+reverse stays a backlink.) The following SHALL gain a predicate
+dimension:
 
 * **Backlinks** (`backlinks(page)`, `src/graph.rs:190`) — each
   `BacklinkResult` SHALL carry the predicate and annotation of the
@@ -1187,9 +1206,11 @@ declared formally and recognised before any edge is constructed.
 **Grammar (ABNF):**
 
 ```abnf
-named-edge      = 1*( pred-spec "::" ) wikilink   ; one OR MORE specs
-pred-spec       = predicate [ "/" predicate ]     ; forward [ "/" inverse ]
+named-edge      = 1*( predicate "::" ) wikilink   ; one OR MORE predicates
 predicate       = snake-pred / curie-pred
+; DEFERRED extension (Q4): a `predicate "/" predicate` pred-spec would add
+; a named inverse; NOT in committed v1 — a `/` in the predicate region
+; falls to text in v1.
 snake-pred      = lower *( lower / DIGIT / "_" )   ; emergent default
 curie-pred      = prefix ":" localname            ; standard-vocab opt-in
 prefix          = lower *( lower / DIGIT )
@@ -1199,12 +1220,7 @@ wikilink        = "[[" target [ "#" heading ] [ "#^" block-id ]
                   [ "|" alias ] "]]"
 ; target / heading / block-id / alias as defined by the existing
 ; SPEC-032 wikilink grammar (src/hooks/ast/mod.rs:419). The named-edge
-; grammar adds the `pred-spec "::"` prefix; a pred-spec is a forward
-; predicate with an OPTIONAL `/inverse` (REQ-4501). The `/` never
-; collides with a target path (those live inside `[[…]]`) nor with a
-; CURIE `:` (the `/` splits a spec; the `:` is internal to a predicate).
-; An empty inverse slot (`a/::`) is NOT valid (no symmetric shorthand)
-; and falls to text.
+; grammar adds ONLY the `predicate "::"` prefix (one or more, chained).
 ; The grammar stays REGULAR and is parseable WITHOUT config: a `prefix:`
 ; whose namespace is undeclared still parses (it is an opaque predicate);
 ; declaration only affects RDF export (REQ-4516) and the
@@ -1220,22 +1236,21 @@ predicate is distinct from the `::` separator. A **bare** camelCase token
 standard terms MUST be namespaced — so plain lowercase-snake remains the
 only un-prefixed form and no accidental capitalised predicates arise.
 
-**Multiple predicates (REQ-4503):** one or more pred-specs may be chained
+**Multiple predicates (REQ-4503):** one or more predicates may be chained
 on `::` before a single wikilink — `derived_from::informed_by::[[X]]`.
 The recogniser keys on the final `::[[`, then walks back over the
-`1*( pred-spec "::" )` run; every segment must satisfy the grammar or the
+`1*( predicate "::" )` run; every segment must satisfy the grammar or the
 whole run fails to text (conservative). The set is order-insensitive and
 de-duplicated (`a::a::[[X]]` → one edge + a `predicate-duplicate` lint);
 canonicalised (sorted) for the projection ([[#CON-4504]]) and export
 ([[#CON-4507]]).
 
-**Named inverse (REQ-4501):** a pred-spec `forward/inverse` adds a second
-directed edge in the reverse direction — `derived_from/has_derivative::
-[[X]]` on page S → `S--derived_from-->X` AND `X--has_derivative-->S`. Both
-edges are provenance-tagged to S; the inverse edge's graph-*source* is X
-even though S authored it ([[#Threat Model A]]). No slash ⇒ forward only.
-An empty inverse slot (`a/::[[X]]`) is malformed (no symmetric shorthand)
-and falls to text.
+**Named inverse — DEFERRED (Q4).** A `forward/inverse::[[X]]` form that
+materialises a reverse edge `X→S` is NOT in committed v1; a `/` in the
+predicate region falls to text. The plain form is already bidirectionally
+navigable + visible (REQ-4501); the reverse, when wanted, is an
+inverse-*label* or an SPL rule. See [[#13. Open Questions]] Q4 for the
+deferred form and its trust-boundary note.
 
 **Binding rule:** the predicate run binds to the single `wikilink` that
 *immediately* follows the final `::` with no intervening character
@@ -1252,19 +1267,19 @@ wikilink.
 **Post-conditions:**
 - A recognised named edge yields exactly one [[Wikilink]] node whose
   `predicates` array holds one `{predicate, inverse}` spec per chained
-  segment (REQ-4501, REQ-4503).
+  segment, with `inverse` always `null` in committed v1 (REQ-4501,
+  REQ-4503).
 - An unrecognised `::`-adjacent token yields the disposition below.
 
 **Malformed-token disposition (REQ-4502):**
 
 | Source | Disposition |
 |---|---|
-| `derived_from::[[X]]` | named edge, `predicates=[{derived_from, ∅}]` → 1 edge `S→X` |
+| `derived_from::[[X]]` | named edge, `predicates=[{derived_from, ∅}]` → 1 directed edge `S→X` |
 | `derived_from::informed_by::[[X]]` | named edge, two specs → 2 edges `S→X` |
-| `derived_from/has_derivative::[[X]]` | named edge w/ inverse → 2 edges: `S→X` (derived_from) + `X→S` (has_derivative) |
 | `prov:wasDerivedFrom::[[X]]` | named edge (CURIE); `predicate-undeclared-prefix` lint if `prov` not in `[prefixes]` |
 | `[[X]]` | untyped edge, `predicates=[]` |
-| `derived_from/::[[X]]` (empty inverse) | NOT a named edge (no symmetric shorthand); text + untyped edge |
+| `derived_from/has_derivative::[[X]]` (any `/`) | v1: NOT a named edge — `/` falls to text + untyped edge (the materialised named-inverse form is DEFERRED, Q4) |
 | `derived_from:: [[X]]` (space) | text `derived_from::` + untyped edge |
 | `wasDerivedFrom::[[X]]` (bare camelCase, no prefix) | NOT a predicate (un-prefixed terms are lowercase-snake); text + untyped edge |
 | `Derived_From::[[X]]` (uppercase, no prefix) | NOT a predicate; text + untyped edge |
@@ -1455,12 +1470,13 @@ minijinja (`src/web/engine.rs`).
   "is_dead":   false,                    // ghost/unresolved target
   "annotation": "…" | null,
   "line":      12,
-  "authored_by": null }                  // null = this page (self-authored);
-                                         // else the page that authored this
-                                         // edge — set on a named-inverse edge
-                                         // materialised from another page
-                                         // (REQ-4501, Threat Model A). The
-                                         // renderer SHOULD flag non-null.
+  "authored_by": null }                  // RESERVED: always null in v1
+                                         // (every edge is self-authored).
+                                         // Reserved for the deferred
+                                         // named-inverse (Q4): would name
+                                         // the page that authored an
+                                         // other-authored reverse edge so
+                                         // the renderer can flag it.
 // page.edges_by_predicate: { "<predicate>": [ <edge>, … ], … }
 // page.backlinks[i]: existing fields + "predicate"|null, "label"|null, "annotation"|null
 // page.backlinks_by_predicate: { "<predicate>": [ <backlink>, … ], … }
@@ -1658,18 +1674,18 @@ page can lie about another page) — flagged in [[#9. Verification and
 Testing Strategy]] adversarial testing. The spec does NOT auto-trust
 projected facts; it makes provenance available so authors can choose.
 
-**Escalation — named-inverse edges (REQ-4501 `from/to::`).** Today a
-named edge only ever creates an *outgoing* edge from the *authoring*
-page. The `/inverse` form is the first construct where page S creates an
-**outgoing edge on a different page** (`X→S`) that X never authored — a
-stronger claim than a backlink, visible when an agent walks X's *outgoing*
-edges. Mitigation: the inverse edge carries `_source_page = S` like any
-projected fact, so every consumer (graph, CLI, SPL, RDF, template vars)
-can distinguish self-authored from other-authored outgoing edges; the
-renderer SHOULD flag other-authored inverse edges distinctly, and trust
-scoping by `_source_page` applies exactly as for forward facts. The
-escalation is bounded — `/inverse` is opt-in and names the relation
-explicitly; nothing is auto-symmetrised.
+**Escalation the committed v1 AVOIDS — named-inverse edges (deferred,
+Q4).** A materialised `from/to::` form would be the first construct where
+page S creates an **outgoing edge on a different page** (`X→S`) that X
+never authored — a stronger claim than a backlink, visible when an agent
+walks X's *outgoing* edges. This is the main reason the form is **not in
+committed v1**: keeping it out keeps every outgoing edge self-authored.
+*If* it is later adopted, the mitigation is per-edge provenance
+(`_source_page = S`, surfaced as the reserved `authored_by` template var,
+[[#CON-4506]]) so consumers can distinguish self- from other-authored
+outgoing edges, plus trust scoping by `_source_page` as for any forward
+fact. Until then, the reverse direction is only ever a backlink (incoming),
+which carries no such escalation.
 
 ### Threat Model B: Predicate Injection via Content
 
@@ -1766,18 +1782,26 @@ report — [[PROTO-001]] §Key Technical Concepts).
    natural place for the indented annotation (REQ-4504 captures it only
    in list-item form). Is that asymmetry acceptable? Lean: yes — the
    guide's annotation idiom is list-structured.
-4. **Q4 — Bidirectional / inverse predicates. RESOLVED (2026-06-09).**
-   Edges are directed; there is no inferred or symmetric primitive. A
-   named inverse is **opt-in per edge** via the `forward/inverse::`
-   pred-spec ([[#REQ-4501]], [[#CON-4501]]), which materialises a second
-   directed edge `X→S` — authoring sugar for two directed edges, not a
-   global inverse declaration ([[#ADR-4502]]). No symmetric shorthand: a
-   symmetric relation is served by backlink traversal, by authoring on
-   both pages, or by an SPL inverse rule. The trust-boundary escalation
-   (S creating an outgoing edge on X) is handled by provenance tagging
-   ([[#Threat Model A]]). Remaining for
-   [[DESIGN-045-wikilink-predicate-language]]: confirm the `/` glyph and
-   whether the renderer flags other-authored inverse edges distinctly.
+4. **Q4 — Bidirectional / inverse predicates. PARTLY RESOLVED; rest
+   DEFERRED (2026-06-09).** Settled: the plain `predicate::[[X]]` edge is
+   **already bidirectional** in the senses that matter — bidirectionally
+   *navigable* (S→X by link, X→S by backlink) and *visible from both ends*
+   (X's typed-backlink panel shows it, [[#REQ-4511]]). What is directional
+   is only the predicate's *reading* and which end owns the *outgoing*
+   relation. So no extra syntax is needed to make a relation bidirectional.
+   **Deferred:** a materialised named-inverse authoring form
+   (`forward/inverse::[[X]]` minting an outgoing `X→S` edge with a distinct
+   name). It is NOT in committed v1 because (a) it's the only construct
+   that makes a page write an *outgoing* edge onto another page (the
+   [[#Threat Model A]] escalation), and (b) its two unique contributions —
+   the reverse read in X's own words, and a reverse outgoing fact — are
+   already served more cheaply by an **inverse-*label*** (presentation,
+   [[#REQ-4511]]) and an **SPL inverse rule** respectively. The data model
+   reserves an `inverse` field ([[#CON-4505]], always null in v1) so the
+   form can be added additively if [[DESIGN-045-wikilink-predicate-language]]
+   surfaces a concrete case a label + SPL can't cover. No symmetric
+   shorthand under any option (backlinks already serve symmetric
+   relations).
 5. **Q5 — Trust scoping default for projected facts.** Should `zetl
    reason` default to trusting only *self-asserted* facts (page A's facts
    about A), requiring explicit opt-in for A-about-B facts
