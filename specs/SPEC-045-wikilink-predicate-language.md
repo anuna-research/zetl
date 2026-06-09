@@ -1,7 +1,7 @@
 ---
 id: SPEC-045
 title: "Wikilink Predicate Language — typed named edges over `[[wikilinks]]`"
-version: 0.1.0-strawman
+version: 0.1.1-strawman
 status: draft
 date: 2026-06-09
 audience: agent, human
@@ -23,6 +23,18 @@ revision_notes:
     `predicate::[[Target]]` named-edge grammar, the additive `Wikilink`
     AST extension, the curated-folksonomy vocabulary file, the `zetl
     edges` query surface, and the named-edge → SPL fact projection.
+  - v0.1.1 (design-conversation revision, 2026-06-09): the vocabulary is
+    now EMERGENT BY DEFAULT — `.zetl/predicates.toml` is dropped as a
+    seeded artefact and reframed as an OPTIONAL, opt-in **strict**
+    vocabulary file (three-state trajectory: emergent → crystallising →
+    controlled). The observed corpus predicate set IS the vocabulary;
+    lints run against usage, not a registry. The file conveys
+    GOVERNANCE/PRESENTATION metadata only — never semantic meaning, which
+    lives in the predicate name + the target node + SPL rules (this is not
+    an ontology system). Adds the template-variable contract (REQ-4515 /
+    CON-4506) for theme exposure. Rewrites REQ-4507, REQ-4508, REQ-4511,
+    ADR-4502, CON-4502; vocabulary governance otherwise defers to
+    [[SPEC-044]].
 ---
 
 # SPEC-045: Wikilink Predicate Language
@@ -198,12 +210,28 @@ that already exists.**
    14 ([[LangSec]]), the syntax is a declared formal grammar (REQ-4502,
    [[#CON-4501]]); malformed predicates are rejected at parse time, not
    normalised or guessed.
-3. **Curated folksonomy, not enforced ontology.** Following the guide's
-   governance stance, an *undeclared* predicate is a **warning**, never
-   an error (REQ-4508, [[#ADR-4502]]). The vocabulary
-   ([[#CON-4502|`.zetl/predicates.toml`]]) starts small, grows through
-   use, and is pruned periodically. zetl surfaces drift; it does not
-   forbid invention.
+3. **Emergent by default; controlled only by opt-in.** The vocabulary is
+   the set of predicates **observed in the corpus** — there is no
+   required declaration file. A predicate is whatever an author types;
+   lints (nearest-match, `relates_to::` over-use) run against *usage*,
+   not a registry (REQ-4508). A team that has earned a stable vocabulary
+   MAY opt in to a strict `.zetl/predicates.toml` ([[#REQ-4507]],
+   [[#CON-4502]]) — a three-state trajectory *emergent → crystallising →
+   controlled* (the [[SPEC-044]] §3 arc), where strict mode can finally
+   make an undeclared predicate an **error**. Declaring is the act of
+   choosing to *stop* being a folksonomy; absence is the default because
+   the dominant profile just wants to type the edge.
+   **Meaning is distributed, never declared.** A predicate's semantics
+   live in three places, none of them a config file: (a) the
+   self-documenting **name** (the multi-word discipline exists for this);
+   (b) the **target node** it points at (`conforms_to::[[X Form
+   Contract]]` means what X says — meaning-by-reference, kept revisable);
+   (c) **[[SPL]] rules** for anything machine-operational (inverse,
+   transitive, symmetric, domain/range — authored defeasibly in the
+   engine the edges already project into). The optional file carries
+   *governance/presentation* metadata only (is-this-sanctioned, a display
+   label, a grouping category) — it never says what a predicate *means*
+   or *entails*. **This is not an ontology system** ([[#ADR-4502]]).
 4. **Predicates live in the body, not the frontmatter.** Per the guide's
    unconflation principle: YAML holds scalars (dates, word counts);
    body predicates hold relationships to *concepts that have their own
@@ -226,10 +254,13 @@ that already exists.**
    `validated_by::[[A]]` written on a page that was never validated).
    The projection MUST preserve provenance so trust can be scoped
    ([[#Threat Model A]], [[#ADR-4504]]).
-8. **The same predicate query serves CLI, web, and search.** A typed
-   backlink panel ([[#REQ-4511]]), a `zetl edges` query ([[#REQ-4509]]),
+8. **The same predicate query serves CLI, web, templates, and search.** A
+   typed backlink panel ([[#REQ-4511]]), a `zetl edges` query
+   ([[#REQ-4509]]), the `page.edges` template variables ([[#REQ-4515]]),
    and a predicate-filtered search ([[#REQ-4512]]) all read the one
-   labelled graph. No second index, no divergent answers.
+   labelled graph. No second index, no divergent answers, no separate
+   label store — display labels are auto-derived from the predicate name
+   (overridable only by a strict file).
 
 ### 1.5 Scope
 
@@ -247,21 +278,33 @@ that already exists.**
   ([[#REQ-4504]]).
 - A **typed [[Link Graph]]** — `EdgeMeta.predicate`, typed backlinks,
   typed dead-link / orphan reporting ([[#REQ-4506]]).
-- A **vocabulary declaration file** `.zetl/predicates.toml` seeded with
-  the five guide categories (Classification, Provenance, Structural,
-  Lifecycle, Generative) ([[#REQ-4507]], [[#CON-4502]]).
-- **`zetl check` predicate lints** — undeclared-predicate warning,
-  `relates_to::` over-use signal, `is_a::`→`conforms_to::` suggestion
-  ([[#REQ-4508]]).
+- An **OPTIONAL strict-vocabulary file** `.zetl/predicates.toml` — absent
+  by default (emergent vocabulary); when present, it declares the
+  controlled set + governance/presentation metadata and can escalate an
+  undeclared predicate to an error ([[#REQ-4507]], [[#CON-4502]]). No
+  seed; carries no semantic meaning.
+- **`zetl check` predicate lints** computed against *observed usage* —
+  nearest-match drift warning, `relates_to::` over-use signal,
+  `is_a::`→`conforms_to::` suggestion ([[#REQ-4508]]).
 - A **`zetl edges` query CLI** — filter the typed graph by predicate,
-  direction, source, or target ([[#REQ-4509]], [[#CON-4503]]).
-- **Named-edge → [[SPL]] fact projection** under `--features reason`
-  ([[#REQ-4510]], [[#CON-4504]]).
+  direction, source, or target; `--by-predicate` is the vocabulary-
+  distribution view ([[#REQ-4509]], [[#CON-4503]]).
+- **Named-edge → [[SPL]] fact projection** under `--features reason` —
+  the single semantic surface ([[#REQ-4510]], [[#CON-4504]]).
+- **Typed-edge template variables** — `page.edges`,
+  `page.edges_by_predicate`, predicate-extended `page.backlinks`, and
+  `vault.predicates`, with auto-derived labels ([[#REQ-4515]],
+  [[#CON-4506]]).
 - **Typed backlink rendering** in `zetl build` web output, grouped by
-  predicate with annotation-driven progressive disclosure
-  ([[#REQ-4511]]).
+  predicate with annotation-driven progressive disclosure, reading the
+  [[#REQ-4515]] template vars ([[#REQ-4511]]).
 - **Predicate-aware search** — predicate as a filterable field on the
   search index ([[#REQ-4512]]).
+- **Semantic-web interop export** — `zetl export
+  --format {jsonld,turtle,ntriples}` projecting typed edges to RDF
+  (PROV-O provenance, SKOS vocabulary), with optional `[prefixes]` /
+  `maps_to` / CURIE-authoring for standard vocabularies ([[#REQ-4516]],
+  [[#CON-4507]]). SPARQL endpoint excluded.
 - A **read-only `tags:`→predicate migration helper** that *reports*
   candidate conversions without rewriting files ([[#REQ-4513]]).
 
@@ -367,9 +410,9 @@ lists the same edge set as `zetl links`. Verified by the unchanged
    - contradicts::[[Move Fast Doctrine]]
      - Specifically rejects the "skip the design doc" clause.
    ```
-2. They run `zetl check`. `derived_from`, `supersedes`, and
-   `contradicts` are all in the seeded `.zetl/predicates.toml`, so no
-   warning fires.
+2. They run `zetl check`. No file, no fuss — the three predicates join
+   the emergent vocabulary; each is used consistently, so no
+   `predicate-drift` note fires.
 3. They run `zetl edges --from "Decision Log"`:
    ```
    Decision Log
@@ -405,31 +448,41 @@ Doctrine.md` in the `zetl build` web output.
 **Postconditions:** The incoming `contradicts` edge is visually and
 semantically distinct from the four untyped "see also" edges.
 
-### 3.4 HP4: An Undeclared Predicate Warns, Does Not Break
+### 3.4 HP4: A New Predicate Just Works; Drift Is Surfaced
 
-**Preconditions:** The author writes `inspired_by::[[Some Talk]]`, but
-`inspired_by` is not in `.zetl/predicates.toml` (only `informed_by` is).
+**Preconditions:** Emergent default — the vault has **no**
+`.zetl/predicates.toml`. The author writes `inspired_by::[[Some Talk]]`;
+the vault already uses `informed_by` 47 times.
 
 **Steps:**
 
-1. `zetl check` emits a **warning** (not an error):
+1. The edge is graphed and projected with `predicate: "inspired_by"`
+   immediately — there is nothing to declare, the corpus *is* the
+   vocabulary ([[#ADR-4502]]).
+2. `zetl check` emits an advisory **`predicate-drift`** note (the
+   low-frequency `inspired_by` sits within nearest-match of the
+   high-frequency `informed_by`):
    ```
-   warning[predicate-undeclared]: predicate `inspired_by` is not in
-     .zetl/predicates.toml (did you mean `informed_by`?)
+   note[predicate-drift]: `inspired_by` (1 use) is close to
+     `informed_by` (47 uses) — possible synonym/typo
      --> Notes/Idea.md:12
-     = note: add it to [predicates.provenance] to silence this, or run
-             `zetl edges --by-predicate` to audit vocabulary drift
+     = run `zetl edges --by-predicate` to audit the vocabulary
    ```
-2. The build still succeeds. The edge is graphed and projected with
-   `predicate: "inspired_by"` regardless — folksonomy first
-   ([[#ADR-4502]]).
-3. The Vocabulary Curator later decides `inspired_by` is a real
-   addition and adds it to `[predicates.provenance]`, *or* decides it's
-   a synonym and the author rewrites it to `informed_by`.
+   The frequency asymmetry — not a registry — is the signal. Build
+   succeeds.
+3. The author either keeps `inspired_by` (a deliberate new coinage) or
+   rewrites it to `informed_by` (`rg`/sed across files). Nothing forced.
 
-**Postconditions:** Invention is never blocked; drift is always visible.
-`--fail-on warning` (existing `zetl check` flag, `src/cli.rs:187`) lets
-a strict team escalate the warning to a CI gate by choice.
+**Variant — controlled vault (opt-in strict):** the team has earned a
+stable vocabulary and added `.zetl/predicates.toml` with `enforce =
+true` listing `informed_by` but not `inspired_by`. Now step 2 is an
+**error** that fails `zetl check` / the build (`predicate-undeclared`) —
+*because the team chose a controlled vocabulary*. To add `inspired_by`
+they promote it into the file ([[SPEC-044]] ratification act).
+
+**Postconditions:** In the default, invention is never blocked and drift
+is still visible; error-by-default is reachable only by the explicit
+opt-in. One mechanism, three states ([[#REQ-4507]]).
 
 ### 3.5 HP5: Reasoning Over Typed Edges
 
@@ -585,43 +638,75 @@ The following SHALL gain a predicate dimension:
 
 **Trace:** [[#TEST-4506]], [[#CON-4503]]; [[SPEC-001]].
 
-### REQ-4507: Vocabulary Declaration File
+### REQ-4507: Optional Strict-Vocabulary File
 
-The system SHALL read an OPTIONAL `.zetl/predicates.toml` declaring the
-curated vocabulary, structured by the five [[Wikilinks and Named
-Edges]] categories. Its schema is [[#CON-4502]]. zetl SHALL ship a
-`zetl predicates init` seed containing the guide's starter vocabulary
-(≈30 predicates across Classification / Provenance / Structural /
-Lifecycle / Generative). Absent file ⇒ every predicate is treated as
-undeclared (all warn under REQ-4508) — a vault opting out of governance
-still works, it just gets no hygiene signal.
+The vocabulary is **emergent by default**: the set of predicates the
+system recognises is exactly the set **observed in the corpus**, and no
+declaration file is required. The system SHALL, however, read an OPTIONAL
+`.zetl/predicates.toml` ([[#CON-4502]]) that lets a team move along the
+*emergent → crystallising → controlled* trajectory ([[SPEC-044]] §3):
 
-REQ default value: the seeded file is OPT-IN via `zetl predicates init`;
-the default state of a fresh vault is *no file*, because the dominant
-profile ([[users/gardener/happy-paths]]) is an existing vault that
-should not acquire governance it did not ask for ([[PROTO-001]]
-§Requirement Templates — default justification).
+| State | File | Undeclared predicate | Label source |
+|---|---|---|---|
+| **Emergent** (default) | absent | valid; advisory drift lint only ([[#REQ-4508]]) | auto-derived ([[#REQ-4515]]) |
+| **Crystallising** | present, `enforce = false` | warns + nearest-match | file `display`, else auto |
+| **Controlled** | present, `enforce = true` | **error** (gates `zetl check` / build) | file `display`, else auto |
 
-**Trace:** [[#TEST-4507]], [[#CON-4502]]; [[#3.4 HP4]].
+The file SHALL NOT be seeded. zetl SHALL NOT ship a starter
+`.zetl/predicates.toml`; the guide's ≈30 predicates serve only as a
+suggestion seed-bank for tooling, never as a canonical import
+([[SPEC-044]] §9.2). The file is *populated by crystallisation* — a
+recurring predicate is promoted into it (the [[SPEC-044]] in-situ
+ratification act, which owns the promotion UX), not declared up front.
+
+The file conveys **governance and presentation metadata only** — which
+predicates are sanctioned, an optional `display` label, an optional
+grouping `category`, the `enforce` flag, and an optional `maps_to`
+interop binding ([[#REQ-4516]]). It SHALL NOT convey semantic meaning:
+no definitions, no inverse/transitive/symmetric properties, no
+domain/range constraints. Predicate meaning lives in the name, the target
+node, and [[SPL]] rules (Design Principle 3, [[#ADR-4502]]).
+
+REQ default value: a fresh or upgraded vault has **no file** (emergent),
+because the dominant profile just types the edge; a controlled vocabulary
+is earned by the minority of teams that have stabilised one
+([[PROTO-001]] §Requirement Templates — default justification).
+
+**Trace:** [[#TEST-4507]], [[#CON-4502]], [[#ADR-4502]]; [[#3.4 HP4]].
 
 ### REQ-4508: Predicate Lints in `zetl check`
 
-`zetl check` (`src/main.rs:1610`) SHALL emit the following diagnostics,
-all at **warning** severity by default (escalatable via the existing
-`--fail-on warning`, `src/cli.rs:187`):
+`zetl check` (`src/main.rs:1610`) SHALL emit the following diagnostics.
+In the **emergent** default (no strict file) they are advisory
+(warning/info), computed against **observed corpus usage** — there is no
+registry to compare against, so the corpus is the reference:
 
-* `predicate-undeclared` — a predicate not present in
-  `.zetl/predicates.toml`, with a nearest-match suggestion (Levenshtein
-  ≤ 2 against declared predicates).
+* `predicate-drift` — a low-frequency predicate within nearest-match
+  distance (Levenshtein ≤ 2) of a high-frequency one, e.g. `inspired_by`
+  (1 use) near `informed_by` (47 uses). The frequency asymmetry, not a
+  declared list, is the typo signal.
 * `predicate-relates-to-overuse` — `relates_to::` exceeding a configured
-  share of a page's edges (the guide's "`relates_to::` trap"); default
-  threshold `[Provisional: > 50% of a page's typed edges]`.
+  share of a page's typed edges (the guide's "`relates_to::` trap");
+  default threshold `[Provisional: > 50%]`.
 * `predicate-prefer-conforms-to` — any `is_a::` edge, suggesting
   `conforms_to::[[X Form Contract]]` ([[#ADR-4503]]).
+* `predicate-undeclared-prefix` — a CURIE predicate (`prefix:term`,
+  [[#CON-4501]]) whose `prefix` is not declared in `[prefixes]`
+  ([[#CON-4502]]); the edge is still valid (opaque), but RDF export
+  ([[#REQ-4516]]) will fall back to the vault namespace.
 
-No predicate diagnostic SHALL be an error by default. An *undeclared*
-predicate is never a build failure unless the operator opts into
-`--fail-on warning` ([[#ADR-4502]]).
+WHEN a **strict** file is present (`enforce = true`, [[#REQ-4507]]):
+
+* `predicate-undeclared` — a predicate not in the declared set —
+  escalates to **error** (the team chose a controlled vocabulary; an
+  unsanctioned predicate now fails `zetl check` / the build). Under
+  `enforce = false` it is a warning + nearest-match against the declared
+  set.
+
+In the emergent default no predicate diagnostic is an error unless the
+operator opts into the existing `--fail-on warning` (`src/cli.rs:187`);
+error-by-default for undeclared predicates is reachable ONLY via an
+explicit strict file ([[#ADR-4502]]).
 
 **Trace:** [[#TEST-4508]], [[#ADR-4502]], [[#ADR-4503]]; [[#3.4 HP4]].
 
@@ -674,18 +759,25 @@ degrades.
 ### REQ-4511: Typed Backlink Rendering
 
 `zetl build` web output SHALL render the backlink panel grouped by
-predicate, with a stable group ordering (predicate categories in the
-guide's order: Classification, Provenance, Structural, Lifecycle,
-Generative; untyped "see also" last). Each group SHALL show its
-predicate label (human-readable, from `.zetl/predicates.toml`'s
-`display` field if present, else the raw predicate) and the count; each
-edge SHALL surface its annotation inline when present (progressive
-disclosure — the reader assesses the edge before clicking).
+predicate, reading the [[#REQ-4515]] template variables. Each group
+SHALL show its predicate **label** — **auto-derived** from the predicate
+name (replace `_` with space, capitalise the first letter:
+`derived_from` → "Derived from"; a CURIE predicate uses its local part),
+**overridden** only by a strict file's `display` ([[#CON-4502]]) — and
+the count; each edge SHALL surface its annotation inline when present
+(progressive disclosure — the reader assesses the edge before clicking).
+
+Group **ordering** is a render-layer cosmetic, NOT a SPEC-045 semantic
+requirement: the default is by descending count then predicate name; a
+strict file's optional `category` may impose the guide's
+Classification/Provenance/Structural/Lifecycle/Generative order; untyped
+"see also" last. The choice of visual grammar (collapsible, right-rail,
+colour-by-category) belongs to the theme layer and to [[SPEC-044]].
 
 WHEN no page has a typed backlink, the panel renders exactly as the
 pre-SPEC-045 flat list (REQ-4505 continuity).
 
-**Trace:** [[#TEST-4511]], [[#CON-4503]]; [[#3.3 HP3]].
+**Trace:** [[#TEST-4511]], [[#REQ-4515]], [[#CON-4506]]; [[#3.3 HP3]].
 
 ### REQ-4512: Predicate-Aware Search
 
@@ -726,6 +818,68 @@ wants to grow".
 
 **Trace:** [[#TEST-4514]]; [[#3.4 HP4]]; [[Wikilinks and Named
 Edges]] §"Ghost links".
+
+### REQ-4515: Typed-Edge Template Variables
+
+The `zetl build` page context (`src/web/context.rs:123`, `PageContext`)
+SHALL expose a page's typed edges and typed backlinks to theme templates.
+All additions are **additive** — existing themes that read `page.title`,
+`page.backlinks[].title/slug/line/count`, etc. are unaffected
+([[#REQ-4505]]):
+
+* `page.edges` — outgoing edges, each
+  `{ predicate, label, target, target_slug, is_dead, annotation, line }`.
+  `predicate` is `null` for untyped edges; `label` is the **auto-derived**
+  display ([[#CON-4506]]) unless a strict-file `display` overrides;
+  `annotation` is `null` when absent.
+* `page.edges_by_predicate` — a map `{ predicate → [edge…] }` for the
+  Connections-block idiom (`{% for pred, edges in page.edges_by_predicate %}`).
+* `page.backlinks` — EXTENDED: each entry (`src/web/context.rs:101`,
+  `BacklinkEntry`) gains `predicate`, `label`, `annotation` (all `null`
+  for untyped). Existing fields unchanged.
+* `page.backlinks_by_predicate` — the grouped map the typed-backlink
+  panel ([[#REQ-4511]]) renders from.
+* `vault.predicates` — the observed predicate set with counts (the
+  `zetl edges --by-predicate` data, `src/web/context.rs:24` `VaultContext`)
+  for nav / index / tag-cloud widgets.
+
+Missing fields render empty via minijinja `Chainable` undefined behaviour
+(matching the [[SPEC-032]] `page.ext.*` convention,
+`src/hooks/template_vars.rs:750`), so `{{ edge.annotation }}` on an
+un-annotated edge is empty, not an error. No template variable carries
+semantic meaning beyond `predicate` + `label` + `annotation` (ADR-4502).
+
+**Trace:** [[#TEST-4515]], [[#CON-4506]]; [[#3.3 HP3]]; [[SPEC-044]] §6
+(the earthian Connections block consumes these vars).
+
+### REQ-4516: Semantic-Web Interop Export
+
+`zetl export` (`src/main.rs:3578`) SHALL gain RDF serialisations
+`--format {jsonld,turtle,ntriples}` projecting each typed edge to a
+triple: subject = source-page IRI, predicate = the predicate's IRI,
+object = target-page IRI (or a literal for an external/ghost target).
+The projection SHALL:
+
+* mint page IRIs and un-mapped predicate IRIs in the **vault's own
+  namespace** (configurable base IRI); it SHALL NOT force predicates into
+  any external ontology (ADR-4502 ruling 4 — translate, don't converge);
+* expand a CURIE predicate (`prov:wasDerivedFrom`) or a snake predicate
+  carrying `maps_to` ([[#CON-4502]]) to its full IRI via `[prefixes]`;
+* emit the edge **annotation/`note` as `rdfs:comment`** on the statement;
+* emit each edge's **provenance** (`_source_page`/`_source_file`/
+  `_source_line`, the same data as the SPL projection [[#CON-4504]]) as
+  **PROV-O** (`prov:wasAttributedTo` / reification), so the answerability
+  trail is standards-expressible;
+* emit the predicate vocabulary itself as a **SKOS** concept scheme.
+
+A SPARQL endpoint is OUT OF SCOPE (§1.5): SPL is the in-tree query
+surface ([[#REQ-4510]]); the RDF export feeds any external triplestore
+that wants SPARQL. Authoring in a standard vocabulary uses the CURIE
+grammar ([[#CON-4501]]); zetl implements none of the imported
+vocabulary's entailments (those remain SPL rules).
+
+**Trace:** [[#TEST-4516]], [[#CON-4507]], [[#ADR-4502]]; [[SPEC-044]] §2,
+§8 (RDF/JSON-LD export + triples-endpoint open questions).
 
 ---
 
@@ -796,28 +950,61 @@ list-structured), so they attach at the graph layer (REQ-4504) — a
 slight asymmetry between "predicate on the node, annotation on the
 edge".
 
-### ADR-4502: Curated Folksonomy (Warn) Over Enforced Ontology (Error)
+### ADR-4502: Emergent-by-Default Vocabulary; No Ontology; Strict by Opt-In
 
-**Status:** Proposed (strawman default)
+**Status:** Proposed (strawman default — supersedes the v0.1.0 "curated
+folksonomy via a seeded file" position after the 2026-06-09 design
+conversation)
 
-**Context:** When an author writes an undeclared predicate, zetl can (a)
-warn, (b) error/refuse the build, or (c) silently accept. The
-[[Wikilinks and Named Edges]] guide is emphatic: *"Vocabulary requires
-curation, not just enforcement"* and recommends a small core that grows
-through use, then is pruned.
+**Context:** A v0.1.0 draft shipped a seeded `.zetl/predicates.toml` and
+warned on undeclared predicates. Review (design conversation) exposed two
+problems: (1) *why declare a vocabulary at all if it's a folksonomy?* —
+a seeded file is ontology-first, the exact premature-rigidity failure the
+guide and [[SPEC-044]] §3 warn against; (2) everything the file did
+(drift reference, display labels, the predicate set) is **derivable from
+observed usage** — the corpus *is* the vocabulary. A third question
+(*should the file convey semantic meaning?*) and a fourth (*should we
+allow existing vocabularies like PROV-O?*) further pressured the model.
 
-**Decision:** (a) warn, never error by default. An undeclared predicate
-is graphed and projected regardless; `zetl check` surfaces it as a
-warning with a nearest-match suggestion. Teams who want enforcement opt
-in via the *existing* `--fail-on warning` flag — no new gate primitive.
+**Decision:** Four coupled rulings.
 
-**Consequences:** (+) Honours naming sovereignty (principle 3) and the
-guide's folksonomy stance — invention is never blocked. (+) Drift is
-visible without being fatal. (+) Reuses the existing diagnostic
-severity + fail-on machinery; no new concept. (−) A sloppy vault
-accumulates vocabulary drift if no one runs `zetl edges --by-predicate`;
-mitigated by making that audit a one-liner and surfacing the warning on
-every `zetl check`.
+1. **Emergent by default.** No file. The recognised vocabulary is the set
+   observed in the corpus; lints run against usage ([[#REQ-4508]]). This
+   is the dominant-profile default.
+2. **Strict by opt-in, on a trajectory.** A team MAY add a file to move
+   *emergent → crystallising (`enforce=false`, warn) → controlled
+   (`enforce=true`, undeclared = error)* — the [[SPEC-044]] §3 arc.
+   Declaring is the act of choosing to *stop* being a folksonomy, so
+   error-by-default is finally legitimate *because it was chosen*. The
+   file is populated by crystallisation (the [[SPEC-044]] ratification
+   act), never seeded.
+3. **The file carries no semantic meaning.** Meaning lives in the
+   predicate **name**, the **target node** (`conforms_to::[[X Form
+   Contract]]` means what X says — revisable by reference), and **[[SPL]]
+   rules** (inverse/transitive/domain-range, authored defeasibly). The
+   file holds governance/presentation metadata only (`enforce`,
+   `display`, `category`) + interop bindings ([[#REQ-4516]]). Putting
+   semantics in the file would create two sources of truth and a second,
+   weaker reasoning engine competing with SPL — rejected.
+4. **Allow existing vocabularies as naming, not as semantics.** A team
+   may author standard terms via the CURIE form `prefix:localname`
+   ([[#CON-4501]]) with the prefix declared in `[prefixes]`
+   ([[#CON-4502]]); these export to full IRIs ([[#REQ-4516]]). zetl still
+   treats `prov:wasDerivedFrom` as an opaque token — it implements none
+   of PROV-O's entailments (those remain SPL rules). "Translate, don't
+   converge" (guide / [[SPEC-044]] §9): plain-words + `maps_to` is the
+   default; native CURIE authoring is the deliberate opt-in.
+
+**Consequences:** (+) Resolves the folksonomy paradox: you only declare
+when you've chosen control. (+) Honours naming sovereignty; invention is
+never blocked. (+) Not an ontology system — the "semantic web died on
+agree-first" failure is avoided by construction. (+) Standard-vocab
+interop is available without importing standard-vocab rigidity. (−) An
+emergent vault accumulates drift if no one runs `zetl edges
+--by-predicate`; mitigated by surfacing `predicate-drift` on every `zetl
+check`. (−) Three states + a CURIE grammar branch are more surface than
+"one seeded file"; justified by keeping the *default* (type an edge,
+nothing else) maximally simple.
 
 ### ADR-4503: Ship `is_a::` → `conforms_to::` as Advice, Not Rewrite
 
@@ -835,10 +1022,12 @@ predicates is out of scope and would violate naming sovereignty). Do NOT
 forbid `is_a::` — a vault may have a legitimate identity relation.
 
 **Consequences:** (+) Transmits the guide's hard-won design wisdom to
-authors at the point of use. (+) Non-coercive. (−) Some authors will
-dismiss the suggestion repeatedly; the warning is suppressible by
-declaring `is_a` in `.zetl/predicates.toml` with an explicit
-`accept_is_a = true` marker ([[#CON-4502]]).
+authors at the point of use. (+) Non-coercive — runs against observed
+usage, needs no file. (−) Some authors will dismiss the suggestion
+repeatedly; the warning is suppressible only by opting into a strict file
+and declaring `is_a` in it with an explicit `accept_is_a = true` marker
+([[#CON-4502]]) — in the emergent default the suggestion is advisory and
+simply ignorable.
 
 ### ADR-4504: Named Edges Project to Provenance-Tagged SPL Facts
 
@@ -928,14 +1117,31 @@ declared formally and recognised before any edge is constructed.
 
 ```abnf
 named-edge      = predicate "::" wikilink
-predicate       = lower *( lower / DIGIT / "_" )
+predicate       = snake-pred / curie-pred
+snake-pred      = lower *( lower / DIGIT / "_" )   ; emergent default
+curie-pred      = prefix ":" localname            ; standard-vocab opt-in
+prefix          = lower *( lower / DIGIT )
+localname       = ALPHA *( ALPHA / DIGIT / "_" / "-" )  ; camelCase allowed
 lower           = %x61-7A                 ; a-z
 wikilink        = "[[" target [ "#" heading ] [ "#^" block-id ]
                   [ "|" alias ] "]]"
 ; target / heading / block-id / alias as defined by the existing
 ; SPEC-032 wikilink grammar (src/hooks/ast/mod.rs:419). The named-edge
 ; grammar adds ONLY the `predicate "::"` prefix.
+; The grammar stays REGULAR and is parseable WITHOUT config: a `prefix:`
+; whose namespace is undeclared still parses (it is an opaque predicate);
+; declaration only affects RDF export (REQ-4516) and the
+; `predicate-undeclared-prefix` lint (REQ-4508).
 ```
+
+**CURIE form (REQ-4516, ADR-4502 ruling 4):** a single internal `:`
+introduces a namespaced standard term, e.g. `prov:wasDerivedFrom::[[X]]`
+→ `predicate = "prov:wasDerivedFrom"`. Recognition is unambiguous because
+the recogniser keys on the `::[[` sequence; the lone `:` inside the
+predicate is distinct from the `::` separator. A **bare** camelCase token
+(`wasDerivedFrom::[[X]]`, no prefix) is deliberately NOT a predicate —
+standard terms MUST be namespaced — so plain lowercase-snake remains the
+only un-prefixed form and no accidental capitalised predicates arise.
 
 **Binding rule:** the predicate binds to the single `wikilink` that
 *immediately* follows the `::` with no intervening character (including
@@ -958,9 +1164,11 @@ edge — it is the text `derived_from::` followed by an untyped wikilink.
 | Source | Disposition |
 |---|---|
 | `derived_from::[[X]]` | named edge, `predicate="derived_from"` |
+| `prov:wasDerivedFrom::[[X]]` | named edge (CURIE), `predicate="prov:wasDerivedFrom"`; `predicate-undeclared-prefix` lint if `prov` not in `[prefixes]` |
 | `[[X]]` | untyped edge, `predicate=null` |
 | `derived_from:: [[X]]` (space) | text `derived_from::` + untyped edge |
-| `Derived_From::[[X]]` (uppercase) | NOT a predicate (grammar is lowercase); text + untyped edge + `predicate-undeclared`-adjacent diagnostic deferred to plan |
+| `wasDerivedFrom::[[X]]` (bare camelCase, no prefix) | NOT a predicate (un-prefixed terms are lowercase-snake); text + untyped edge |
+| `Derived_From::[[X]]` (uppercase, no prefix) | NOT a predicate; text + untyped edge |
 | `derived_from:::[[X]]` (triple colon) | `syntax` diagnostic; no edge from the malformed token |
 | `derived from::[[X]]` (space in name) | text `derived from::` + untyped edge |
 
@@ -971,68 +1179,77 @@ diagnostic), never permissive.
 **Implements:** [[#REQ-4501]], [[#REQ-4502]].
 **Verified by:** [[#TEST-4501]], [[#TEST-4502]].
 
-### CON-4502: `.zetl/predicates.toml` Schema
+### CON-4502: `.zetl/predicates.toml` Schema (Optional)
 
-**Interface:** the optional vocabulary declaration file, parsed
+**Interface:** the OPTIONAL strict-vocabulary file (REQ-4507), parsed
 alongside the existing config (`src/parsers/mod.rs:200`,
-`src/web/auth/config.rs` lens pattern).
+`src/web/auth/config.rs` lens pattern). **Absent by default** — its
+absence is the emergent vocabulary, not an error. It is NEVER seeded.
+It carries **governance/presentation/interop metadata only — no semantic
+meaning** (ADR-4502 ruling 3).
 
 ```toml
-# .zetl/predicates.toml — curated predicate vocabulary (REQ-4507)
-# Absent file ⇒ all predicates undeclared (warn-only). Opt in via
-# `zetl predicates init`.
+# .zetl/predicates.toml — OPTIONAL. Present only when a team opts into a
+# crystallising/controlled vocabulary. Not shipped; populated by
+# crystallisation (SPEC-044 ratification), not seeded.
 
-accept_is_a = false   # when true, suppress predicate-prefer-conforms-to
+enforce      = true    # true  → undeclared predicate is an ERROR (controlled)
+                       # false → warn + nearest-match    (crystallising)
+                       # (file absent entirely           → emergent default)
+accept_is_a  = false   # true  → suppress predicate-prefer-conforms-to (ADR-4503)
 
-[predicates.classification]
-conforms_to = { display = "Conforms to" }
-has_status  = { display = "Status" }
-in_domain   = { display = "In domain" }
+# Interop prefix map (REQ-4516): CURIE prefix → namespace IRI. Enables
+# `prov:wasDerivedFrom::[[X]]` authoring and full-IRI RDF export.
+[prefixes]
+prov    = "http://www.w3.org/ns/prov#"
+dcterms = "http://purl.org/dc/terms/"
 
-[predicates.provenance]
-derived_from   = { display = "Derived from" }
-informed_by    = { display = "Informed by" }
-extracted_from = { display = "Extracted from", construction = true }
-
-[predicates.structural]
-implements   = { display = "Implements" }
-extends      = { display = "Extends" }
-contradicts  = { display = "Contradicts" }
-relates_to   = { display = "Relates to", catch_all = true }
-
-[predicates.lifecycle]
-supersedes   = { display = "Supersedes" }
-validated_by = { display = "Validated by" }
-
-[predicates.generative]
-proposes  = { display = "Proposes" }
-generates = { display = "Generates" }
+# The declared (controlled) set. Each entry is a predicate; the VALUE is
+# governance/presentation metadata, never a definition.
+[predicates]
+derived_from   = { display = "Derived from", category = "provenance", maps_to = "prov:wasDerivedFrom" }
+informed_by    = { display = "Informed by", category = "provenance" }
+extracted_from = { display = "Extracted from", category = "provenance", construction = true }
+conforms_to    = { display = "Conforms to", category = "classification", maps_to = "dcterms:conformsTo" }
+supersedes     = { display = "Supersedes", category = "lifecycle", maps_to = "dcterms:replaces" }
+contradicts    = { display = "Contradicts", category = "structural" }
+relates_to     = { display = "Relates to", category = "structural", catch_all = true }
 ```
 
 **Pre-conditions:**
-- Section keys MUST be one of the five guide categories
-  (`classification`, `provenance`, `structural`, `lifecycle`,
-  `generative`); `deny_unknown_fields` on the category set (a typo'd
-  category is a config error, distinct from an undeclared *predicate*
-  which is a content warning).
-- Each predicate key MUST satisfy the REQ-4502 grammar.
-- `display` is optional; `construction = true` marks a temporary
-  scaffolding predicate (the guide's `extracted_from::`) eligible for an
-  "upgrade me" lint; `catch_all = true` marks `relates_to::` for the
-  over-use lint (REQ-4508); `accept_is_a` is a top-level escape hatch
-  (ADR-4503).
+- Top level: `enforce` (bool, default `true` when the file exists),
+  `accept_is_a` (bool), `[prefixes]` (map of CURIE-prefix → IRI string),
+  `[predicates]` (the declared set). `deny_unknown_fields` at top level.
+- Each `[predicates]` key MUST satisfy the [[#CON-4501]] grammar (snake
+  or CURIE).
+- Per-predicate value fields, ALL optional and ALL administrative:
+  `display` (label override; default is auto-derived — [[#REQ-4515]]),
+  `category` (one of classification/provenance/structural/lifecycle/
+  generative — a *grouping cosmetic* for rendering, [[#REQ-4511]], NOT a
+  semantic class), `maps_to` (a CURIE for RDF export, [[#REQ-4516]]),
+  `construction = true` (marks scaffolding predicates for an "upgrade me"
+  lint), `catch_all = true` (marks `relates_to::` for the over-use lint).
+- **No field expresses meaning:** no `definition`, `inverse_of`,
+  `transitive`, `domain`, `range`. Those, if wanted, are SPL rules
+  ([[#REQ-4510]], ADR-4502).
 
 **Post-conditions:**
-- A predicate present in any category is *declared* (no
-  `predicate-undeclared` warning).
-- The category determines backlink group ordering (REQ-4511).
+- A predicate present in `[predicates]` is *declared*; under `enforce =
+  true` an undeclared predicate is an error, under `enforce = false` a
+  warning ([[#REQ-4508]]).
+- A `prefix` present in `[prefixes]` resolves CURIE predicates to full
+  IRIs on export ([[#REQ-4516]]); an undeclared prefix lints but the edge
+  is still valid.
+- `display`/`category` feed the template vars + render ([[#REQ-4515]],
+  [[#REQ-4511]]); absent ⇒ auto-derived label, count-ordered groups.
 
 **Error model:** a malformed file is a startup/`check`-time config error
 (fail closed — [[LangSec]] full recognition), distinct from a content
-warning. The vault still builds the graph; only the *governance signal*
-is unavailable until the file parses.
+warning. The vault still builds the graph and the emergent vocabulary
+still works; only the *strict governance signal* is unavailable until the
+file parses ([[#Threat Model C]]).
 
-**Implements:** [[#REQ-4507]], [[#REQ-4508]], [[#REQ-4511]].
+**Implements:** [[#REQ-4507]], [[#REQ-4508]], [[#REQ-4511]], [[#REQ-4516]].
 **Verified by:** [[#TEST-4507]], [[#TEST-4508]].
 
 ### CON-4503: `zetl edges` CLI
@@ -1111,13 +1328,86 @@ target)` — projection is information-preserving on the triple
   stably (the additive-evolution property test in
   `tests/ast_schema_integration.rs` gains a predicate case).
 
-**Error model:** a `predicate` value that violates the REQ-4502 grammar
-is a schema-validation failure (the schema SHOULD carry the
-`pattern: "^[a-z][a-z0-9_]*$"` so the AST contract enforces the grammar,
-not just the parser — defence in depth at the hook boundary).
+**Error model:** a `predicate` value that violates the [[#CON-4501]]
+grammar is a schema-validation failure (the schema SHOULD carry the
+`pattern: "^[a-z][a-z0-9_]*$|^[a-z][a-z0-9]*:[A-Za-z][A-Za-z0-9_-]*$"`
+— snake OR CURIE — so the AST contract enforces the grammar, not just the
+parser; defence in depth at the hook boundary).
 
 **Implements:** [[#REQ-4503]].
 **Verified by:** [[#TEST-4503]].
+
+### CON-4506: Page Template-Variable Contract for Typed Edges
+
+**Interface:** the serde shape added to `PageContext` /
+`VaultContext` (`src/web/context.rs:123` / `:24`) and exposed to
+minijinja (`src/web/engine.rs`).
+
+**Post-conditions (serialized shape):**
+
+```jsonc
+// page.edges[i]
+{ "predicate": "derived_from" | null,   // null = untyped edge
+  "label":     "Derived from",          // auto-derived; strict display overrides
+  "target":    "2026 Q1 Retro",
+  "target_slug": "2026-q1-retro",
+  "is_dead":   false,                    // ghost/unresolved target
+  "annotation": "…" | null,
+  "line":      12 }
+// page.edges_by_predicate: { "<predicate>": [ <edge>, … ], … }
+// page.backlinks[i]: existing fields + "predicate"|null, "label"|null, "annotation"|null
+// page.backlinks_by_predicate: { "<predicate>": [ <backlink>, … ], … }
+// vault.predicates: [ { "predicate": "derived_from", "count": 14 }, … ]
+```
+
+**Auto-label function** (the default when no strict `display`): take the
+predicate's local part (after any CURIE `prefix:`), replace `_`/`-` with
+spaces, capitalise the first letter. `derived_from` → "Derived from";
+`prov:wasDerivedFrom` → "wasDerivedFrom" (or a strict `display`). Pure,
+deterministic, no I/O.
+
+**Pre-conditions:** additive — the addition MUST NOT remove or rename any
+existing `PageContext` field ([[#REQ-4505]]). Missing per-edge fields are
+JSON `null`; minijinja `Chainable` undefined behaviour renders absent
+chains empty (`src/hooks/template_vars.rs:750`).
+
+**Error model:** a template referencing a predicate that no edge uses
+yields an empty list/group, never an error (mirrors [[#CON-4503]]).
+
+**Implements:** [[#REQ-4515]], [[#REQ-4511]].
+**Verified by:** [[#TEST-4515]].
+
+### CON-4507: RDF / JSON-LD Interop Export
+
+**Interface:** `zetl export --format {jsonld,turtle,ntriples}`
+(`src/main.rs:3578`), extending the existing graph-dump exporter.
+
+**Pre-conditions:** read-only over the vault; a configurable base IRI for
+the vault namespace; `[prefixes]` ([[#CON-4502]]) for CURIE/`maps_to`
+expansion (absent ⇒ all predicates export in the vault namespace +
+`predicate-undeclared-prefix` lint).
+
+**Post-conditions (per typed edge):**
+- one statement `<source-iri> <predicate-iri> <target-iri-or-literal>`;
+- predicate IRI = mapped IRI if the predicate is a CURIE or carries
+  `maps_to`, else `<vault-ns>predicate/<name>`;
+- `annotation` → `rdfs:comment` on the (reified) statement;
+- provenance (`_source_page`/`-file`/`-line`) → **PROV-O**
+  (`prov:wasAttributedTo` + reification), identical data to [[#CON-4504]];
+- the predicate vocabulary → a **SKOS** `skos:ConceptScheme`
+  (each predicate a `skos:Concept`; `maps_to` ⇒ `skos:exactMatch`).
+- DETERMINISTIC, order-stable output for a fixed vault.
+
+**Property (roundtrip-adjacent):** the triple set is information-equivalent
+to the [[#CON-4504]] SPL fact set on `(predicate, source, target)` — RDF
+and SPL are two projections of the one labelled graph, never divergent.
+
+**Error model:** an un-expandable predicate never blocks export — it falls
+back to the vault namespace and lints. Export never invents entailments
+(no OWL reasoning); it serialises only asserted edges.
+
+**Implements:** [[#REQ-4516]].
+**Verified by:** [[#TEST-4516]].
 
 ---
 
@@ -1176,8 +1466,10 @@ Phase 2.
 |---|---|
 | Named-edge recogniser ([[#CON-4501]]) | Fuzzing (malformed `::` tokens) + property-based (recognition is total; no input panics — note the `src/hooks/ast/parse.rs` multibyte byte-index gotcha) + example-based disposition matrix |
 | Fact projection ([[#CON-4504]]) | Property-based roundtrip (`triple(project(e)) == e`) + provenance-preservation property + determinism property |
-| Vocabulary classifier ([[#REQ-4508]]) | Example-based (nearest-match suggestions) + property (declared ⇒ no warning) |
+| Vocabulary lints ([[#REQ-4508]]) | Example-based (drift nearest-match vs observed frequency) + property (emergent ⇒ never errors; strict + undeclared ⇒ errors) |
 | Graph / query ([[#REQ-4506]], [[#REQ-4509]]) | Example-based + mutation testing on the predicate-filter logic |
+| Template vars ([[#REQ-4515]], [[#CON-4506]]) | Property (auto-label is deterministic; additive — existing theme fields unchanged) + example (Chainable empty-on-missing) |
+| Interop export ([[#REQ-4516]], [[#CON-4507]]) | Property (RDF triple set ≡ SPL fact set on the triple) + example (CURIE/`maps_to` IRI expansion, PROV-O provenance round-trip) |
 | Backward compat ([[#REQ-4505]]) | Golden-output equivalence against the pre-SPEC-045 link-graph + web-build + search suites |
 
 ### Representative TEST specifications
@@ -1278,10 +1570,11 @@ and Testing Strategy]]).
 silently disables governance (every predicate appears declared, or none
 warn).
 
-**Mitigation:** the file is a [[LangSec]]-recognised input with
-`deny_unknown_fields` on the category set ([[#CON-4502]]); a parse
-failure is a fail-closed config error (governance unavailable, loudly),
-never a silent "everything is fine".
+**Mitigation:** the file is OPTIONAL and a [[LangSec]]-recognised input
+with top-level `deny_unknown_fields` ([[#CON-4502]]); a parse failure is
+a fail-closed config error (strict governance unavailable, loudly) — the
+emergent vocabulary still works, so a broken file degrades to the safe
+default rather than silently disabling a gate the team thought was on.
 
 ### Threat Model D: Ghost-Edge Title Leakage
 
@@ -1306,14 +1599,16 @@ REQ-4503 ──→ TEST-4503 ──→ CON-4505   (AST extension)
 REQ-4504 ──→ TEST-4504 ──→ CON-4503   (annotations)
 REQ-4505 ──→ TEST-4505                (backward compat)
 REQ-4506 ──→ TEST-4506 ──→ CON-4503   (typed graph)
-REQ-4507 ──→ TEST-4507 ──→ CON-4502   (vocabulary file)
-REQ-4508 ──→ TEST-4508 ──→ ADR-4502/4303 (lints)
+REQ-4507 ──→ TEST-4507 ──→ CON-4502 ──→ ADR-4502 (optional strict file)
+REQ-4508 ──→ TEST-4508 ──→ ADR-4502/4503 (lints vs observed usage)
 REQ-4509 ──→ TEST-4509 ──→ CON-4503   (query CLI)
 REQ-4510 ──→ TEST-4510 ──→ CON-4504 ──→ Threat Model A (projection)
-REQ-4511 ──→ TEST-4511                (typed backlinks)
+REQ-4511 ──→ TEST-4511 ──→ CON-4506   (typed backlinks)
 REQ-4512 ──→ TEST-4512                (search)
 REQ-4513 ──→ TEST-4513                (migration helper)
 REQ-4514 ──→ TEST-4514                (ghost/external edges)
+REQ-4515 ──→ TEST-4515 ──→ CON-4506   (template variables)
+REQ-4516 ──→ TEST-4516 ──→ CON-4507   (RDF/JSON-LD interop export)
 NFR-4501 ──→ TEST-NFR-4501 ──→ OBS-4501
 NFR-4502 ──→ TEST-NFR-4502 ──→ OBS-4502
 NFR-4503 ──→ TEST-NFR-4503 ──→ OBS-4503
@@ -1346,9 +1641,13 @@ report — [[PROTO-001]] §Key Technical Concepts).
    guide's annotation idiom is list-structured.
 4. **Q4 — Bidirectional / inverse predicates.** Should `supersedes::`
    auto-surface an inverse `superseded_by` on the target's backlinks?
-   The typed-backlink renderer (REQ-4511) shows the *incoming* edge with
-   its forward predicate; an inverse-label map (`supersedes` →
-   "Superseded by") could live in `.zetl/predicates.toml`. Deferred.
+   The typed-backlink renderer ([[#REQ-4511]]) shows the *incoming* edge
+   with its forward predicate. An inverse-*label* is presentation (a
+   strict file could carry an optional `inverse_display`, or the theme
+   owns it) — but an inverse *relation* (asserting `superseded_by` as a
+   fact) is semantics and therefore an SPL rule, not a TOML field
+   ([[#ADR-4502]]). Deferred; resolve the presentation/semantics line in
+   [[DESIGN-045-wikilink-predicate-language]].
 5. **Q5 — Trust scoping default for projected facts.** Should `zetl
    reason` default to trusting only *self-asserted* facts (page A's facts
    about A), requiring explicit opt-in for A-about-B facts
@@ -1357,10 +1656,25 @@ report — [[PROTO-001]] §Key Technical Concepts).
 6. **Q6 — Interaction with [[SPEC-042]] public pages.** Typed ghost
    edges and the [[SPEC-042#REQ-4213]] redaction policy
    ([[#Threat Model D]]) — confirm no new leak surface.
-7. **Q7 — Category of an undeclared predicate in the backlink renderer.**
-   REQ-4511 orders groups by the five categories; an undeclared
-   predicate has no category. Where does it sort? Lean: a sixth
-   "Other (undeclared)" group before untyped.
+7. **Q7 — Group ordering with no categories.** In the emergent default
+   no predicate has a `category`, so [[#REQ-4511]] groups order by
+   descending count then name. Is count-ordering the right default, or
+   should first-appearance or alphabetical win? Lean: count-ordering
+   (most-used relations first); the five-category order applies only when
+   a strict file supplies `category`.
+8. **Q8 — Which standard vocabularies to bless.** [[#REQ-4516]] supports
+   CURIE authoring + `maps_to` for any namespace, but which prefixes ship
+   as *recognised* (PROV-O, SKOS, Dublin Core, schema.org, CITO, …) and
+   whether to validate a `maps_to` against a known term list is a
+   [[SPEC-044]] vocabulary-governance call. Lean: recognise PROV-O +
+   Dublin Core + SKOS by name (used internally by the export); accept any
+   other prefix as opaque. Resolve in the SPEC-044 reconciliation.
+9. **Q9 — SPL functor form of a CURIE predicate.** [[#CON-4504]] projects
+   `prov:wasDerivedFrom` to an SPL fact; the `:` and camelCase may not be
+   functor-safe. Lean: deterministic sanitisation (`prov:wasDerivedFrom`
+   → `prov__wasDerivedFrom`) recorded in the projection contract;
+   confirm against the SPL parser in
+   [[DESIGN-045-wikilink-predicate-language]].
 
 ---
 
