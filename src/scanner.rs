@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 pub mod exclude;
 pub use exclude::{classify_entry, classify_entry_os, Decision, ExcludeReason, ScanOptions};
@@ -391,6 +392,70 @@ fn line_col_to_byte_offset(content: &str, line: u32, column: u32) -> usize {
     content.len()
 }
 
+/// SPEC-045 named-edge predicate recogniser (CON-4501).
+///
+/// Given the line prefix that immediately precedes a `[[` opener, return the
+/// chained `predicate::` run (one or more predicates) when the prefix is, in
+/// its entirety, an optional structural lead-in (whitespace + list / blockquote
+/// markers) followed by a `1*( predicate "::" )` run ending exactly at the
+/// `[[`. Returns `None` (untyped edge) for anything else.
+///
+/// The grammar is `regular` and recognised against the *leading* position of
+/// the line's textual content — the canonical `- predicate::[[Target]]` form
+/// (the dominant authored shape, SPEC-045 HP2). This single anchored match
+/// makes the LangSec disposition table fall out for free: a space inside the
+/// predicate (`derived from::`), an internal `/` (the deferred named-inverse,
+/// Q4), a triple colon, uppercase, or a space after `::` all fail to match and
+/// fall through to an untyped edge — no normalising, no guessing
+/// (REQ-4502, "be conservative in what you accept"). Inline mid-paragraph
+/// recognition is a documented v1 limitation; the reserved `inverse` field and
+/// the additive AST keep it open for a later, reviewed extension.
+fn recognise_predicates(line_prefix: &str) -> Option<Vec<String>> {
+    static PRED_RUN: OnceLock<Regex> = OnceLock::new();
+    let re = PRED_RUN.get_or_init(|| {
+        // ^ structural lead-in (ws + list/blockquote markers) ^ then a
+        // 1*( (snake | curie) "::" ) run consuming the rest of the prefix.
+        // snake = [a-z][a-z0-9_]* ; curie = prefix ":" localname, where
+        // prefix = [a-z][a-z0-9]* and localname = [A-Za-z][A-Za-z0-9_-]*.
+        Regex::new(
+            r"(?x)
+              ^
+              \s* (?: [-*+] \s+ | \d+ \. \s+ | > \s* )*       # optional list / quote lead-in
+              (                                                # group 1: the predicate run
+                (?:
+                    [a-z][a-z0-9_]*  ::                        # snake predicate
+                  | [a-z][a-z0-9]* : [A-Za-z][A-Za-z0-9_-]*  ::  # CURIE predicate
+                )+
+              )
+              $
+            ",
+        )
+        .expect("invalid predicate-run regex")
+    });
+
+    let run = re.captures(line_prefix)?.get(1)?.as_str();
+    // Split the run into its predicate segments. Splitting on "::" yields a
+    // trailing empty string (the run ends with "::"); drop it. The regex has
+    // already guaranteed every segment is well-formed.
+    let mut preds: Vec<String> = Vec::new();
+    for seg in run.split("::") {
+        if seg.is_empty() {
+            continue;
+        }
+        // Order-insensitive set semantics: de-duplicate, preserving the first
+        // authored occurrence (a::a::[[X]] ⇒ one edge; the duplicate is flagged
+        // by the `predicate-duplicate` lint downstream, REQ-4508).
+        if !preds.iter().any(|p| p == seg) {
+            preds.push(seg.to_string());
+        }
+    }
+    if preds.is_empty() {
+        None
+    } else {
+        Some(preds)
+    }
+}
+
 /// Extract wikilinks from raw text.
 ///
 /// Finds all `!?[[...]]` patterns and parses the inner content to extract
@@ -424,6 +489,19 @@ pub fn extract_wikilinks(content: &str) -> Vec<WikiLink> {
         let line_idx = line_starts.partition_point(|&offset| offset <= match_start) - 1;
         let line = (line_idx + 1) as u32;
         let column = (match_start - line_starts[line_idx] + 1) as u32;
+
+        // SPEC-045: recognise any `predicate::` run immediately preceding the
+        // `[[` on the same line. Embeds (`![[…]]`) never carry predicates
+        // (REQ-4503 / ADR-4501 — transclusion is not a typed relationship):
+        // for an embed `match_start` sits on the `!`, so the line prefix ends
+        // before the `!` and a `::` could not be adjacent to the `[[` anyway,
+        // but we gate explicitly to make the contract local and obvious.
+        let predicates = if is_embed {
+            Vec::new()
+        } else {
+            let line_prefix = &content[line_starts[line_idx]..match_start];
+            recognise_predicates(line_prefix).unwrap_or_default()
+        };
 
         // Split on the FIRST `|` to separate target from alias.
         let (target_part, alias) = match inner.find('|') {
@@ -485,6 +563,7 @@ pub fn extract_wikilinks(content: &str) -> Vec<WikiLink> {
             is_embed,
             line,
             column,
+            predicates,
         });
     }
 
@@ -1958,6 +2037,112 @@ mod tests {
         assert!(l.is_embed);
         assert_eq!(l.line, 1);
         assert_eq!(l.column, 1);
+    }
+
+    // ── SPEC-045 named-edge recognition (CON-4501 disposition table) ──────
+
+    /// Convenience: predicates recognised on the first link of `content`.
+    fn preds(content: &str) -> Vec<String> {
+        extract_wikilinks(content)
+            .first()
+            .map(|l| l.predicates.clone())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn spec045_single_predicate_list_item() {
+        // `- derived_from::[[X]]` → one predicate, one untouched wikilink.
+        let links = extract_wikilinks("- derived_from::[[Source]]");
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].predicates, vec!["derived_from".to_string()]);
+        assert_eq!(links[0].target_page, "Source");
+        assert!(!links[0].is_embed);
+    }
+
+    #[test]
+    fn spec045_multiple_predicates_chained() {
+        // `derived_from::informed_by::[[X]]` → both predicates, one target.
+        assert_eq!(
+            preds("- derived_from::informed_by::[[2026 Q1 Retro]]"),
+            vec!["derived_from".to_string(), "informed_by".to_string()]
+        );
+    }
+
+    #[test]
+    fn spec045_predicate_at_line_start_without_marker() {
+        // Line-leading inline form (no list marker) is also recognised.
+        assert_eq!(preds("supersedes::[[Old]]"), vec!["supersedes".to_string()]);
+    }
+
+    #[test]
+    fn spec045_curie_predicate() {
+        assert_eq!(
+            preds("- prov:wasDerivedFrom::[[X]]"),
+            vec!["prov:wasDerivedFrom".to_string()]
+        );
+    }
+
+    #[test]
+    fn spec045_duplicate_predicate_deduped() {
+        // `a::a::[[X]]` → one edge (set semantics); the lint flags it later.
+        assert_eq!(preds("- a::a::[[X]]"), vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn spec045_bare_wikilink_is_untyped() {
+        assert!(preds("See [[X]] for details").is_empty());
+        assert!(preds("[[X]]").is_empty());
+    }
+
+    #[test]
+    fn spec045_embed_never_typed() {
+        // `predicate::![[X]]` — the `!` breaks adjacency; embeds carry no
+        // predicate (REQ-4503 / ADR-4501).
+        let links = extract_wikilinks("- derived_from::![[Image.png]]");
+        assert_eq!(links.len(), 1);
+        assert!(links[0].is_embed);
+        assert!(links[0].predicates.is_empty());
+    }
+
+    #[test]
+    fn spec045_space_after_colons_is_untyped() {
+        // `derived_from:: [[X]]` (space) → NOT a named edge.
+        assert!(preds("- derived_from:: [[X]]").is_empty());
+    }
+
+    #[test]
+    fn spec045_space_in_predicate_name_is_untyped() {
+        // `derived from::[[X]]` → prose + untyped link, never normalised to a
+        // `derived_from` edge (REQ-4502 anti-guessing).
+        assert!(preds("- derived from::[[X]]").is_empty());
+        assert!(!preds("- derived from::[[X]]").contains(&"derived_from".to_string()));
+    }
+
+    #[test]
+    fn spec045_triple_colon_is_untyped() {
+        // `derived_from:::[[X]]` → no edge from the malformed token.
+        assert!(preds("- derived_from:::[[X]]").is_empty());
+    }
+
+    #[test]
+    fn spec045_uppercase_predicate_is_untyped() {
+        assert!(preds("- Derived_From::[[X]]").is_empty());
+        // Bare camelCase (no prefix) is deliberately not a predicate.
+        assert!(preds("- wasDerivedFrom::[[X]]").is_empty());
+    }
+
+    #[test]
+    fn spec045_slash_named_inverse_is_deferred_to_text() {
+        // The materialised named-inverse form (Q4) is deferred: a `/` in the
+        // predicate region falls to text, never a typed edge.
+        assert!(preds("- derived_from/has_derivative::[[X]]").is_empty());
+    }
+
+    #[test]
+    fn spec045_predicate_mid_paragraph_not_recognised_v1() {
+        // Documented v1 limitation: only the leading position is recognised.
+        // A mid-sentence predicate falls through to an untyped link.
+        assert!(preds("See also derived_from::[[X]]").is_empty());
     }
 
     #[test]

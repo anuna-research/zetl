@@ -120,3 +120,34 @@
 (normally r-assign-graph-styling    (and ready-graph-styling agent-claude-available)    assign-to-graph-styling-claude)
 (normally r-assign-rdf-export       (and ready-rdf-export agent-claude-available)       assign-to-rdf-export-claude)
 (normally r-assign-migrate-helper   (and ready-migrate-helper agent-claude-available)   assign-to-migrate-helper-claude)
+
+(claims agent:claude
+  :at "2026-06-09T13:50:39Z"
+  (given claim-v1-scanner-grammar)
+  (normally r-cl-state-v1-scanner-grammar claim-v1-scanner-grammar state-claimed-v1-scanner-grammar)
+  (normally r-cl-chain-v1-scanner-grammar state-claimed-v1-scanner-grammar claimed-scanner-grammar)
+)
+
+;; Propagation rules: failures in 'scanner-grammar' block downstream tasks
+(normally r-propagate-graph-edges-from-scanner-grammar-failed failed-scanner-grammar upstream-blocked-graph-edges)
+(normally r-propagate-graph-edges-from-scanner-grammar-permanently-failed permanently-failed-scanner-grammar upstream-blocked-graph-edges)
+(normally r-propagate-graph-edges-from-scanner-grammar-stale-v1 stale-v1-scanner-grammar upstream-blocked-graph-edges)
+(normally r-propagate-graph-edges-from-scanner-grammar-timeout-v1 timeout-v1-scanner-grammar upstream-blocked-graph-edges)
+(normally r-propagate-graph-edges-from-scanner-grammar-blocked upstream-blocked-scanner-grammar upstream-blocked-graph-edges)
+(normally r-propagate-migrate-helper-from-scanner-grammar-failed failed-scanner-grammar upstream-blocked-migrate-helper)
+(normally r-propagate-migrate-helper-from-scanner-grammar-permanently-failed permanently-failed-scanner-grammar upstream-blocked-migrate-helper)
+(normally r-propagate-migrate-helper-from-scanner-grammar-stale-v1 stale-v1-scanner-grammar upstream-blocked-migrate-helper)
+(normally r-propagate-migrate-helper-from-scanner-grammar-timeout-v1 timeout-v1-scanner-grammar upstream-blocked-migrate-helper)
+(normally r-propagate-migrate-helper-from-scanner-grammar-blocked upstream-blocked-scanner-grammar upstream-blocked-migrate-helper)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-annotation-capture-from-graph-edges-blocked upstream-blocked-graph-edges upstream-blocked-annotation-capture)
+(normally r-propagate-check-lints-from-graph-edges-blocked upstream-blocked-graph-edges upstream-blocked-check-lints)
+(normally r-propagate-edges-cli-from-graph-edges-blocked upstream-blocked-graph-edges upstream-blocked-edges-cli)
+(normally r-propagate-graph-feed-from-graph-edges-blocked upstream-blocked-graph-edges upstream-blocked-graph-feed)
+(normally r-propagate-rdf-export-from-graph-edges-blocked upstream-blocked-graph-edges upstream-blocked-rdf-export)
+(normally r-propagate-search-predicate-from-graph-edges-blocked upstream-blocked-graph-edges upstream-blocked-search-predicate)
+(normally r-propagate-spl-projection-from-graph-edges-blocked upstream-blocked-graph-edges upstream-blocked-spl-projection)
+(normally r-propagate-template-vars-from-graph-edges-blocked upstream-blocked-graph-edges upstream-blocked-template-vars)
+(normally r-propagate-graph-styling-from-graph-feed-blocked upstream-blocked-graph-feed upstream-blocked-graph-styling)
+(normally r-propagate-backlink-render-from-template-vars-blocked upstream-blocked-template-vars upstream-blocked-backlink-render)

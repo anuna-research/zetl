@@ -1634,6 +1634,7 @@ mod page_history_tests {
                     block_ref: None,
                     alias: None,
                     is_embed: false,
+                    predicates: Vec::new(),
                     line: 1,
                     column: 1,
                 })

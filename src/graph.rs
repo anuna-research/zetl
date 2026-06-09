@@ -771,6 +771,7 @@ mod tests {
                     block_ref: None,
                     alias: None,
                     is_embed: false,
+                    predicates: Vec::new(),
                     line,
                     column: 1,
                 })
@@ -799,6 +800,7 @@ mod tests {
             block_ref: block_ref.map(|s| s.to_string()),
             alias: alias.map(|s| s.to_string()),
             is_embed,
+            predicates: Vec::new(),
             line,
             column: 1,
         }
