@@ -276,3 +276,11 @@
 (claims agent:claude
   :at "2026-06-09T15:21:07Z"
   (given completed-check-lints))
+
+(claims agent:claude
+  :at "2026-06-09T15:24:13Z"
+  (given completed-migrate-helper))
+
+(claims agent:claude
+  :at "2026-06-09T15:31:20Z"
+  (given completed-rdf-export))

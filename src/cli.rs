@@ -294,7 +294,7 @@ pub enum Command {
         after_help = "Examples:\n  zetl export                       Link graph as JSON\n  zetl export --rdf turtle          Typed edges as RDF/Turtle\n  zetl export --rdf jsonld          Typed edges as JSON-LD\n  zetl export --rdf ntriples        Typed edges as N-Triples"
     )]
     Export {
-        /// Project typed edges to an RDF serialisation (SPEC-045). Omit for the
+        /// Project typed edges to an RDF serialisation. Omit for the
         /// default link-graph export. (Named `--rdf` because the global
         /// `-f/--format` already selects the table/json output format.)
         #[arg(long, value_enum, value_name = "FORMAT")]
@@ -482,7 +482,7 @@ pub enum Command {
         command: HookCommand,
     },
 
-    /// Predicate-vocabulary tooling (SPEC-045 named edges)
+    /// Predicate-vocabulary tooling
     Predicates {
         #[command(subcommand)]
         command: PredicatesCommand,
@@ -950,7 +950,7 @@ pub enum CapCommand {
     EmergencyShutdown,
 }
 
-/// RDF serialisation formats for `zetl export --format` (SPEC-045 REQ-4516).
+/// RDF serialisation formats for `zetl export --format`.
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RdfFormat {
     Jsonld,
@@ -961,7 +961,7 @@ pub enum RdfFormat {
 #[derive(Subcommand, Debug)]
 pub enum PredicatesCommand {
     /// Report frontmatter `tags:` entries that name a vault page and could
-    /// become body predicates (SPEC-045 REQ-4513). Read-only — reports, never
+    /// become body predicates. Read-only — reports, never
     /// rewrites. Only `--dry-run` is supported in v1.
     Migrate {
         /// Required in v1 — the command refuses to run without it (it never
