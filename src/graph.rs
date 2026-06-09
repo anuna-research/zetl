@@ -2356,4 +2356,58 @@ mod tests {
         assert_eq!(edges[0]["key"], "a->b");
         assert_eq!(out["attributes"]["vault"]["links"], 1);
     }
+
+    #[test]
+    fn spec045_build_feed_carries_typed_edges() {
+        // REQ-4517: the build-path serializer must mirror the serve path —
+        // typed edges → multi:true + predicate-qualified keys + attributes.
+        let files = vec![
+            make_typed_file(
+                "A",
+                vec![
+                    ("B", 1, vec!["derived_from", "informed_by"]),
+                    ("C", 2, vec![]), // untyped
+                ],
+            ),
+            make_file("B", vec![]),
+            make_file("C", vec![]),
+        ];
+        let resolved: HashMap<String, String> = [
+            ("B".to_string(), "B".to_string()),
+            ("C".to_string(), "C".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+        let out = serialize_graph_index(&graph, &HashMap::new(), &HashMap::new(), "v", "t");
+
+        assert_eq!(out["options"]["multi"], true);
+        let edges = out["edges"].as_array().unwrap();
+        // 2 typed (derived_from + informed_by, A→B) + 1 untyped (A→C).
+        assert_eq!(edges.len(), 3);
+        let preds: Vec<&str> = edges
+            .iter()
+            .filter_map(|e| e["attributes"]["predicate"].as_str())
+            .collect();
+        assert!(preds.contains(&"derived_from") && preds.contains(&"informed_by"));
+        // Untyped edge carries a null predicate attribute.
+        assert!(edges
+            .iter()
+            .any(|e| e["attributes"]["predicate"].is_null()));
+    }
+
+    #[test]
+    fn spec045_build_feed_untyped_is_con101_baseline() {
+        // No typed edges → multi:false + empty edge attributes (byte-identical
+        // to the pre-SPEC-045 CON-101 feed).
+        let files = vec![make_file("A", vec![("B", 1)]), make_file("B", vec![])];
+        let resolved: HashMap<String, String> = [("B".to_string(), "B".to_string())]
+            .into_iter()
+            .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+        let out = serialize_graph_index(&graph, &HashMap::new(), &HashMap::new(), "v", "t");
+        assert_eq!(out["options"]["multi"], false);
+        let edges = out["edges"].as_array().unwrap();
+        assert_eq!(edges[0]["attributes"].as_object().unwrap().len(), 0);
+    }
 }
