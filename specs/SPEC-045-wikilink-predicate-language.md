@@ -1,7 +1,7 @@
 ---
 id: SPEC-045
 title: "Wikilink Predicate Language — typed named edges over `[[wikilinks]]`"
-version: 0.1.4-strawman
+version: 0.1.5-strawman
 status: draft
 date: 2026-06-09
 audience: agent, human
@@ -62,6 +62,10 @@ revision_notes:
     AST keeps a reserved `inverse` field (null in v1) for additive
     re-introduction. Reverts the `/` grammar/expansion to deferred; Q4
     now "partly resolved, rest deferred".
+  - v0.1.5 (2026-06-09): open-questions refresh — adds Q10 (typed edges in
+    the interactive graph view, SPEC-028/SPEC-037 — currently exposed
+    everywhere except the graph widget's data feed) and a process note that
+    the DESIGN-045 plan needs syncing to the current design.
 ---
 
 # SPEC-045: Wikilink Predicate Language
@@ -1829,6 +1833,35 @@ report — [[PROTO-001]] §Key Technical Concepts).
    → `prov__wasDerivedFrom`) recorded in the projection contract;
    confirm against the SPL parser in
    [[DESIGN-045-wikilink-predicate-language]].
+10. **Q10 — Typed edges in the interactive graph view (NEW, OPEN).** This
+    spec exposes typed edges to templates ([[#REQ-4515]]), CLI
+    ([[#REQ-4509]]), search ([[#REQ-4512]]), SPL ([[#REQ-4510]]), and RDF
+    ([[#REQ-4516]]) — but **not yet to the interactive graph widget's data
+    feed** ([[SPEC-028]] Sigma.js/graphology graph; [[SPEC-037]] 3D space
+    graph), whose edge model is currently `source→target` only. The
+    per-predicate directed-edge expansion ([[#REQ-4506]]) is exactly what
+    a typed graph wants. Open design surface (likely a new REQ, and an
+    amendment to [[SPEC-028]]/[[SPEC-037]] rather than purely here):
+    - **colour-by-predicate** (cheap) vs colour-by-`category` when a strict
+      file supplies one; untyped edges a neutral colour;
+    - **directional arrowheads** (edges are now meaningfully directed);
+    - **filter-by-predicate** toggles (mirror `zetl edges --predicate`),
+      and a **legend** from `vault.predicates` ([[#REQ-4515]]);
+    - **annotation on hover/selection** (progressive disclosure) — labels
+      are expensive in force layouts, so colour by default, labels on
+      interaction only, to stay inside [[SPEC-028]]'s LCP/FPS gates;
+    - whether the graph *data contract* (the `/_graph` feed) gains
+      `predicate` per edge here (machine layer, SPEC-045) while the visual
+      encoding lives in [[SPEC-028]]/[[SPEC-037]] + the theme/[[SPEC-044]].
+    Lean: SPEC-045 adds `predicate`/`annotation` to the graph-data feed
+    (additive); rendering is specified in the graph specs. Resolve scope
+    split in [[DESIGN-045-wikilink-predicate-language]].
+
+> **Process note (not a design question):** the
+> [[DESIGN-045-wikilink-predicate-language]] plan still describes the
+> v0.1.0 seeded-vocabulary, singular-predicate model and must be synced to
+> the emergent-vocabulary + multi-predicate + deferred-inverse design
+> before it is executed.
 
 ---
 
