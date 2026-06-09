@@ -1,7 +1,7 @@
 ---
 id: SPEC-045
 title: "Wikilink Predicate Language — typed named edges over `[[wikilinks]]`"
-version: 0.1.5-strawman
+version: 0.1.6-strawman
 status: draft
 date: 2026-06-09
 audience: agent, human
@@ -66,6 +66,11 @@ revision_notes:
     the interactive graph view, SPEC-028/SPEC-037 — currently exposed
     everywhere except the graph widget's data feed) and a process note that
     the DESIGN-045 plan needs syncing to the current design.
+  - v0.1.6 (2026-06-09): commits the graph-data feed — adds REQ-4517 +
+    CON-4508 (`predicate`/`annotation` per edge in the SPEC-028/SPEC-037
+    graph feed) to enable typed-edge FILTERING in the widget; the filter/
+    colour UI stays a SPEC-028/SPEC-037 amendment. Q10's data-contract part
+    is now committed; rendering/UI remains open.
 ---
 
 # SPEC-045: Wikilink Predicate Language
@@ -331,6 +336,10 @@ that already exists.**
   [[#REQ-4515]] template vars ([[#REQ-4511]]).
 - **Predicate-aware search** — predicate as a filterable field on the
   search index ([[#REQ-4512]]).
+- **Typed-edge graph-data feed** — `predicate` + `annotation` per edge in
+  the interactive-graph feed ([[SPEC-028]]/[[SPEC-037]]), enabling
+  filter-by-predicate in the widget ([[#REQ-4517]], [[#CON-4508]]); the
+  filter/colour UI is a graph-spec amendment.
 - **Semantic-web interop export** — `zetl export
   --format {jsonld,turtle,ntriples}` projecting typed edges to RDF
   (PROV-O provenance, SKOS vocabulary), with optional `[prefixes]` /
@@ -975,6 +984,27 @@ vocabulary's entailments (those remain SPL rules).
 **Trace:** [[#TEST-4516]], [[#CON-4507]], [[#ADR-4502]]; [[SPEC-044]] §2,
 §8 (RDF/JSON-LD export + triples-endpoint open questions).
 
+### REQ-4517: Typed-Edge Graph-Data Feed (enables graph filtering)
+
+The graph-data feed serialised for the interactive graph view
+([[SPEC-028]] Sigma.js/graphology) and the 3D space graph ([[SPEC-037]])
+SHALL include, **per edge**, its `predicate` (`null` for untyped) and
+`annotation` (`null` when absent), sourced from the forward directed
+edges of [[#REQ-4506]] ([[#CON-4508]]). This is the **data contract that
+enables typed-edge filtering** in the widget — the graph SHALL be able to
+show/hide and style edges by predicate (e.g. "only `contradicts`", "hide
+`relates_to`"), mirroring `zetl edges --predicate` ([[#REQ-4509]]).
+
+The addition is additive: consumers reading only `source`/`target` are
+unaffected ([[#REQ-4505]]). SPEC-045 owns this **data contract**; the
+filter/legend/colour **UI and interaction** are an amendment to
+[[SPEC-028]]/[[SPEC-037]] (see [[#13. Open Questions]] Q10). Filtering is
+also a performance win — hiding a predicate reduces rendered edges,
+helping the [[SPEC-028]] FPS/LCP gates rather than straining them.
+
+**Trace:** [[#TEST-4517]], [[#CON-4508]]; [[SPEC-028]], [[SPEC-037]];
+[[#13. Open Questions]] Q10.
+
 ---
 
 ## 5. Non-Functional Requirements
@@ -1536,6 +1566,37 @@ back to the vault namespace and lints. Export never invents entailments
 **Implements:** [[#REQ-4516]].
 **Verified by:** [[#TEST-4516]].
 
+### CON-4508: Graph-Data Edge Contract
+
+**Interface:** the per-edge shape in the graph-data feed consumed by the
+[[SPEC-028]] interactive graph and [[SPEC-037]] 3D graph (the
+serialisation site is the existing graph-data producer; exact path to be
+confirmed in [[DESIGN-045-wikilink-predicate-language]] against the
+[[SPEC-028]] feed).
+
+**Post-conditions (per edge):**
+
+```jsonc
+{ "source": "design-doc-discipline",
+  "target": "move-fast-doctrine",
+  "predicate": "contradicts" | null,    // null = untyped edge
+  "annotation": "…" | null,
+  "is_dead": false }                     // ghost/unresolved target
+```
+
+- One feed edge per forward directed graph edge ([[#REQ-4506]]); a
+  K-predicate link yields K feed edges (each filterable independently).
+- `predicate`/`annotation` additive — a widget reading only
+  `source`/`target` is unaffected ([[#REQ-4505]]).
+- Deferred named-inverse ([[#13. Open Questions]] Q4) would add reverse
+  feed edges; v1 emits forward only.
+
+**Error model:** absent predicate ⇒ `null` (untyped), never omitted — so
+a filter UI can offer an explicit "untyped" bucket.
+
+**Implements:** [[#REQ-4517]].
+**Verified by:** [[#TEST-4517]].
+
 ---
 
 ## 8. Purity Boundary Map
@@ -1749,6 +1810,7 @@ REQ-4513 ──→ TEST-4513                (migration helper)
 REQ-4514 ──→ TEST-4514                (ghost/external edges)
 REQ-4515 ──→ TEST-4515 ──→ CON-4506   (template variables)
 REQ-4516 ──→ TEST-4516 ──→ CON-4507   (RDF/JSON-LD interop export)
+REQ-4517 ──→ TEST-4517 ──→ CON-4508   (graph-data feed; enables filtering)
 NFR-4501 ──→ TEST-NFR-4501 ──→ OBS-4501
 NFR-4502 ──→ TEST-NFR-4502 ──→ OBS-4502
 NFR-4503 ──→ TEST-NFR-4503 ──→ OBS-4503
@@ -1833,29 +1895,26 @@ report — [[PROTO-001]] §Key Technical Concepts).
    → `prov__wasDerivedFrom`) recorded in the projection contract;
    confirm against the SPL parser in
    [[DESIGN-045-wikilink-predicate-language]].
-10. **Q10 — Typed edges in the interactive graph view (NEW, OPEN).** This
-    spec exposes typed edges to templates ([[#REQ-4515]]), CLI
-    ([[#REQ-4509]]), search ([[#REQ-4512]]), SPL ([[#REQ-4510]]), and RDF
-    ([[#REQ-4516]]) — but **not yet to the interactive graph widget's data
-    feed** ([[SPEC-028]] Sigma.js/graphology graph; [[SPEC-037]] 3D space
-    graph), whose edge model is currently `source→target` only. The
-    per-predicate directed-edge expansion ([[#REQ-4506]]) is exactly what
-    a typed graph wants. Open design surface (likely a new REQ, and an
-    amendment to [[SPEC-028]]/[[SPEC-037]] rather than purely here):
-    - **colour-by-predicate** (cheap) vs colour-by-`category` when a strict
-      file supplies one; untyped edges a neutral colour;
+10. **Q10 — Typed edges in the interactive graph view. DATA CONTRACT
+    COMMITTED; rendering/UI OPEN.** **Committed:** the graph-data feed
+    carries `predicate` + `annotation` per edge ([[#REQ-4517]],
+    [[#CON-4508]]), specifically so the [[SPEC-028]] / [[SPEC-037]] widget
+    can **filter edges by predicate** (the confirmed-wanted capability —
+    "only `contradicts`", "hide `relates_to`"). **Open** (an amendment to
+    [[SPEC-028]]/[[SPEC-037]] + theme/[[SPEC-044]], not this spec):
+    - the **filter UI** itself (toggles, a legend from `vault.predicates`
+      [[#REQ-4515]]) — confirmed wanted, design TBD;
+    - **colour-by-predicate** (cheap) vs colour-by-`category`; untyped a
+      neutral colour;
     - **directional arrowheads** (edges are now meaningfully directed);
-    - **filter-by-predicate** toggles (mirror `zetl edges --predicate`),
-      and a **legend** from `vault.predicates` ([[#REQ-4515]]);
     - **annotation on hover/selection** (progressive disclosure) — labels
-      are expensive in force layouts, so colour by default, labels on
-      interaction only, to stay inside [[SPEC-028]]'s LCP/FPS gates;
-    - whether the graph *data contract* (the `/_graph` feed) gains
-      `predicate` per edge here (machine layer, SPEC-045) while the visual
-      encoding lives in [[SPEC-028]]/[[SPEC-037]] + the theme/[[SPEC-044]].
-    Lean: SPEC-045 adds `predicate`/`annotation` to the graph-data feed
-    (additive); rendering is specified in the graph specs. Resolve scope
-    split in [[DESIGN-045-wikilink-predicate-language]].
+      are expensive in force layouts, so colour by default + labels on
+      interaction, to stay inside [[SPEC-028]]'s LCP/FPS gates (filtering
+      *helps* these by reducing rendered edges).
+    Scope split: SPEC-045 owns the data feed ([[#REQ-4517]]); the graph
+    specs own rendering/interaction. Resolve the rendering design in a
+    [[SPEC-028]]/[[SPEC-037]] amendment via
+    [[DESIGN-045-wikilink-predicate-language]].
 
 > **Process note (not a design question):** the
 > [[DESIGN-045-wikilink-predicate-language]] plan still describes the
