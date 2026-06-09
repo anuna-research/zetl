@@ -1,0 +1,429 @@
+;; DESIGN-045-wikilink-predicate-language: a predicate language for wikilinks
+;; Research and design plan producing SPEC-045-wikilink-predicate-language
+;; (specification) and IMPL-045-wikilink-predicate-language (implementation
+;; plan, scaffolded but NOT executed).
+;;
+;; Scope: USDD Phase 1 (Vision -> Specification) + Phase 2 (Specification ->
+;; Plan). OUT OF SCOPE: code generation. This plan ends at "human-review
+;; package delivered + IMPL-045 drafted." Phase 3 begins only after the spec
+;; reaches status=approved and a human reviewer signs off.
+;;
+;; Source: the Christopher Allen "Wikilinks and Named Edges" reference guide
+;; (gist 151aefa6a6bde1ce4fa6b1182656cebe). The strawman seeded by the kickoff
+;; session already exists at specs/SPEC-045-wikilink-predicate-language.md
+;; (status=draft, version 0.1.0-strawman). This plan graduates it.
+;;
+;; SIBLING: SPEC-044 (Concept Graph -- SPO Relations, Emergent Vocabulary,
+;; In-Situ Ratification, by the m3-kairos dyad + Mat Mytka) is the vision/UX
+;; spec for the SAME capability, authored independently against the same gist.
+;; SPEC-045 is its engineering companion. The two diverge on the authoring
+;; surface (SPEC-044: frontmatter relations: ; SPEC-045: body-inline
+;; predicate::[[Target]]) and on the telos of annotations (SPEC-044 declines
+;; the agent-reading-budget framing as connective-not-conjunctive). Per the
+;; user's 2026-06-09 direction, SPEC-045 is KEPT AS A SIBLING (renumbered from
+;; the colliding SPEC-043, which is the .zetlignore corpus-view spec) and
+;; DEFERS to SPEC-044 on both divergences. Reconciling the two is the first,
+;; gating task of this plan (task-reconcile-spec-044).
+;;
+;; Review tier: Tier 2. Two factors push it above standard feature code:
+;;   (1) it changes the core graph semantics every other feature reads, and
+;;   (2) the SPL fact projection introduces a NEW trust boundary -- a predicate
+;;       on page A asserts a fact ABOUT page B (Threat Model A in the spec).
+;; Per USDD Multi-Model Cognitive Diversity, Tier 2 mandates cross-model review
+;; + human review. The named-edge recogniser is a parser at a trust boundary,
+;; so fuzzing is a mandatory deliverable; the fact projection is a transform,
+;; so a roundtrip property test is a mandatory deliverable.
+
+(meta plan
+  (id "DESIGN-045")
+  (title "A predicate language for wikilinks")
+  (version "0.1.0")
+  (status "draft")
+  (created "2026-06-09")
+  (author "agent:claude")
+  (spec "SPEC-045")
+  (description "Research and design a predicate language for zetl wikilinks: typed named edges of the shape predicate::[[Target]] layered additively on the existing [[wikilink]] graph, per the Christopher Allen 'Wikilinks and Named Edges' guide. Core design moves to validate: (a) recognise the predicate at the existing parse boundary and attach it as an OPTIONAL field on the Wikilink AST node, so a bare wikilink is a named edge with a null predicate (full backward compat by construction); (b) carry the predicate through the LinkGraph as edge metadata, typing backlinks/dead-links/orphans; (c) govern the vocabulary as a curated folksonomy (.zetl/predicates.toml; undeclared predicate WARNS, never errors) seeded with the guide's five categories; (d) expose a zetl edges query surface; (e) under --features reason, project each typed edge to a provenance-tagged SPL fact (predicate src tgt), making the typed graph queryable by the existing defeasible engine -- the same sugar-over-SPL pattern SPEC-042 used for public_paths. The new trust boundary (page-authored facts about other pages) is the spec's primary security concern and the reason for Tier 2. Outputs: specs/SPEC-045-wikilink-predicate-language.md (graduated strawman->approved), the concept pages it dead-links to ([[Wikilinks and Named Edges]], [[Security Form Contract]], [[Deep Context Architecture]]), /users/gardener/{user,happy-paths}.md and the other profile files, ADR-### records, CON-### contracts, TEST-### specifications, threat model, cross-model adversarial review, human-review package, and plans/IMPL-045-wikilink-predicate-language.spl scaffolded for downstream implementation. NO CODE IS WRITTEN UNDER THIS PLAN."))
+
+;; -- Agents --------------------------------------------
+(given agent-claude-available)
+
+;; -- Tasks ---------------------------------------------
+
+;; Phase 0: Surveys + prior art + SPEC-044 reconciliation (parallel, no deps)
+(given task-reconcile-spec-044)
+(given task-survey-parse-boundary)
+(given task-survey-graph-internals)
+(given task-survey-reason-projection)
+(given task-survey-ast-evolution)
+(given task-prior-art-typed-links)
+(given task-prior-art-vocab-governance)
+
+;; Phase 1: User profiles and happy paths
+(given task-user-profiles)
+(given task-happy-paths)
+
+;; Phase 2: Requirements
+(given task-draft-requirements)
+(given task-author-concept-pages)
+(given task-synthetic-user-run)
+(given task-phase1-quality-gates)
+
+;; Phase 3: Architecture, contracts, maps, threat model
+(given task-adr-ast-representation)
+(given task-adr-vocab-governance)
+(given task-adr-spl-projection)
+(given task-adr-frontmatter-boundary)
+(given task-adr-query-surface)
+(given task-grammar-langsec)
+(given task-contracts)
+(given task-purity-boundary-map)
+(given task-test-strategy)
+(given task-threat-model)
+(given task-phase2-quality-gates)
+
+;; Phase 4: Tier 2 cross-model review + adversarial tests
+(given task-cross-model-review)
+(given task-adversarial-tests)
+
+;; Phase 5: Implementation planning (no code) + approval
+(given task-draft-impl-045)
+(given task-mark-spec-approved)
+
+;; -- No-deps markers -----------------------------------
+(given no-deps-reconcile-spec-044)
+(given no-deps-survey-parse-boundary)
+(given no-deps-survey-graph-internals)
+(given no-deps-survey-reason-projection)
+(given no-deps-survey-ast-evolution)
+(given no-deps-prior-art-typed-links)
+(given no-deps-prior-art-vocab-governance)
+
+;; -- Task Metadata -------------------------------------
+
+(meta task-reconcile-spec-044
+  (description "FIRST, GATING TASK. Reconcile SPEC-045 with its sibling SPEC-044 (Concept Graph -- SPO Relations, Emergent Vocabulary, In-Situ Ratification; specs/SPEC-044-concept-graph-spo-emergent-vocabulary.md) before any other Phase-1 work proceeds. SPEC-044 already metabolised the same Christopher Allen gist (its section 9 adopt/translate/decline). Resolve the two real divergences and record the resolutions in BOTH specs: (1) AUTHORING SURFACE -- SPEC-044 chose frontmatter relations: as canonical and flagged body-inline predicate::[[Target]] as an open Tier-1 fork (SPEC-044 section 9.2). Decide the canonical store and the relationship between the two surfaces: (A) frontmatter-canonical + prominent render (SPEC-044 default), (B) body-inline canonical, (C) author inline AND derive/mirror to frontmatter. SPEC-045 currently DEFERS to SPEC-044; if the decision is (A), re-scope SPEC-045 REQ-4501 so body-inline is an optional in-prose affordance that compiles to the same triple, not the canonical surface. (2) TELOS of annotations -- SPEC-044 section 9.3 declines the agent-reading-budget framing; adopt SPEC-044's answerability framing for the note/annotation and purge the budget-optimiser language from SPEC-045 prose (the machine contracts are telos-neutral and unaffected). ALSO: confirm the division of layers (SPEC-044 = vision/UX/governance/ratification; SPEC-045 = grammar/AST/graph/projection/CLI/tests/threat-model) with Mat / the m3-kairos dyad, and agree which artefact IDs each spec owns so they do not collide. Produce a short reconciliation note linking both specs.")
+  (acceptance "research/SPEC-044-045-reconciliation.md exists recording: the authoring-surface decision (A/B/C) with rationale and sign-off from a SPEC-044 author; the telos decision; the layer-ownership table; any SPEC-045 REQ re-scoping required. SPEC-045 section 1.2 and SPEC-044 (a cross-link to SPEC-045) are both updated to reflect the agreed split. No artefact-ID collisions remain between the two specs.")
+  (trace "SPEC-045 section 1.2; SPEC-044 section 9"))
+
+(meta task-survey-parse-boundary
+  (description "Survey how zetl recognises [[wikilinks]] and ![[embeds]] today, so the predicate recogniser slots into the EXISTING scan rather than adding a second pass (SPEC-045 REQ-4501). Cover: the regex extraction in src/scanner.rs:394-492; the post-parse split_wikilinks() in src/hooks/ast/parse.rs:683-767 and its KNOWN multibyte byte-index gotcha (em-dash/any multibyte char panics -- this is a fuzzing-relevant hazard for Threat Model B); the Wikilink struct fields in src/hooks/ast/mod.rs:419-425 (target/alias/heading/block_id). Identify the precise insertion point where a predicate:: prefix would be detected and where code/frontmatter/HTML-comment exclusion already happens. Document whether list-item-form vs inline-form edges are distinguishable at this layer (REQ-4504 annotation capture depends on it).")
+  (acceptance "research/SPEC-045-parse-boundary.md exists with file:line citations for the two extraction sites, the exact recogniser insertion point, an explicit statement on the multibyte-panic hazard and its test implication, and a determination on whether annotations (list-item nested content) are reachable at the parse layer or must be captured at the graph layer.")
+  (trace "SPEC-045 REQ-4501 CON-4501"))
+
+(meta task-survey-graph-internals
+  (description "Survey the LinkGraph so the predicate dimension lands cleanly (SPEC-045 REQ-4506). Cover: LinkGraph and EdgeMeta in src/graph.rs:10-26 (the fields EdgeMeta carries today: source_file, line, alias, heading, block_ref, is_embed); BacklinkResult at src/graph.rs:34-41; build() phantom-node mechanism at src/graph.rs:122 (basis for typed ghost edges, REQ-4514); backlinks() at src/graph.rs:190; dead_links() at src/graph.rs:212; orphans() at src/graph.rs:236. Determine the cheapest way to add predicate + annotation to EdgeMeta and a predicate-keyed index for the NFR-4502 query-latency budget.")
+  (acceptance "research/SPEC-045-graph-internals.md exists with file:line citations; a concrete shape for the EdgeMeta extension; a recommendation for the predicate index (build-time vs lazy) with the NFR-4502 budget cited; confirmation that orphan/dead-link counts are unchanged by typing (only the reported metadata grows).")
+  (trace "SPEC-045 REQ-4506 REQ-4514 NFR-4502"))
+
+(meta task-survey-reason-projection
+  (description "Survey how page content reaches the reasoner so named-edge -> SPL fact projection (SPEC-045 REQ-4510, CON-4504) is faithful and provenance-preserving. Cover: the theory pipeline in src/reason/mod.rs:72-150 (parse each SplBlock via spindle_parser::parse_spl, the provenance-annotation step at src/reason/mod.rs:116-145 that injects _source_file/_source_line/_source_page, the fact-relabel-to-__fact_N collision avoidance at 127-146); SplBlock extraction at src/scanner.rs:224-243 and the struct at src/types.rs:5-21. Determine how to inject synthetic facts (predicate src tgt) into the same theory with the SAME provenance machinery, and confirm the predicate grammar (lowercase-snake) is a valid SPL functor. CRITICAL: this is the Tier-2 trust boundary -- document how a consuming rule can scope trust by _source_page (Threat Model A).")
+  (acceptance "research/SPEC-045-reason-projection.md exists with file:line citations; a concrete injection point for projected facts; confirmation the provenance path applies to synthetic facts; a worked example of a rule scoping trust by _source_page; an explicit note on determinism/order-stability of the projected fact set.")
+  (trace "SPEC-045 REQ-4510 CON-4504 ThreatModelA"))
+
+(meta task-survey-ast-evolution
+  (description "Survey the SPEC-032 zetl-ext AST additive-evolution rules so the Wikilink predicate field (SPEC-045 REQ-4503, CON-4505) is compatible. Cover: tools/zetl-ast-schema-v1.json Wikilink def and its required-set; the additive-only-within-major-1 rule (SPEC-032 NFR-3206); the round-trip validation in tests/ast_schema_integration.rs; how a predicate-unaware hook must round-trip the node byte-stably. Determine: does adding an OPTIONAL property (null default, NOT in required) preserve all existing hook contracts? Should the schema carry pattern ^[a-z][a-z0-9_]*$ on predicate as defence-in-depth? Confirm the ast_version minor bump (1.0 -> 1.1) is the correct evolution step and what consumes ast_version.")
+  (acceptance "research/SPEC-045-ast-evolution.md exists with file:line citations; a yes/no determination on additive-compatibility with rationale; a recommendation on the schema-level pattern constraint; the exact ast_version bump and the list of round-trip tests that must gain a predicate case.")
+  (trace "SPEC-045 REQ-4503 CON-4505"))
+
+(meta task-prior-art-typed-links
+  (description "Survey prior art in typed/semantic links over wiki/markdown graphs to pressure-test SPEC-045's design choices. Cover at minimum: Obsidian Dataview inline fields (key:: value) and how it differs from edge-to-page predicates; Logseq block/page properties; Semantic MediaWiki property::value and [[property::target]]; RDFa/JSON-LD typed relations; Roam attributes. For each: syntax, where the type lives (frontmatter vs body vs inline), whether the type is a first-class graph edge or a property, query surface, and vocabulary governance (open vs closed). Extract lessons that confirm or challenge: predicate-binds-to-link (REQ-4501), body-not-frontmatter (ADR-4505), curated-folksonomy (ADR-4502), conforms_to-over-is_a (ADR-4503).")
+  (acceptance "research/SPEC-045-prior-art-typed-links.md exists with a comparison table (>= 5 systems x the dimensions above); an explicit per-system 'lesson for SPEC-045' column; at least two findings that CHALLENGE a current strawman decision (or a recorded statement that none do, with reasoning).")
+  (trace "SPEC-045 section 1 ADR-4501 ADR-4502 ADR-4503 ADR-4505"))
+
+(meta task-prior-art-vocab-governance
+  (description "Survey vocabulary-governance approaches for the curated-folksonomy model (SPEC-045 REQ-4507, REQ-4508, ADR-4502). Cover: the 'Wikilinks and Named Edges' guide's five curation activities (awareness, review, consolidation, clarification, enforcement) and its anti-ontology stance; folksonomy-vs-ontology literature; how linters surface lexical drift (nearest-match suggestions, Levenshtein thresholds); the guide's relates_to:: trap and is_a::->conforms_to:: argument. Determine the seed vocabulary content for .zetl/predicates.toml (the ~30 predicates across five categories, with display labels, the construction=true marker for extracted_from::, the catch_all=true marker for relates_to::, and the accept_is_a escape hatch).")
+  (acceptance "research/SPEC-045-vocab-governance.md exists with: the finalised seed vocabulary (category -> predicates with display labels); a justified Levenshtein threshold for predicate-undeclared nearest-match; a justified default threshold for the relates_to:: over-use lint; confirmation that warn-not-error honours the guide's folksonomy stance.")
+  (trace "SPEC-045 REQ-4507 REQ-4508 CON-4502 ADR-4502"))
+
+(meta task-user-profiles
+  (description "Build grounded user profiles per the USDD Synthetic User Protocol, refining the strawman sketches in SPEC-045 section 2: The Knowledge Gardener (maintains a long-lived vault, wants typed backlinks + vocab hygiene), The Traversing Agent (LLM building context under a reading budget, wants progressive disclosure + machine-readable typed edges + fact provenance), The Reasoning Author (writes SPL over the vault, wants faithful provenance-tagged projection), The Vocabulary Curator (audits and prunes the predicate vocabulary). Each profile names constraints precisely (e.g. 'CLI-fluent; comfortable editing markdown by hand; NOT assumed to know SPL').")
+  (acceptance "/users/gardener/user.md, /users/traversing-agent/user.md, /users/reasoning-author/user.md, /users/vocab-curator/user.md exist in the Synthetic User Protocol template; constraints precise; each profile states which SPEC-045 surface it primarily exercises.")
+  (trace "SPEC-045 section 2"))
+
+(meta task-happy-paths
+  (description "Define happy paths covering each profile x flow, refining SPEC-045 section 3. AT MINIMUM: (HP1) default no-predicates-nothing-changes (REQ-4505); (HP2) author types derived_from::/supersedes::/contradicts:: edges with annotations and runs zetl edges; (HP3) typed backlinks render grouped by predicate with inline annotations; (HP4) undeclared predicate warns with nearest-match but does not break the build; (HP5) named edges project to SPL facts and an author rule concludes (stale ...); (HP6) malformed predicate is rejected not guessed (LangSec); plus failure modes for every HP (especially the recogniser's malformed-token disposition matrix and the multibyte-panic hazard).")
+  (acceptance "happy-paths.md files exist per profile; HP1..HP6 present; failure-modes lists non-empty for every HP; HP6 explicitly enumerates each malformed-token case and its disposition (untyped-edge vs syntax-diagnostic) matching CON-4501.")
+  (trace "SPEC-045 section 3"))
+
+(meta task-draft-requirements
+  (description "Graduate specs/SPEC-045-wikilink-predicate-language.md from strawman to grounded draft, populating REQ-45xx / NFR-45xx with measured values where the strawman has [Provisional] placeholders (NFR-4501 parse overhead, NFR-4502 query latency, NFR-4503 projection scale, the relates_to:: over-use threshold, the Levenshtein nearest-match threshold). Verify every REQ against the USDD Quality Attribute Checklist (atomic, unambiguous, verifiable, error-aware). Confirm the REQ set covers: recognition (REQ-4501), grammar/LangSec (REQ-4502), AST extension (REQ-4503), annotations (REQ-4504), backward compat (REQ-4505), typed graph (REQ-4506), vocab file (REQ-4507), lints (REQ-4508), query CLI (REQ-4509), SPL projection (REQ-4510), typed backlinks (REQ-4511), search (REQ-4512), migration helper (REQ-4513), ghost/external edges (REQ-4514).")
+  (acceptance "SPEC-045 version increments from 0.1.0-strawman to 0.2.0 (draft); all [Provisional] NFR values replaced with measured/justified numbers OR explicitly retained with a recorded reason; USDD Quality Attribute Checklist passed for every REQ; the strawman-notice banner removed or downgraded to reflect draft status.")
+  (trace "SPEC-045 section 4 section 5"))
+
+(meta task-author-concept-pages
+  (description "Author (or record explicit deferrals for) the concept pages SPEC-045 intentionally dead-links to, per USDD section Key Technical Concepts -- a dead [[link]] is visible debt that becomes the backlog; it MUST NOT be deleted to clean the zetl check report. At minimum: [[Wikilinks and Named Edges]] (a vault page summarising the source guide + the five categories), [[Security Form Contract]] and [[Deep Context Architecture]] (used as conforms_to:: / in_domain:: examples), and any other dead concept link the spec introduces. Each page is a real vault page or an explicit deferral row (rationale + owner) in the spec's traceability section.")
+  (acceptance "zetl check --dead-links over specs/SPEC-045-wikilink-predicate-language.md reports only links that have an explicit deferral entry in the spec's section 12; every other previously-dead concept link now resolves to an authored page.")
+  (trace "SPEC-045 section 12 PROTO-001 KeyTechnicalConcepts"))
+
+(meta task-synthetic-user-run
+  (description "Execute the happy paths as synthetic-user simulations against the draft SPEC-045. The synthetic user agent does NOT see any implementation (none exists); it works from SPEC-045 + profile + happy path only. Per USDD Synthetic User Protocol section 3. Particular attention to: (a) HP2 -- is it obvious to an author WHERE the predicate goes (before [[, no space) and that a space breaks it? (b) HP4 -- does the warning make the folksonomy stance clear (this is fine, just unaudited) vs feeling like an error? (c) HP5 -- does the Reasoning Author understand that page A can assert facts about page B, and is the provenance affordance discoverable? (d) the Traversing Agent -- is zetl edges --json sufficient for budget-bounded progressive-disclosure traversal?")
+  (acceptance "research/SPEC-045-synthetic-user.md exists with header metadata (model, profiles, paths, date); per-step trace per HP; categorised findings table; explicit list of REQ-### amendments applied to SPEC-045; re-run results showing resolved findings; 'no further findings' statement OR escalated open questions.")
+  (trace "USDD section Synthetic User Protocol"))
+
+(meta task-phase1-quality-gates
+  (description "Apply USDD Phase 1 Quality Gates to SPEC-045: every requirement unambiguous (single interpretation), verifiable (testable), atomic (one obligation), no internal conflicts, ambiguities resolved with measurable criteria. Apply the prohibited-terms table (no 'fast'/'easy'/'secure' without a metric). Failures fixed in SPEC-045 before this task completes.")
+  (acceptance "SPEC-045 Quality Gates section (or research/SPEC-045-phase1-gates.md) contains a checklist with every Phase 1 gate marked pass and a trace to the artefact establishing each.")
+  (trace "USDD section Phase 1 Quality Gates"))
+
+(meta task-adr-ast-representation
+  (description "Finalise ADR-4501: extend the Wikilink AST node with an optional predicate field vs introduce a new NamedEdge node. Use task-survey-ast-evolution and task-survey-parse-boundary findings. Decide the annotation-placement asymmetry (predicate on the node, annotation at the graph layer from the ListItem subtree -- REQ-4504) and whether ![[embed]] gains a predicate (strawman: no). Document the additive-evolution argument and consequences.")
+  (acceptance "SPEC-045 contains ADR-4501 with the two-option analysis, decision, the additive-compatibility justification, the annotation-placement decision, the embed decision, and consequences (positive + negative).")
+  (trace "ADR-4501 in SPEC-045"))
+
+(meta task-adr-vocab-governance
+  (description "Finalise ADR-4502 (curated folksonomy: undeclared predicate WARNS not errors, reusing the existing --fail-on warning gate) and ADR-4503 (ship is_a::->conforms_to:: as advice not auto-rewrite, with the accept_is_a escape hatch). Ground both in task-prior-art-vocab-governance and the source guide's governance stance. Confirm no new gate primitive is introduced.")
+  (acceptance "SPEC-045 contains ADR-4502 and ADR-4503 each with option analysis, decision, and consequences; both explicitly cite the guide's folksonomy/naming-sovereignty stance; ADR-4502 confirms reuse of the existing fail-on machinery.")
+  (trace "ADR-4502 ADR-4503 in SPEC-045"))
+
+(meta task-adr-spl-projection
+  (description "Finalise ADR-4504: named edges project to provenance-tagged SPL facts (sugar-over-SPL, mirroring SPEC-042's public_paths). Ground in task-survey-reason-projection. This is the Tier-2 ADR: it MUST address the page-authored-fact trust boundary (Threat Model A), the provenance-tagging requirement, the untyped-edges-not-projected rule, determinism/order-stability, and the projection-volume/NFR-4503 bound. Cross-reference SPEC-042's sugar-over-SPL precedent explicitly.")
+  (acceptance "SPEC-045 contains ADR-4504 with option analysis, decision, the trust-boundary treatment, the provenance-tagging mandate, and consequences flagging that any rule consuming a projected fact is Tier-2; cross-references SPEC-042.")
+  (trace "ADR-4504 in SPEC-045 ThreatModelA"))
+
+(meta task-adr-frontmatter-boundary
+  (description "Finalise ADR-4505 (predicates live in the body, not the frontmatter). Ground it in the guide's unconflation principle (YAML = scalars, body = relationships to pages that participate in the graph) and the migration-helper rationale (REQ-4513 moves relationship-shaped tags out of frontmatter). Address the consequence that some document properties (e.g. has_status::[[Draft]]) become body edges rather than YAML fields, and why the guide argues that is correct.")
+  (acceptance "SPEC-045 contains ADR-4505 with option analysis (body vs frontmatter vs both), decision, and consequences; cites the unconflation principle; reconciles with REQ-4513.")
+  (trace "ADR-4505 in SPEC-045"))
+
+(meta task-adr-query-surface
+  (description "Finalise ADR-4506: a new zetl edges subcommand vs extending the existing zetl links / zetl backlinks commands (src/cli.rs:120). Ground in USDD Constitutional Principle 15 (right place for the function) and the composition-first feasibility check (could the predicate-filter set be flags on zetl links without bloating it?). Use task-survey-graph-internals for the filter set and the NFR-4502 latency budget. Document the intentional untyped-case overlap (zetl edges --untyped ~ zetl links) as a superset relationship, not duplication.")
+  (acceptance "SPEC-045 contains ADR-4506 with two-option analysis, a recorded composition-first feasibility check, decision, and consequences; cites Principle 15 and documents the deliberate superset overlap with zetl links.")
+  (trace "ADR-4506 in SPEC-045 REQ-4509"))
+
+(meta task-grammar-langsec
+  (description "Finalise the named-edge grammar (CON-4501) per USDD section LangSec / Constitutional Principle 14. Deliver: the ABNF for predicate '::' wikilink (regular grammar, the lowest sufficient class); the binding rule (predicate binds to the immediately-following wikilink, no intervening whitespace); the malformed-token disposition matrix (each row -> untyped-edge or syntax-diagnostic, never a guessed normalisation); the code/frontmatter exclusion guarantee; and the recogniser's one-parser-per-language commitment (the predicate recogniser composes with, not forks, the existing wikilink recogniser). Confirm conservative-in-what-you-accept (reject, do not repair).")
+  (acceptance "SPEC-045 CON-4501 contains the ABNF, the binding rule, the complete disposition matrix matching the strawman, pre/post-conditions, and an error model stating no typed edge is ever produced by guessing; the grammar class is named and justified as the lowest sufficient.")
+  (trace "CON-4501 in SPEC-045 PROTO-001 LangSec"))
+
+(meta task-contracts
+  (description "Finalise the public contracts for SPEC-045: CON-4501 named-edge grammar (from task-grammar-langsec); CON-4502 .zetl/predicates.toml schema (category set with deny_unknown_fields, per-predicate display/construction/catch_all markers, accept_is_a, fail-closed on malformed file); CON-4503 zetl edges CLI (filters, json row shape, read-only/idempotent, superset of zetl links); CON-4504 SPL fact projection (fact shape, provenance fields, untyped-not-projected, determinism, information-preserving triple property); CON-4505 Wikilink AST extension (optional predicate, required-set unchanged, ast_version bump, schema pattern). Each contract: pre-conditions, post-conditions, error model, structured per-clause so each implemented REQ maps to a distinct clause.")
+  (acceptance "SPEC-045 contains CON-4501..CON-4505 each with the four required subsections and a non-empty implements-list; per-clause structure verified so each REQ maps to a distinct clause.")
+  (trace "CON-### in SPEC-045"))
+
+(meta task-purity-boundary-map
+  (description "Finalise the Purity Boundary Map. PURE core: the named-edge recogniser (string -> Wikilink{predicate}; the LangSec recogniser, a fuzz+property target); the vocabulary classifier (predicate + declared-set -> category|undeclared + nearest-match); the fact projector (Wikilink{predicate}+slugs -> fact triple; roundtrip property holds); the labelled-graph builder. EFFECTFUL shell: vault scan, predicates.toml load, zetl edges/check/predicates handlers, search-index write, SPL theory assembly + reasoner invocation. Boundary contracts: Wikilink{predicate}, EdgeMeta{predicate,annotation}, (predicate src tgt)+provenance. Document the dependency rule (recogniser/classifier/projector take vocabulary as data, do no I/O) and the enforcement (Rust module visibility + the existing SPEC-032 parse-pipeline purity discipline).")
+  (acceptance "SPEC-045 'Purity Boundary Map' section has the four required subsections; the pure core explicitly lists the recogniser/classifier/projector/graph-builder; the dependency rule states the pure functions receive vocabulary as a parameter and perform no I/O.")
+  (trace "USDD section Purity Boundary Map"))
+
+(meta task-test-strategy
+  (description "Finalise the verification strategy. SPEC-045 is an AI-synthesised spec, so per the USDD selection table it requires requirement-targeted decomposition + mutation testing + adversarial testing (mandatory). The recogniser is a parser at a trust boundary -> fuzzing REQUIRED (with the src/hooks/ast/parse.rs multibyte-panic hazard as a named target). The projection is a transform -> roundtrip property test REQUIRED (triple(project(e))==e) plus provenance-preservation and determinism properties. Deliver: TEST-45xx per REQ with positive/negative-input/negative-output decomposition; the CON-4501 disposition matrix as example cases; golden-equivalence tests for REQ-4505 backward compat (graph+web+search byte-identical on a predicate-free vault); mutation-testing targets (recogniser, predicate-filter logic) with thresholds.")
+  (acceptance "SPEC-045 'Verification and Testing Strategy' section contains TEST-4501..TEST-4514 (+ NFR tests) matched to REQs with explicit three-type coverage; the fuzz target + multibyte hazard named; the projection property tests specified; mutation-testing target modules + thresholds stated.")
+  (trace "TEST-### in SPEC-045"))
+
+(meta task-threat-model
+  (description "Finalise the threat model. The PRIMARY new boundary is page-authored facts. AT MINIMUM: (A) predicate fact spoofing -- page A asserts validated_by::/conforms_to:: about B/a contract that never granted it; mitigation: provenance-tagged facts + trust-scoping by _source_page + Tier-2 review of any consuming rule; (B) predicate injection via content -- crafted :: in tables/footnotes/HTML/autolinks tricks the recogniser or panics the multibyte byte-indexer; mitigation: LangSec full recognition + fuzzing; (C) vocabulary-file confusion -- malformed predicates.toml silently disables governance; mitigation: deny_unknown_fields + fail-closed; (D) ghost-edge title leakage on public pages -- interacts with SPEC-042 REQ-4213 redaction; mitigation: typed edges inherit the existing public-page rendering policy. Each: severity, likelihood, mitigation (referencing implementing REQ/CON/NFR), residual risk.")
+  (acceptance "SPEC-045 'Threat Model' section has one entry per A..D (plus any new threats surfaced) with severity/likelihood/mitigation/residual-risk; mitigations reference implementing REQ/CON; Threat Model A explicitly drives the Tier-2 classification.")
+  (trace "Threat Model in SPEC-045"))
+
+(meta task-phase2-quality-gates
+  (description "Apply USDD Phase 2 Quality Gates to SPEC-045: adheres to constitutional principles; single-responsibility components; functionality via well-defined interfaces; capability placement justified (the zetl edges command, the predicate field, the projection step each have a recorded placement rationale per Principle 15); tests derived from requirements; security controls specified with verifiable criteria (Threat Model A..D); observability captured (OBS-4501..4303). Failures fixed before completion.")
+  (acceptance "SPEC-045 Quality Gates section has a Phase 2 checklist with every gate marked pass and a trace to the artefact establishing each (composition-first feasibility check recorded for the new zetl edges command).")
+  (trace "USDD section Phase 2 Quality Gates"))
+
+(meta task-cross-model-review
+  (description "Per USDD Multi-Model Cognitive Diversity (Tier 2): submit SPEC-045 to a fresh-context review by a DIFFERENT model family. Reviewer receives SPEC-045, the user profiles, the happy paths, and the threat model, plus an adversarial prompt instructing them to find defects -- not to ratify. Reviewer MUST NOT see this generating session's reasoning or the prior-art notes (so blind spots are not transferred). Special focus on the trust-boundary ADR-4504 and Threat Model A, and on whether the additive-AST claim (ADR-4501) truly preserves every existing hook contract. Findings categorised per the USDD finding taxonomy.")
+  (acceptance "research/SPEC-045-cross-model-review.md exists with reviewer model+version, the review prompt, categorised findings, and an explicit disposition per finding; findings produce >= 3 SPEC-045 amendments OR a recorded explanation for why none warranted.")
+  (trace "USDD section Multi-Model Cognitive Diversity"))
+
+(meta task-adversarial-tests
+  (description "Per USDD section Adversarial Testing: a separate fresh-context agent generates adversarial tests aimed at BREAKING SPEC-045. Particular attention to: recogniser bypass/confusion (:: inside link text/aliases, nested brackets, predicate adjacent to ![[embed]], Unicode/homoglyph predicates that look declared but are not, multibyte chars adjacent to ::); projection-fact spoofing variants (a page minting facts about many other pages); determinism breaks (does edge ordering depend on filesystem iteration order?); vocabulary-classifier nearest-match abuse; backward-compat violations (any predicate-free input whose output differs from baseline). Iterate until adversary exhaustion.")
+  (acceptance "research/SPEC-045-adversarial-tests.md exists with >= 25 adversarial cases; per-case disposition; SPEC-045 amendments applied; final adversary-exhaustion statement OR escalated open questions.")
+  (trace "USDD section Adversarial Testing"))
+
+(meta task-draft-impl-045
+  (description "Author plans/IMPL-045-wikilink-predicate-language.spl scaffolded for downstream implementation. Use the IMPL-### plan structure (e.g. plans/IMPL-032-033.spl, IMPL-026.spl). Required: (meta plan ...), (given agent-...-available), tasks per REQ/CON with a sensible build order (grammar+recogniser -> AST extension -> graph typing -> vocab file+lints -> zetl edges -> SPL projection -> typed backlinks -> search -> migration helper), ready- rules encoding that dependency DAG, assign-to- rules, and task metadata (description + acceptance per task). Do NOT execute. Do NOT write code. Must pass hence plan validate.")
+  (acceptance "plans/IMPL-045-wikilink-predicate-language.spl exists; 'hence plan validate plans/IMPL-045-wikilink-predicate-language.spl --strict' returns zero errors; every REQ-### and CON-### in SPEC-045 traces to at least one IMPL-045 task.")
+  (trace "IMPL-045 plan deliverable"))
+
+(meta task-mark-spec-approved
+  (description "Final task. Update specs/SPEC-045-wikilink-predicate-language.md frontmatter status from 'draft' to 'approved' and version from 0.2.0 to 1.0.0. Update CHANGELOG.md recording: SPEC-045 approved, references DESIGN-045 plan, IMPL-045 implementation plan ready, no code written under DESIGN-045. Commit per repo convention. DO NOT merge without explicit human approval. Phase 3 begins after a human reviewer signs off (note: the SPL-projection trust boundary makes that sign-off load-bearing).")
+  (acceptance "SPEC-045 status=approved version=1.0.0; CHANGELOG.md entry exists; commit (or PR) prepared but not merged without human approval.")
+  (trace "USDD Phase 1+2 closeout"))
+
+;; -- Readiness Rules (DAG) -----------------------------
+
+;; Phase 0 -- reconciliation + surveys + prior art are root tasks
+(normally r-ready-reconcile-spec-044
+  (and task-reconcile-spec-044 no-deps-reconcile-spec-044)
+  ready-reconcile-spec-044)
+
+(normally r-ready-survey-parse-boundary
+  (and task-survey-parse-boundary no-deps-survey-parse-boundary)
+  ready-survey-parse-boundary)
+
+(normally r-ready-survey-graph-internals
+  (and task-survey-graph-internals no-deps-survey-graph-internals)
+  ready-survey-graph-internals)
+
+(normally r-ready-survey-reason-projection
+  (and task-survey-reason-projection no-deps-survey-reason-projection)
+  ready-survey-reason-projection)
+
+(normally r-ready-survey-ast-evolution
+  (and task-survey-ast-evolution no-deps-survey-ast-evolution)
+  ready-survey-ast-evolution)
+
+(normally r-ready-prior-art-typed-links
+  (and task-prior-art-typed-links no-deps-prior-art-typed-links)
+  ready-prior-art-typed-links)
+
+(normally r-ready-prior-art-vocab-governance
+  (and task-prior-art-vocab-governance no-deps-prior-art-vocab-governance)
+  ready-prior-art-vocab-governance)
+
+;; Phase 1 -- profiles + happy paths after relevant surveys.
+;; Reconciliation with SPEC-044 GATES all of Phase 1 onward (it can change the
+;; authoring surface and thus the whole REQ shape).
+(normally r-ready-user-profiles
+  (and task-user-profiles
+       completed-reconcile-spec-044
+       completed-prior-art-typed-links
+       completed-prior-art-vocab-governance)
+  ready-user-profiles)
+
+(normally r-ready-happy-paths
+  (and task-happy-paths completed-user-profiles)
+  ready-happy-paths)
+
+;; Phase 2 -- requirements + concept pages + synthetic-user + phase-1 gates
+(normally r-ready-draft-requirements
+  (and task-draft-requirements
+       completed-happy-paths
+       completed-survey-parse-boundary
+       completed-survey-graph-internals
+       completed-survey-reason-projection
+       completed-survey-ast-evolution)
+  ready-draft-requirements)
+
+(normally r-ready-author-concept-pages
+  (and task-author-concept-pages completed-draft-requirements)
+  ready-author-concept-pages)
+
+(normally r-ready-synthetic-user-run
+  (and task-synthetic-user-run completed-draft-requirements)
+  ready-synthetic-user-run)
+
+(normally r-ready-phase1-quality-gates
+  (and task-phase1-quality-gates completed-synthetic-user-run)
+  ready-phase1-quality-gates)
+
+;; Phase 3 -- ADRs + grammar + contracts + maps + threat-model + phase-2 gates
+(normally r-ready-adr-ast-representation
+  (and task-adr-ast-representation
+       completed-phase1-quality-gates
+       completed-survey-ast-evolution
+       completed-survey-parse-boundary)
+  ready-adr-ast-representation)
+
+(normally r-ready-adr-vocab-governance
+  (and task-adr-vocab-governance
+       completed-phase1-quality-gates
+       completed-prior-art-vocab-governance)
+  ready-adr-vocab-governance)
+
+(normally r-ready-adr-spl-projection
+  (and task-adr-spl-projection
+       completed-phase1-quality-gates
+       completed-survey-reason-projection)
+  ready-adr-spl-projection)
+
+(normally r-ready-adr-frontmatter-boundary
+  (and task-adr-frontmatter-boundary completed-phase1-quality-gates)
+  ready-adr-frontmatter-boundary)
+
+(normally r-ready-adr-query-surface
+  (and task-adr-query-surface
+       completed-phase1-quality-gates
+       completed-survey-graph-internals)
+  ready-adr-query-surface)
+
+(normally r-ready-grammar-langsec
+  (and task-grammar-langsec
+       completed-adr-ast-representation
+       completed-survey-parse-boundary)
+  ready-grammar-langsec)
+
+(normally r-ready-contracts
+  (and task-contracts
+       completed-adr-ast-representation
+       completed-adr-vocab-governance
+       completed-adr-spl-projection
+       completed-adr-frontmatter-boundary
+       completed-adr-query-surface
+       completed-grammar-langsec)
+  ready-contracts)
+
+(normally r-ready-purity-boundary-map
+  (and task-purity-boundary-map completed-contracts)
+  ready-purity-boundary-map)
+
+(normally r-ready-test-strategy
+  (and task-test-strategy completed-purity-boundary-map)
+  ready-test-strategy)
+
+(normally r-ready-threat-model
+  (and task-threat-model
+       completed-adr-spl-projection
+       completed-grammar-langsec)
+  ready-threat-model)
+
+(normally r-ready-phase2-quality-gates
+  (and task-phase2-quality-gates
+       completed-contracts
+       completed-purity-boundary-map
+       completed-test-strategy
+       completed-threat-model)
+  ready-phase2-quality-gates)
+
+;; Phase 4 -- Tier 2 review + adversarial tests
+(normally r-ready-cross-model-review
+  (and task-cross-model-review completed-phase2-quality-gates)
+  ready-cross-model-review)
+
+(normally r-ready-adversarial-tests
+  (and task-adversarial-tests completed-phase2-quality-gates)
+  ready-adversarial-tests)
+
+;; Phase 5 -- IMPL-045 scaffold + spec approval
+(normally r-ready-draft-impl-045
+  (and task-draft-impl-045
+       completed-cross-model-review
+       completed-adversarial-tests)
+  ready-draft-impl-045)
+
+(normally r-ready-mark-spec-approved
+  (and task-mark-spec-approved
+       completed-draft-impl-045
+       completed-author-concept-pages)
+  ready-mark-spec-approved)
+
+;; -- Assignment Rules ----------------------------------
+
+(normally r-assign-reconcile-spec-044 (and ready-reconcile-spec-044 agent-claude-available) assign-to-reconcile-spec-044-claude)
+(normally r-assign-survey-parse-boundary (and ready-survey-parse-boundary agent-claude-available) assign-to-survey-parse-boundary-claude)
+(normally r-assign-survey-graph-internals (and ready-survey-graph-internals agent-claude-available) assign-to-survey-graph-internals-claude)
+(normally r-assign-survey-reason-projection (and ready-survey-reason-projection agent-claude-available) assign-to-survey-reason-projection-claude)
+(normally r-assign-survey-ast-evolution (and ready-survey-ast-evolution agent-claude-available) assign-to-survey-ast-evolution-claude)
+(normally r-assign-prior-art-typed-links (and ready-prior-art-typed-links agent-claude-available) assign-to-prior-art-typed-links-claude)
+(normally r-assign-prior-art-vocab-governance (and ready-prior-art-vocab-governance agent-claude-available) assign-to-prior-art-vocab-governance-claude)
+(normally r-assign-user-profiles (and ready-user-profiles agent-claude-available) assign-to-user-profiles-claude)
+(normally r-assign-happy-paths (and ready-happy-paths agent-claude-available) assign-to-happy-paths-claude)
+(normally r-assign-draft-requirements (and ready-draft-requirements agent-claude-available) assign-to-draft-requirements-claude)
+(normally r-assign-author-concept-pages (and ready-author-concept-pages agent-claude-available) assign-to-author-concept-pages-claude)
+(normally r-assign-synthetic-user-run (and ready-synthetic-user-run agent-claude-available) assign-to-synthetic-user-run-claude)
+(normally r-assign-phase1-quality-gates (and ready-phase1-quality-gates agent-claude-available) assign-to-phase1-quality-gates-claude)
+(normally r-assign-adr-ast-representation (and ready-adr-ast-representation agent-claude-available) assign-to-adr-ast-representation-claude)
+(normally r-assign-adr-vocab-governance (and ready-adr-vocab-governance agent-claude-available) assign-to-adr-vocab-governance-claude)
+(normally r-assign-adr-spl-projection (and ready-adr-spl-projection agent-claude-available) assign-to-adr-spl-projection-claude)
+(normally r-assign-adr-frontmatter-boundary (and ready-adr-frontmatter-boundary agent-claude-available) assign-to-adr-frontmatter-boundary-claude)
+(normally r-assign-adr-query-surface (and ready-adr-query-surface agent-claude-available) assign-to-adr-query-surface-claude)
+(normally r-assign-grammar-langsec (and ready-grammar-langsec agent-claude-available) assign-to-grammar-langsec-claude)
+(normally r-assign-contracts (and ready-contracts agent-claude-available) assign-to-contracts-claude)
+(normally r-assign-purity-boundary-map (and ready-purity-boundary-map agent-claude-available) assign-to-purity-boundary-map-claude)
+(normally r-assign-test-strategy (and ready-test-strategy agent-claude-available) assign-to-test-strategy-claude)
+(normally r-assign-threat-model (and ready-threat-model agent-claude-available) assign-to-threat-model-claude)
+(normally r-assign-phase2-quality-gates (and ready-phase2-quality-gates agent-claude-available) assign-to-phase2-quality-gates-claude)
+(normally r-assign-cross-model-review (and ready-cross-model-review agent-claude-available) assign-to-cross-model-review-claude)
+(normally r-assign-adversarial-tests (and ready-adversarial-tests agent-claude-available) assign-to-adversarial-tests-claude)
+(normally r-assign-draft-impl-045 (and ready-draft-impl-045 agent-claude-available) assign-to-draft-impl-045-claude)
+(normally r-assign-mark-spec-approved (and ready-mark-spec-approved agent-claude-available) assign-to-mark-spec-approved-claude)
