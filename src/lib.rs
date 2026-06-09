@@ -23,6 +23,7 @@ pub mod mobile_git;
 #[cfg(feature = "mobile")]
 pub mod mobile_state;
 pub mod parsers;
+pub mod predicate_lints;
 pub mod predicates;
 #[cfg(feature = "reason")]
 pub mod reason;

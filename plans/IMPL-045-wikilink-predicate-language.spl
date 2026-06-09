@@ -264,3 +264,11 @@
 (claims agent:claude
   :at "2026-06-09T15:02:08Z"
   (given completed-backlink-render))
+
+(claims agent:claude
+  :at "2026-06-09T15:06:31Z"
+  (given completed-annotation-capture))
+
+(claims agent:claude
+  :at "2026-06-09T15:16:41Z"
+  (given completed-graph-styling))

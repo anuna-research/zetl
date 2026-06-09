@@ -1818,6 +1818,19 @@ fn cmd_check(
         vec![]
     };
 
+    // SPEC-045 REQ-4508: predicate lints over observed usage + optional strict
+    // vocabulary. Always computed in a full check (show_all); cheap and additive.
+    let predicate_lints: Vec<zetl::predicate_lints::PredicateLint> = if show_all {
+        let cfg = zetl::predicates::PredicatesConfig::load_from_vault(&pipeline.vault_root)
+            .unwrap_or_else(|e| {
+                eprintln!("warning: {e}");
+                None
+            });
+        zetl::predicate_lints::compute_predicate_lints(&pipeline.files, cfg.as_ref())
+    } else {
+        vec![]
+    };
+
     // OBS-008: compute summary fields from theory cache.
     let total_spl_blocks: usize = pipeline.files.iter().map(|f| f.spl_blocks.len()).sum();
 
@@ -1867,6 +1880,8 @@ fn cmd_check(
         drifted_blocks_info: usize,
         explicitly_grounded_facts: usize,
         broken_groundings: usize,
+        predicate_errors: usize,
+        predicate_warnings: usize,
     }
 
     #[derive(Serialize)]
@@ -1876,6 +1891,7 @@ fn cmd_check(
         syntax_errors: Vec<zetl::types::Diagnostic>,
         spl_diagnostics: Vec<zetl::types::Diagnostic>,
         drift_diagnostics: Vec<DriftDiagnostic>,
+        predicate_lints: Vec<zetl::predicate_lints::PredicateLint>,
         summary: CheckSummary,
         #[serde(skip_serializing_if = "Option::is_none")]
         snapshot: Option<SnapshotInfo>,
@@ -1905,6 +1921,14 @@ fn cmd_check(
         drifted_blocks_info,
         explicitly_grounded_facts,
         broken_groundings,
+        predicate_errors: predicate_lints
+            .iter()
+            .filter(|l| l.level == zetl::predicate_lints::LintLevel::Error)
+            .count(),
+        predicate_warnings: predicate_lints
+            .iter()
+            .filter(|l| l.level == zetl::predicate_lints::LintLevel::Warning)
+            .count(),
     };
 
     let output = CheckOutput {
@@ -1913,6 +1937,7 @@ fn cmd_check(
         syntax_errors: diagnostics,
         spl_diagnostics,
         drift_diagnostics,
+        predicate_lints,
         summary,
         snapshot: pipeline.snapshot.clone(),
     };
@@ -2000,6 +2025,23 @@ fn cmd_check(
                 println!();
             }
 
+            if !output.predicate_lints.is_empty() {
+                let mut table = Table::new();
+                table.set_header(vec!["Level", "Lint", "File", "Line", "Message"]);
+                for l in &output.predicate_lints {
+                    table.add_row(vec![
+                        Cell::new(l.level.as_str()),
+                        Cell::new(l.kind),
+                        Cell::new(l.file.display()),
+                        Cell::new(l.line),
+                        Cell::new(&l.message),
+                    ]);
+                }
+                println!("Predicate Diagnostics:");
+                println!("{table}");
+                println!();
+            }
+
             // OBS-008: always print summary stats table.
             {
                 let mut sum_table = Table::new();
@@ -2040,6 +2082,14 @@ fn cmd_check(
                     Cell::new("Broken groundings"),
                     Cell::new(output.summary.broken_groundings),
                 ]);
+                sum_table.add_row(vec![
+                    Cell::new("Predicate errors"),
+                    Cell::new(output.summary.predicate_errors),
+                ]);
+                sum_table.add_row(vec![
+                    Cell::new("Predicate warnings"),
+                    Cell::new(output.summary.predicate_warnings),
+                ]);
                 println!("Summary:");
                 println!("{sum_table}");
                 println!();
@@ -2050,6 +2100,7 @@ fn cmd_check(
                 && output.syntax_errors.is_empty()
                 && output.spl_diagnostics.is_empty()
                 && output.drift_diagnostics.is_empty()
+                && output.predicate_lints.is_empty()
             {
                 println!("No issues found.");
             }
@@ -2138,7 +2189,11 @@ fn cmd_check(
         || output
             .spl_diagnostics
             .iter()
-            .any(|d| d.level == DiagnosticLevel::Error);
+            .any(|d| d.level == DiagnosticLevel::Error)
+        || output
+            .predicate_lints
+            .iter()
+            .any(|l| l.level == zetl::predicate_lints::LintLevel::Error);
 
     let has_warnings = output
         .syntax_errors
@@ -2151,7 +2206,11 @@ fn cmd_check(
         || output
             .drift_diagnostics
             .iter()
-            .any(|d| matches!(d.severity, DriftSeverity::Warning));
+            .any(|d| matches!(d.severity, DriftSeverity::Warning))
+        || output
+            .predicate_lints
+            .iter()
+            .any(|l| l.level == zetl::predicate_lints::LintLevel::Warning);
 
     let should_fail = match fail_on {
         FailLevel::Error => has_errors,
