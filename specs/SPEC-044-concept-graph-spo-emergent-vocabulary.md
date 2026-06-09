@@ -1,6 +1,6 @@
 ---
 title: "SPEC-044: Concept Graph — Subject-Predicate-Object Relations, Emergent Vocabulary, and In-Situ Ratification"
-version: 0.2.0
+version: 0.3.0
 status: strawman
 date: 2026-06-09
 audience: agent, human
@@ -14,9 +14,12 @@ related:
 
 # SPEC-044: Concept Graph — SPO Relations, Emergent Vocabulary, In-Situ Ratification
 
-> **Status: strawman (v0.2.0).** This document sets out a direction and a
+> **Status: strawman (v0.3.0).** This document sets out a direction and a
 > validated manual pilot, not a finished design. Schemas, thresholds, and
-> endpoints are provisional. It is offered for review and revision.
+> endpoints are provisional. It is offered for review and revision. v0.3.0
+> adds §1.2 (contexts of use, as job stories), which establishes the
+> surface-coverage scope that distinguishes an organisational product from an
+> author's toolkit.
 
 ## Information Table
 
@@ -24,7 +27,7 @@ related:
 | ------------ | --------------------------------------------------------------------- |
 | Document ID  | SPEC-044                                                               |
 | Title        | Concept Graph — SPO Relations, Emergent Vocabulary, In-Situ Ratification |
-| Version      | 0.2.0 (strawman)                                                       |
+| Version      | 0.3.0 (strawman)                                                       |
 | Status       | Strawman                                                               |
 | Author       | Mat Mytka & Kairos (m3-kairos dyad)                                    |
 | Date         | 2026-06-09                                                             |
@@ -71,6 +74,51 @@ durable learning; Bjork, 1994). It also addresses the **irony of automation**
 practice that competence depends on. Locating a small, deliberate learning act at
 the point of comprehension keeps the human coupled to the knowledge the system
 records.
+
+### 1.2 Contexts of use (job stories)
+
+User needs are expressed as **job stories** — *when [situation], I want to
+[motivation], so I can [outcome]* (Klement, 2013; Christensen et al., 2016) —
+rather than persona profiles. The surface a person needs is determined by the
+situation they are in, not by a fixed identity: a single person occupies several
+of the jobs below over time. A job story is included here only if it forces a
+**distinct authoring/consumption surface or answerability path**; that gate keeps
+the set from degrading into unsituated personas.
+
+| # | Job story | Surface it forces | Answerability path |
+|---|-----------|-------------------|--------------------|
+| 1 | **Ingest.** When I first open the tool on a document set that is not yet a graph, I want latent structure surfaced and proposed in bulk, so I can make an existing corpus navigable without hand-editing every file. | Machine-surfaced candidates + bulk ratify | Ratification act + surfaced evidence |
+| 2 | **Capture (non-specialist).** When I notice two things relate while doing my domain work, I want to record the relationship without learning a markup syntax, so my knowledge enters the graph. | Suggestion + ratify GUI (no markup) | Prompted rationale at ratify-time |
+| 3 | **Author in flow.** When I already know a relationship as I write, I want to type the typed edge inline, so I do not break composition to use a separate tool. | Body-inline `predicate::[[Target]]` | The surrounding prose |
+| 4 | **Orient.** When I reach a document I did not write, I want its typed relationships and their rationale shown, so I can spend attention on the edges that change its meaning. | Read-only typed-backlink render + progressive disclosure | Consumed (rationale shown in place) |
+| 5 | **Ask.** When I have a question spanning the corpus, I want to query the typed graph and get a traceable answer, so I can trust and verify it. | Query: CLI/logic, or a query-builder for non-specialists | Provenance on the answer |
+| 6 | **Steward.** When the vocabulary has drifted or sprawled, I want to see its real distribution and merge, prune, or promote predicates, so the graph stays coherent. | Audit + promote/deprecate GUI | The governance decision, recorded |
+| 7 | **Traverse (machine).** When an agent builds context for a task, it wants typed edges plus provenance in machine-readable form, so it can choose what to traverse, weight claims by asserter, and propose edges back during authoring. | Programmatic (structured/JSON) | Assertion-provenance (source page/line) |
+| 8 | **Inherit.** When I join a team and inherit a mature graph, I want to re-derive its load-bearing relationships rather than be handed them, so the knowledge becomes mine. | Guided re-ratification GUI | Prior provenance as scaffold + re-ratification |
+
+Three consequences shape the scope of this spec:
+
+- **Coverage, not personas, separates a product from a toolkit.** The eight jobs
+  force eight distinct surfaces. A typed-edge engine (the companion engineering
+  spec, SPEC-045) specifies the inline-authoring surface (job 3) and the read-only
+  render (job 4); the remaining surfaces — bulk ratify, non-specialist capture,
+  query-builder, stewardship, re-ratification — are the scope of *this* spec, and
+  are what make the capability usable by an organisation rather than only by
+  authors fluent in the markup.
+- **Ingest and inherit (jobs 1, 8) are onboarding-phase, not core.** They run when
+  a corpus or a person first meets the graph, produce a ratified graph, and hand
+  off to the steady-state core. They belong in a separable onboarding layer, not
+  the core parser — which relocates (rather than removes) the question of where
+  onboarding-produced edges are materialised for the core to read.
+- **Reading is the high-frequency job.** Job 4 (*orient*) is the most common
+  context: most participants consume the graph and never author an edge. The
+  authoring jobs (1–3) exist so that consumption pays off; the product value is
+  largely downstream of them.
+
+> **Answerability has two production paths** (see §5.2). Job 3 yields it for free —
+> the surrounding prose *is* the rationale. Jobs 1, 2, 6, 8 produce it from the
+> ratification act itself (surfaced evidence plus a prompted rationale), because
+> there is no authored prose to carry it. One answerability layer, filled two ways.
 
 ## 2. The model: Subject-Predicate-Object
 
@@ -442,7 +490,9 @@ and ratification core. Defer.
 - Baudrillard, J. (1981). *Simulacra and Simulation.*
 - Berardi, F. (2015). *And: Phenomenology of the End.* (Connection versus conjunction; semiocapitalism.)
 - Bjork, R. A. (1994). Memory and metamemory considerations in the training of human beings. (Desirable difficulties.)
+- Christensen, C. M., Hall, T., Dillon, K., & Duncan, D. S. (2016). *Competing Against Luck.* (Jobs to be Done.)
 - Goodhart, C. A. E. (1975). Problems of monetary management. (Goodhart's law.)
+- Klement, A. (2013). *Replacing the User Story with the Job Story.* (Job-story format.)
 - Shirky, C. (2005). *Ontology is Overrated: Categories, Links, and Tags.*
 - Slamecka, N. J., & Graf, P. (1978). The generation effect. *Journal of Experimental Psychology: Human Learning and Memory*, 4(6), 592–604.
 - Vander Wal, T. (2007). *Folksonomy.* (Coinage and definition.)
