@@ -23,6 +23,16 @@ pub struct EdgeMeta {
     pub heading: Option<String>,
     pub block_ref: Option<String>,
     pub is_embed: bool,
+    /// SPEC-045 named-edge predicate for this directed edge. `None` ⇒ an
+    /// untyped edge (the pre-SPEC-045 default). A K-predicate wikilink expands
+    /// to K edges, each carrying exactly one predicate (REQ-4506).
+    #[serde(default)]
+    pub predicate: Option<String>,
+    /// SPEC-045 edge annotation (REQ-4504) — the indented sub-content under a
+    /// list-item named edge, captured at the graph layer for progressive
+    /// disclosure. `None` when absent.
+    #[serde(default)]
+    pub annotation: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +48,12 @@ pub struct BacklinkResult {
     pub context: Option<String>,
     pub alias: Option<String>,
     pub is_embed: bool,
+    /// SPEC-045 predicate of the incoming edge (`None` ⇒ untyped).
+    #[serde(default)]
+    pub predicate: Option<String>,
+    /// SPEC-045 annotation of the incoming edge (`None` ⇒ absent).
+    #[serde(default)]
+    pub annotation: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -45,12 +61,32 @@ pub struct DeadLink {
     pub source: String,
     pub line: u32,
     pub target: String,
+    /// SPEC-045 predicate of the dead typed edge (`None` ⇒ untyped) — lets a
+    /// curator see "3 dead `supersedes::` targets" (REQ-4506 / REQ-4514).
+    #[serde(default)]
+    pub predicate: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct Orphan {
     pub page: String,
     pub forward_links: usize,
+}
+
+/// A single directed edge of the typed graph, flattened for the `zetl edges`
+/// query surface (SPEC-045 REQ-4509 / CON-4503).
+#[derive(Debug, Clone, Serialize)]
+pub struct EdgeRecord {
+    pub source: String,
+    pub target: String,
+    /// `None` ⇒ untyped edge.
+    pub predicate: Option<String>,
+    /// `None` ⇒ no annotation.
+    pub annotation: Option<String>,
+    pub line: u32,
+    /// `true` when the target does not resolve to a real vault page (a typed
+    /// or untyped ghost edge, REQ-4514).
+    pub is_ghost: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -151,16 +187,31 @@ impl LinkGraph {
                     .entry(target_name.clone())
                     .or_insert_with(|| graph.add_node(target_name.clone()));
 
-                let meta = EdgeMeta {
+                let base_meta = EdgeMeta {
                     source_file: file.path.to_string_lossy().to_string(),
                     line: link.line,
                     alias: link.alias.clone(),
                     heading: link.heading.clone(),
                     block_ref: link.block_ref.clone(),
                     is_embed: link.is_embed,
+                    predicate: None,
+                    annotation: link.annotation.clone(),
                 };
 
-                graph.add_edge(source_idx, target_idx, meta);
+                // SPEC-045 REQ-4506: a K-predicate wikilink expands to K
+                // directed edges S→X, each carrying one predicate; an untyped
+                // link yields a single untyped edge (predicate: None). This
+                // keeps an untyped vault byte-identical to the pre-SPEC-045
+                // graph (one edge per link occurrence).
+                if link.predicates.is_empty() {
+                    graph.add_edge(source_idx, target_idx, base_meta);
+                } else {
+                    for predicate in &link.predicates {
+                        let mut meta = base_meta.clone();
+                        meta.predicate = Some(predicate.clone());
+                        graph.add_edge(source_idx, target_idx, meta);
+                    }
+                }
             }
         }
 
@@ -204,9 +255,47 @@ impl LinkGraph {
                     context: None,
                     alias: meta.alias.clone(),
                     is_embed: meta.is_embed,
+                    predicate: meta.predicate.clone(),
+                    annotation: meta.annotation.clone(),
                 }
             })
             .collect()
+    }
+
+    /// Whether a real (resolved) page with this name exists, case-insensitively.
+    pub fn has_page(&self, page: &str) -> bool {
+        self.resolved.iter().any(|p| p.eq_ignore_ascii_case(page))
+    }
+
+    /// Enumerate every directed edge in the graph as an [`EdgeRecord`]
+    /// (SPEC-045 REQ-4509). Output is sorted deterministically by
+    /// `(source, target, predicate, line)` so `zetl edges` is reproducible.
+    pub fn all_edges(&self) -> Vec<EdgeRecord> {
+        let mut records: Vec<EdgeRecord> = self
+            .graph
+            .edge_references()
+            .map(|edge_ref| {
+                let source = self.graph[edge_ref.source()].clone();
+                let target_name = &self.graph[edge_ref.target()];
+                let meta = edge_ref.weight();
+                EdgeRecord {
+                    source,
+                    target: target_name.clone(),
+                    predicate: meta.predicate.clone(),
+                    annotation: meta.annotation.clone(),
+                    line: meta.line,
+                    is_ghost: !self.resolved.contains(target_name),
+                }
+            })
+            .collect();
+        records.sort_by(|a, b| {
+            a.source
+                .cmp(&b.source)
+                .then_with(|| a.target.cmp(&b.target))
+                .then_with(|| a.predicate.cmp(&b.predicate))
+                .then_with(|| a.line.cmp(&b.line))
+        });
+        records
     }
 
     /// Find dead links: edges whose target is a phantom node (not backed by a real file).
@@ -226,6 +315,7 @@ impl LinkGraph {
                     source: source_name.clone(),
                     line: meta.line,
                     target: target_name.clone(),
+                    predicate: meta.predicate.clone(),
                 });
             }
         }
@@ -568,6 +658,15 @@ pub struct GraphIndexEdge {
     pub source: String,
     /// Slug of the target node.
     pub target: String,
+    /// SPEC-045 named-edge predicate (`None` ⇒ untyped edge). When every edge
+    /// in the feed is untyped the serialiser stays byte-identical to the
+    /// pre-SPEC-045 CON-101 shape.
+    pub predicate: Option<String>,
+    /// SPEC-045 edge annotation (`None` ⇒ absent).
+    pub annotation: Option<String>,
+    /// Source line of the link occurrence — used only to disambiguate
+    /// graphology edge keys for parallel untyped edges in a typed feed.
+    pub line: u32,
 }
 
 /// All data needed to produce the graph index JSON.
@@ -638,30 +737,103 @@ pub fn serialize_graph_index(
     node_entries.sort_by(|a, b| a.0.cmp(&b.0));
     let nodes_out: Vec<serde_json::Value> = node_entries.into_iter().map(|(_, v)| v).collect();
 
-    let mut seen_edges: HashSet<(String, String)> = HashSet::new();
-    let mut edge_entries: Vec<(String, serde_json::Value)> = Vec::new();
-    for edge_ref in graph.graph.edge_references() {
-        let source_name = &graph.graph[edge_ref.source()];
-        let target_name = &graph.graph[edge_ref.target()];
-        let source_slug = slug_for(source_name);
-        let target_slug = slug_for(target_name);
-        let pair = (source_slug.clone(), target_slug.clone());
-        if !seen_edges.insert(pair) {
-            continue;
-        }
-        let key = format!("{source_slug}->{target_slug}");
-        edge_entries.push((
-            key.clone(),
-            serde_json::json!({
-                "key": key,
-                "source": source_slug,
-                "target": target_slug,
-                "attributes": {},
-            }),
-        ));
+    // SPEC-045 REQ-4517 / CON-4508: backward-compatible SUPERSET feed, mirroring
+    // `serialize_graph_index_ctx` so `zetl build` and `zetl serve` carry the
+    // same typed edges. With NO typed edges the output is byte-identical to the
+    // pre-SPEC-045 CON-101 path (untyped branch below). With typed edges the
+    // feed becomes a multigraph (`multi:true`) with predicate-qualified keys and
+    // per-edge `predicate`/`annotation` attributes.
+    struct FeedEdge {
+        source: String,
+        target: String,
+        predicate: Option<String>,
+        annotation: Option<String>,
+        line: u32,
     }
-    edge_entries.sort_by(|a, b| a.0.cmp(&b.0));
-    let edges_out: Vec<serde_json::Value> = edge_entries.into_iter().map(|(_, v)| v).collect();
+    let mut all_edges: Vec<FeedEdge> = Vec::new();
+    for edge_ref in graph.graph.edge_references() {
+        let meta = edge_ref.weight();
+        all_edges.push(FeedEdge {
+            source: slug_for(&graph.graph[edge_ref.source()]),
+            target: slug_for(&graph.graph[edge_ref.target()]),
+            predicate: meta.predicate.clone(),
+            annotation: meta.annotation.clone(),
+            line: meta.line,
+        });
+    }
+    let has_typed = all_edges.iter().any(|e| e.predicate.is_some());
+
+    let (edges_out, multi): (Vec<serde_json::Value>, bool) = if !has_typed {
+        // ── Untyped: pre-SPEC-045 CON-101 path, kept verbatim. ──
+        let mut seen_edges: HashSet<(String, String)> = HashSet::new();
+        let mut edge_entries: Vec<(String, serde_json::Value)> = Vec::new();
+        for e in &all_edges {
+            if !seen_edges.insert((e.source.clone(), e.target.clone())) {
+                continue;
+            }
+            let key = format!("{}->{}", e.source, e.target);
+            edge_entries.push((
+                key.clone(),
+                serde_json::json!({
+                    "key": key,
+                    "source": e.source,
+                    "target": e.target,
+                    "attributes": {},
+                }),
+            ));
+        }
+        edge_entries.sort_by(|a, b| a.0.cmp(&b.0));
+        (edge_entries.into_iter().map(|(_, v)| v).collect(), false)
+    } else {
+        // ── Typed: multigraph superset, identity (source, target, predicate). ──
+        all_edges.sort_by(|a, b| {
+            a.source
+                .cmp(&b.source)
+                .then_with(|| a.target.cmp(&b.target))
+                .then_with(|| a.predicate.cmp(&b.predicate))
+                .then_with(|| a.line.cmp(&b.line))
+        });
+        all_edges.dedup_by(|a, b| {
+            a.source == b.source && a.target == b.target && a.predicate == b.predicate
+        });
+        let mut used_keys: HashSet<String> = HashSet::new();
+        let edges_json: Vec<serde_json::Value> = all_edges
+            .iter()
+            .map(|e| {
+                let pred_part = e.predicate.as_deref().unwrap_or("__untyped");
+                let mut key = format!("{}--{}--{}", e.source, e.target, pred_part);
+                if used_keys.contains(&key) {
+                    let mut suffix = 1u32;
+                    loop {
+                        let candidate = format!("{key}#{suffix}");
+                        if !used_keys.contains(&candidate) {
+                            key = candidate;
+                            break;
+                        }
+                        suffix += 1;
+                    }
+                }
+                used_keys.insert(key.clone());
+                let predicate = e
+                    .predicate
+                    .as_ref()
+                    .map(|p| serde_json::Value::String(p.clone()))
+                    .unwrap_or(serde_json::Value::Null);
+                let annotation = e
+                    .annotation
+                    .as_ref()
+                    .map(|a| serde_json::Value::String(a.clone()))
+                    .unwrap_or(serde_json::Value::Null);
+                serde_json::json!({
+                    "key": key,
+                    "source": e.source,
+                    "target": e.target,
+                    "attributes": { "predicate": predicate, "annotation": annotation },
+                })
+            })
+            .collect();
+        (edges_json, true)
+    };
 
     let pages_count = graph.resolved.len();
     let links_count = edges_out.len();
@@ -669,7 +841,7 @@ pub fn serialize_graph_index(
     serde_json::json!({
         "options": {
             "type": "directed",
-            "multi": false,
+            "multi": multi,
             "allowSelfLoops": true,
         },
         "attributes": {
@@ -711,22 +883,115 @@ pub fn serialize_graph_index_ctx(ctx: &GraphIndexContext) -> serde_json::Value {
         })
         .collect();
 
+    // SPEC-045 REQ-4517 / CON-4508: the feed is a backward-compatible SUPERSET
+    // of the CON-101 graphology shape. When the vault has NO typed edges the
+    // output is BYTE-IDENTICAL to the pre-SPEC-045 feed — the untyped branch
+    // below reproduces it verbatim (no `multi`, no predicate-qualified keys, no
+    // `predicate`/`annotation` attributes). When the vault HAS typed edges we
+    // switch to a multigraph: parallel edges between the same (source,target)
+    // become distinct entries keyed by `(source, target, predicate)`, each
+    // carrying `predicate`/`annotation` under `attributes`, and `options.multi`
+    // is flipped to `true` so graphology accepts the parallel edges.
+    let has_typed = ctx.edges.iter().any(|e| e.predicate.is_some());
+
+    if !has_typed {
+        // ── Untyped: pre-SPEC-045 CON-101 path, kept verbatim. ──
+        let mut edges = ctx.edges.clone();
+        edges.sort_by(|a, b| {
+            let key_a = format!("{}->{}", a.source, a.target);
+            let key_b = format!("{}->{}", b.source, b.target);
+            key_a.cmp(&key_b)
+        });
+        edges.dedup_by(|a, b| a.source == b.source && a.target == b.target);
+
+        let edges_json: Vec<serde_json::Value> = edges
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "key": format!("{}->{}", e.source, e.target),
+                    "source": e.source,
+                    "target": e.target,
+                    "attributes": {}
+                })
+            })
+            .collect();
+
+        return serde_json::json!({
+            "attributes": {
+                "format": "zetl-graph/v1",
+                "vault": {
+                    "name": ctx.vault_name,
+                    "pages": ctx.total_pages,
+                    "links": ctx.total_links,
+                }
+            },
+            "options": {
+                "type": "directed",
+                "multi": false,
+                "allowSelfLoops": true,
+            },
+            "nodes": nodes_json,
+            "edges": edges_json,
+        });
+    }
+
+    // ── Typed: multigraph superset. ──
+    // Identity is (source, target, predicate). A K-predicate wikilink yields K
+    // parallel edges; untyped edges between the same pair are de-duplicated to
+    // a single entry (predicate = None). The key is predicate-qualified, and a
+    // monotonic suffix guarantees uniqueness should the same identity recur.
     let mut edges = ctx.edges.clone();
     edges.sort_by(|a, b| {
-        let key_a = format!("{}->{}", a.source, a.target);
-        let key_b = format!("{}->{}", b.source, b.target);
-        key_a.cmp(&key_b)
+        a.source
+            .cmp(&b.source)
+            .then_with(|| a.target.cmp(&b.target))
+            .then_with(|| a.predicate.cmp(&b.predicate))
+            .then_with(|| a.line.cmp(&b.line))
     });
-    edges.dedup_by(|a, b| a.source == b.source && a.target == b.target);
+    // Collapse exact (source, target, predicate) duplicates — a typed edge is
+    // identified by that triple, not by line.
+    edges.dedup_by(|a, b| {
+        a.source == b.source && a.target == b.target && a.predicate == b.predicate
+    });
 
+    let mut used_keys: HashSet<String> = HashSet::new();
     let edges_json: Vec<serde_json::Value> = edges
         .iter()
         .map(|e| {
+            let pred_part = e.predicate.as_deref().unwrap_or("__untyped");
+            let mut key = format!("{}--{}--{}", e.source, e.target, pred_part);
+            // Defensive uniqueness guard (should not trigger after the dedup
+            // above, but keeps keys unique under any input).
+            if used_keys.contains(&key) {
+                let mut suffix = 1u32;
+                loop {
+                    let candidate = format!("{key}#{suffix}");
+                    if !used_keys.contains(&candidate) {
+                        key = candidate;
+                        break;
+                    }
+                    suffix += 1;
+                }
+            }
+            used_keys.insert(key.clone());
+            let predicate = e
+                .predicate
+                .as_ref()
+                .map(|p| serde_json::Value::String(p.clone()))
+                .unwrap_or(serde_json::Value::Null);
+            let annotation = e
+                .annotation
+                .as_ref()
+                .map(|a| serde_json::Value::String(a.clone()))
+                .unwrap_or(serde_json::Value::Null);
             serde_json::json!({
-                "key": format!("{}->{}", e.source, e.target),
+                "key": key,
                 "source": e.source,
                 "target": e.target,
-                "attributes": {}
+                "attributes": {
+                    "predicate": predicate,
+                    "annotation": annotation,
+                }
             })
         })
         .collect();
@@ -742,7 +1007,7 @@ pub fn serialize_graph_index_ctx(ctx: &GraphIndexContext) -> serde_json::Value {
         },
         "options": {
             "type": "directed",
-            "multi": false,
+            "multi": true,
             "allowSelfLoops": true,
         },
         "nodes": nodes_json,
@@ -771,6 +1036,8 @@ mod tests {
                     block_ref: None,
                     alias: None,
                     is_embed: false,
+                    predicates: Vec::new(),
+                    annotation: None,
                     line,
                     column: 1,
                 })
@@ -781,6 +1048,247 @@ mod tests {
             merkle_leaves: vec![],
             file_merkle: None,
         }
+    }
+
+    /// Helper: build a ParsedFile whose links carry SPEC-045 predicates.
+    /// Each tuple is `(target, line, predicates)`.
+    fn make_typed_file(name: &str, links: Vec<(&str, u32, Vec<&str>)>) -> ParsedFile {
+        ParsedFile {
+            path: PathBuf::from(format!("{name}.md")),
+            page_name: name.to_string(),
+            links: links
+                .into_iter()
+                .map(|(target, line, preds)| crate::types::WikiLink {
+                    target_page: target.to_string(),
+                    raw_target: target.to_string(),
+                    heading: None,
+                    block_ref: None,
+                    alias: None,
+                    is_embed: false,
+                    predicates: preds.into_iter().map(|p| p.to_string()).collect(),
+                    annotation: None,
+                    line,
+                    column: 1,
+                })
+                .collect(),
+            spl_blocks: vec![],
+            diagnostics: vec![],
+            mtime: SystemTime::now(),
+            merkle_leaves: vec![],
+            file_merkle: None,
+        }
+    }
+
+    #[test]
+    fn spec045_k_predicate_link_expands_to_k_edges() {
+        // `derived_from::informed_by::[[Retro]]` on "Decision Log" → two
+        // directed typed edges, plus one untyped edge for a bare link.
+        let mut resolved = HashMap::new();
+        resolved.insert("retro".to_string(), "Retro".to_string());
+        resolved.insert("loose".to_string(), "Loose".to_string());
+        let files = vec![make_typed_file(
+            "Decision Log",
+            vec![
+                ("Retro", 3, vec!["derived_from", "informed_by"]),
+                ("Loose", 5, vec![]), // untyped
+            ],
+        )];
+        let graph = LinkGraph::build(&files, &resolved);
+        let fwd = graph.forward_links("Decision Log");
+        assert_eq!(fwd.len(), 3, "2 typed + 1 untyped");
+
+        let mut typed: Vec<_> = fwd
+            .iter()
+            .filter_map(|f| f.meta.predicate.as_deref().map(|p| (p, f.target.as_str())))
+            .collect();
+        typed.sort();
+        assert_eq!(
+            typed,
+            vec![("derived_from", "Retro"), ("informed_by", "Retro")]
+        );
+        // The bare link stays untyped.
+        assert_eq!(fwd.iter().filter(|f| f.meta.predicate.is_none()).count(), 1);
+    }
+
+    #[test]
+    fn spec045_typed_backlink_carries_predicate() {
+        let mut resolved = HashMap::new();
+        resolved.insert(
+            "move fast doctrine".to_string(),
+            "Move Fast Doctrine".to_string(),
+        );
+        let files = vec![
+            make_typed_file(
+                "Decision Log",
+                vec![("Move Fast Doctrine", 7, vec!["contradicts"])],
+            ),
+            make_typed_file("Move Fast Doctrine", vec![]),
+        ];
+        let graph = LinkGraph::build(&files, &resolved);
+        let bl = graph.backlinks("Move Fast Doctrine");
+        assert_eq!(bl.len(), 1);
+        assert_eq!(bl[0].source, "Decision Log");
+        assert_eq!(bl[0].predicate.as_deref(), Some("contradicts"));
+    }
+
+    #[test]
+    fn spec045_dead_typed_edge_reports_predicate() {
+        // A typed edge to a phantom target is a typed ghost edge (REQ-4514).
+        let resolved = HashMap::new();
+        let files = vec![make_typed_file(
+            "Plan",
+            vec![("Nonexistent", 2, vec!["supersedes"])],
+        )];
+        let graph = LinkGraph::build(&files, &resolved);
+        let dead = graph.dead_links();
+        assert_eq!(dead.len(), 1);
+        assert_eq!(dead[0].target, "Nonexistent");
+        assert_eq!(dead[0].predicate.as_deref(), Some("supersedes"));
+    }
+
+    // ── SPEC-045 REQ-4517 / CON-4508: graph-feed superset ───────────────────
+
+    /// Helper: an untyped edge for the graph-index context.
+    fn idx_edge(source: &str, target: &str) -> GraphIndexEdge {
+        GraphIndexEdge {
+            source: source.to_string(),
+            target: target.to_string(),
+            predicate: None,
+            annotation: None,
+            line: 1,
+        }
+    }
+
+    fn empty_ctx<'a>(edges: Vec<GraphIndexEdge>) -> GraphIndexContext<'a> {
+        GraphIndexContext {
+            vault_name: "Vault",
+            total_pages: 2,
+            total_links: edges.len(),
+            nodes: vec![
+                GraphIndexNode {
+                    label: "A".to_string(),
+                    slug: "a".to_string(),
+                    outlink_count: 1,
+                    backlink_count: 0,
+                    is_orphan: true,
+                    is_dead: false,
+                    tags: vec![],
+                },
+                GraphIndexNode {
+                    label: "B".to_string(),
+                    slug: "b".to_string(),
+                    outlink_count: 0,
+                    backlink_count: 1,
+                    is_orphan: false,
+                    is_dead: false,
+                    tags: vec![],
+                },
+            ],
+            edges,
+        }
+    }
+
+    #[test]
+    fn spec045_feed_no_typed_edges_is_con101_byte_identical() {
+        // An untyped feed must reproduce the pre-SPEC-045 CON-101 output exactly:
+        // multi == false, edge keys are `<src>-><tgt>`, and edge attributes are
+        // the empty object (no `predicate`/`annotation`).
+        let ctx = empty_ctx(vec![idx_edge("a", "b")]);
+        let val = serialize_graph_index_ctx(&ctx);
+
+        assert_eq!(val["options"]["multi"], serde_json::json!(false));
+        let edges = val["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0]["key"], "a->b");
+        assert_eq!(edges[0]["source"], "a");
+        assert_eq!(edges[0]["target"], "b");
+        // Attributes must be the empty object — no predicate key present.
+        assert_eq!(edges[0]["attributes"], serde_json::json!({}));
+        assert!(edges[0]["attributes"].get("predicate").is_none());
+    }
+
+    #[test]
+    fn spec045_feed_typed_edge_flips_multi_and_carries_predicate() {
+        let ctx = empty_ctx(vec![GraphIndexEdge {
+            source: "a".to_string(),
+            target: "b".to_string(),
+            predicate: Some("contradicts".to_string()),
+            annotation: Some("see §3".to_string()),
+            line: 7,
+        }]);
+        let val = serialize_graph_index_ctx(&ctx);
+
+        assert_eq!(val["options"]["multi"], serde_json::json!(true));
+        let edges = val["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0]["attributes"]["predicate"], "contradicts");
+        assert_eq!(edges[0]["attributes"]["annotation"], "see §3");
+        assert_eq!(edges[0]["key"], "a--b--contradicts");
+    }
+
+    #[test]
+    fn spec045_feed_k_predicate_produces_k_parallel_edges_distinct_keys() {
+        // Two predicates on the same (a,b) pair → two parallel edges, distinct
+        // keys, both present in a multigraph feed.
+        let ctx = empty_ctx(vec![
+            GraphIndexEdge {
+                source: "a".to_string(),
+                target: "b".to_string(),
+                predicate: Some("derived_from".to_string()),
+                annotation: None,
+                line: 3,
+            },
+            GraphIndexEdge {
+                source: "a".to_string(),
+                target: "b".to_string(),
+                predicate: Some("informed_by".to_string()),
+                annotation: None,
+                line: 3,
+            },
+        ]);
+        let val = serialize_graph_index_ctx(&ctx);
+
+        assert_eq!(val["options"]["multi"], serde_json::json!(true));
+        let edges = val["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), 2);
+        let mut keys: Vec<&str> = edges.iter().map(|e| e["key"].as_str().unwrap()).collect();
+        keys.sort();
+        assert_eq!(keys, vec!["a--b--derived_from", "a--b--informed_by"]);
+        // All endpoints unchanged for plain source/target consumers.
+        for e in edges {
+            assert_eq!(e["source"], "a");
+            assert_eq!(e["target"], "b");
+        }
+    }
+
+    #[test]
+    fn spec045_feed_mixed_typed_and_untyped_keys_unique() {
+        // A typed feed that also contains an untyped edge between the same pair:
+        // the untyped edge gets the `__untyped` key segment and a null predicate.
+        let ctx = empty_ctx(vec![
+            GraphIndexEdge {
+                source: "a".to_string(),
+                target: "b".to_string(),
+                predicate: Some("contradicts".to_string()),
+                annotation: None,
+                line: 7,
+            },
+            idx_edge("a", "b"), // untyped, same pair
+        ]);
+        let val = serialize_graph_index_ctx(&ctx);
+
+        let edges = val["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), 2);
+        let keys: HashSet<&str> = edges.iter().map(|e| e["key"].as_str().unwrap()).collect();
+        assert_eq!(keys.len(), 2, "keys must be unique");
+        assert!(keys.contains("a--b--contradicts"));
+        assert!(keys.contains("a--b--__untyped"));
+        // The untyped parallel edge carries a null predicate (not the empty obj).
+        let untyped = edges
+            .iter()
+            .find(|e| e["key"] == "a--b--__untyped")
+            .unwrap();
+        assert_eq!(untyped["attributes"]["predicate"], serde_json::Value::Null);
     }
 
     /// Helper: build a WikiLink with all options
@@ -799,6 +1307,8 @@ mod tests {
             block_ref: block_ref.map(|s| s.to_string()),
             alias: alias.map(|s| s.to_string()),
             is_embed,
+            predicates: Vec::new(),
+            annotation: None,
             line,
             column: 1,
         }
@@ -1845,5 +2355,56 @@ mod tests {
         assert_eq!(edges.len(), 1);
         assert_eq!(edges[0]["key"], "a->b");
         assert_eq!(out["attributes"]["vault"]["links"], 1);
+    }
+
+    #[test]
+    fn spec045_build_feed_carries_typed_edges() {
+        // REQ-4517: the build-path serializer must mirror the serve path —
+        // typed edges → multi:true + predicate-qualified keys + attributes.
+        let files = vec![
+            make_typed_file(
+                "A",
+                vec![
+                    ("B", 1, vec!["derived_from", "informed_by"]),
+                    ("C", 2, vec![]), // untyped
+                ],
+            ),
+            make_file("B", vec![]),
+            make_file("C", vec![]),
+        ];
+        let resolved: HashMap<String, String> = [
+            ("B".to_string(), "B".to_string()),
+            ("C".to_string(), "C".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+        let out = serialize_graph_index(&graph, &HashMap::new(), &HashMap::new(), "v", "t");
+
+        assert_eq!(out["options"]["multi"], true);
+        let edges = out["edges"].as_array().unwrap();
+        // 2 typed (derived_from + informed_by, A→B) + 1 untyped (A→C).
+        assert_eq!(edges.len(), 3);
+        let preds: Vec<&str> = edges
+            .iter()
+            .filter_map(|e| e["attributes"]["predicate"].as_str())
+            .collect();
+        assert!(preds.contains(&"derived_from") && preds.contains(&"informed_by"));
+        // Untyped edge carries a null predicate attribute.
+        assert!(edges.iter().any(|e| e["attributes"]["predicate"].is_null()));
+    }
+
+    #[test]
+    fn spec045_build_feed_untyped_is_con101_baseline() {
+        // No typed edges → multi:false + empty edge attributes (byte-identical
+        // to the pre-SPEC-045 CON-101 feed).
+        let files = vec![make_file("A", vec![("B", 1)]), make_file("B", vec![])];
+        let resolved: HashMap<String, String> =
+            [("B".to_string(), "B".to_string())].into_iter().collect();
+        let graph = LinkGraph::build(&files, &resolved);
+        let out = serialize_graph_index(&graph, &HashMap::new(), &HashMap::new(), "v", "t");
+        assert_eq!(out["options"]["multi"], false);
+        let edges = out["edges"].as_array().unwrap();
+        assert_eq!(edges[0]["attributes"].as_object().unwrap().len(), 0);
     }
 }

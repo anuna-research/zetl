@@ -9,7 +9,8 @@ use serde_json::{json, Value};
 use zetl::hooks::ast::{
     Block, BlockQuote, Code, CodeBlock, Document, DocumentKind, Embed, Emphasis, Frontmatter,
     Heading, HtmlBlock, HtmlInline, Image, Inline, LineBreak, Link, List, ListItem, Paragraph,
-    Position, SoftBreak, SplBlock, Strong, Text, ThematicBreak, Wikilink, AST_VERSION,
+    Position, PredicateSpec, SoftBreak, SplBlock, Strong, Text, ThematicBreak, Wikilink,
+    AST_VERSION,
 };
 
 const SCHEMA_PATH: &str = "tools/zetl-ast-schema-v1.json";
@@ -114,6 +115,18 @@ fn representative_document() -> Document {
                         alias: Some("click".into()),
                         heading: Some("Section".into()),
                         block_id: Some("abc123".into()),
+                        // SPEC-045 typed edges (schema v1.1). `inverse` is
+                        // reserved and always null in v1.
+                        predicates: vec![
+                            PredicateSpec {
+                                predicate: "derived_from".into(),
+                                inverse: None,
+                            },
+                            PredicateSpec {
+                                predicate: "informed_by".into(),
+                                inverse: None,
+                            },
+                        ],
                     }),
                     Inline::Wikilink(Wikilink {
                         position: pos(3, 80, 3, 90),
@@ -121,6 +134,7 @@ fn representative_document() -> Document {
                         alias: None,
                         heading: None,
                         block_id: None,
+                        predicates: Vec::new(),
                     }),
                 ],
             }),
@@ -264,6 +278,7 @@ fn canonical_example_validates_without_wikilink_at_block_level() {
                 alias: None,
                 heading: None,
                 block_id: None,
+                predicates: Vec::new(),
             })],
         })],
     };
@@ -324,6 +339,74 @@ fn schema_validator_rejects_bad_position() {
         validator.validate(&bad).is_err(),
         "schema should reject position with start_line < 1"
     );
+}
+
+/// SPEC-045 REQ-4503 / CON-4505: a Wikilink carrying typed `predicates`
+/// validates against schema v1.1, round-trips unchanged, and the `inverse`
+/// key is present-but-null in every spec object.
+#[test]
+fn wikilink_predicates_validate_and_roundtrip() {
+    let validator = load_schema();
+    let link = Wikilink {
+        position: pos(1, 1, 1, 20),
+        target: "Decision".into(),
+        alias: None,
+        heading: None,
+        block_id: None,
+        predicates: vec![
+            PredicateSpec {
+                predicate: "derived_from".into(),
+                inverse: None,
+            },
+            PredicateSpec {
+                predicate: "informed_by".into(),
+                inverse: None,
+            },
+        ],
+    };
+    let doc = Document {
+        ast_version: AST_VERSION.into(),
+        kind: DocumentKind::Document,
+        position: pos(1, 1, 1, 20),
+        frontmatter: None,
+        children: vec![Block::Paragraph(Paragraph {
+            position: pos(1, 1, 1, 20),
+            children: vec![Inline::Wikilink(link.clone())],
+        })],
+    };
+    let json = serde_json::to_value(&doc).unwrap();
+    assert_valid(&validator, &json, "wikilink with predicates");
+
+    // The serialised predicate objects carry `inverse: null` explicitly.
+    let preds = &json["children"][0]["children"][0]["predicates"];
+    assert_eq!(preds[0]["predicate"], "derived_from");
+    assert!(preds[0].get("inverse").is_some() && preds[0]["inverse"].is_null());
+    assert_eq!(preds[1]["predicate"], "informed_by");
+
+    let back: Document = serde_json::from_value(json).unwrap();
+    assert_eq!(back, doc, "predicates round-trip unchanged");
+}
+
+/// Additive evolution (SPEC-032 NFR-3206): an untyped Wikilink (empty
+/// `predicates`) serialises WITHOUT a `predicates` key — byte-stable with the
+/// pre-1.1 shape.
+#[test]
+fn wikilink_without_predicates_omits_key() {
+    let link = Wikilink {
+        position: pos(1, 1, 1, 10),
+        target: "Bare".into(),
+        alias: None,
+        heading: None,
+        block_id: None,
+        predicates: Vec::new(),
+    };
+    let v = serde_json::to_value(&link).unwrap();
+    assert!(
+        v.get("predicates").is_none(),
+        "empty predicates must be omitted, got: {v}"
+    );
+    let back: Wikilink = serde_json::from_value(v).unwrap();
+    assert_eq!(back, link);
 }
 
 /// Fixture-corpus parse stability: every JSON we emit deserialises back

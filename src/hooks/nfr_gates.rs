@@ -523,6 +523,6 @@ mod tests {
         assert_eq!(CANONICAL_OVERHEAD_PCT_BUDGET, 0.15);
         assert_eq!(DEFAULT_HOOK_MEMORY_LIMIT_BYTES, 64 * 1024 * 1024);
         assert_eq!(HOOK_FAIL_ON_NEVER_EXIT_CODE, 0);
-        assert_eq!(PINNED_AST_SCHEMA_VERSION, "1.0");
+        assert_eq!(PINNED_AST_SCHEMA_VERSION, "1.1");
     }
 }

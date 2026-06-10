@@ -21,6 +21,7 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 ### Graph & search (core)
 
 - **Wikilink parsing** — `[[target]]`, `[[target|alias]]`, `[[target#heading]]`, `[[target^block-id]]`, `![[embeds]]`
+- **Typed named edges** — label a wikilink with a predicate (`derived_from::[[X]]`, chained `supersedes::informed_by::[[Y]]`, with nested-bullet annotations) to record *how* two pages connect, not just *that* they do. Bare links stay untyped (fully backward-compatible). Query with `zetl edges`, lint vocabulary drift in `zetl check`, group typed backlinks in the web UI, colour/filter them in the `/_graph` view, project them to SPL facts (`--features reason`) or RDF (`zetl export --rdf`). See [`docs/wikilink-predicates.md`](docs/wikilink-predicates.md).
 - **Graph queries** — forward links, backlinks, multi-hop traversal, shortest path
 - **Vault diagnostics** — dead links, orphan pages, syntax errors, SPL parse errors
 - **Full-text search** — content search with regex, frontmatter/code-block awareness
@@ -201,6 +202,14 @@ zetl -d ./my-vault links "Some Page"
 zetl -d ./my-vault backlinks "Some Page"
 zetl -d ./my-vault backlinks "Some Page" --depth 2    # multi-hop
 
+# Typed named edges (predicate::[[Target]]) — see docs/wikilink-predicates.md
+zetl -d ./my-vault edges                              # every edge, typed + untyped
+zetl edges --from "Decision Log"                      # outgoing edges of a page
+zetl edges --predicate contradicts                    # filter by predicate (repeatable)
+zetl edges --by-predicate                             # vocabulary-distribution histogram
+zetl edges --annotated                                # only edges with an annotation
+zetl predicates migrate --dry-run                     # report tags: that could become predicates (read-only)
+
 # Find shortest path between pages
 zetl -d ./my-vault path "Page A" "Page B"
 
@@ -225,7 +234,8 @@ zetl -d ./my-vault blocks --resolve abc123               # resolve by hash prefi
 # Stats and export
 zetl -d ./my-vault stats
 zetl -d ./my-vault list
-zetl -d ./my-vault export    # full graph as JSON
+zetl -d ./my-vault export                  # full graph as JSON
+zetl -d ./my-vault export --rdf turtle     # typed edges as RDF (turtle|ntriples|jsonld)
 
 # Page viewer (two-pane reader)
 zetl -d ./my-vault view "Some Page"

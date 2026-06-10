@@ -1,0 +1,286 @@
+;; IMPL-045: Wikilink Predicate Language — typed named edges
+;; Implements SPEC-045 v0.1.9 (committed v1 surface).
+
+(meta plan
+  (id "IMPL-045")
+  (title "Wikilink Predicate Language")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-06-09")
+  (author "agent:claude")
+  (spec "SPEC-045")
+  (description "Implement SPEC-045 typed named edges of the shape predicate::[[Target]] layered additively on the existing wikilink graph. Core path: recognise the predicate at the scanner parse boundary and carry it as an OPTIONAL field on WikiLink + the zetl-ext AST Wikilink node (bare link = empty predicates = untyped, full backward compat); expand each typed link into one directed EdgeMeta.predicate edge per predicate in the LinkGraph; type backlinks/dead-links/orphans; capture list-item annotations; ship `zetl edges` query CLI; predicate lints in `zetl check`; OPTIONAL strict `.zetl/predicates.toml`; project typed edges to provenance-tagged SPL facts under --features reason; expose page.edges/edges_by_predicate/backlinks_by_predicate/vault.predicates template vars + typed backlink render; predicate search field; typed graph-data feed (predicate/annotation, multi:true) + filter/colour/legend styling in the graph widget; RDF export (jsonld/turtle/ntriples) with PROV-O/SKOS; read-only tags->predicate migration helper. v1 excludes the materialised named-inverse (Q4, reserved null field) and CURIE->SPL projection."))
+
+;; ── Agents ──────────────────────────────────────────────
+(given agent-claude-available)
+
+;; ── Tasks (Phase 1: core data model + parse) ────────────
+(given task-ast-predicates)
+(given task-scanner-grammar)
+(given task-graph-edges)
+(given task-annotation-capture)
+
+;; ── Tasks (Phase 2: CLI + governance) ───────────────────
+(given task-predicates-toml)
+(given task-edges-cli)
+(given task-check-lints)
+
+;; ── Tasks (Phase 3: consumers) ──────────────────────────
+(given task-spl-projection)
+(given task-template-vars)
+(given task-backlink-render)
+(given task-search-predicate)
+(given task-graph-feed)
+(given task-graph-styling)
+(given task-rdf-export)
+(given task-migrate-helper)
+
+;; root tasks have no upstream dependency
+(given no-deps-ast-predicates)
+(given no-deps-scanner-grammar)
+(given no-deps-predicates-toml)
+
+;; ── Task metadata ───────────────────────────────────────
+(meta task-ast-predicates
+  (description "REQ-4503/CON-4505: add OPTIONAL `predicates` array of {predicate, inverse:null} specs to the zetl-ext AST Wikilink node (src/hooks/ast/mod.rs) + tools/zetl-ast-schema-v1.json; bump ast_version 1.0->1.1; Embed node unchanged (ADR-4501). Additive round-trip property test.")
+  (acceptance "Wikilink node carries predicates; schema pattern enforces snake|CURIE; existing hooks round-trip unchanged; ast_version=1.1; tests green."))
+(meta task-scanner-grammar
+  (description "REQ-4501/4502/CON-4501: recognise `1*(predicate '::') [[Target]]` named-edge grammar in src/scanner.rs extract_wikilinks (and parse.rs). Snake + CURIE predicates, multi-predicate chaining on ::, order-insensitive dedup set. Conservative LangSec disposition table (space/triple-colon/uppercase/slash -> text or syntax diagnostic). Add predicates field to types.rs WikiLink.")
+  (acceptance "Disposition table from CON-4501 fully covered by unit tests; no phantom edges from malformed tokens; bare links unchanged."))
+(meta task-graph-edges
+  (description "REQ-4506: EdgeMeta gains predicate:Option<String> + annotation:Option<String>; LinkGraph::build expands a K-predicate link to K directed edges (untyped link = one untyped edge), dedup key (source,target,predicate); BacklinkResult/DeadLink/Orphan carry predicate+annotation. REQ-4514 typed ghost edges.")
+  (acceptance "Typed edges in graph; typed backlinks/dead-links carry predicate; untyped vault byte-identical to before; tests green."))
+(meta task-annotation-capture
+  (description "REQ-4504: capture nested list-item block content under a list-item named edge as the edge annotation, attached at EdgeMeta.annotation. Available to edges CLI + backlink renderer. Absence = null, not error.")
+  (acceptance "Indented sub-bullet under `- pred::[[X]]` becomes EdgeMeta.annotation; no annotation = null; test covers HP2."))
+(meta task-predicates-toml
+  (description "REQ-4507/CON-4502: OPTIONAL strict-vocabulary file `.zetl/predicates.toml` parser. Absent=emergent default. Fields: enforce, accept_is_a, [prefixes], [predicates] with display/category/maps_to/construction/catch_all. deny_unknown_fields top-level; governance/presentation only, no semantics. Never seeded.")
+  (acceptance "File parses to typed struct; absent file = emergent; malformed = config error; no semantic fields accepted; tests green."))
+(meta task-edges-cli
+  (description "REQ-4509/CON-4503/ADR-4506: new `zetl edges` Command variant. Filters --predicate(repeat)/--from/--to/--by-predicate/--untyped/--annotated; -f auto|json|table. Read-only, idempotent, superset of `zetl links`. JSON row {source,target,predicate|null,annotation|null,line,is_ghost}.")
+  (acceptance "All filters work; --by-predicate histogram; no filter = superset of links; unknown predicate = zero rows not error; tests green."))
+(meta task-check-lints
+  (description "REQ-4508: predicate lints in `zetl check` over observed usage: predicate-drift (Levenshtein<=2 freq-asymmetry), predicate-relates-to-overuse, predicate-prefer-conforms-to (ADR-4503), predicate-undeclared-prefix, predicate-duplicate. Strict-file: predicate-undeclared escalates to error under enforce=true, warn under false.")
+  (acceptance "Each lint fires on its trigger; emergent default never errors w/o --fail-on; strict enforce=true errors on undeclared; tests green."))
+(meta task-spl-projection
+  (description "REQ-4510/CON-4504/ADR-4504: under --features reason project each typed SNAKE edge to fact (predicate \"source\" \"target\") with _source_file/_source_line/_source_page provenance via src/reason/mod.rs. Untyped + CURIE excluded. Deterministic/order-stable. Threat-Model-A provenance.")
+  (acceptance "Snake edges -> provenance-tagged facts; untyped/CURIE skipped; deterministic; default build pays nothing; feature-gated test green."))
+(meta task-template-vars
+  (description "REQ-4515/CON-4506: PageContext gains page.edges, page.edges_by_predicate (sentinel __untyped key), backlinks extended with predicate/label/annotation, page.backlinks_by_predicate, VaultContext.vault.predicates. Auto-label fn (local part, _/- -> space, capitalise). Additive, Chainable undefined behaviour for missing.")
+  (acceptance "Template vars serialise per CON-4506; __untyped sentinel; auto-label correct; existing themes unaffected; tests green."))
+(meta task-backlink-render
+  (description "REQ-4511: zetl build web output renders the backlink panel grouped by predicate from the REQ-4515 vars, auto-derived label + count, annotation inline (progressive disclosure). Untyped 'see also' last; no typed backlink = pre-SPEC-045 flat list.")
+  (acceptance "Grouped typed backlink panel renders; annotation surfaces; zero-typed vault renders flat list; test green."))
+(meta task-search-predicate
+  (description "REQ-4512: search index (src/search_index.rs) gains a faceted `predicate` field (STRING|STORED) capturing a page's outgoing typed-edge predicates. Additive, re-index on upgrade; existing fields unchanged.")
+  (acceptance "Predicate field indexed + filterable; existing search unchanged; test green."))
+(meta task-graph-feed
+  (description "REQ-4517/CON-4508: graph-data feed (SPEC-028/037) carries per-edge predicate(null) + annotation(null) under attributes; graphology options.multi:true with predicate-qualified edge keys for K parallel edges; backward-compatible superset of CON-101 (byte-identical when no typed edges).")
+  (acceptance "Feed carries predicate/annotation; multi:true keys; no-typed-edge feed unchanged from CON-101; test green."))
+(meta task-graph-styling
+  (description "REQ-4518: interactive graph view consumes the feed for typed-edge filtering (multi-select per predicate + untyped bucket), predicate legend w/ colour swatch + toggle + counts, colour-by-predicate (category when strict), directed arrowheads, annotation on hover. Within SPEC-028 FPS/LCP budgets; no-typed-edge = unchanged view.")
+  (acceptance "Filter/legend/colour/arrowhead/hover behaviour present; default all-visible; no-typed-edge unchanged; budgets respected."))
+(meta task-rdf-export
+  (description "REQ-4516/CON-4507: `zetl export --format {jsonld,turtle,ntriples}` projecting typed edges to triples: vault-namespace IRIs, CURIE/maps_to expansion via [prefixes], annotation as rdfs:comment, provenance as PROV-O, predicate vocabulary as SKOS scheme. No SPARQL endpoint.")
+  (acceptance "Three RDF serialisations emit valid triples w/ PROV-O + SKOS; CURIE expansion via prefixes; test green."))
+(meta task-migrate-helper
+  (description "REQ-4513/ADR-4505: `zetl predicates migrate --dry-run` scans frontmatter tags: (and configured scalar-list keys), REPORTS (file, tag, candidate predicate, candidate target page) without rewriting. Without --dry-run refuse + print dry-run-only.")
+  (acceptance "Dry-run report lists candidate conversions; no file modified; non-dry-run refuses; test green."))
+
+;; ── Readiness rules ─────────────────────────────────────
+(normally r-ready-ast-predicates   (and task-ast-predicates no-deps-ast-predicates)     ready-ast-predicates)
+(normally r-ready-scanner-grammar  (and task-scanner-grammar no-deps-scanner-grammar)   ready-scanner-grammar)
+(normally r-ready-predicates-toml  (and task-predicates-toml no-deps-predicates-toml)   ready-predicates-toml)
+(normally r-ready-graph-edges      (and task-graph-edges completed-scanner-grammar)     ready-graph-edges)
+(normally r-ready-annotation       (and task-annotation-capture completed-graph-edges)  ready-annotation-capture)
+(normally r-ready-edges-cli        (and task-edges-cli completed-graph-edges)           ready-edges-cli)
+(normally r-ready-check-lints      (and task-check-lints completed-graph-edges completed-predicates-toml) ready-check-lints)
+(normally r-ready-spl-projection   (and task-spl-projection completed-graph-edges)      ready-spl-projection)
+(normally r-ready-template-vars    (and task-template-vars completed-graph-edges)       ready-template-vars)
+(normally r-ready-backlink-render  (and task-backlink-render completed-template-vars)   ready-backlink-render)
+(normally r-ready-search-predicate (and task-search-predicate completed-graph-edges)    ready-search-predicate)
+(normally r-ready-graph-feed       (and task-graph-feed completed-graph-edges)          ready-graph-feed)
+(normally r-ready-graph-styling    (and task-graph-styling completed-graph-feed)        ready-graph-styling)
+(normally r-ready-rdf-export       (and task-rdf-export completed-graph-edges completed-predicates-toml) ready-rdf-export)
+(normally r-ready-migrate-helper   (and task-migrate-helper completed-scanner-grammar)  ready-migrate-helper)
+
+;; ── Assignment rules ────────────────────────────────────
+(normally r-assign-ast-predicates   (and ready-ast-predicates agent-claude-available)   assign-to-ast-predicates-claude)
+(normally r-assign-scanner-grammar  (and ready-scanner-grammar agent-claude-available)  assign-to-scanner-grammar-claude)
+(normally r-assign-predicates-toml  (and ready-predicates-toml agent-claude-available)  assign-to-predicates-toml-claude)
+(normally r-assign-graph-edges      (and ready-graph-edges agent-claude-available)      assign-to-graph-edges-claude)
+(normally r-assign-annotation       (and ready-annotation-capture agent-claude-available) assign-to-annotation-capture-claude)
+(normally r-assign-edges-cli        (and ready-edges-cli agent-claude-available)        assign-to-edges-cli-claude)
+(normally r-assign-check-lints      (and ready-check-lints agent-claude-available)      assign-to-check-lints-claude)
+(normally r-assign-spl-projection   (and ready-spl-projection agent-claude-available)   assign-to-spl-projection-claude)
+(normally r-assign-template-vars    (and ready-template-vars agent-claude-available)    assign-to-template-vars-claude)
+(normally r-assign-backlink-render  (and ready-backlink-render agent-claude-available)  assign-to-backlink-render-claude)
+(normally r-assign-search-predicate (and ready-search-predicate agent-claude-available) assign-to-search-predicate-claude)
+(normally r-assign-graph-feed       (and ready-graph-feed agent-claude-available)       assign-to-graph-feed-claude)
+(normally r-assign-graph-styling    (and ready-graph-styling agent-claude-available)    assign-to-graph-styling-claude)
+(normally r-assign-rdf-export       (and ready-rdf-export agent-claude-available)       assign-to-rdf-export-claude)
+(normally r-assign-migrate-helper   (and ready-migrate-helper agent-claude-available)   assign-to-migrate-helper-claude)
+
+(claims agent:claude
+  :at "2026-06-09T13:50:39Z"
+  (given claim-v1-scanner-grammar)
+  (normally r-cl-state-v1-scanner-grammar claim-v1-scanner-grammar state-claimed-v1-scanner-grammar)
+  (normally r-cl-chain-v1-scanner-grammar state-claimed-v1-scanner-grammar claimed-scanner-grammar)
+)
+
+;; Propagation rules: failures in 'scanner-grammar' block downstream tasks
+(normally r-propagate-graph-edges-from-scanner-grammar-failed failed-scanner-grammar upstream-blocked-graph-edges)
+(normally r-propagate-graph-edges-from-scanner-grammar-permanently-failed permanently-failed-scanner-grammar upstream-blocked-graph-edges)
+(normally r-propagate-graph-edges-from-scanner-grammar-stale-v1 stale-v1-scanner-grammar upstream-blocked-graph-edges)
+(normally r-propagate-graph-edges-from-scanner-grammar-timeout-v1 timeout-v1-scanner-grammar upstream-blocked-graph-edges)
+(normally r-propagate-graph-edges-from-scanner-grammar-blocked upstream-blocked-scanner-grammar upstream-blocked-graph-edges)
+(normally r-propagate-migrate-helper-from-scanner-grammar-failed failed-scanner-grammar upstream-blocked-migrate-helper)
+(normally r-propagate-migrate-helper-from-scanner-grammar-permanently-failed permanently-failed-scanner-grammar upstream-blocked-migrate-helper)
+(normally r-propagate-migrate-helper-from-scanner-grammar-stale-v1 stale-v1-scanner-grammar upstream-blocked-migrate-helper)
+(normally r-propagate-migrate-helper-from-scanner-grammar-timeout-v1 timeout-v1-scanner-grammar upstream-blocked-migrate-helper)
+(normally r-propagate-migrate-helper-from-scanner-grammar-blocked upstream-blocked-scanner-grammar upstream-blocked-migrate-helper)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-annotation-capture-from-graph-edges-blocked upstream-blocked-graph-edges upstream-blocked-annotation-capture)
+(normally r-propagate-check-lints-from-graph-edges-blocked upstream-blocked-graph-edges upstream-blocked-check-lints)
+(normally r-propagate-edges-cli-from-graph-edges-blocked upstream-blocked-graph-edges upstream-blocked-edges-cli)
+(normally r-propagate-graph-feed-from-graph-edges-blocked upstream-blocked-graph-edges upstream-blocked-graph-feed)
+(normally r-propagate-rdf-export-from-graph-edges-blocked upstream-blocked-graph-edges upstream-blocked-rdf-export)
+(normally r-propagate-search-predicate-from-graph-edges-blocked upstream-blocked-graph-edges upstream-blocked-search-predicate)
+(normally r-propagate-spl-projection-from-graph-edges-blocked upstream-blocked-graph-edges upstream-blocked-spl-projection)
+(normally r-propagate-template-vars-from-graph-edges-blocked upstream-blocked-graph-edges upstream-blocked-template-vars)
+(normally r-propagate-graph-styling-from-graph-feed-blocked upstream-blocked-graph-feed upstream-blocked-graph-styling)
+(normally r-propagate-backlink-render-from-template-vars-blocked upstream-blocked-template-vars upstream-blocked-backlink-render)
+
+(claims agent:claude
+  :at "2026-06-09T13:59:44Z"
+  (given completed-scanner-grammar))
+
+(claims agent:claude
+  :at "2026-06-09T14:00:03Z"
+  (given claim-v1-graph-edges)
+  (normally r-cl-state-v1-graph-edges claim-v1-graph-edges state-claimed-v1-graph-edges)
+  (normally r-cl-chain-v1-graph-edges state-claimed-v1-graph-edges claimed-graph-edges)
+)
+
+;; Propagation rules: failures in 'graph-edges' block downstream tasks
+(normally r-propagate-annotation-capture-from-graph-edges-failed failed-graph-edges upstream-blocked-annotation-capture)
+(normally r-propagate-annotation-capture-from-graph-edges-permanently-failed permanently-failed-graph-edges upstream-blocked-annotation-capture)
+(normally r-propagate-annotation-capture-from-graph-edges-stale-v1 stale-v1-graph-edges upstream-blocked-annotation-capture)
+(normally r-propagate-annotation-capture-from-graph-edges-timeout-v1 timeout-v1-graph-edges upstream-blocked-annotation-capture)
+(normally r-propagate-check-lints-from-graph-edges-failed failed-graph-edges upstream-blocked-check-lints)
+(normally r-propagate-check-lints-from-graph-edges-permanently-failed permanently-failed-graph-edges upstream-blocked-check-lints)
+(normally r-propagate-check-lints-from-graph-edges-stale-v1 stale-v1-graph-edges upstream-blocked-check-lints)
+(normally r-propagate-check-lints-from-graph-edges-timeout-v1 timeout-v1-graph-edges upstream-blocked-check-lints)
+(normally r-propagate-edges-cli-from-graph-edges-failed failed-graph-edges upstream-blocked-edges-cli)
+(normally r-propagate-edges-cli-from-graph-edges-permanently-failed permanently-failed-graph-edges upstream-blocked-edges-cli)
+(normally r-propagate-edges-cli-from-graph-edges-stale-v1 stale-v1-graph-edges upstream-blocked-edges-cli)
+(normally r-propagate-edges-cli-from-graph-edges-timeout-v1 timeout-v1-graph-edges upstream-blocked-edges-cli)
+(normally r-propagate-graph-feed-from-graph-edges-failed failed-graph-edges upstream-blocked-graph-feed)
+(normally r-propagate-graph-feed-from-graph-edges-permanently-failed permanently-failed-graph-edges upstream-blocked-graph-feed)
+(normally r-propagate-graph-feed-from-graph-edges-stale-v1 stale-v1-graph-edges upstream-blocked-graph-feed)
+(normally r-propagate-graph-feed-from-graph-edges-timeout-v1 timeout-v1-graph-edges upstream-blocked-graph-feed)
+(normally r-propagate-rdf-export-from-graph-edges-failed failed-graph-edges upstream-blocked-rdf-export)
+(normally r-propagate-rdf-export-from-graph-edges-permanently-failed permanently-failed-graph-edges upstream-blocked-rdf-export)
+(normally r-propagate-rdf-export-from-graph-edges-stale-v1 stale-v1-graph-edges upstream-blocked-rdf-export)
+(normally r-propagate-rdf-export-from-graph-edges-timeout-v1 timeout-v1-graph-edges upstream-blocked-rdf-export)
+(normally r-propagate-search-predicate-from-graph-edges-failed failed-graph-edges upstream-blocked-search-predicate)
+(normally r-propagate-search-predicate-from-graph-edges-permanently-failed permanently-failed-graph-edges upstream-blocked-search-predicate)
+(normally r-propagate-search-predicate-from-graph-edges-stale-v1 stale-v1-graph-edges upstream-blocked-search-predicate)
+(normally r-propagate-search-predicate-from-graph-edges-timeout-v1 timeout-v1-graph-edges upstream-blocked-search-predicate)
+(normally r-propagate-spl-projection-from-graph-edges-failed failed-graph-edges upstream-blocked-spl-projection)
+(normally r-propagate-spl-projection-from-graph-edges-permanently-failed permanently-failed-graph-edges upstream-blocked-spl-projection)
+(normally r-propagate-spl-projection-from-graph-edges-stale-v1 stale-v1-graph-edges upstream-blocked-spl-projection)
+(normally r-propagate-spl-projection-from-graph-edges-timeout-v1 timeout-v1-graph-edges upstream-blocked-spl-projection)
+(normally r-propagate-template-vars-from-graph-edges-failed failed-graph-edges upstream-blocked-template-vars)
+(normally r-propagate-template-vars-from-graph-edges-permanently-failed permanently-failed-graph-edges upstream-blocked-template-vars)
+(normally r-propagate-template-vars-from-graph-edges-stale-v1 stale-v1-graph-edges upstream-blocked-template-vars)
+(normally r-propagate-template-vars-from-graph-edges-timeout-v1 timeout-v1-graph-edges upstream-blocked-template-vars)
+
+(claims agent:claude
+  :at "2026-06-09T14:02:14Z"
+  (given completed-graph-edges))
+
+(claims agent:claude
+  :at "2026-06-09T14:05:34Z"
+  (given completed-edges-cli))
+
+(claims agent:claude
+  :at "2026-06-09T14:05:55Z"
+  (given claim-v1-predicates-toml)
+  (normally r-cl-state-v1-predicates-toml claim-v1-predicates-toml state-claimed-v1-predicates-toml)
+  (normally r-cl-chain-v1-predicates-toml state-claimed-v1-predicates-toml claimed-predicates-toml)
+)
+
+;; Propagation rules: failures in 'predicates-toml' block downstream tasks
+(normally r-propagate-check-lints-from-predicates-toml-failed failed-predicates-toml upstream-blocked-check-lints)
+(normally r-propagate-check-lints-from-predicates-toml-permanently-failed permanently-failed-predicates-toml upstream-blocked-check-lints)
+(normally r-propagate-check-lints-from-predicates-toml-stale-v1 stale-v1-predicates-toml upstream-blocked-check-lints)
+(normally r-propagate-check-lints-from-predicates-toml-timeout-v1 timeout-v1-predicates-toml upstream-blocked-check-lints)
+(normally r-propagate-check-lints-from-predicates-toml-blocked upstream-blocked-predicates-toml upstream-blocked-check-lints)
+(normally r-propagate-rdf-export-from-predicates-toml-failed failed-predicates-toml upstream-blocked-rdf-export)
+(normally r-propagate-rdf-export-from-predicates-toml-permanently-failed permanently-failed-predicates-toml upstream-blocked-rdf-export)
+(normally r-propagate-rdf-export-from-predicates-toml-stale-v1 stale-v1-predicates-toml upstream-blocked-rdf-export)
+(normally r-propagate-rdf-export-from-predicates-toml-timeout-v1 timeout-v1-predicates-toml upstream-blocked-rdf-export)
+(normally r-propagate-rdf-export-from-predicates-toml-blocked upstream-blocked-predicates-toml upstream-blocked-rdf-export)
+
+(claims agent:claude
+  :at "2026-06-09T14:07:56Z"
+  (given completed-predicates-toml))
+
+(claims agent:claude
+  :at "2026-06-09T14:08:11Z"
+  (given claim-v1-template-vars)
+  (normally r-cl-state-v1-template-vars claim-v1-template-vars state-claimed-v1-template-vars)
+  (normally r-cl-chain-v1-template-vars state-claimed-v1-template-vars claimed-template-vars)
+)
+
+;; Propagation rules: failures in 'template-vars' block downstream tasks
+(normally r-propagate-backlink-render-from-template-vars-failed failed-template-vars upstream-blocked-backlink-render)
+(normally r-propagate-backlink-render-from-template-vars-permanently-failed permanently-failed-template-vars upstream-blocked-backlink-render)
+(normally r-propagate-backlink-render-from-template-vars-stale-v1 stale-v1-template-vars upstream-blocked-backlink-render)
+(normally r-propagate-backlink-render-from-template-vars-timeout-v1 timeout-v1-template-vars upstream-blocked-backlink-render)
+
+(claims agent:claude
+  :at "2026-06-09T14:16:37Z"
+  (given completed-template-vars))
+
+(claims agent:claude
+  :at "2026-06-09T14:54:07Z"
+  (given completed-search-predicate))
+
+(claims agent:claude
+  :at "2026-06-09T14:54:07Z"
+  (given completed-spl-projection))
+
+(claims agent:claude
+  :at "2026-06-09T14:54:18Z"
+  (given completed-ast-predicates))
+
+(claims agent:claude
+  :at "2026-06-09T15:02:08Z"
+  (given completed-graph-feed))
+
+(claims agent:claude
+  :at "2026-06-09T15:02:08Z"
+  (given completed-backlink-render))
+
+(claims agent:claude
+  :at "2026-06-09T15:06:31Z"
+  (given completed-annotation-capture))
+
+(claims agent:claude
+  :at "2026-06-09T15:16:41Z"
+  (given completed-graph-styling))
+
+(claims agent:claude
+  :at "2026-06-09T15:21:07Z"
+  (given completed-check-lints))
+
+(claims agent:claude
+  :at "2026-06-09T15:24:13Z"
+  (given completed-migrate-helper))
+
+(claims agent:claude
+  :at "2026-06-09T15:31:20Z"
+  (given completed-rdf-export))

@@ -95,6 +95,7 @@ fn text(s: &str) -> zetl::hooks::ast::Inline {
 
 fn wikilink(target: &str) -> zetl::hooks::ast::Inline {
     zetl::hooks::ast::Inline::Wikilink(Wikilink {
+        predicates: Vec::new(),
         position: pos(),
         target: target.to_string(),
         alias: None,

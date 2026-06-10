@@ -163,6 +163,26 @@
     .link.link-secondary:visited {
       color: inherit;
     }
+    /* SPEC-045 typed-edge predicate chips. Muted + uniform in prose by design —
+       a page body is reading material, so the loud per-predicate colour stays
+       in the /_graph view. The label text carries the meaning; this is just a
+       quiet pill. Themes can colour per predicate via the [data-predicate]
+       attribute, and with no CSS at all the span degrades to readable text. */
+    .zetl-edge-predicate {
+      display: inline-block;
+      font-size: 0.78em;
+      font-variant: small-caps;
+      letter-spacing: 0.03em;
+      line-height: 1.4;
+      padding: 0 0.5em;
+      margin-right: 0.35em;
+      border-radius: 0.85em;
+      background: rgba(0,0,0,0.05);
+      color: rgba(0,0,0,0.55);
+      border: 1px solid rgba(0,0,0,0.10);
+      white-space: nowrap;
+      vertical-align: 0.05em;
+    }
 
     /* Visually hide an element while keeping it available to assistive
        tech (used for the search dialog's labelledby target). */

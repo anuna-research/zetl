@@ -993,7 +993,7 @@ mod tests {
         let out = identity_output_for_stage(Stage::Transform, "# Hi\n\ntext\n").unwrap();
         let v: Value = serde_json::from_str(out.trim()).unwrap();
         assert_eq!(v["type"], "Document");
-        assert_eq!(v["ast_version"], "1.0");
+        assert_eq!(v["ast_version"], "1.1");
     }
 
     #[test]

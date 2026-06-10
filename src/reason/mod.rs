@@ -14,6 +14,7 @@
 //! 5. **Reason** — run spindle-core StandardReasoner, produce conclusions (+D/-D/+d/-d)
 //! 6. **Annotate conclusions** — trace proof sources from rule metadata
 
+pub mod projection;
 pub mod types;
 
 use crate::cache::{CachedRuleType, TheoryCache};
@@ -70,7 +71,30 @@ fn extract_source_groundings(theory: &Theory) -> Vec<ExplicitGrounding> {
 /// Parse errors are handled gracefully: errored blocks are excluded, and the
 /// pipeline continues with a partial theory, collecting diagnostics.
 pub fn build_theory(spl_blocks: &[SplBlock]) -> Result<TheoryResult> {
-    if spl_blocks.is_empty() {
+    build_theory_inner(spl_blocks, &[])
+}
+
+/// Like [`build_theory`], but additionally seeds the theory with facts
+/// projected from typed SNAKE link-graph edges (SPEC-045 REQ-4510).
+///
+/// Callers obtain `projected_facts` from
+/// [`projection::project_edges_to_facts`]. Each projected fact is added to the
+/// theory with the SAME provenance metadata as authored facts, so conclusions
+/// derived from a wikilink edge remain traceable to the asserting page+line.
+/// With an empty `projected_facts` slice this is byte-for-byte equivalent to
+/// [`build_theory`].
+pub fn build_theory_with_edges(
+    spl_blocks: &[SplBlock],
+    projected_facts: &[projection::ProjectedFact],
+) -> Result<TheoryResult> {
+    build_theory_inner(spl_blocks, projected_facts)
+}
+
+fn build_theory_inner(
+    spl_blocks: &[SplBlock],
+    projected_facts: &[projection::ProjectedFact],
+) -> Result<TheoryResult> {
+    if spl_blocks.is_empty() && projected_facts.is_empty() {
         return Ok(TheoryResult {
             theory: Theory::new(),
             conclusions: vec![],
@@ -215,6 +239,27 @@ pub fn build_theory(spl_blocks: &[SplBlock]) -> Result<TheoryResult> {
         // Transfer superiority relations
         for sup in parsed.superiorities() {
             combined.add_superiority(&sup.superior, &sup.inferior);
+        }
+    }
+
+    // ── SPEC-045 REQ-4510: seed projected SNAKE-edge facts ────────────
+    // Each typed wikilink edge becomes a ground binary fact with the same
+    // provenance treatment as an authored fact (ADR-4504), labelled with a
+    // distinct `__edge_fact_<n>` prefix so it never collides with `__fact_<n>`.
+    if !projected_facts.is_empty() {
+        projection::add_projected_facts_to_theory(
+            &mut combined,
+            projected_facts,
+            &mut label_origins,
+            fact_counter,
+        );
+        for pf in projected_facts {
+            provenanced_facts.push(ProvenancedFact {
+                literal: pf.to_literal(),
+                source_file: pf.source_file.clone(),
+                source_line: pf.source_line,
+                source_page: pf.source_page.clone(),
+            });
         }
     }
 

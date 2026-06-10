@@ -763,6 +763,7 @@ fn parse_wikilink_inner(inner: &str, position: Position) -> Inline {
         alias,
         heading,
         block_id,
+        predicates: Vec::new(),
     })
 }
 

@@ -1374,6 +1374,7 @@ mod tests {
 
     fn sample_vault() -> VaultContext {
         VaultContext {
+            predicates: Vec::new(),
             name: "test-vault".to_string(),
             pages: vec![PageEntry {
                 title: "Hello".to_string(),
@@ -1400,6 +1401,9 @@ mod tests {
 
     fn sample_page() -> PageContext {
         PageContext {
+            edges: Vec::new(),
+            edges_by_predicate: std::collections::BTreeMap::new(),
+            backlinks_by_predicate: std::collections::BTreeMap::new(),
             title: "Hello".to_string(),
             slug: "hello".to_string(),
             content_html: "<p>world</p>".to_string(),
@@ -1464,6 +1468,7 @@ mod tests {
 
     fn rich_vault() -> VaultContext {
         VaultContext {
+            predicates: Vec::new(),
             name: "contract-vault".to_string(),
             pages: vec![PageEntry {
                 title: "Alpha".to_string(),
@@ -1490,6 +1495,9 @@ mod tests {
 
     fn rich_page() -> PageContext {
         PageContext {
+            edges: Vec::new(),
+            edges_by_predicate: std::collections::BTreeMap::new(),
+            backlinks_by_predicate: std::collections::BTreeMap::new(),
             title: "Alpha".to_string(),
             slug: "alpha".to_string(),
             content_html: "<h1>Alpha</h1><p>body</p>".to_string(),
@@ -1497,6 +1505,9 @@ mod tests {
             frontmatter: serde_json::json!({"tags": ["x", "y"]}),
             description: "first para".to_string(),
             backlinks: vec![super::super::context::BacklinkEntry {
+                predicate: None,
+                label: None,
+                annotation: None,
                 title: "Beta".to_string(),
                 slug: "beta".to_string(),
                 line: 1,
@@ -1656,6 +1667,7 @@ mod tests {
     #[test]
     fn test_search_index_escaping() {
         let vault = VaultContext {
+            predicates: Vec::new(),
             name: "vault".to_string(),
             pages: vec![PageEntry {
                 title: r#"He said "hello""#.to_string(),
@@ -2419,6 +2431,7 @@ mod tests {
 
     fn empty_vault_ctx(pages: usize, links: usize) -> VaultContext {
         VaultContext {
+            predicates: Vec::new(),
             name: "empty".to_string(),
             pages: Vec::new(),
             sidebar_tree: Vec::new(),
@@ -2513,6 +2526,7 @@ mod tests {
     #[test]
     fn test_graph_partial_details_fallback_has_every_page() {
         let vault = VaultContext {
+            predicates: Vec::new(),
             name: "v".to_string(),
             pages: vec![
                 PageEntry {

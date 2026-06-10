@@ -315,11 +315,13 @@ fn nfr_3205_zero_hook_startup_under_budget() {
 #[test]
 fn nfr_3206_ast_schema_version_within_major_one() {
     assert_eq!(
-        AST_VERSION, "1.0",
-        "NFR-3206: AST schema version drifted from 1.0 — \
-         a major bump requires a CHANGELOG entry + deprecation window per SPEC-032 §4"
+        AST_VERSION, "1.1",
+        "NFR-3206: AST schema version drifted unexpectedly — additive minor \
+         bumps are allowed within major 1 (1.1 added Wikilink.predicates per \
+         SPEC-045 CON-4505); a MAJOR bump requires a CHANGELOG entry + \
+         deprecation window per SPEC-032 §4"
     );
-    assert_eq!(PINNED_AST_SCHEMA_VERSION, "1.0");
+    assert_eq!(PINNED_AST_SCHEMA_VERSION, "1.1");
     let major: u32 = AST_VERSION
         .split('.')
         .next()

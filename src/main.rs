@@ -1431,6 +1431,267 @@ fn cmd_links(
     Ok(())
 }
 
+/// SPEC-045 REQ-4509 / CON-4503: query the typed link graph. Read-only,
+/// idempotent, opens no socket. With no filter, a strict superset of
+/// `zetl links` (every edge, typed and untyped).
+#[allow(clippy::too_many_arguments)]
+fn cmd_edges(
+    cli: &Cli,
+    predicate: &[String],
+    from: Option<&str>,
+    to: Option<&str>,
+    by_predicate: bool,
+    untyped: bool,
+    annotated: bool,
+) -> Result<()> {
+    let pipeline = run_pipeline(cli)?;
+    let all = pipeline.graph.all_edges();
+
+    // --by-predicate: group-and-count over the whole vault (the vocabulary
+    // distribution audit). The untyped bucket keys on `None`, serialised as
+    // JSON `null` for consistency with the per-edge `predicate` field (an agent
+    // sees the same shape everywhere); the human table renders it "(untyped)".
+    if by_predicate {
+        let mut counts: std::collections::BTreeMap<Option<String>, usize> =
+            std::collections::BTreeMap::new();
+        for e in &all {
+            *counts.entry(e.predicate.clone()).or_insert(0) += 1;
+        }
+        #[derive(Serialize)]
+        struct PredCount {
+            predicate: Option<String>,
+            count: usize,
+        }
+        let rows: Vec<PredCount> = counts
+            .into_iter()
+            .map(|(predicate, count)| PredCount { predicate, count })
+            .collect();
+        match cli.format {
+            OutputFormat::Json => print_json(&rows)?,
+            _ => {
+                let mut table = Table::new();
+                table.set_header(vec!["Predicate", "Count"]);
+                for r in &rows {
+                    table.add_row(vec![
+                        Cell::new(r.predicate.as_deref().unwrap_or("(untyped)")),
+                        Cell::new(r.count),
+                    ]);
+                }
+                println!("{table}");
+            }
+        }
+        return Ok(());
+    }
+
+    // Apply row filters (all AND-combined; --predicate is OR within itself).
+    let filtered: Vec<&zetl::graph::EdgeRecord> = all
+        .iter()
+        .filter(|e| {
+            if untyped && e.predicate.is_some() {
+                return false;
+            }
+            if annotated && e.annotation.is_none() {
+                return false;
+            }
+            if !predicate.is_empty() {
+                match &e.predicate {
+                    Some(p) if predicate.iter().any(|f| f == p) => {}
+                    _ => return false,
+                }
+            }
+            if let Some(f) = from {
+                if !e.source.eq_ignore_ascii_case(f) {
+                    return false;
+                }
+            }
+            if let Some(t) = to {
+                if !e.target.eq_ignore_ascii_case(t) {
+                    return false;
+                }
+            }
+            true
+        })
+        .collect();
+
+    // Zero rows is a valid result, not an error (CON-4503). But be helpful on
+    // stderr (so piped stdout stays clean): name a missing page, and — when a
+    // `--predicate` filter matched nothing yet is a near-miss of a real
+    // predicate — suggest the correction (clig.dev: "guess intent, suggest
+    // correction" + "suggest next commands").
+    if filtered.is_empty() {
+        if let Some(f) = from {
+            if !pipeline.graph.has_page(f) {
+                eprintln!("note: no page named '{f}' in the vault");
+            }
+        }
+        if let Some(t) = to {
+            if !pipeline.graph.has_page(t) {
+                eprintln!("note: no page named '{t}' in the vault");
+            }
+        }
+        // Observed predicate vocabulary, for nearest-match suggestions.
+        let vocab: std::collections::BTreeSet<&str> =
+            all.iter().filter_map(|e| e.predicate.as_deref()).collect();
+        for p in predicate {
+            if !vocab.contains(p.as_str()) {
+                match zetl::predicate_lints::nearest(p, vocab.iter().copied()) {
+                    Some(near) => eprintln!(
+                        "note: no edges with predicate '{p}' — did you mean '{near}'? (try `zetl edges --by-predicate`)"
+                    ),
+                    None => eprintln!(
+                        "note: no edges with predicate '{p}' (try `zetl edges --by-predicate` to see the vocabulary)"
+                    ),
+                }
+            }
+        }
+        // A plain "no matches" cue for humans, kept off stdout.
+        if from.is_none() && to.is_none() && predicate.is_empty() && !untyped && !annotated {
+            eprintln!("note: this vault has no edges");
+        } else if !matches!(cli.format, OutputFormat::Json) {
+            eprintln!("note: no edges match the given filters");
+        }
+    }
+
+    match cli.format {
+        OutputFormat::Json => print_json(&filtered)?,
+        _ => {
+            let mut table = Table::new();
+            table.set_header(vec!["Source", "Predicate", "Target", "Line", "Annotation"]);
+            for e in &filtered {
+                table.add_row(vec![
+                    Cell::new(&e.source),
+                    Cell::new(e.predicate.as_deref().unwrap_or("-")),
+                    Cell::new(if e.is_ghost {
+                        format!("{} (ghost)", e.target)
+                    } else {
+                        e.target.clone()
+                    }),
+                    Cell::new(e.line),
+                    Cell::new(e.annotation.as_deref().unwrap_or("")),
+                ]);
+            }
+            println!("{table}");
+        }
+    }
+
+    Ok(())
+}
+
+/// SPEC-045 REQ-4513 / ADR-4505: read-only `tags:`→predicate migration helper.
+/// Scans frontmatter scalar-list keys (default `tags`) and REPORTS which
+/// entries name a real vault page and could become a body predicate. Never
+/// rewrites a file; without `--dry-run` it refuses to run.
+fn cmd_predicates_migrate(cli: &Cli, dry_run: bool, keys: &[String]) -> Result<()> {
+    if !dry_run {
+        eprintln!("zetl predicates migrate is read-only: only --dry-run is supported in v1.");
+        eprintln!(
+            "It reports candidate conversions; an author edits the files. Re-run with --dry-run."
+        );
+        std::process::exit(2);
+    }
+
+    let pipeline = run_pipeline(cli)?;
+    let scan_keys: Vec<String> = if keys.is_empty() {
+        vec!["tags".to_string()]
+    } else {
+        keys.to_vec()
+    };
+
+    // Normalised index of real page names → canonical page name, so a tag like
+    // `deep-context` can match the page "Deep Context Architecture" only when it
+    // actually names a page (we match on exact normalised equality).
+    let normalise = |s: &str| -> String {
+        s.to_lowercase()
+            .chars()
+            .map(|c| if c == '-' || c == '_' { ' ' } else { c })
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let mut page_index: HashMap<String, String> = HashMap::new();
+    for page in &pipeline.graph_resolved {
+        page_index
+            .entry(normalise(page))
+            .or_insert_with(|| page.clone());
+        let slug = page.to_lowercase().replace(' ', "-");
+        page_index
+            .entry(normalise(&slug))
+            .or_insert_with(|| page.clone());
+    }
+
+    #[derive(Serialize)]
+    struct MigrationCandidate {
+        file: String,
+        key: String,
+        tag: String,
+        candidate_predicate: String,
+        candidate_target: String,
+    }
+
+    let mut candidates: Vec<MigrationCandidate> = Vec::new();
+    for file in &pipeline.files {
+        let content = match std::fs::read_to_string(pipeline.vault_root.join(&file.path)) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let fm = zetl::web::markdown::parse_frontmatter(&content);
+        for key in &scan_keys {
+            let Some(arr) = fm.get(key).and_then(|v| v.as_array()) else {
+                continue;
+            };
+            for tag in arr.iter().filter_map(|v| v.as_str()) {
+                if let Some(page) = page_index.get(&normalise(tag)) {
+                    candidates.push(MigrationCandidate {
+                        file: file.path.to_string_lossy().to_string(),
+                        key: key.clone(),
+                        tag: tag.to_string(),
+                        // A conservative suggestion; the author picks the real
+                        // predicate (the guide's example is `in_domain::`).
+                        candidate_predicate: "in_domain".to_string(),
+                        candidate_target: page.clone(),
+                    });
+                }
+            }
+        }
+    }
+    candidates.sort_by(|a, b| {
+        a.file
+            .cmp(&b.file)
+            .then_with(|| a.tag.cmp(&b.tag))
+            .then_with(|| a.candidate_target.cmp(&b.candidate_target))
+    });
+
+    match cli.format {
+        OutputFormat::Json => print_json(&candidates)?,
+        _ => {
+            if candidates.is_empty() {
+                println!("No frontmatter tags name a vault page — nothing to migrate.");
+            } else {
+                let mut table = Table::new();
+                table.set_header(vec!["File", "Key", "Tag", "Candidate", "Target Page"]);
+                for c in &candidates {
+                    table.add_row(vec![
+                        Cell::new(&c.file),
+                        Cell::new(&c.key),
+                        Cell::new(&c.tag),
+                        Cell::new(format!(
+                            "{}::[[{}]]",
+                            c.candidate_predicate, c.candidate_target
+                        )),
+                        Cell::new(&c.candidate_target),
+                    ]);
+                }
+                println!("Candidate tag→predicate conversions (dry-run — no files modified):");
+                println!("{table}");
+                println!("\nThese are suggestions; edit the body yourself and choose a specific predicate.");
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn cmd_backlinks(
     cli: &Cli,
     page: &str,
@@ -1701,6 +1962,19 @@ fn cmd_check(
         vec![]
     };
 
+    // SPEC-045 REQ-4508: predicate lints over observed usage + optional strict
+    // vocabulary. Always computed in a full check (show_all); cheap and additive.
+    let predicate_lints: Vec<zetl::predicate_lints::PredicateLint> = if show_all {
+        let cfg = zetl::predicates::PredicatesConfig::load_from_vault(&pipeline.vault_root)
+            .unwrap_or_else(|e| {
+                eprintln!("warning: {e}");
+                None
+            });
+        zetl::predicate_lints::compute_predicate_lints(&pipeline.files, cfg.as_ref())
+    } else {
+        vec![]
+    };
+
     // OBS-008: compute summary fields from theory cache.
     let total_spl_blocks: usize = pipeline.files.iter().map(|f| f.spl_blocks.len()).sum();
 
@@ -1750,6 +2024,8 @@ fn cmd_check(
         drifted_blocks_info: usize,
         explicitly_grounded_facts: usize,
         broken_groundings: usize,
+        predicate_errors: usize,
+        predicate_warnings: usize,
     }
 
     #[derive(Serialize)]
@@ -1759,6 +2035,7 @@ fn cmd_check(
         syntax_errors: Vec<zetl::types::Diagnostic>,
         spl_diagnostics: Vec<zetl::types::Diagnostic>,
         drift_diagnostics: Vec<DriftDiagnostic>,
+        predicate_lints: Vec<zetl::predicate_lints::PredicateLint>,
         summary: CheckSummary,
         #[serde(skip_serializing_if = "Option::is_none")]
         snapshot: Option<SnapshotInfo>,
@@ -1788,6 +2065,14 @@ fn cmd_check(
         drifted_blocks_info,
         explicitly_grounded_facts,
         broken_groundings,
+        predicate_errors: predicate_lints
+            .iter()
+            .filter(|l| l.level == zetl::predicate_lints::LintLevel::Error)
+            .count(),
+        predicate_warnings: predicate_lints
+            .iter()
+            .filter(|l| l.level == zetl::predicate_lints::LintLevel::Warning)
+            .count(),
     };
 
     let output = CheckOutput {
@@ -1796,6 +2081,7 @@ fn cmd_check(
         syntax_errors: diagnostics,
         spl_diagnostics,
         drift_diagnostics,
+        predicate_lints,
         summary,
         snapshot: pipeline.snapshot.clone(),
     };
@@ -1883,6 +2169,23 @@ fn cmd_check(
                 println!();
             }
 
+            if !output.predicate_lints.is_empty() {
+                let mut table = Table::new();
+                table.set_header(vec!["Level", "Lint", "File", "Line", "Message"]);
+                for l in &output.predicate_lints {
+                    table.add_row(vec![
+                        Cell::new(l.level.as_str()),
+                        Cell::new(l.kind),
+                        Cell::new(l.file.display()),
+                        Cell::new(l.line),
+                        Cell::new(&l.message),
+                    ]);
+                }
+                println!("Predicate Diagnostics:");
+                println!("{table}");
+                println!();
+            }
+
             // OBS-008: always print summary stats table.
             {
                 let mut sum_table = Table::new();
@@ -1923,6 +2226,14 @@ fn cmd_check(
                     Cell::new("Broken groundings"),
                     Cell::new(output.summary.broken_groundings),
                 ]);
+                sum_table.add_row(vec![
+                    Cell::new("Predicate errors"),
+                    Cell::new(output.summary.predicate_errors),
+                ]);
+                sum_table.add_row(vec![
+                    Cell::new("Predicate warnings"),
+                    Cell::new(output.summary.predicate_warnings),
+                ]);
                 println!("Summary:");
                 println!("{sum_table}");
                 println!();
@@ -1933,6 +2244,7 @@ fn cmd_check(
                 && output.syntax_errors.is_empty()
                 && output.spl_diagnostics.is_empty()
                 && output.drift_diagnostics.is_empty()
+                && output.predicate_lints.is_empty()
             {
                 println!("No issues found.");
             }
@@ -2021,7 +2333,11 @@ fn cmd_check(
         || output
             .spl_diagnostics
             .iter()
-            .any(|d| d.level == DiagnosticLevel::Error);
+            .any(|d| d.level == DiagnosticLevel::Error)
+        || output
+            .predicate_lints
+            .iter()
+            .any(|l| l.level == zetl::predicate_lints::LintLevel::Error);
 
     let has_warnings = output
         .syntax_errors
@@ -2034,7 +2350,11 @@ fn cmd_check(
         || output
             .drift_diagnostics
             .iter()
-            .any(|d| matches!(d.severity, DriftSeverity::Warning));
+            .any(|d| matches!(d.severity, DriftSeverity::Warning))
+        || output
+            .predicate_lints
+            .iter()
+            .any(|l| l.level == zetl::predicate_lints::LintLevel::Warning);
 
     let should_fail = match fail_on {
         FailLevel::Error => has_errors,
@@ -3575,8 +3895,27 @@ fn cmd_blocks_resolve(cli: &Cli, hash_prefix: &str) -> Result<()> {
     Ok(())
 }
 
-fn cmd_export(cli: &Cli) -> Result<()> {
+fn cmd_export(cli: &Cli, rdf_format: Option<zetl::cli::RdfFormat>, base_iri: &str) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
+
+    // SPEC-045 REQ-4516: `--format {jsonld,turtle,ntriples}` projects typed
+    // edges to RDF instead of the default link-graph export.
+    if let Some(format) = rdf_format {
+        let cfg = zetl::predicates::PredicatesConfig::load_from_vault(&pipeline.vault_root)
+            .unwrap_or_else(|e| {
+                eprintln!("warning: {e}");
+                None
+            });
+        let rdf = zetl::rdf_export::export_rdf(
+            &pipeline.graph,
+            &pipeline.files,
+            cfg.as_ref(),
+            base_iri,
+            format,
+        );
+        print!("{rdf}");
+        return Ok(());
+    }
 
     #[derive(Serialize)]
     struct NodeEntry {
@@ -6927,7 +7266,7 @@ fn build_or_load_theory(
         build_theory_cache, collect_spl_ast_hashes, load_theory_cache, save_theory_cache,
         theory_cache_valid,
     };
-    use zetl::reason::{build_theory, build_theory_from_cache};
+    use zetl::reason::{build_theory_from_cache, build_theory_with_edges};
 
     let total_start = Instant::now();
 
@@ -6943,8 +7282,17 @@ fn build_or_load_theory(
         .filter(|f| !f.spl_blocks.is_empty())
         .count();
 
-    // Try loading from theory cache (unless --no-cache).
-    if !no_cache {
+    // SPEC-045 REQ-4510: project the vault's typed edges to provenance-tagged
+    // SPL facts so the reasoner can query them. The theory cache is keyed on
+    // SPL-block hashes only — edge facts derive from page links, which it does
+    // NOT fingerprint — so a vault with typed edges bypasses the cache to avoid
+    // serving stale edge facts. Untyped vaults keep the fast cached path.
+    let edge_projection =
+        zetl::reason::projection::project_edges_to_facts(&pipeline.graph, &pipeline.files);
+    let has_typed_edges = !edge_projection.facts.is_empty();
+
+    // Try loading from theory cache (unless --no-cache or typed edges present).
+    if !no_cache && !has_typed_edges {
         if let Ok(Some(cache)) = load_theory_cache(&pipeline.vault_root) {
             let current_spl_hashes = collect_spl_ast_hashes(&pipeline.files);
             if theory_cache_valid(&current_spl_hashes, &cache) {
@@ -6970,13 +7318,14 @@ fn build_or_load_theory(
         }
     }
 
-    // Cache miss: full build.
+    // Cache miss: full build, including any projected typed-edge facts.
     let build_start = Instant::now();
-    let result = build_theory(&spl_blocks)?;
+    let result = build_theory_with_edges(&spl_blocks, &edge_projection.facts)?;
     let build_elapsed = build_start.elapsed();
 
-    // Save to theory cache.
-    if !no_cache {
+    // Save to theory cache only when no typed edges were folded in (the cache
+    // key does not cover edge facts — see the bypass above).
+    if !no_cache && !has_typed_edges {
         let cache = build_theory_cache(
             &result.theory,
             &result.diagnostics,
@@ -11316,6 +11665,22 @@ fn main() -> anyhow::Result<()> {
             depth,
             with_conclusions,
         } => cmd_links(&cli, page, *fuzzy, *context, *depth, *with_conclusions),
+        Command::Edges {
+            predicate,
+            from,
+            to,
+            by_predicate,
+            untyped,
+            annotated,
+        } => cmd_edges(
+            &cli,
+            predicate,
+            from.as_deref(),
+            to.as_deref(),
+            *by_predicate,
+            *untyped,
+            *annotated,
+        ),
         Command::Backlinks {
             page,
             fuzzy,
@@ -11381,7 +11746,7 @@ fn main() -> anyhow::Result<()> {
             block_type,
             resolve,
         } => cmd_blocks(&cli, page.as_deref(), block_type, resolve.as_deref()),
-        Command::Export => cmd_export(&cli),
+        Command::Export { rdf, base_iri } => cmd_export(&cli, *rdf, base_iri),
         Command::View {
             page,
             context_lines,
@@ -11397,6 +11762,11 @@ fn main() -> anyhow::Result<()> {
             } => cmd_theme_install(&cli, source, path.as_deref(), name.as_deref(), *force),
             ThemeCommand::Remove { name } => cmd_theme_remove(&cli, name),
             ThemeCommand::Export { name, force } => cmd_theme_export(&cli, name, *force),
+        },
+        Command::Predicates { command } => match command {
+            zetl::cli::PredicatesCommand::Migrate { dry_run, keys } => {
+                cmd_predicates_migrate(&cli, *dry_run, keys)
+            }
         },
         Command::Hook { command } => match command {
             HookCommand::List { theme } => cmd_hook_list(&cli, theme),

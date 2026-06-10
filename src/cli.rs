@@ -144,6 +144,35 @@ pub enum Command {
         with_conclusions: bool,
     },
 
+    /// Query typed named edges by predicate, source, or target
+    ///
+    /// A strict superset of `zetl links`: with no filter it lists every edge,
+    /// typed and untyped.
+    #[command(
+        after_help = "Examples:\n  zetl edges                         All edges (typed + untyped)\n  zetl edges --predicate contradicts Only `contradicts::` edges\n  zetl edges --from \"Decision Log\"    Outgoing edges of a page\n  zetl edges --by-predicate          Vocabulary distribution histogram"
+    )]
+    Edges {
+        /// Filter to edges carrying this predicate (repeatable for OR).
+        #[arg(long, value_name = "NAME")]
+        predicate: Vec<String>,
+        /// Filter to edges whose source is this page.
+        #[arg(long, value_name = "PAGE")]
+        from: Option<String>,
+        /// Filter to edges whose target is this page.
+        #[arg(long, value_name = "PAGE")]
+        to: Option<String>,
+        /// Group-and-count the whole vault's edges by predicate (the
+        /// vocabulary-distribution audit).
+        #[arg(long)]
+        by_predicate: bool,
+        /// Only untyped (`predicate: null`) edges.
+        #[arg(long)]
+        untyped: bool,
+        /// Only edges carrying an annotation.
+        #[arg(long)]
+        annotated: bool,
+    },
+
     /// Query backlinks to a page
     Backlinks {
         /// Page name (case-insensitive)
@@ -261,8 +290,24 @@ pub enum Command {
         max_depth: usize,
     },
 
-    /// Export the complete link graph
-    Export,
+    /// Export the link graph as JSON, or typed edges as RDF
+    ///
+    /// Without `--rdf`, exports the full link graph as JSON. With
+    /// `--rdf {turtle,ntriples,jsonld}`, projects typed edges to RDF.
+    #[command(
+        after_help = "Examples:\n  zetl export                       Link graph as JSON\n  zetl export --rdf turtle          Typed edges as RDF/Turtle\n  zetl export --rdf jsonld          Typed edges as JSON-LD\n  zetl export --rdf ntriples        Typed edges as N-Triples"
+    )]
+    Export {
+        /// Project typed edges to an RDF serialisation. Omit for the
+        /// default link-graph export. (Named `--rdf` because the global
+        /// `-f/--format` already selects the table/json output format.)
+        #[arg(long, value_enum, value_name = "FORMAT")]
+        rdf: Option<RdfFormat>,
+        /// Base IRI for minting page / un-mapped-predicate IRIs in the vault's
+        /// own namespace.
+        #[arg(long, default_value = "http://localhost/zetl/", value_name = "IRI")]
+        base_iri: String,
+    },
 
     /// List Merkle blocks for a page (forward mode) or resolve a block by hash
     Blocks {
@@ -439,6 +484,12 @@ pub enum Command {
     Hook {
         #[command(subcommand)]
         command: HookCommand,
+    },
+
+    /// Predicate-vocabulary tooling
+    Predicates {
+        #[command(subcommand)]
+        command: PredicatesCommand,
     },
 
     /// Plugin-ecosystem introspection (Pandoc filters, mdBook preprocessors, remark plugins)
@@ -903,7 +954,33 @@ pub enum CapCommand {
     EmergencyShutdown,
 }
 
-#[derive(Subcommand)]
+/// RDF serialisation formats for `zetl export --format`.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RdfFormat {
+    Jsonld,
+    Turtle,
+    Ntriples,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum PredicatesCommand {
+    /// Report `tags:` that could become body predicates (read-only)
+    ///
+    /// Scans frontmatter scalar-list keys (default `tags`) and reports entries
+    /// that name a vault page. Never rewrites a file; `--dry-run` is required
+    /// in v1.
+    Migrate {
+        /// Required in v1 — the command refuses to run without it (it never
+        /// modifies files).
+        #[arg(long)]
+        dry_run: bool,
+        /// Frontmatter scalar-list keys to scan (repeatable). Defaults to `tags`.
+        #[arg(long = "key", value_name = "KEY")]
+        keys: Vec<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 pub enum ThemeCommand {
     /// List available themes (bundled + installed)
     List,

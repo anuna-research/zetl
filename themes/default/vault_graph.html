@@ -224,9 +224,95 @@
     box-shadow: 0 0 0 1px oklch(var(--b3));
     flex-shrink: 0;
   }
+  /* SPEC-045 REQ-4518: predicate legend — typed-edge key with show/hide
+     toggles. Sits above the folder legend (bottom-left), only shown when the
+     vault has typed edges. Reuses .vg-legend visual chrome but each entry is a
+     <label>+checkbox so clicking toggles that predicate's edge visibility. */
+  .vg-predicate-legend {
+    position: absolute;
+    bottom: 0.5rem;
+    left: 0.5rem;
+    z-index: 5;
+    background: oklch(var(--b1) / 0.85);
+    backdrop-filter: blur(4px);
+    border: 1px solid oklch(var(--b3));
+    border-radius: 0.375rem;
+    font-size: 0.7rem;
+    max-width: 240px;
+    width: auto !important;
+    height: auto !important;
+  }
+  .vg-predicate-legend[hidden] { display: none; }
+  /* When the predicate legend is present (bottom-left), move the folder
+     legend to the bottom-right so they don't overlap. Controls own the
+     top-right; bottom-right is otherwise free. The boot script sets
+     data-has-predicates on .vg-stage once typed edges are detected. */
+  .vg-stage[data-has-predicates] .vg-legend { left: auto; right: 0.5rem; }
+  .vg-predicate-legend summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 0.3rem 0.6rem;
+    opacity: 0.75;
+    user-select: none;
+  }
+  .vg-predicate-legend summary::-webkit-details-marker { display: none; }
+  .vg-predicate-legend summary::before { content: '▸'; margin-right: 0.3rem; font-size: 0.6rem; display: inline-block; transition: transform 0.15s; }
+  .vg-predicate-legend[open] summary::before { transform: rotate(90deg); }
+  .vg-predicate-legend ul { list-style: none; margin: 0; padding: 0.1rem 0.4rem 0.4rem; display: flex; flex-direction: column; gap: 0.1rem; max-height: 40vh; overflow-y: auto; }
+  .vg-predicate-legend li { line-height: 1.5; }
+  .vg-predicate-legend label {
+    display: flex; align-items: center; gap: 0.35rem;
+    cursor: pointer; padding: 0.1rem 0.2rem; border-radius: 0.2rem;
+  }
+  .vg-predicate-legend label:hover { background: oklch(var(--b2)); }
+  .vg-predicate-legend input[type="checkbox"] { margin: 0; cursor: pointer; flex-shrink: 0; accent-color: oklch(var(--p)); }
+  .vg-predicate-legend .vg-pred-swatch {
+    width: 10px; height: 10px; border-radius: 2px;
+    box-shadow: 0 0 0 1px oklch(var(--b3));
+    flex-shrink: 0;
+  }
+  .vg-predicate-legend .vg-pred-name {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.66rem;
+  }
+  .vg-predicate-legend .vg-pred-name.vg-pred-untyped { font-family: inherit; font-style: italic; opacity: 0.8; }
+  .vg-predicate-legend .vg-pred-count {
+    margin-left: auto; font-variant-numeric: tabular-nums;
+    opacity: 0.55; font-size: 0.62rem; padding-left: 0.4rem;
+  }
+  .vg-predicate-legend input:not(:checked) ~ .vg-pred-name,
+  .vg-predicate-legend input:not(:checked) ~ .vg-pred-count { opacity: 0.4; }
+  /* SPEC-045 REQ-4518: edge annotation tooltip — progressive disclosure on
+     hover/click of a typed edge. Top-left, out of the way of the controls
+     (top-right) and legends (bottom-left). */
+  .vg-edge-annotation {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 6;
+    max-width: 260px;
+    background: oklch(var(--b1) / 0.95);
+    backdrop-filter: blur(4px);
+    border: 1px solid oklch(var(--b3));
+    border-left-width: 3px;
+    border-radius: 0.375rem;
+    padding: 0.35rem 0.6rem;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    pointer-events: none;
+    box-shadow: 0 2px 8px oklch(var(--b3) / 0.4);
+  }
+  .vg-edge-annotation[hidden] { display: none; }
+  .vg-edge-annotation .vg-ea-predicate {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.66rem; font-weight: 600; opacity: 0.85;
+    display: block; margin-bottom: 0.1rem;
+  }
+  .vg-edge-annotation .vg-ea-text { display: block; }
   /* Mobile: legend starts collapsed, and the focus chip wraps to its own row. */
   @media (max-width: 600px) {
     .vg-legend { max-width: 60vw; font-size: 0.65rem; }
+    .vg-predicate-legend { max-width: 60vw; font-size: 0.65rem; }
     .vg-focus-chip { flex-basis: 100%; justify-content: center; font-size: 0.7rem; }
   }
 </style>
@@ -288,6 +374,18 @@
       <summary>Folders</summary>
       <ul></ul>
     </details>
+    {# SPEC-045 REQ-4518: typed-edge predicate legend + per-predicate show/hide
+       toggles. Hidden by default; revealed by the boot script only when the
+       feed has at least one typed edge (REQ-4505 no-typed-edge fallback). #}
+    <details class="vg-predicate-legend" hidden aria-label="Edge predicate legend">
+      <summary>Edge types</summary>
+      <ul></ul>
+    </details>
+    {# SPEC-045 REQ-4518: edge annotation tooltip (progressive disclosure). #}
+    <div class="vg-edge-annotation" hidden role="status" aria-live="polite">
+      <span class="vg-ea-predicate"></span>
+      <span class="vg-ea-text"></span>
+    </div>
     <noscript>
       <div class="vg-empty">
         Graph view requires JavaScript. Browse pages from the
@@ -453,6 +551,98 @@
     if (window.__zetlGraph && window.__zetlGraph.folderLegend) {
       renderLegend(window.__zetlGraph.folderLegend());
     }
+
+    /* ── SPEC-045 REQ-4518: predicate legend + per-predicate filtering ─────
+       Rendered only when the feed has typed edges. Each row is a checkbox
+       (default checked = visible) + colour swatch + name + count. Toggling
+       calls window.__zetlGraph.setPredicateVisible(key, visible) — a single
+       reducer refresh, no graph rebuild. The "untyped" bucket (predicate:
+       null) is one row with the neutral edge colour. */
+    var predLegendEl = stage.querySelector('.vg-predicate-legend');
+    var UNTYPED_KEY = (window.__zetlGraph && window.__zetlGraph.untypedKey) || ' untyped';
+    function neutralEdgeColour(){
+      try {
+        var v = getComputedStyle(stage).getPropertyValue('--zetl-graph-edge').trim();
+        return v || '#9ca3af';
+      } catch (e) { return '#9ca3af'; }
+    }
+    function renderPredicateLegend(rows){
+      if (!predLegendEl) return;
+      if (!rows || !rows.length) { predLegendEl.hidden = true; stage.removeAttribute('data-has-predicates'); return; }
+      var key = (window.__zetlGraph && window.__zetlGraph.untypedKey) || UNTYPED_KEY;
+      var ul = predLegendEl.querySelector('ul');
+      ul.innerHTML = '';
+      rows.forEach(function(row){
+        var rowKey = row.key || (row.predicate == null ? key : row.predicate);
+        var isUntyped = row.predicate == null;
+        var li = document.createElement('li');
+        var label = document.createElement('label');
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = !row.hidden;
+        cb.setAttribute('data-pred-key', rowKey);
+        var sw = document.createElement('span');
+        sw.className = 'vg-pred-swatch';
+        sw.style.background = isUntyped ? neutralEdgeColour() : (row.colour || neutralEdgeColour());
+        var name = document.createElement('span');
+        name.className = 'vg-pred-name' + (isUntyped ? ' vg-pred-untyped' : '');
+        name.textContent = isUntyped ? 'untyped' : row.predicate;
+        name.title = name.textContent;
+        var count = document.createElement('span');
+        count.className = 'vg-pred-count';
+        count.textContent = String(row.count);
+        label.appendChild(cb);
+        label.appendChild(sw);
+        label.appendChild(name);
+        label.appendChild(count);
+        li.appendChild(label);
+        ul.appendChild(li);
+      });
+      predLegendEl.hidden = false;
+      predLegendEl.open = window.matchMedia('(min-width: 601px)').matches;
+      stage.setAttribute('data-has-predicates', '');
+    }
+    if (predLegendEl) {
+      predLegendEl.addEventListener('change', function(e){
+        var cb = e.target;
+        if (!cb || cb.type !== 'checkbox') return;
+        var key = cb.getAttribute('data-pred-key');
+        if (key && window.__zetlGraph && window.__zetlGraph.setPredicateVisible) {
+          window.__zetlGraph.setPredicateVisible(key, cb.checked);
+        }
+      });
+    }
+    window.addEventListener('zetl:graph:ready', function(e){
+      var d = e && e.detail;
+      if (d && d.hasTypedEdges && d.predicateLegend) renderPredicateLegend(d.predicateLegend);
+      else if (predLegendEl) { predLegendEl.hidden = true; stage.removeAttribute('data-has-predicates'); }
+    });
+    if (window.__zetlGraph && window.__zetlGraph.hasTypedEdges && window.__zetlGraph.hasTypedEdges()) {
+      renderPredicateLegend(window.__zetlGraph.predicateLegend());
+    }
+
+    /* ── SPEC-045 REQ-4518: edge annotation tooltip ───────────────────────
+       graph-boot.js dispatches zetl:graph:edge-annotation with {predicate,
+       annotation, colour, ...} on edge hover/click, or null detail on leave.
+       Only edges with a non-null annotation populate visible text. */
+    var annEl = stage.querySelector('.vg-edge-annotation');
+    var annPredEl = annEl && annEl.querySelector('.vg-ea-predicate');
+    var annTextEl = annEl && annEl.querySelector('.vg-ea-text');
+    function showAnnotation(detail){
+      if (!annEl) return;
+      if (!detail || !detail.annotation) { annEl.hidden = true; return; }
+      if (annPredEl) {
+        annPredEl.textContent = detail.predicate || '';
+        annPredEl.style.color = detail.colour || '';
+        annPredEl.hidden = !detail.predicate;
+      }
+      if (annTextEl) annTextEl.textContent = detail.annotation;
+      annEl.style.borderLeftColor = detail.colour || 'oklch(var(--p))';
+      annEl.hidden = false;
+    }
+    window.addEventListener('zetl:graph:edge-annotation', function(e){
+      showAnnotation(e && e.detail);
+    });
 
     /* Keyboard: +, -, 0, L — only when not typing in a field */
     document.addEventListener('keydown', function(e){
