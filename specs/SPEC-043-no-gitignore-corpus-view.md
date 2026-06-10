@@ -1,8 +1,8 @@
 ---
-title: "SPEC-043: `--no-gitignore` and First-Class `.zetlignore` — Decoupling the Corpus Boundary from the Git-Tracking Boundary"
-version: 1.0.0
+title: "SPEC-043: First-Class `.zetlignore` — Decoupling the Corpus Boundary from the Git-Tracking Boundary"
+version: 2.0.0
 status: implemented
-implemented-date: 2026-06-07
+implemented-date: 2026-06-10
 date: 2026-06-07
 audience: agent, human
 parent: SPEC-026
@@ -12,44 +12,38 @@ related:
   - SPEC-026  # Vault Scan Exclusions (the precedence stack this amends)
 ---
 
-# SPEC-043: `--no-gitignore` and First-Class `.zetlignore`
+# SPEC-043: First-Class `.zetlignore`
 
 ## Information Table
 
 | Field        | Value                                                                       |
 | ------------ | --------------------------------------------------------------------------- |
 | Document ID  | SPEC-043                                                                     |
-| Title        | `--no-gitignore` and First-Class `.zetlignore`                              |
-| Version      | 1.0.0                                                                        |
+| Title        | First-Class `.zetlignore` — Corpus Boundary ≠ Git-Tracking Boundary        |
+| Version      | 2.0.0                                                                        |
 | Status       | Implemented                                                                  |
 | Author       | Kairos (m3-kairos dyad) + Mat Mytka                                          |
-| Date         | 2026-06-07                                                                   |
+| Date         | 2026-06-07 (v1: flag; 2026-06-10 v2: always-off)                            |
 | Audience     | Agent, Human                                                                 |
 | Parent       | SPEC-026: Vault Scan Exclusions                                              |
-| Dependencies | `ignore` crate (`add_custom_ignore_filename`, already in tree); `clap`      |
+| Dependencies | `ignore` crate (`add_custom_ignore_filename`, already in tree)               |
 
 ---
 
 ## 1. Overview
 
-`zetl` walks the vault with the `ignore` crate via `scanner::scan_vault()`. By
-default it respects `.gitignore` (`git_ignore(true)`). For a vault that lives
-inside a git repo, that means **git's ignore policy silently defines the vault's
-contents.** Usually convenient. Sometimes exactly wrong.
+`zetl` walks the vault with the `ignore` crate via `scanner::scan_vault()`.
+`.gitignore` is **never consulted** — `git_ignore(false)` is hardcoded.
+`.zetlignore` is the sole file-based vault-scoping authority.
 
-This spec does three things, discovered as one thread:
+This spec does two things, discovered as one thread:
 
-1. **`--no-gitignore`** — a flag to remove git's ignore opinion entirely, so
-   `.zetlignore` (plus the dotdir default and `--exclude`) becomes the sole
-   vault-scoping authority.
-2. **First-class `.zetlignore`** — load it via `add_custom_ignore_filename`
+1. **First-class `.zetlignore`** — loaded via `add_custom_ignore_filename`
    instead of the flat root-only `add_ignore`, giving it the `ignore` crate's
-   full per-directory semantics. This makes the `*`-then-`!dir/**` *whitelist
-   idiom* work in `.zetlignore` (it previously did not), and enables nested
-   `.zetlignore` files.
-3. **Precedence correction** — as a consequence of (2), `.zetlignore` now
-   outranks `.gitignore`, which is the precedence SPEC-026 §REQ-205 has always
-   documented but the `add_ignore` implementation silently violated.
+   full per-directory semantics. The `*`-then-`!dir/**` *whitelist idiom* works
+   in `.zetlignore`, and nested `.zetlignore` files are honoured.
+2. **`.gitignore` disabled** — git's ignore opinion is removed entirely.
+   The corpus boundary and the git-tracking boundary are independent.
 
 ### 1.1 Motivation
 
@@ -61,12 +55,10 @@ repo's `.gitignore` is a `*`-whitelist that tracks only architecture files;
 the most alive material (`traces/`, memory, `warmish.md`) is gitignored by
 design. Pointed at that root, `zetl` rendered 41 files — the tracked
 architecture — and silently dropped the corpus the user actually wanted to
-navigate. This is the *co-inhabited corpus interface*: the same tree, read one
-way by git (what to version) and another by zetl (what to think with).
+navigate.
 
-**`.gitignore` could not be overridden from `.zetlignore`.** The user's first
-instinct — a `.zetlignore` to re-widen the scope — failed silently. Two root
-causes, both fixed here:
+**`.gitignore` could not be overridden from `.zetlignore`.** Two root causes,
+both now fixed:
 
 - The old `add_ignore` load path gave `.zetlignore` *lower* precedence than
   `.gitignore`, inverting SPEC-026 §REQ-205. A `.gitignore` `*` dominated every
@@ -77,70 +69,50 @@ causes, both fixed here:
   before later `!dir/**` lines can re-include them).
 
 **Blacklisting cannot realistically scope a real corpus.** Measured on the
-originating vault: `--no-gitignore` with no `.zetlignore` surfaced 4,278 files
-(every README/spec/CHANGELOG across ~50 nested repos). Blacklisting 25 code
-repos only reduced that to 3,428 — markdown is everywhere. A usable corpus view
+originating vault: with no `.zetlignore`, 4,278 files surfaced (every
+README/spec/CHANGELOG across ~50 nested repos). Blacklisting 25 code repos
+only reduced that to 3,428 — markdown is everywhere. A usable corpus view
 *requires* the whitelist idiom (`*` then re-include `traces/`, `reference/`,
-`Action-Research/`, …). Hence first-class `.zetlignore` is load-bearing for the
-flag, not a nicety.
+`Action-Research/`, …). Hence first-class `.zetlignore` is load-bearing, not
+a nicety.
 
 ### 1.2 Design Principles
 
-1. **Default behaviour is unchanged.** Without `--no-gitignore`, `.gitignore` is
-   respected exactly as before. The flag is strictly opt-in.
-2. **`.zetlignore` is the scoping instrument.** Whether or not git is in play,
-   `.zetlignore` defines what the vault shows, using full gitignore syntax
-   including the whitelist idiom and nested files.
-3. **Level-1 force-ignores remain absolute.** `.git/`, `.zetl/`,
+1. **`.zetlignore` is the scoping instrument.** `.zetlignore` defines what
+   the vault shows, using full gitignore syntax including the whitelist idiom
+   and nested files. `.gitignore` is not involved at any level.
+2. **Level-1 force-ignores remain absolute.** `.git/`, `.zetl/`,
    `node_modules/`, and nested vaults are never re-includable by user config —
    they live in `builder.overrides()`, which outranks all ignore files.
-4. **`--exclude` remains the ephemeral top override.** Per-invocation
-   `--exclude` patterns still beat `.zetlignore` (SPEC-026 §REQ-205 level 5).
+3. **`--exclude` remains the ephemeral top override.** Per-invocation
+   `--exclude` patterns still beat `.zetlignore` (SPEC-026 §REQ-205 level 4).
 
 ### 1.3 Scope
 
 **In scope:**
 
-- `--no-gitignore` flag on the commands carrying `ScanArgs` (`build`, `index`,
-  `serve`, `search`, `watch`).
+- Hardcoding `git_ignore(false)` in `scanner::scan_vault`.
 - Promotion of `.zetlignore` to `add_custom_ignore_filename`.
-- Correction of `.zetlignore` vs `.gitignore` precedence to match SPEC-026
-  §REQ-205.
 - Nested `.zetlignore` support (falls out of the promotion).
+- Removal of the (v1) `--no-gitignore` flag and `ScanOptions::no_gitignore`
+  field.
 
 **Out of scope:**
 
-- `list` does not carry `ScanArgs` and so does not expose `--no-gitignore`
-  (consistent with its lack of `--exclude`/`--include-hidden`). Use `serve` /
-  `index` for scoped corpus views.
-- **Scanner/watcher parity (SPEC-026 §REQ-206).** `web::fs_watch` still loads
-  `.gitignore` + `.zetlignore` via its own path and does not yet honour
-  `--no-gitignore` or the custom-ignore-filename promotion. Documented residue;
-  a follow-up should re-establish parity.
-- `--ignore-vcs` style aliases (ripgrep/fd muscle memory) — single canonical
-  flag name for now.
+- `list` does not carry `ScanArgs` (consistent with its lack of
+  `--exclude`/`--include-hidden`). Use `serve` / `index` for scoped corpus
+  views.
 
 ---
 
 ## 2. Requirements
 
-### REQ-300: `--no-gitignore` Flag
+### REQ-300: `.gitignore` Is Never Consulted
 
-The system SHALL accept a `--no-gitignore` flag on the commands that scan the
-vault and carry `ScanArgs` (`build`, `index`, `serve`, `search`, `watch`). When
-set, the walker SHALL NOT read `.gitignore` files at any level
-(`git_ignore(false)`), removing git's ignore policy from vault scoping. The
-default (flag absent) SHALL respect `.gitignore` exactly as before.
+The system SHALL set `git_ignore(false)` on `WalkBuilder` unconditionally.
+`.gitignore` files at any depth SHALL NOT influence vault scoping.
 
-Trace: TEST-210, TEST-211
-
-### REQ-301: `.zetlignore` Excluded From the Dotdir-Override Matcher Under `--no-gitignore`
-
-When `--no-gitignore` is set, `.gitignore` SHALL NOT feed the dotdir-override
-whitelist matcher consulted by `filter_entry`. `.zetlignore` remains the sole
-contributor, so git's negations cannot leak back in through the override path.
-
-Trace: TEST-210
+Trace: TEST-210, TEST-211, TEST-214
 
 ### REQ-302: First-Class `.zetlignore` (Custom Ignore Filename)
 
@@ -151,15 +123,13 @@ root-only `add_ignore`. Consequences, all REQUIRED:
 - The `*`-then-`!dir/` + `!dir/**` whitelist idiom SHALL scope the vault to the
   re-included subtrees.
 - `.zetlignore` files in subdirectories SHALL be honoured.
-- `.zetlignore` SHALL outrank `.gitignore` (restoring SPEC-026 §REQ-205 level
-  4 > level 3).
 
-Trace: TEST-213, TEST-214
+Trace: TEST-213
 
 ### REQ-303: Force-Ignore and `--exclude` Precedence Unchanged
 
 Promoting `.zetlignore` SHALL NOT alter the absolute precedence of level-1
-force-ignores or level-5 `--exclude`. Both live in `builder.overrides()`, which
+force-ignores or level-4 `--exclude`. Both live in `builder.overrides()`, which
 outranks all ignore files. `.git/`, `.zetl/`, `node_modules/`, and nested
 vaults SHALL remain non-re-includable; `--exclude` SHALL continue to beat
 `.zetlignore` negations.
@@ -172,22 +142,22 @@ The effective precedence (later overrides earlier) SHALL be:
 
 1. Hardcoded force-ignores: `.git/`, `.zetl/`, `node_modules/`, nested vaults
 2. Default dotdir exclusion (REQ-200) — unless `--include-hidden`
-3. `.gitignore` (via `git_ignore(true)`) — **skipped entirely under `--no-gitignore`**
-4. `.zetlignore` (root + nested, via custom ignore filename) — **now correctly above level 3**
-5. `--exclude <PATTERN>` flags
+3. `.zetlignore` (root + nested, via custom ignore filename)
+4. `--exclude <PATTERN>` flags
 
-Trace: TEST-214
+`.gitignore` does not appear in this stack.
+
+Trace: TEST-213
 
 ---
 
 ## 3. Happy Paths
 
-### 3.1 Reveal a gitignored corpus
+### 3.1 Render a gitignored corpus
 
 **Preconditions:** Vault inside a git repo whose `.gitignore` hides `traces/`.
 
-1. `zetl serve` → `traces/` absent from the graph.
-2. `zetl serve --no-gitignore` → `traces/` present.
+1. `zetl serve` → `traces/` present (`.gitignore` is disregarded).
 
 ### 3.2 Scope a large tree to a few corpus roots (whitelist idiom)
 
@@ -205,15 +175,7 @@ A `.zetlignore`:
 !kairos.md
 ```
 
-1. `zetl serve --no-gitignore` → only the re-included roots and files render.
-
-### 3.3 `.zetlignore` overrides `.gitignore` (no flag)
-
-**Preconditions:** `.gitignore` excludes `corpus/`; `.zetlignore` contains
-`!corpus/` + `!corpus/**`.
-
-1. `zetl serve` (git active) → `corpus/` renders, because `.zetlignore` now
-   outranks `.gitignore`.
+1. `zetl serve` → only the re-included roots and files render.
 
 ---
 
@@ -221,26 +183,28 @@ A `.zetlignore`:
 
 | Test     | Asserts                                                                       |
 | -------- | ----------------------------------------------------------------------------- |
-| TEST-210 | `--no-gitignore` reveals a gitignored dir; default hides it (git-init'd vault)|
-| TEST-211 | Under `--no-gitignore`, level-1/2 force-ignore + dotdir defaults still hold   |
-| TEST-212 | `.zetlignore` blacklist scopes the vault under `--no-gitignore`               |
+| TEST-210 | `.gitignore` exclusions are always ignored; gitignored dirs are visible       |
+| TEST-211 | `.gitignore` wildcard has no effect; levels 1–2 still hold                   |
+| TEST-212 | `.zetlignore` blacklist scopes the vault                                      |
 | TEST-213 | `.zetlignore` `*`-whitelist idiom scopes the vault (the promotion payoff)     |
-| TEST-214 | `.zetlignore` negation overrides `.gitignore` with git active (precedence)    |
+| TEST-214 | `.gitignore` exclusions are disregarded even in a git-init'd vault            |
 
-All in `tests/scan_exclusions.rs`. Tests that exercise `.gitignore` *hiding*
-paths `git init` the temp vault, because the `ignore` crate only applies
-positive `.gitignore` patterns inside a git repository (`require_git` default).
+All in `tests/scan_exclusions.rs`. Tests that verify `.gitignore` is really
+ignored `git init` the temp vault, because the `ignore` crate only reads
+`.gitignore` inside a git repository by default — otherwise the test would be
+vacuous (no gitignore would apply regardless).
 
 ---
 
-## 5. Residue
+## 5. Migration from v1 (`--no-gitignore` flag)
 
-- **Scanner/watcher parity (SPEC-026 §REQ-206).** `web::fs_watch` is not yet
-  updated for `--no-gitignore` or the custom-ignore-filename promotion. A live
-  edit under a corpus view may be classified inconsistently with the scanner.
-- **Documentation.** `user-guide/reference/Configuration.md` describes the
-  five-level ignore stack and claims `.zetlignore` overrides `.gitignore` — now
-  finally true. It should gain a `--no-gitignore` row and a worked corpus-view
-  example. (`release-sync` candidate.)
-- **`list` has no scan flags.** If corpus-view inspection from `list` becomes
-  desirable, give it `ScanArgs` in a follow-up.
+v1 (2026-06-07) shipped a `--no-gitignore` flag and left `.gitignore` respected
+by default. v2 (2026-06-10) makes the v1 flag's behaviour the unconditional
+default and removes the flag.
+
+**Migration:** remove `--no-gitignore` from any scripts or aliases. The
+behaviour you opted into is now the default.
+
+If you depended on `.gitignore` scoping your zetl vault (e.g. a `*`-whitelist
+`.gitignore` was silently keeping the vault small), move those patterns to
+`.zetlignore`.

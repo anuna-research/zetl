@@ -13,13 +13,6 @@ pub struct ScanArgs {
     /// `.git/`, `.zetl/`, and `node_modules/` are still excluded.
     #[arg(long)]
     pub include_hidden: bool,
-
-    /// Ignore `.gitignore` files entirely, so `.zetlignore` (plus the dotdir
-    /// default and `--exclude`) is the sole vault-scoping authority. Use when
-    /// the corpus you want to render is gitignored — the corpus boundary and
-    /// the git-tracking boundary are different cuts of the same tree.
-    #[arg(long = "no-gitignore")]
-    pub no_gitignore: bool,
 }
 
 impl ScanArgs {
@@ -28,7 +21,6 @@ impl ScanArgs {
         crate::scanner::ScanOptions::default()
             .with_exclude_patterns(self.exclude.clone())
             .with_include_hidden(self.include_hidden)
-            .with_no_gitignore(self.no_gitignore)
             .with_verbose(verbose)
     }
 }

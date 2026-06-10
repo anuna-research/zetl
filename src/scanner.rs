@@ -38,47 +38,30 @@ pub fn scan_vault(root: &Path, opts: &ScanOptions) -> Result<Vec<ParsedFile>> {
     let mut builder = WalkBuilder::new(root);
     builder
         .hidden(false) // dotfile/dotdir handling is delegated to filter_entry below
-        // SPEC-043: `--no-gitignore` removes git's ignore opinion entirely so
-        // `.zetlignore` alone scopes the vault. Default respects `.gitignore`.
-        .git_ignore(!opts.no_gitignore)
+        .git_ignore(false) // .gitignore is never consulted; .zetlignore is the sole file-based authority
         .git_global(false)
         .git_exclude(false);
 
-    // SPEC-043: treat `.zetlignore` as a first-class custom ignore filename
-    // rather than a flat root-only `add_ignore`. This gives it the `ignore`
-    // crate's full per-directory semantics — the `*`-then-`!dir/**` whitelist
-    // idiom works (load-bearing for corpus-view scoping under `--no-gitignore`)
-    // and nested `.zetlignore` files are honoured. Custom ignore filenames also
-    // rank *above* `.gitignore`, which finally makes `.zetlignore` override
-    // `.gitignore` as Configuration.md §REQ-205 has always documented.
-    // `--exclude` and the level-1 force-ignores live in `builder.overrides()`
-    // below, which outranks everything here, so their precedence is unchanged.
+    // `.zetlignore` is a first-class custom ignore filename. `add_custom_ignore_filename`
+    // gives it the `ignore` crate's full per-directory semantics — the
+    // `*`-then-`!dir/**` whitelist idiom works and nested `.zetlignore` files are
+    // honoured. `--exclude` and the level-1 force-ignores live in
+    // `builder.overrides()` below, which outranks everything here.
     builder.add_custom_ignore_filename(".zetlignore");
 
-    // Build a single "whitelist matcher" from `.gitignore` + `.zetlignore`
-    // that filter_entry can consult when deciding whether to override the
-    // dotdir default. The walker also applies these files independently —
-    // this matcher exists *only* to surface their negated entries before
-    // filter_entry vetoes a directory (defects 2/3 / REQ-205 levels 3-4).
+    // Build a whitelist matcher from `.zetlignore` that filter_entry can
+    // consult when deciding whether to override the dotdir default. The walker
+    // also applies `.zetlignore` independently — this matcher exists *only* to
+    // surface negated entries before filter_entry vetoes a directory
+    // (defects 2/3 / REQ-205 levels 4-5).
     let zetlignore_path = root.join(".zetlignore");
-    let gitignore_path = root.join(".gitignore");
     let whitelist_matcher: Option<Arc<ignore::gitignore::Gitignore>> = {
         let mut gi = ignore::gitignore::GitignoreBuilder::new(root);
-        let mut any = false;
-        // SPEC-043: under `--no-gitignore`, git's ignore file must not feed the
-        // dotdir-override whitelist either — `.zetlignore` is the sole source.
-        if gitignore_path.exists() && !opts.no_gitignore {
-            gi.add(&gitignore_path);
-            any = true;
-        }
         if zetlignore_path.exists() {
             // The walker already applies `.zetlignore` via the custom-ignore
             // filename above; here we only feed the root copy into the
             // dotdir-override whitelist matcher consulted by filter_entry.
             gi.add(&zetlignore_path);
-            any = true;
-        }
-        if any {
             gi.build().ok().map(Arc::new)
         } else {
             None

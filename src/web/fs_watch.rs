@@ -714,14 +714,6 @@ mod tests {
                 "nested_in_dotdir",
                 &[("notes/a.md", "# A"), (".vscode/settings/x.md", "# nested")],
             ),
-            (
-                "with_gitignore_negation",
-                &[
-                    ("notes/a.md", "# A"),
-                    (".archive/g.md", "# from gitignore !"),
-                    (".gitignore", "!.archive/\n"),
-                ],
-            ),
         ];
 
         // Each option set is exercised against every layout.

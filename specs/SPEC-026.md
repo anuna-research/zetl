@@ -35,8 +35,8 @@ related:
 
 `zetl` walks the vault with the `ignore` crate via `scanner::scan_vault()` (src/scanner.rs:20). The walker currently:
 
-- Respects `.gitignore` (`git_ignore(true)`)
-- Loads `.zetlignore` at vault root if present
+- Does **not** consult `.gitignore` (`git_ignore(false)` — see SPEC-043)
+- Loads `.zetlignore` at vault root and in subdirectories (first-class custom ignore filename)
 - Force-ignores `.git/`, `node_modules/`, `.zetl/` via override rules
 - **Does not** set `hidden(true)` — comment says "user may have .files as notes"
 
@@ -54,11 +54,10 @@ A parallel code path — `web::fs_watch::classify_external_event` (src/web/fs_wa
 
 ### 1.2 Design Principles
 
-1. **Skip dotdirs by default.** Dotdirs at any depth are excluded from scan unless explicitly allowed. Dotfiles at the vault root may still be walked (preserves `.zetlignore`, `.gitignore`, user-authored `.hidden-note.md`) — the exclusion is on **directories** whose name starts with `.`.
-2. **`.zetlignore` is the primary override.** Gitignore-syntax file at vault root, already supported — promote it to a documented, first-class feature.
+1. **Skip dotdirs by default.** Dotdirs at any depth are excluded from scan unless explicitly allowed. Dotfiles at the vault root may still be walked (preserves `.zetlignore`, user-authored `.hidden-note.md`) — the exclusion is on **directories** whose name starts with `.`.
+2. **`.zetlignore` is the sole file-based scoping authority.** Gitignore-syntax file at vault root and in subdirectories (SPEC-043). `.gitignore` is never consulted — the corpus boundary and the git-tracking boundary are independent.
 3. **`--exclude` is the ephemeral override.** Per-invocation gitignore-style patterns for one-off builds.
-4. **`.gitignore` continues to be respected.** Vaults that live inside a git repo inherit `.gitignore` for free.
-5. **Scanner ≡ watcher.** Both code paths apply the same exclusion policy. No silent divergence.
+4. **Scanner ≡ watcher.** Both code paths apply the same exclusion policy. No silent divergence.
 6. **Backward compatible at the CLI surface.** Users relying on default behaviour today (walking `.claude/`) get a one-line migration: add `.claude/` to `.zetlignore`… wait, that's already the required behaviour. The breaking change IS the fix. Change gated behind minor version bump + CHANGELOG note.
 
 ### 1.3 Scope
@@ -185,9 +184,10 @@ The system SHALL apply exclusion rules in the following precedence (later rules 
 
 1. Hardcoded force-ignores: `.git/`, `.zetl/`, `node_modules/`, nested vaults (dirs containing their own `.zetl/`)
 2. Default dotdir exclusion (REQ-200) — unless `--include-hidden`
-3. `.gitignore` (via `git_ignore(true)`)
-4. `.zetlignore` (vault root)
-5. `--exclude <PATTERN>` flags (repeatable, last wins on conflict)
+3. `.zetlignore` (vault root + nested, via `add_custom_ignore_filename` — SPEC-043)
+4. `--exclude <PATTERN>` flags (repeatable, last wins on conflict)
+
+`.gitignore` is never consulted (`git_ignore(false)` — SPEC-043 REQ-300).
 
 The hardcoded force-ignores at level 1 SHALL NOT be overridable by user configuration — `.zetl/` must never be in `dist/`.
 
@@ -352,7 +352,7 @@ Benchmark on a 1000-page synthetic vault: mean wall-clock of `scan_vault` before
 
 ### OBS-200: Ignore-Decision Tracing
 
-When `--verbose` is set, `scan_vault` emits one line per skipped top-level path: `[zetl] scan: skipped <path> reason=<dotdir|zetlignore|gitignore|cli-exclude|hardcoded>`. Useful for debugging unexpected omissions.
+When `--verbose` is set, `scan_vault` emits one line per skipped top-level path: `[zetl] scan: skipped <path> reason=<dotdir|zetlignore|cli-exclude|hardcoded>`. Useful for debugging unexpected omissions. (`gitignore` is not a possible reason — `.gitignore` is never consulted.)
 
 Trace: NFR-200 (does not fire on hot path without `--verbose`).
 
