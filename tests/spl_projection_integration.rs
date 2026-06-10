@@ -84,7 +84,10 @@ fn snake_edge_yields_fact_with_provenance() {
     assert_eq!(fact.source_page, "Source");
     assert_eq!(fact.source_file, PathBuf::from("Source.md"));
     assert_eq!(fact.source_line, 3);
-    assert_eq!(fact.to_literal().to_string(), "derived_from(Source, Target)");
+    assert_eq!(
+        fact.to_literal().to_string(),
+        "derived_from(Source, Target)"
+    );
 }
 
 #[test]
@@ -156,8 +159,7 @@ fn projected_facts_enter_theory_with_provenance_and_chain() {
         content: "(always r1 (derived_from Source Target) traceable)\n".to_string(),
     };
 
-    let result =
-        build_theory_with_edges(&[rule_block], &projection.facts).expect("theory builds");
+    let result = build_theory_with_edges(&[rule_block], &projection.facts).expect("theory builds");
 
     let pf = result
         .facts
@@ -214,7 +216,13 @@ fn reason_status_sees_projected_edge_facts() {
     .unwrap();
 
     let out = cargo_bin_cmd!("zetl")
-        .args(["--no-cache", "-d", dir.path().to_str().unwrap(), "reason", "status"])
+        .args([
+            "--no-cache",
+            "-d",
+            dir.path().to_str().unwrap(),
+            "reason",
+            "status",
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8(out.get_output().stdout.clone()).unwrap();

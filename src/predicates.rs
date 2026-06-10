@@ -191,7 +191,10 @@ pub fn auto_label(predicate: &str) -> String {
     // worked example `prov:wasDerivedFrom` → "wasDerivedFrom". Only the
     // un-prefixed snake form gets its first letter capitalised.
     let is_curie = predicate.contains(':');
-    let local = predicate.split_once(':').map(|(_, l)| l).unwrap_or(predicate);
+    let local = predicate
+        .split_once(':')
+        .map(|(_, l)| l)
+        .unwrap_or(predicate);
     let spaced: String = local
         .chars()
         .map(|c| if c == '_' || c == '-' { ' ' } else { c })
@@ -280,7 +283,10 @@ mod tests {
              [predicates]\nderived_from = { maps_to = \"prov:wasDerivedFrom\" }\n",
         )
         .unwrap();
-        assert_eq!(cfg.prefixes.get("prov").map(|s| s.as_str()), Some("http://www.w3.org/ns/prov#"));
+        assert_eq!(
+            cfg.prefixes.get("prov").map(|s| s.as_str()),
+            Some("http://www.w3.org/ns/prov#")
+        );
         assert_eq!(
             cfg.predicates["derived_from"].maps_to.as_deref(),
             Some("prov:wasDerivedFrom")

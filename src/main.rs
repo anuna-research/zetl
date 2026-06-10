@@ -1584,7 +1584,9 @@ fn cmd_edges(
 fn cmd_predicates_migrate(cli: &Cli, dry_run: bool, keys: &[String]) -> Result<()> {
     if !dry_run {
         eprintln!("zetl predicates migrate is read-only: only --dry-run is supported in v1.");
-        eprintln!("It reports candidate conversions; an author edits the files. Re-run with --dry-run.");
+        eprintln!(
+            "It reports candidate conversions; an author edits the files. Re-run with --dry-run."
+        );
         std::process::exit(2);
     }
 
@@ -1609,9 +1611,13 @@ fn cmd_predicates_migrate(cli: &Cli, dry_run: bool, keys: &[String]) -> Result<(
     };
     let mut page_index: HashMap<String, String> = HashMap::new();
     for page in &pipeline.graph_resolved {
-        page_index.entry(normalise(page)).or_insert_with(|| page.clone());
+        page_index
+            .entry(normalise(page))
+            .or_insert_with(|| page.clone());
         let slug = page.to_lowercase().replace(' ', "-");
-        page_index.entry(normalise(&slug)).or_insert_with(|| page.clone());
+        page_index
+            .entry(normalise(&slug))
+            .or_insert_with(|| page.clone());
     }
 
     #[derive(Serialize)]
@@ -1669,7 +1675,10 @@ fn cmd_predicates_migrate(cli: &Cli, dry_run: bool, keys: &[String]) -> Result<(
                         Cell::new(&c.file),
                         Cell::new(&c.key),
                         Cell::new(&c.tag),
-                        Cell::new(format!("{}::[[{}]]", c.candidate_predicate, c.candidate_target)),
+                        Cell::new(format!(
+                            "{}::[[{}]]",
+                            c.candidate_predicate, c.candidate_target
+                        )),
                         Cell::new(&c.candidate_target),
                     ]);
                 }

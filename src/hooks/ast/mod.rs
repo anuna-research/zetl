@@ -620,7 +620,9 @@ mod tests {
         });
         let v = serde_json::to_value(&link).unwrap();
         assert_eq!(v["predicates"][0]["predicate"], "derived_from");
-        assert!(v["predicates"][0].get("inverse").is_some() && v["predicates"][0]["inverse"].is_null());
+        assert!(
+            v["predicates"][0].get("inverse").is_some() && v["predicates"][0]["inverse"].is_null()
+        );
         assert_eq!(v["predicates"][1]["predicate"], "informed_by");
         let back: Inline = serde_json::from_value(v).unwrap();
         assert_eq!(back, link);
@@ -638,7 +640,10 @@ mod tests {
             predicates: Vec::new(),
         });
         let v = serde_json::to_value(&link).unwrap();
-        assert!(v.get("predicates").is_none(), "empty predicates omitted: {v}");
+        assert!(
+            v.get("predicates").is_none(),
+            "empty predicates omitted: {v}"
+        );
         let back: Inline = serde_json::from_value(v).unwrap();
         assert_eq!(back, link);
     }

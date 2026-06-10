@@ -5,7 +5,7 @@
   CI will fail if this file drifts from the schema (SPEC-032 REQ-3202).
 -->
 
-# zetl-ext AST (v1.0.0)
+# zetl-ext AST (v1.1.0)
 
 Versioned JSON Schema for zetl's native Markdown AST used on the transform-stage hook boundary. Covers the CommonMark subset plus zetl extensions (Wikilink, Embed, SplBlock, FrontMatter) and source positions. Normative per SPEC-032 REQ-3202 / CON-3202; the schema wins against any prose that disagrees. Schema version is additive-only within major 1 per NFR-3206.
 
@@ -631,6 +631,7 @@ Obsidian-style wikilink (`[[target]]`, `[[target|alias]]`, `[[target#heading]]`,
 | `alias` | string \| null | yes | `null` when absent |
 | `block_id` | string \| null | yes | `null` when absent |
 | `heading` | string \| null | yes | `null` when absent |
+| `predicates` | array of object | no |  |
 | `target` | string | yes |  |
 
 **Canonical example**

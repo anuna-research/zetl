@@ -382,11 +382,20 @@ mod tests {
     #[test]
     fn ntriples_emits_typed_edge_and_skos() {
         let files = vec![
-            typed_file("Decision", vec![("Retro", 5, vec!["derived_from"], Some("why"))]),
+            typed_file(
+                "Decision",
+                vec![("Retro", 5, vec!["derived_from"], Some("why"))],
+            ),
             typed_file("Retro", vec![]),
         ];
         let g = graph_for(&files);
-        let out = export_rdf(&g, &files, None, "http://x/", crate::cli::RdfFormat::Ntriples);
+        let out = export_rdf(
+            &g,
+            &files,
+            None,
+            "http://x/",
+            crate::cli::RdfFormat::Ntriples,
+        );
         // The plain assertion.
         assert!(out.contains(
             "<http://x/page/Decision> <http://x/predicate/derived_from> <http://x/page/Retro> ."
@@ -411,7 +420,13 @@ mod tests {
             typed_file("B", vec![]),
         ];
         let g = graph_for(&files);
-        let out = export_rdf(&g, &files, Some(&cfg), "http://x/", crate::cli::RdfFormat::Turtle);
+        let out = export_rdf(
+            &g,
+            &files,
+            Some(&cfg),
+            "http://x/",
+            crate::cli::RdfFormat::Turtle,
+        );
         // maps_to expands the snake predicate to the prov IRI (prefixed form).
         assert!(out.contains("prov:wasDerivedFrom"));
         assert!(out.contains("@prefix prov:"));
@@ -433,13 +448,28 @@ mod tests {
     #[test]
     fn output_is_deterministic() {
         let files = vec![
-            typed_file("A", vec![("B", 1, vec!["x"], None), ("C", 2, vec!["y"], None)]),
+            typed_file(
+                "A",
+                vec![("B", 1, vec!["x"], None), ("C", 2, vec!["y"], None)],
+            ),
             typed_file("B", vec![]),
             typed_file("C", vec![]),
         ];
         let g = graph_for(&files);
-        let a = export_rdf(&g, &files, None, "http://x/", crate::cli::RdfFormat::Ntriples);
-        let b = export_rdf(&g, &files, None, "http://x/", crate::cli::RdfFormat::Ntriples);
+        let a = export_rdf(
+            &g,
+            &files,
+            None,
+            "http://x/",
+            crate::cli::RdfFormat::Ntriples,
+        );
+        let b = export_rdf(
+            &g,
+            &files,
+            None,
+            "http://x/",
+            crate::cli::RdfFormat::Ntriples,
+        );
         assert_eq!(a, b);
     }
 }

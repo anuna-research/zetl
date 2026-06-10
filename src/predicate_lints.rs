@@ -82,9 +82,9 @@ pub fn compute_predicate_lints(
                     lints.push(PredicateLint {
                         kind: "predicate-prefer-conforms-to",
                         level: LintLevel::Warning,
-                        message: format!(
-                            "`is_a::` asserts terminal identity — prefer `conforms_to::[[X Form Contract]]` (revisable compliance)"
-                        ),
+                        message: "`is_a::` asserts terminal identity — prefer \
+                                  `conforms_to::[[X Form Contract]]` (revisable compliance)"
+                            .to_string(),
                         file: f.path.clone(),
                         line: link.line,
                     });
@@ -285,32 +285,46 @@ mod tests {
 
     #[test]
     fn emergent_default_never_errors() {
-        let files = vec![file("P", vec![("X", 1, vec!["whatever_new"]), ("Y", 2, vec!["is_a"])])];
+        let files = vec![file(
+            "P",
+            vec![("X", 1, vec!["whatever_new"]), ("Y", 2, vec!["is_a"])],
+        )];
         let lints = compute_predicate_lints(&files, None);
         assert!(lints.iter().all(|l| l.level != LintLevel::Error));
     }
 
     #[test]
     fn strict_enforce_errors_on_undeclared() {
-        let cfg = PredicatesConfig::from_toml_str(
-            "enforce = true\n[predicates]\nderived_from = {}\n",
-        )
-        .unwrap();
+        let cfg =
+            PredicatesConfig::from_toml_str("enforce = true\n[predicates]\nderived_from = {}\n")
+                .unwrap();
         let files = vec![file("P", vec![("X", 5, vec!["made_up"])])];
         let lints = compute_predicate_lints(&files, Some(&cfg));
-        let undeclared: Vec<_> = lints.iter().filter(|l| l.kind == "predicate-undeclared").collect();
+        let undeclared: Vec<_> = lints
+            .iter()
+            .filter(|l| l.kind == "predicate-undeclared")
+            .collect();
         assert_eq!(undeclared.len(), 1);
         assert_eq!(undeclared[0].level, LintLevel::Error);
         // A declared predicate is not flagged.
-        let ok = compute_predicate_lints(&[file("Q", vec![("X", 1, vec!["derived_from"])])], Some(&cfg));
+        let ok = compute_predicate_lints(
+            &[file("Q", vec![("X", 1, vec!["derived_from"])])],
+            Some(&cfg),
+        );
         assert!(!ok.iter().any(|l| l.kind == "predicate-undeclared"));
     }
 
     #[test]
     fn crystallising_warns_not_errors() {
-        let cfg = PredicatesConfig::from_toml_str("enforce = false\n[predicates]\nderived_from = {}\n").unwrap();
-        let lints = compute_predicate_lints(&[file("P", vec![("X", 1, vec!["made_up"])])], Some(&cfg));
-        let u = lints.iter().find(|l| l.kind == "predicate-undeclared").unwrap();
+        let cfg =
+            PredicatesConfig::from_toml_str("enforce = false\n[predicates]\nderived_from = {}\n")
+                .unwrap();
+        let lints =
+            compute_predicate_lints(&[file("P", vec![("X", 1, vec!["made_up"])])], Some(&cfg));
+        let u = lints
+            .iter()
+            .find(|l| l.kind == "predicate-undeclared")
+            .unwrap();
         assert_eq!(u.level, LintLevel::Warning);
     }
 
@@ -325,7 +339,9 @@ mod tests {
             ],
         )];
         let lints = compute_predicate_lints(&files, None);
-        assert!(lints.iter().any(|l| l.kind == "predicate-relates-to-overuse"));
+        assert!(lints
+            .iter()
+            .any(|l| l.kind == "predicate-relates-to-overuse"));
     }
 
     #[test]

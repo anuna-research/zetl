@@ -52,7 +52,10 @@ fn predicate_filter_selects_one_kind() {
 #[test]
 fn predicate_filter_is_repeatable_or() {
     let dir = setup_vault();
-    let rows = edges_json(&dir, &["--predicate", "derived_from", "--predicate", "supersedes"]);
+    let rows = edges_json(
+        &dir,
+        &["--predicate", "derived_from", "--predicate", "supersedes"],
+    );
     assert_eq!(rows.len(), 2);
 }
 

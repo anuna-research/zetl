@@ -1107,16 +1107,16 @@ mod tests {
             vec![("derived_from", "Retro"), ("informed_by", "Retro")]
         );
         // The bare link stays untyped.
-        assert_eq!(
-            fwd.iter().filter(|f| f.meta.predicate.is_none()).count(),
-            1
-        );
+        assert_eq!(fwd.iter().filter(|f| f.meta.predicate.is_none()).count(), 1);
     }
 
     #[test]
     fn spec045_typed_backlink_carries_predicate() {
         let mut resolved = HashMap::new();
-        resolved.insert("move fast doctrine".to_string(), "Move Fast Doctrine".to_string());
+        resolved.insert(
+            "move fast doctrine".to_string(),
+            "Move Fast Doctrine".to_string(),
+        );
         let files = vec![
             make_typed_file(
                 "Decision Log",
@@ -2391,9 +2391,7 @@ mod tests {
             .collect();
         assert!(preds.contains(&"derived_from") && preds.contains(&"informed_by"));
         // Untyped edge carries a null predicate attribute.
-        assert!(edges
-            .iter()
-            .any(|e| e["attributes"]["predicate"].is_null()));
+        assert!(edges.iter().any(|e| e["attributes"]["predicate"].is_null()));
     }
 
     #[test]
@@ -2401,9 +2399,8 @@ mod tests {
         // No typed edges → multi:false + empty edge attributes (byte-identical
         // to the pre-SPEC-045 CON-101 feed).
         let files = vec![make_file("A", vec![("B", 1)]), make_file("B", vec![])];
-        let resolved: HashMap<String, String> = [("B".to_string(), "B".to_string())]
-            .into_iter()
-            .collect();
+        let resolved: HashMap<String, String> =
+            [("B".to_string(), "B".to_string())].into_iter().collect();
         let graph = LinkGraph::build(&files, &resolved);
         let out = serialize_graph_index(&graph, &HashMap::new(), &HashMap::new(), "v", "t");
         assert_eq!(out["options"]["multi"], false);

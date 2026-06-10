@@ -46,7 +46,10 @@ fn jsonld_parses_and_has_graph() {
     let dir = vault();
     let jl = run(&dir, "jsonld");
     let v: serde_json::Value = serde_json::from_str(&jl).unwrap();
-    assert!(v["@graph"].as_array().map(|a| !a.is_empty()).unwrap_or(false));
+    assert!(v["@graph"]
+        .as_array()
+        .map(|a| !a.is_empty())
+        .unwrap_or(false));
 }
 
 #[test]

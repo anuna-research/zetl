@@ -369,7 +369,11 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
         .into_iter()
         .map(|(predicate, count)| VaultPredicateEntry { predicate, count })
         .collect();
-    predicates.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.predicate.cmp(&b.predicate)));
+    predicates.sort_by(|a, b| {
+        b.count
+            .cmp(&a.count)
+            .then_with(|| a.predicate.cmp(&b.predicate))
+    });
 
     let stats = StatsContext {
         total_pages: graph_stats.pages,
@@ -494,10 +498,7 @@ pub fn build_page_context(
             .get(&bl.source)
             .cloned()
             .unwrap_or_default();
-        let label = bl
-            .predicate
-            .as_deref()
-            .map(crate::predicates::auto_label);
+        let label = bl.predicate.as_deref().map(crate::predicates::auto_label);
         backlinks_by_predicate
             .entry(
                 bl.predicate
@@ -912,7 +913,10 @@ mod tests {
         // edges_by_predicate buckets typed keys + the __untyped sentinel.
         assert!(ctx.edges_by_predicate.contains_key("derived_from"));
         assert!(ctx.edges_by_predicate.contains_key("contradicts"));
-        assert_eq!(ctx.edges_by_predicate.get(UNTYPED_KEY).map(|v| v.len()), Some(1));
+        assert_eq!(
+            ctx.edges_by_predicate.get(UNTYPED_KEY).map(|v| v.len()),
+            Some(1)
+        );
     }
 
     #[test]
@@ -929,7 +933,9 @@ mod tests {
         assert_eq!(ctx.backlinks[0].label.as_deref(), Some("Contradicts"));
         // Grouped map keys by predicate.
         assert_eq!(
-            ctx.backlinks_by_predicate.get("contradicts").map(|v| v.len()),
+            ctx.backlinks_by_predicate
+                .get("contradicts")
+                .map(|v| v.len()),
             Some(1)
         );
     }
