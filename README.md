@@ -647,11 +647,11 @@ highest precedence (later rules override earlier ones, except level 1):
    (e.g. `.claude/`, `.obsidian/`, `.vscode/`) are skipped. Disable with
    `--include-hidden`. Dotfiles at the vault root are not affected by
    this rule and are always scanned.
-3. **`.gitignore`** — respected if present.
-4. **`.zetlignore`** — gitignore-syntax file at the vault root. Negated
-   patterns (`!foo`) re-include paths the dotdir default would have
-   excluded. Subdirectory `.zetlignore` files are not yet honoured.
-5. **`--exclude PATTERN`** — repeatable CLI flag, gitignore syntax,
+3. **`.zetlignore`** — gitignore-syntax file at the vault root (and in
+   subdirectories). Negated patterns (`!foo`) re-include paths the dotdir
+   default would have excluded. This is the sole file-based scoping
+   authority — `.gitignore` is never consulted.
+4. **`--exclude PATTERN`** — repeatable CLI flag, gitignore syntax,
    evaluated relative to the vault root. Highest priority of the
    user-configurable layers.
 

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`.gitignore` is no longer consulted during vault scanning.** Previously
+  `scan_vault` respected `.gitignore` by default (`git_ignore(true)`), meaning a
+  vault inside a git repo silently inherited git's ignore policy — `.gitignore
+  *`-whitelists would hide most of the vault, gitignored corpus material would
+  be invisible, and `.zetlignore` negations could not override a dominant
+  `.gitignore` pattern. `.gitignore` is now unconditionally disabled
+  (`git_ignore(false)`). `.zetlignore` is the sole file-based scoping authority.
+  (SPEC-043 v2)
+
+  **Migration:** if your vault scoping relied on a `.gitignore` pattern
+  (e.g. a `*`-whitelist that kept the vault small, or exclusions via ignored
+  directories), move those patterns to `.zetlignore`. The syntax is identical
+  (gitignore format). The `--no-gitignore` flag introduced in SPEC-043 v1 has
+  been removed — it is no longer needed.
+
 ### Added
 
 - **Wikilink predicate language — typed named edges** ([SPEC-045](specs/SPEC-045-wikilink-predicate-language.md)).

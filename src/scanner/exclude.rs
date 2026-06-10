@@ -2,10 +2,10 @@
 //!
 //! Implements the precedence stack from SPEC-026 §REQ-205. The pure entry
 //! point is [`classify_entry`], which decides whether a single filesystem
-//! entry should be included in the scan. Levels 3–5 (.gitignore,
-//! .zetlignore, `--exclude`) are handled by the `ignore` crate's
-//! `WalkBuilder` chain at the call site; this module contributes levels
-//! 1–2 (hardcoded force-ignores + nested vault + dotdir default).
+//! entry should be included in the scan. Levels 4–5 (.zetlignore, `--exclude`)
+//! are handled by the `ignore` crate's `WalkBuilder` chain at the call site;
+//! this module contributes levels 1–2 (hardcoded force-ignores + nested vault
+//! + dotdir default). `.gitignore` is never consulted.
 
 #![deny(clippy::disallowed_methods)]
 

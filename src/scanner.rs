@@ -39,30 +39,30 @@ pub fn scan_vault(root: &Path, opts: &ScanOptions) -> Result<Vec<ParsedFile>> {
     let mut builder = WalkBuilder::new(root);
     builder
         .hidden(false) // dotfile/dotdir handling is delegated to filter_entry below
-        .git_ignore(true) // respect .gitignore
+        .git_ignore(false) // .gitignore is never consulted; .zetlignore is the sole file-based authority
         .git_global(false)
         .git_exclude(false);
 
-    // Build a single "whitelist matcher" from `.gitignore` + `.zetlignore`
-    // that filter_entry can consult when deciding whether to override the
-    // dotdir default. The walker also applies these files independently —
-    // this matcher exists *only* to surface their negated entries before
-    // filter_entry vetoes a directory (defects 2/3 / REQ-205 levels 3-4).
+    // `.zetlignore` is a first-class custom ignore filename. `add_custom_ignore_filename`
+    // gives it the `ignore` crate's full per-directory semantics — the
+    // `*`-then-`!dir/**` whitelist idiom works and nested `.zetlignore` files are
+    // honoured. `--exclude` and the level-1 force-ignores live in
+    // `builder.overrides()` below, which outranks everything here.
+    builder.add_custom_ignore_filename(".zetlignore");
+
+    // Build a whitelist matcher from `.zetlignore` that filter_entry can
+    // consult when deciding whether to override the dotdir default. The walker
+    // also applies `.zetlignore` independently — this matcher exists *only* to
+    // surface negated entries before filter_entry vetoes a directory
+    // (defects 2/3 / REQ-205 levels 4-5).
     let zetlignore_path = root.join(".zetlignore");
-    let gitignore_path = root.join(".gitignore");
     let whitelist_matcher: Option<Arc<ignore::gitignore::Gitignore>> = {
         let mut gi = ignore::gitignore::GitignoreBuilder::new(root);
-        let mut any = false;
-        if gitignore_path.exists() {
-            gi.add(&gitignore_path);
-            any = true;
-        }
         if zetlignore_path.exists() {
-            builder.add_ignore(&zetlignore_path);
+            // The walker already applies `.zetlignore` via the custom-ignore
+            // filename above; here we only feed the root copy into the
+            // dotdir-override whitelist matcher consulted by filter_entry.
             gi.add(&zetlignore_path);
-            any = true;
-        }
-        if any {
             gi.build().ok().map(Arc::new)
         } else {
             None

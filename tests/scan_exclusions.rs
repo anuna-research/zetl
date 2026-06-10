@@ -26,6 +26,20 @@ fn pages(root: &Path, opts: &ScanOptions) -> BTreeSet<String> {
         .collect()
 }
 
+/// Make `root` a git repo. The `ignore` crate only applies positive
+/// `.gitignore` patterns inside a git repository (`require_git` default),
+/// so SPEC-043 tests that exercise `.gitignore` *hiding* paths must init
+/// one — otherwise the gitignore is silently a no-op and the test is vacuous.
+fn git_init(root: &Path) {
+    let ok = std::process::Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(root)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    assert!(ok, "git init failed (is git on PATH?)");
+}
+
 /// TEST-200: a vault with `notes/a.md` and `.claude/session.md` produces
 /// only the `a` page when scanned with default options.
 #[test]
@@ -178,12 +192,14 @@ fn test_cli_exclude_negation_is_rejected() {
     );
 }
 
-/// Defect 3 (review) / REQ-205 level 3: a `.gitignore` with `!.archive/`
-/// must re-include the dotdir even with no `.zetlignore`.
+/// Defect 3 (review) / REQ-205: a `.gitignore` with `!.archive/` has no
+/// effect because `.gitignore` is never consulted. The dotdir stays excluded
+/// unless `.zetlignore` re-includes it.
 #[test]
-fn test_gitignore_negation_overrides_dotdir_default() {
+fn test_gitignore_negation_has_no_effect_on_dotdir() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();
+    git_init(root);
     write(root, "notes/a.md", "# A");
     write(root, ".archive/old.md", "# Old");
     write(root, ".gitignore", "!.archive/\n");
@@ -191,8 +207,8 @@ fn test_gitignore_negation_overrides_dotdir_default() {
     let result = pages(root, &ScanOptions::default());
     assert!(result.contains("a"));
     assert!(
-        result.contains("old"),
-        ".gitignore !.archive/ should re-include the dotdir: {result:?}"
+        !result.contains("old"),
+        ".gitignore negation must have no effect; dotdir should remain excluded: {result:?}"
     );
 }
 
@@ -351,6 +367,121 @@ fn test_207_no_unannotated_default_scan_options_in_production() {
         violations.is_empty(),
         "REQ-207: unannotated ScanOptions::default() in production scan_vault/reindex_with calls:\n{}",
         violations.join("\n")
+    );
+}
+
+/// TEST-210 (SPEC-043): `.gitignore` is always ignored. A directory excluded
+/// in `.gitignore` is still scanned — the corpus boundary and the
+/// git-tracking boundary are independent.
+#[test]
+fn test_210_gitignore_exclusions_are_always_ignored() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+    git_init(root);
+    write(root, ".gitignore", "corpus/\n"); // would hide corpus/ if consulted
+    write(root, "a.md", "# A (tracked)\n");
+    write(
+        root,
+        "corpus/note.md",
+        "# note (gitignored corpus material)\n",
+    );
+
+    let result = pages(root, &ScanOptions::default());
+    assert_eq!(
+        result,
+        BTreeSet::from(["a".to_string(), "note".to_string()]),
+        ".gitignore must be ignored; corpus/ should always be visible: {result:?}"
+    );
+}
+
+/// TEST-212 (SPEC-043): `.zetlignore` blacklist style. `.gitignore` is always
+/// ignored, so `.zetlignore` is the sole file-based scoping authority. Use
+/// `.zetlignore` to exclude what the corpus view should not show.
+#[test]
+fn test_212_zetlignore_blacklist_scopes_the_vault() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+    write(root, ".zetlignore", "secret/\n"); // corpus view: hide secret/
+    write(root, "tracked.md", "# tracked\n");
+    write(root, "corpus/note.md", "# note\n");
+    write(root, "secret/leak.md", "# leak (blacklisted)\n");
+
+    let result = pages(root, &ScanOptions::default());
+    assert_eq!(
+        result,
+        BTreeSet::from(["tracked".to_string(), "note".to_string()]),
+        ".zetlignore blacklist should hide only secret/: {result:?}"
+    );
+}
+
+/// TEST-213 (SPEC-043): the `*`-then-re-include *whitelist* idiom in
+/// `.zetlignore`. zetl loads it via `add_custom_ignore_filename`, giving it the
+/// `ignore` crate's full per-directory semantics — `*` excludes everything,
+/// then `!corpus/` + `!corpus/**` re-includes the subtree. This is the
+/// ergonomic corpus-view configuration: scope to exactly the roots you want.
+#[test]
+fn test_213_zetlignore_whitelist_idiom_scopes_the_vault() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+    write(root, ".zetlignore", "*\n!corpus/\n!corpus/**\n");
+    write(root, "tracked.md", "# tracked\n");
+    write(root, "corpus/note.md", "# note\n");
+
+    let result = pages(root, &ScanOptions::default());
+    assert_eq!(
+        result,
+        BTreeSet::from(["note".to_string()]),
+        "whitelist .zetlignore should scope to corpus/: {result:?}"
+    );
+}
+
+/// TEST-214 (SPEC-043): `.gitignore` exclusions are disregarded — even in a
+/// git repo with a `.gitignore` that would normally hide files, those files
+/// are still scanned. `.zetlignore` is the sole file-based authority.
+#[test]
+fn test_214_gitignore_exclusions_are_disregarded() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+    git_init(root);
+    write(root, ".gitignore", "corpus/\ndrafts/\n"); // would hide both if consulted
+    write(root, "a.md", "# A\n");
+    write(root, "corpus/note.md", "# note\n");
+    write(root, "drafts/wip.md", "# wip\n");
+
+    let result = pages(root, &ScanOptions::default());
+    assert_eq!(
+        result,
+        BTreeSet::from(["a".to_string(), "note".to_string(), "wip".to_string()]),
+        ".gitignore exclusions must be disregarded; all pages visible: {result:?}"
+    );
+}
+
+/// TEST-211 (SPEC-043): without `.zetlignore`, a `*`-wildcard `.gitignore`
+/// has no effect — levels 1–2 (force-ignores + dotdir default) still apply
+/// but `.gitignore` is never consulted.
+#[test]
+fn test_211_gitignore_wildcard_has_no_effect_levels_1_2_hold() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+    git_init(root);
+    write(root, ".gitignore", "*\n"); // would hide everything if consulted
+    write(root, "a.md", "# A\n");
+    write(root, "sub/b.md", "# B\n");
+    write(root, ".claude/session.md", "# dotdir\n"); // still excluded (level 2)
+    write(root, "node_modules/lib.md", "# nm\n"); // still excluded (level 1)
+
+    let result = pages(root, &ScanOptions::default());
+    assert!(
+        result.contains("a") && result.contains("b"),
+        ".gitignore must be ignored; a and b should be visible: {result:?}"
+    );
+    assert!(
+        !result.contains("session"),
+        "level-2 dotdir default must still hold: {result:?}"
+    );
+    assert!(
+        !result.contains("lib"),
+        "level-1 force-ignore must still hold: {result:?}"
     );
 }
 
