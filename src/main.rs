@@ -1448,16 +1448,18 @@ fn cmd_edges(
     let all = pipeline.graph.all_edges();
 
     // --by-predicate: group-and-count over the whole vault (the vocabulary
-    // distribution audit). Untyped edges bucket under "(untyped)".
+    // distribution audit). The untyped bucket keys on `None`, serialised as
+    // JSON `null` for consistency with the per-edge `predicate` field (an agent
+    // sees the same shape everywhere); the human table renders it "(untyped)".
     if by_predicate {
-        let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+        let mut counts: std::collections::BTreeMap<Option<String>, usize> =
+            std::collections::BTreeMap::new();
         for e in &all {
-            let key = e.predicate.clone().unwrap_or_else(|| "(untyped)".to_string());
-            *counts.entry(key).or_insert(0) += 1;
+            *counts.entry(e.predicate.clone()).or_insert(0) += 1;
         }
         #[derive(Serialize)]
         struct PredCount {
-            predicate: String,
+            predicate: Option<String>,
             count: usize,
         }
         let rows: Vec<PredCount> = counts
@@ -1470,7 +1472,10 @@ fn cmd_edges(
                 let mut table = Table::new();
                 table.set_header(vec!["Predicate", "Count"]);
                 for r in &rows {
-                    table.add_row(vec![Cell::new(&r.predicate), Cell::new(r.count)]);
+                    table.add_row(vec![
+                        Cell::new(r.predicate.as_deref().unwrap_or("(untyped)")),
+                        Cell::new(r.count),
+                    ]);
                 }
                 println!("{table}");
             }
@@ -1508,8 +1513,11 @@ fn cmd_edges(
         })
         .collect();
 
-    // A nonexistent --from / --to page yields zero rows + a stderr note
-    // (CON-4503 error model — not an error).
+    // Zero rows is a valid result, not an error (CON-4503). But be helpful on
+    // stderr (so piped stdout stays clean): name a missing page, and — when a
+    // `--predicate` filter matched nothing yet is a near-miss of a real
+    // predicate — suggest the correction (clig.dev: "guess intent, suggest
+    // correction" + "suggest next commands").
     if filtered.is_empty() {
         if let Some(f) = from {
             if !pipeline.graph.has_page(f) {
@@ -1520,6 +1528,27 @@ fn cmd_edges(
             if !pipeline.graph.has_page(t) {
                 eprintln!("note: no page named '{t}' in the vault");
             }
+        }
+        // Observed predicate vocabulary, for nearest-match suggestions.
+        let vocab: std::collections::BTreeSet<&str> =
+            all.iter().filter_map(|e| e.predicate.as_deref()).collect();
+        for p in predicate {
+            if !vocab.contains(p.as_str()) {
+                match zetl::predicate_lints::nearest(p, vocab.iter().copied()) {
+                    Some(near) => eprintln!(
+                        "note: no edges with predicate '{p}' — did you mean '{near}'? (try `zetl edges --by-predicate`)"
+                    ),
+                    None => eprintln!(
+                        "note: no edges with predicate '{p}' (try `zetl edges --by-predicate` to see the vocabulary)"
+                    ),
+                }
+            }
+        }
+        // A plain "no matches" cue for humans, kept off stdout.
+        if from.is_none() && to.is_none() && predicate.is_empty() && !untyped && !annotated {
+            eprintln!("note: this vault has no edges");
+        } else if !matches!(cli.format, OutputFormat::Json) {
+            eprintln!("note: no edges match the given filters");
         }
     }
 

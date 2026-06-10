@@ -68,7 +68,7 @@ fn untyped_filter_isolates_bare_links() {
 fn by_predicate_histogram() {
     let dir = setup_vault();
     let rows = edges_json(&dir, &["--by-predicate"]);
-    // contradicts:1, derived_from:1, informed_by:1, supersedes:1, (untyped):1
+    // contradicts:1, derived_from:1, informed_by:1, supersedes:1, untyped:1
     let find = |p: &str| {
         rows.iter()
             .find(|r| r["predicate"] == p)
@@ -76,7 +76,11 @@ fn by_predicate_histogram() {
     };
     assert_eq!(find("contradicts"), Some(1));
     assert_eq!(find("derived_from"), Some(1));
-    assert_eq!(find("(untyped)"), Some(1));
+    // The untyped bucket serialises as JSON `null` — the SAME shape as the
+    // per-edge `predicate` field, so an agent sees one representation of
+    // "untyped" everywhere on this surface.
+    let untyped = rows.iter().find(|r| r["predicate"].is_null()).unwrap();
+    assert_eq!(untyped["count"].as_u64(), Some(1));
 }
 
 #[test]

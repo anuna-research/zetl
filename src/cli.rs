@@ -144,7 +144,8 @@ pub enum Command {
         with_conclusions: bool,
     },
 
-    /// Query the typed link graph by predicate, direction, source, or target.
+    /// Query typed named edges by predicate, source, or target
+    ///
     /// A strict superset of `zetl links`: with no filter it lists every edge,
     /// typed and untyped.
     #[command(
@@ -289,7 +290,10 @@ pub enum Command {
         max_depth: usize,
     },
 
-    /// Export the complete link graph, or project typed edges to RDF
+    /// Export the link graph as JSON, or typed edges as RDF
+    ///
+    /// Without `--rdf`, exports the full link graph as JSON. With
+    /// `--rdf {turtle,ntriples,jsonld}`, projects typed edges to RDF.
     #[command(
         after_help = "Examples:\n  zetl export                       Link graph as JSON\n  zetl export --rdf turtle          Typed edges as RDF/Turtle\n  zetl export --rdf jsonld          Typed edges as JSON-LD\n  zetl export --rdf ntriples        Typed edges as N-Triples"
     )]
@@ -960,9 +964,11 @@ pub enum RdfFormat {
 
 #[derive(Subcommand, Debug)]
 pub enum PredicatesCommand {
-    /// Report frontmatter `tags:` entries that name a vault page and could
-    /// become body predicates. Read-only — reports, never
-    /// rewrites. Only `--dry-run` is supported in v1.
+    /// Report `tags:` that could become body predicates (read-only)
+    ///
+    /// Scans frontmatter scalar-list keys (default `tags`) and reports entries
+    /// that name a vault page. Never rewrites a file; `--dry-run` is required
+    /// in v1.
     Migrate {
         /// Required in v1 — the command refuses to run without it (it never
         /// modifies files).

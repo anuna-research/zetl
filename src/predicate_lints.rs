@@ -145,7 +145,8 @@ pub fn compute_predicate_lints(
                 kind: "predicate-drift",
                 level: LintLevel::Warning,
                 message: format!(
-                    "`{p}` ({cp} use{}) is close to `{q}` ({cq} uses) — possible synonym/typo",
+                    "`{p}` ({cp} use{}) is close to `{q}` ({cq} uses) — possible synonym/typo; \
+                     run `zetl edges --by-predicate` to audit the vocabulary",
                     if cp == 1 { "" } else { "s" }
                 ),
                 file,
@@ -194,8 +195,9 @@ pub fn compute_predicate_lints(
     lints
 }
 
-/// The closest candidate within Levenshtein distance ≤ 2, if any.
-fn nearest<'a>(target: &str, candidates: impl Iterator<Item = &'a str>) -> Option<&'a str> {
+/// The closest candidate within Levenshtein distance ≤ 2, if any. Shared with
+/// `zetl edges`'s "did you mean" suggestion (REQ-4508 nearest-match reuse).
+pub fn nearest<'a>(target: &str, candidates: impl Iterator<Item = &'a str>) -> Option<&'a str> {
     candidates
         .map(|c| (c, levenshtein(target, c)))
         .filter(|&(c, d)| d <= 2 && c != target)
@@ -204,7 +206,7 @@ fn nearest<'a>(target: &str, candidates: impl Iterator<Item = &'a str>) -> Optio
 }
 
 /// Classic Levenshtein edit distance (small strings; two-row DP).
-fn levenshtein(a: &str, b: &str) -> usize {
+pub fn levenshtein(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
     let b: Vec<char> = b.chars().collect();
     if a.is_empty() {
