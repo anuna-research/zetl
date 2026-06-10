@@ -83,6 +83,7 @@ window.__zetlBootGraph = function(){
   /* ── Graph/renderer state ────────────────────────────────────────────── */
   var graph = null, renderer = null, layoutSupervisor = null;
   var hasDashedProgram = false;
+  var hasArrowProgram = false;
   var activeSlug = document.body.getAttribute('data-slug') || '';
   var neighbourSet = null;
   var hoveredNode = null;
@@ -203,6 +204,109 @@ window.__zetlBootGraph = function(){
     return out;
   }
 
+  /* ── Typed-edge predicates (SPEC-045 REQ-4518) ───────────────────────────
+     The SPEC-045 graph-data feed is a backward-compatible superset: when the
+     vault has typed edges, options.multi is true and each edge carries
+     attributes.predicate (string|null) + attributes.annotation (string|null).
+     A K-predicate wikilink emits K parallel edges. When there are NO typed
+     edges the feed is byte-identical to the old one (no predicate attrs) and
+     all of the machinery below stays dormant — the graph renders exactly as
+     before (REQ-4505 / REQ-4518 no-typed-edge fallback).
+
+     UNTYPED_KEY is the sentinel for the "untyped" bucket (predicate: null).
+     A predicate is "hidden" when its key sits in predicateHidden — edges of a
+     hidden predicate get out.hidden=true in the edge reducer (a single
+     attribute toggle + one renderer.refresh(), never a graph rebuild, so we
+     stay inside the SPEC-028 FPS/LCP budget). */
+  var UNTYPED_KEY = ' untyped';
+  /* Fixed palette cycled in sorted-predicate order so colours are stable
+     across reloads (same vault → same predicate→colour mapping). Chosen for
+     contrast against the neutral grey edge default and the indigo node colour.
+     Untyped edges deliberately keep palette.edge (neutral) and are NOT drawn
+     from this palette. */
+  var PREDICATE_PALETTE = [
+    '#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed',
+    '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4f46e5',
+    '#0d9488', '#c026d3', '#ca8a04', '#e11d48', '#0284c7'
+  ];
+  var predicateColourCache = Object.create(null); /* predicate name → hex */
+  var predicateHidden = Object.create(null);      /* key → true when hidden */
+  var hasTypedEdges = false;                       /* ≥1 edge with predicate!=null */
+
+  /* Scan the imported graph once: record whether any typed edge exists and
+     assign each distinct predicate a stable colour in sorted order. Called
+     right after graph.import in boot(). */
+  function indexPredicates(){
+    hasTypedEdges = false;
+    predicateColourCache = Object.create(null);
+    if (!graph) return;
+    var names = Object.create(null);
+    graph.forEachEdge(function(_e, attrs){
+      if (attrs && typeof attrs.predicate === 'string' && attrs.predicate) {
+        hasTypedEdges = true;
+        names[attrs.predicate] = true;
+      }
+    });
+    Object.keys(names).sort().forEach(function(name, i){
+      predicateColourCache[name] = PREDICATE_PALETTE[i % PREDICATE_PALETTE.length];
+    });
+  }
+  function predicateColour(name){
+    if (!name) return null;
+    return predicateColourCache[name] || null;
+  }
+  /* Legend rows derived from the feed: one per predicate (with count + colour
+     + hidden flag) plus a trailing "untyped" bucket IF any untyped edges
+     exist. Sorted desc by count, then by name — matching vault.predicates. */
+  function predicateLegend(){
+    if (!graph || !hasTypedEdges) return [];
+    var counts = Object.create(null);
+    var untyped = 0;
+    graph.forEachEdge(function(_e, attrs){
+      var p = attrs && typeof attrs.predicate === 'string' && attrs.predicate
+        ? attrs.predicate : null;
+      if (p) counts[p] = (counts[p] || 0) + 1;
+      else untyped++;
+    });
+    var rows = Object.keys(counts).map(function(name){
+      return {
+        key: name,
+        predicate: name,
+        count: counts[name],
+        colour: predicateColour(name),
+        hidden: !!predicateHidden[name]
+      };
+    });
+    rows.sort(function(a, b){
+      if (b.count !== a.count) return b.count - a.count;
+      return a.predicate < b.predicate ? -1 : a.predicate > b.predicate ? 1 : 0;
+    });
+    if (untyped > 0) {
+      rows.push({
+        key: UNTYPED_KEY,
+        predicate: null,
+        count: untyped,
+        colour: null, /* neutral — legend renders palette.edge swatch */
+        hidden: !!predicateHidden[UNTYPED_KEY]
+      });
+    }
+    return rows;
+  }
+  /* Toggle one predicate's visibility (key = predicate name or UNTYPED_KEY).
+     Single attribute flip via the reducer + one refresh — no relayout. */
+  function setPredicateHidden(key, hidden){
+    if (!key) return;
+    if (hidden) predicateHidden[key] = true;
+    else delete predicateHidden[key];
+    if (renderer) renderer.refresh();
+  }
+  function edgeIsHiddenByPredicate(attrs){
+    if (!hasTypedEdges) return false;
+    var p = attrs && typeof attrs.predicate === 'string' && attrs.predicate
+      ? attrs.predicate : null;
+    return p ? !!predicateHidden[p] : !!predicateHidden[UNTYPED_KEY];
+  }
+
   /* ── Reducers (read palette every frame) ─────────────────────────────── */
   /* REQ-112: dead-link (is_dead:true) nodes and their terminating edges
      render with the muted palette and — for edges — Sigma's "dashed" type.
@@ -289,20 +393,42 @@ window.__zetlBootGraph = function(){
       return out;
     }
 
+    /* SPEC-045 REQ-4518: predicate filter. An edge whose predicate (or the
+       untyped bucket) is toggled off in the legend is hidden. Cheap lookup;
+       dormant entirely when the vault has no typed edges. */
+    if (edgeIsHiddenByPredicate(attrs)) {
+      out.hidden = true;
+      return out;
+    }
+
     var isDead = !!attrs.is_dead || !!(targetAttrs && targetAttrs.is_dead);
+    /* SPEC-045 REQ-4518: colour edges by predicate (typed) — a stable hex
+       from PREDICATE_PALETTE in sorted predicate order. Untyped edges keep
+       the neutral palette.edge. Direction is encoded via the "arrow" edge
+       type when the bundled Sigma supports it (registered in instantiate()).
+       Dead-link styling still wins (it conveys phantom-target state). */
+    var predColour = (!isDead && hasTypedEdges
+      && attrs && typeof attrs.predicate === 'string' && attrs.predicate)
+      ? predicateColour(attrs.predicate) : null;
     if (isDead) {
       out.color = palette.edgeDead;
       if (hasDashedProgram) out.type = 'dashed';
       out.zIndex = 0;
+    } else if (predColour) {
+      out.color = predColour;
+      if (hasArrowProgram) out.type = 'arrow';
     } else {
       out.color = palette.edge;
+      if (hasArrowProgram && hasTypedEdges) out.type = 'arrow';
     }
 
     /* Hover: only show edges connected to the hovered node */
     if (hoveredNode && hoveredNeighbours) {
       var s = graph.source(edge), t = graph.target(edge);
       if (s === hoveredNode || t === hoveredNode) {
-        out.color = palette.edge;
+        /* Keep the predicate colour (or its current colour) on hover so the
+           edge type stays legible; just bump weight + z. */
+        out.color = predColour || out.color || palette.edge;
         out.size = 2;
         out.zIndex = 1;
       } else {
@@ -397,12 +523,28 @@ window.__zetlBootGraph = function(){
     if (!window.graphology || !window.Sigma) return false;
     var DirectedGraph = window.graphology.DirectedGraph || window.graphology.Graph;
     if (!DirectedGraph) return false;
+    var MultiDirectedGraph = window.graphology.MultiDirectedGraph || null;
 
     loadGraph().then(function(data){
       if (!data) return;
       try {
-        graph = new DirectedGraph();
+        /* SPEC-045 REQ-4517/4518: the typed-edge feed is a MULTI graph — a
+           K-predicate wikilink emits K parallel source→target edges with
+           distinct keys, and the feed sets options.multi:true. Importing such
+           data into a plain DirectedGraph throws on the second parallel edge
+           ("an edge already exists"), which would silently break the whole
+           graph. Pick the multi constructor when the feed declares multi (or
+           when graphology exposes it and the data omits the flag is fine —
+           multi is a strict superset for our read-only render path). Legacy
+           single-edge feeds (options.multi:false / absent) keep DirectedGraph,
+           so the pre-SPEC-045 render path is byte-for-byte unchanged. */
+        var wantMulti = !!(data.options && data.options.multi) && !!MultiDirectedGraph;
+        var Ctor = wantMulti ? MultiDirectedGraph : DirectedGraph;
+        graph = new Ctor();
         graph.import(data);
+        /* SPEC-045 REQ-4518: scan once for typed edges + assign stable
+           per-predicate colours. No-op (hasTypedEdges=false) for legacy feeds. */
+        indexPredicates();
       } catch (e) { return; }
 
       /* FA2 requires initial coordinates; seed randomly if absent. */
@@ -447,6 +589,22 @@ window.__zetlBootGraph = function(){
         } catch (e) {}
         hasDashedProgram = !!edgePrograms.dashed;
 
+        /* SPEC-045 REQ-4518: register an "arrow" edge program so typed
+           (directed) edges render with arrowheads. Falls back to the default
+           line program where the bundled Sigma lacks it — in that case
+           direction is still encoded (source→target ordering) but without a
+           visible arrowhead. */
+        try {
+          var sNS = window.Sigma || {};
+          var ArrowProgram =
+            (sNS.edgePrograms && sNS.edgePrograms.arrow)
+            || sNS.EdgeArrowProgram
+            || window.EdgeArrowProgram
+            || null;
+          if (ArrowProgram) edgePrograms.arrow = ArrowProgram;
+        } catch (e) {}
+        hasArrowProgram = !!edgePrograms.arrow;
+
         var sigmaSettings = {
           nodeReducer: nodeReducer,
           edgeReducer: edgeReducer,
@@ -468,9 +626,14 @@ window.__zetlBootGraph = function(){
              camera margin — larger on mobile where labels eat more of
              the horizontal budget per node, smaller on desktop where
              the canvas is wide enough to absorb edge labels naturally. */
-          stagePadding: (typeof window !== 'undefined' && window.innerWidth < 900) ? 120 : 60
+          stagePadding: (typeof window !== 'undefined' && window.innerWidth < 900) ? 120 : 60,
+          /* SPEC-045 REQ-4518: enable edge hover/click events ONLY when the
+             vault has typed edges, so we can surface annotations on demand.
+             Off for legacy feeds — keeps the pre-SPEC-045 render path untouched
+             and avoids per-edge hit-testing overhead where it buys nothing. */
+          enableEdgeEvents: hasTypedEdges
         };
-        if (hasDashedProgram) sigmaSettings.edgeProgramClasses = edgePrograms;
+        if (hasDashedProgram || hasArrowProgram) sigmaSettings.edgeProgramClasses = edgePrograms;
 
         try {
           renderer = new window.Sigma(graph, container, sigmaSettings);
@@ -501,6 +664,45 @@ window.__zetlBootGraph = function(){
           hoveredNeighbours = null;
           if (hasSize()) renderer.refresh();
         });
+
+        /* SPEC-045 REQ-4518: annotation on demand. An edge with a non-null
+           annotation surfaces it on hover (and click, for touch) via the
+           zetl:graph:edge-annotation event — progressive disclosure, NOT an
+           always-on label (labels are expensive in force layouts). The host
+           template renders the detail in an overlay; an empty/null annotation
+           clears it. Guarded behind hasTypedEdges so legacy feeds never emit. */
+        function edgeAnnotationDetail(edge){
+          if (!edge || !graph || !graph.hasEdge(edge)) return null;
+          var a = graph.getEdgeAttributes(edge);
+          var ann = a && typeof a.annotation === 'string' ? a.annotation : null;
+          var pred = a && typeof a.predicate === 'string' ? a.predicate : null;
+          return {
+            edge: edge,
+            predicate: pred,
+            annotation: ann,
+            colour: pred ? predicateColour(pred) : null,
+            source: graph.source(edge),
+            target: graph.target(edge)
+          };
+        }
+        function emitEdgeAnnotation(detail){
+          try {
+            window.dispatchEvent(new CustomEvent('zetl:graph:edge-annotation', {
+              detail: detail
+            }));
+          } catch (e) {}
+        }
+        if (hasTypedEdges) {
+          renderer.on('enterEdge', function(evt){
+            emitEdgeAnnotation(edgeAnnotationDetail(evt.edge));
+          });
+          renderer.on('leaveEdge', function(){
+            emitEdgeAnnotation(null);
+          });
+          renderer.on('clickEdge', function(evt){
+            emitEdgeAnnotation(edgeAnnotationDetail(evt.edge));
+          });
+        }
 
         /* Click-to-focus UX on the fullscreen /_graph view:
              click node (not yet focused) → focus at depth 1 (pan + highlight)
@@ -613,6 +815,14 @@ window.__zetlBootGraph = function(){
           folderLegend: folderLegend,
           folderColour: folderColour,
           topFolder: topFolder,
+          /* SPEC-045 REQ-4518: typed-edge surface. */
+          hasTypedEdges: function(){ return hasTypedEdges; },
+          predicateLegend: predicateLegend,
+          predicateColour: predicateColour,
+          untypedKey: UNTYPED_KEY,
+          /* Toggle one predicate (or the UNTYPED_KEY bucket) on/off. */
+          setPredicateVisible: function(key, visible){ setPredicateHidden(key, !visible); },
+          isPredicateHidden: function(key){ return !!predicateHidden[key]; },
           /* External filter surface. Call with partial object to merge. */
           setFilter: function(next){
             if (!next) return;
@@ -658,7 +868,15 @@ window.__zetlBootGraph = function(){
             return m;
           }
         };
-        try { window.dispatchEvent(new CustomEvent('zetl:graph:ready', { detail: { legend: folderLegend() } })); } catch (e) {}
+        try {
+          window.dispatchEvent(new CustomEvent('zetl:graph:ready', {
+            detail: {
+              legend: folderLegend(),
+              hasTypedEdges: hasTypedEdges,
+              predicateLegend: predicateLegend()
+            }
+          }));
+        } catch (e) {}
         return true;
       }
 

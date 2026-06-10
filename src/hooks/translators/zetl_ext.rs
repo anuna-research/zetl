@@ -67,6 +67,7 @@ mod tests {
                             alias: Some("alt".into()),
                             heading: None,
                             block_id: None,
+                            predicates: Vec::new(),
                         }),
                     ],
                 }),
@@ -84,7 +85,7 @@ mod tests {
         let t = ZetlExtTranslator;
         let v = t.zetl_to_foreign(&sample_doc()).unwrap();
         assert_eq!(v["type"], "Document");
-        assert_eq!(v["ast_version"], "1.0");
+        assert_eq!(v["ast_version"], "1.1");
         assert_eq!(v["children"][0]["type"], "Heading");
         assert_eq!(v["children"][1]["children"][1]["type"], "Wikilink");
     }

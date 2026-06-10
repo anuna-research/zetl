@@ -1,7 +1,7 @@
 ---
 id: SPEC-045
 title: "Wikilink Predicate Language — typed named edges over `[[wikilinks]]`"
-version: 0.1.7-strawman
+version: 0.1.9-strawman
 status: draft
 date: 2026-06-09
 audience: agent, human
@@ -74,10 +74,44 @@ revision_notes:
   - v0.1.7 (2026-06-09): per direction "don't edit old specs — add to
     SPEC-045", the graph filter/styling BEHAVIOUR is now specified here as
     REQ-4518 (filter-by-predicate, legend, colour, arrowheads, annotation-
-    on-hover, within SPEC-028 FPS/LCP budgets) and applied to
-    SPEC-028/SPEC-037 WITHOUT amending them. Q10 resolved in SPEC-045
-    (no longer an external amendment); only palette/placement left as
-    implementation detail.
+    on-hover, within SPEC-028 FPS/LCP budgets) and specified as consumer
+    behaviour over the SPEC-028/SPEC-037 widgets, leaving those specs
+    unmodified. Q10 resolved in SPEC-045 (no external amendment needed);
+    only palette/placement left as implementation detail.
+  - v0.1.8 (2026-06-09): consistency pass resolving six review findings —
+    (P1) the `Wikilink.predicates` AST shape is now ONE normative form, an
+    array of `{predicate, inverse}` objects, across REQ-4503 AND CON-4505
+    (the stale array-of-strings in CON-4505 is replaced; matches the
+    v0.1.3/v0.1.4 object design). (P1) CURIE predicates are now explicitly
+    EXCLUDED from the SPL fact projection in v1 (no collision-free functor
+    mapping; they live in graph/edges/RDF instead) — REQ-4510, CON-4504,
+    CON-4501, and Q9 (now RESOLVED) aligned. (P1) CON-4508 now specifies
+    the concrete graphology superset for multi-predicate links —
+    `options.multi: true`, dedup key `(source,target,predicate)`,
+    predicate-qualified edge `key` — as a backward-compatible extension of
+    SPEC-028 CON-101's `multi: false` feed (extends, never supersedes; the
+    baseline is unmodified and byte-identical when no typed edges exist);
+    REQ-4517 references it. (P2) typed
+    edge fields in the feed moved under `attributes` (graphology import
+    shape). (P2) `edges_by_predicate`/`backlinks_by_predicate` now key
+    untyped edges under the reserved collision-safe sentinel `"__untyped"`
+    (CON-4506, REQ-4515). (P2) authoring source-of-truth disambiguated:
+    SPEC-045 v1 is BODY-INLINE only (consistent with ADR-4505 + scope); the
+    frontmatter `relations:` reconciliation with SPEC-044 is additive and
+    does not gate v1.
+  - v0.1.9 (2026-06-09): governance consistency pass on the cross-spec
+    relationship. CON-4508 no longer claims to "supersede CON-101's
+    multi/dedup clauses WITHOUT amending" SPEC-028 — a self-contradiction
+    (a normative clause cannot be superseded without amendment). Per the
+    direction "don't amend previously-implemented specs", the typed feed is
+    reframed as a **backward-compatible superset** of CON-101: it extends,
+    never supersedes; the producer emits it only when typed edges exist;
+    with no typed edges the feed is byte-identical to CON-101, so
+    SPEC-028/SPEC-037 stay literally unmodified and their behaviour
+    preserved. `multi: true` with no parallel edges is `graph.import()`-
+    compatible and renders identically to the `multi: false` baseline.
+    Wording aligned across CON-4508, REQ-4517, and the v0.1.7/v0.1.8
+    changelog entries. No design change; SPEC-028/SPEC-037 untouched.
 ---
 
 # SPEC-045: Wikilink Predicate Language
@@ -112,7 +146,7 @@ revision_notes:
 | ------------ | --------------------------------------------------------------------------- |
 | Document ID  | [[SPEC-045-wikilink-predicate-language\|SPEC-045]]                           |
 | Title        | Wikilink Predicate Language — typed named edges over `[[wikilinks]]`         |
-| Version      | 0.1.0-strawman                                                              |
+| Version      | 0.1.9-strawman                                                              |
 | Status       | Draft (strawman; pending [[DESIGN-045-wikilink-predicate-language]] execution) |
 | Author       | Agent (Claude Opus 4.8, [[PROTO-001\|USDD Agent Protocol]] v1.8.0)           |
 | Date         | 2026-06-09                                                                  |
@@ -174,19 +208,31 @@ competition:
 | **[[SPL]] fact projection** + provenance plumbing | **SPEC-045** ([[#CON-4504]]) |
 | Tests, threat model, NFRs | **SPEC-045** |
 
-Two divergences are real and resolved in SPEC-044's favour:
+Two divergences are real; this spec resolves the second in SPEC-044's
+favour and the first in its own (for v1 implementability):
 
-1. **Authoring surface.** SPEC-044 chose **frontmatter `relations:`** as
-   canonical (its reasons: validated shape from the pilot, render
-   through a generic Connections block); it flags **body-inline**
-   `predicate::[[Target]]` as an *open Tier-1 fork* (SPEC-044 §9.2). This
-   spec specifies the body-inline form in full — but as the **in-prose
-   authoring affordance that complements, not replaces, the frontmatter
-   canonical store.** The reconciliation (author inline *and*
-   derive/mirror to frontmatter, vs frontmatter-canonical with prominent
-   render) is the FIRST task of [[DESIGN-045-wikilink-predicate-language]]
-   and gates the rest; until it lands, treat [[#REQ-4501]]'s body-inline
-   recognition as one of two candidate surfaces, not a settled decision.
+1. **Authoring surface — SPEC-045 v1 source of truth is BODY-INLINE.**
+   SPEC-044 chose **frontmatter `relations:`** as *its* canonical store
+   (validated pilot shape, generic Connections-block render) and flags
+   **body-inline** `predicate::[[Target]]` as an *open Tier-1 fork*
+   (SPEC-044 §9.2). SPEC-045 cannot leave that fork open and still be
+   implementable: its entire contract surface — the LangSec recogniser
+   ([[#CON-4501]]), the AST node ([[#CON-4505]]), the SPL projection
+   ([[#CON-4504]]), the graph feed ([[#CON-4508]]) — is defined over the
+   body-inline form, and [[#ADR-4505]] + [[#1.5 Scope]] deliberately
+   EXCLUDE predicates from frontmatter. So the **single, settled v1 source
+   of truth for SPEC-045 is body-inline `predicate::[[Target]]`**;
+   frontmatter `relations:` is SPEC-044's authoring concern and is **not a
+   SPEC-045 v1 surface**. This removes the earlier "one of two candidate
+   surfaces, not settled" hedge, which contradicted ADR-4505.
+
+   What [[DESIGN-045-wikilink-predicate-language]] still owns is the
+   *reconciliation with SPEC-044's store* — whether (and which direction)
+   to mirror between body edges and a frontmatter `relations:` view. That
+   reconciliation is **additive and does NOT gate v1**: body-inline stands
+   alone as the canonical authored form; any frontmatter bridge is a later
+   convenience layered on top, never a precondition for parsing, the
+   graph, SPL, or the graph feed.
 2. **Telos of annotations.** This spec's framing of edge annotations as
    *agent reading-budget / progressive disclosure* is exactly the framing
    SPEC-044 §9.3 **declines** as "connective, not conjunctive." SPEC-044's
@@ -346,8 +392,9 @@ that already exists.**
 - **Typed edges in the interactive graph** — `predicate`/`annotation` in
   the graph-data feed ([[#REQ-4517]], [[#CON-4508]]) AND filter-by-
   predicate + colour/legend/arrowhead styling ([[#REQ-4518]]), both
-  specified here and applied to [[SPEC-028]]/[[SPEC-037]] without amending
-  them.
+  specified here — the feed as a backward-compatible superset of CON-101,
+  the styling as consumer behaviour — leaving [[SPEC-028]]/[[SPEC-037]]
+  unmodified.
 - **Semantic-web interop export** — `zetl export
   --format {jsonld,turtle,ntriples}` projecting typed edges to RDF
   (PROV-O provenance, SKOS vocabulary), with optional `[prefixes]` /
@@ -848,10 +895,22 @@ an [[SPL]] fact of the shape `(<predicate> "<source-page>"
 "<target-page>")`, inserted into the theory the reasoner evaluates
 ([[SPEC-005]], `src/reason/mod.rs:72`). The projection SHALL:
 
-* emit one fact per typed edge (untyped edges, `predicate: null`, are
-  NOT projected — there is no predicate to name the relation);
-* normalise the predicate to a valid SPL functor (it already satisfies
-  the lowercase-snake grammar of REQ-4502, which is SPL-functor-safe);
+* emit one fact per typed **snake** edge (untyped edges, `predicate:
+  null`, are NOT projected — there is no predicate to name the relation);
+* use the snake predicate directly as the SPL functor — it already
+  satisfies the lowercase-snake grammar of REQ-4502, which is
+  SPL-functor-safe with no transformation;
+* **exclude CURIE predicates** (`prefix:localName`) from SPL projection
+  in committed v1. A CURIE's `:` and camelCase have no lossless,
+  collision-free mapping onto the lowercase-snake functor space (any
+  underscore-based escape collides with a legitimately-authored snake
+  predicate — see [[#13. Open Questions]] Q9), so v1 does NOT invent one
+  ([[PROTO-001]] "be conservative in what you accept"). CURIE edges remain
+  fully present in the [[Link Graph]], `zetl edges` ([[#REQ-4509]]), the
+  template vars ([[#REQ-4515]]), and the RDF export ([[#REQ-4516]]) — the
+  latter being the CURIE's native semantic home. Snake → SPL and CURIE →
+  RDF are two projections of the one labelled graph; SPL is simply not the
+  surface for the namespaced-vocabulary subset in v1;
 * preserve provenance via the existing SPL source-annotation mechanism
   (`src/reason/mod.rs:116`) — every projected fact carries
   `_source_file`, `_source_line`, `_source_page` so a conclusion traces
@@ -945,11 +1004,14 @@ All additions are **additive** — existing themes that read `page.title`,
   `annotation` is `null` when absent.
 * `page.edges_by_predicate` — a map `{ predicate → [edge…] }` for the
   Connections-block idiom (`{% for pred, edges in page.edges_by_predicate %}`).
+  Untyped edges bucket under the reserved sentinel key `"__untyped"` (map
+  keys cannot be `null`; the sentinel is collision-safe — [[#CON-4506]]).
 * `page.backlinks` — EXTENDED: each entry (`src/web/context.rs:101`,
   `BacklinkEntry`) gains `predicate`, `label`, `annotation` (all `null`
   for untyped). Existing fields unchanged.
 * `page.backlinks_by_predicate` — the grouped map the typed-backlink
-  panel ([[#REQ-4511]]) renders from.
+  panel ([[#REQ-4511]]) renders from; untyped backlinks bucket under the
+  same `"__untyped"` sentinel key ([[#CON-4506]]).
 * `vault.predicates` — the observed predicate set with counts (the
   `zetl edges --by-predicate` data, `src/web/context.rs:24` `VaultContext`)
   for nav / index / tag-cloud widgets.
@@ -1003,11 +1065,16 @@ enables typed-edge filtering** in the widget — the graph SHALL be able to
 show/hide and style edges by predicate (e.g. "only `contradicts`", "hide
 `relates_to`"), mirroring `zetl edges --predicate` ([[#REQ-4509]]).
 
-The addition is additive: consumers reading only `source`/`target` are
-unaffected ([[#REQ-4505]]). The feed is the *data contract*; the
-filtering/styling *behaviour* is [[#REQ-4518]] — both specified **here in
-SPEC-045**, applied to the [[SPEC-028]] / [[SPEC-037]] graph components
-without modifying those specs. Filtering is also a performance win —
+Because a K-predicate link emits K parallel edges between the same pair,
+the feed SHALL use graphology `options.multi: true` with
+predicate-qualified edge keys and place the typed fields under each edge's
+`attributes` ([[#CON-4508]] gives the concrete superset of [[SPEC-028]]
+CON-101's `multi: false` / `(source,target)` dedup). The addition is
+additive: consumers reading only `source`/`target` are unaffected
+([[#REQ-4505]]). The feed is the *data contract*; the filtering/styling
+*behaviour* is [[#REQ-4518]] — both specified **here in SPEC-045**,
+applied to the [[SPEC-028]] / [[SPEC-037]] graph components without
+modifying those specs. Filtering is also a performance win —
 hiding a predicate reduces rendered edges, helping the [[SPEC-028]]
 FPS/LCP gates rather than straining them.
 
@@ -1312,7 +1379,12 @@ the recogniser keys on the `::[[` sequence; the lone `:` inside the
 predicate is distinct from the `::` separator. A **bare** camelCase token
 (`wasDerivedFrom::[[X]]`, no prefix) is deliberately NOT a predicate —
 standard terms MUST be namespaced — so plain lowercase-snake remains the
-only un-prefixed form and no accidental capitalised predicates arise.
+only un-prefixed form and no accidental capitalised predicates arise. A
+CURIE predicate is a first-class graph/query/RDF citizen but, because its
+`:`/camelCase have no collision-free SPL-functor mapping, is **excluded
+from the SPL fact projection** in committed v1 ([[#REQ-4510]],
+[[#CON-4504]]; the snake form is the SPL surface, the CURIE form the RDF
+surface — see Q9).
 
 **Multiple predicates (REQ-4503):** one or more predicates may be chained
 on `::` before a single wikilink — `derived_from::informed_by::[[X]]`.
@@ -1479,8 +1551,12 @@ reason`.
 **Pre-conditions:**
 - The edge is typed (`predicate != null`); untyped edges are not
   projected (REQ-4510).
-- The predicate satisfies the REQ-4502 grammar (lowercase-snake), which
-  is a valid SPL functor by construction.
+- The predicate is a **snake** predicate (`^[a-z][a-z0-9_]*$`), which is a
+  valid SPL functor by construction (used verbatim, no transformation).
+- **CURIE predicates are NOT projected** in v1 (REQ-4510): there is no
+  collision-free functor mapping for `prefix:localName` (see Q9), so they
+  are skipped here and reach the reasoner only if an author writes an
+  explicit SPL rule. They still export to RDF ([[#REQ-4516]]).
 
 **Post-conditions:**
 - One fact `(<predicate> "<source-page>" "<target-page>")` per typed
@@ -1493,10 +1569,12 @@ reason`.
 - The fact set is deterministic and order-stable across builds for a
   fixed vault.
 
-**Error model:** a predicate that (somehow) is not a valid functor is a
-projection-time diagnostic, not a silent drop; the grammar (REQ-4502)
-makes this unreachable for recognised edges, so it is a defence-in-depth
-assertion.
+**Error model:** a snake predicate is always a valid functor by the
+REQ-4502 grammar, so projection of a snake edge cannot fail on functor
+shape (a defence-in-depth assertion still guards it). A CURIE predicate is
+**deliberately skipped** (not projected, not an error) per the v1
+exclusion above; the skip is observable via the same diagnostic channel at
+verbose level so the asymmetry with RDF export is never silent.
 
 **Property (roundtrip-adjacent):** for any typed edge `e`, the projected
 fact's `(predicate, source, target)` equals `e`'s `(predicate, source,
@@ -1512,21 +1590,44 @@ target)` — projection is information-preserving on the triple
 (`tools/zetl-ast-schema-v1.json`, `src/hooks/ast/mod.rs:419`).
 
 **Pre/post-conditions:**
-- Adds OPTIONAL property `predicates: { type: "array", items: { type:
-  "string" } }` (default `[]`); empty/absent ⇒ untyped. A multi-predicate
-  link is one node with multiple array entries (REQ-4503). The node's
-  `required` set is UNCHANGED (the field is optional), preserving additive
-  evolution ([[SPEC-032#NFR-3206]]).
+- Adds OPTIONAL property `predicates` — an **array of predicate-spec
+  objects** (default `[]`); empty/absent ⇒ untyped. This is the SAME shape
+  REQ-4503 specifies (the single normative AST shape — the field is an
+  array of objects, NOT an array of strings). Each item is
+  `{ "predicate": string, "inverse": string | null }`, where `inverse` is
+  RESERVED and always `null` in committed v1 (it exists so the deferred
+  materialised named-inverse (Q4) can populate a field additively rather
+  than change the item type from string→object — [[#REQ-4503]]). Schema
+  sketch:
+
+  ```jsonc
+  "predicates": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["predicate", "inverse"],
+      "properties": {
+        "predicate": { "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$|^[a-z][a-z0-9]*:[A-Za-z][A-Za-z0-9_-]*$" },
+        "inverse":   { "type": ["string", "null"] }
+      }
+    }
+  }
+  ```
+
+  A multi-predicate link is one node with multiple array entries
+  (REQ-4503). The node's `required` set is UNCHANGED (the field is
+  optional), preserving additive evolution ([[SPEC-032#NFR-3206]]).
 - Schema minor version increments (`ast_version` `1.0` → `1.1`).
 - A hook that does not read `predicates` round-trips the node byte-
   stably (the additive-evolution property test in
   `tests/ast_schema_integration.rs` gains a predicates case).
 
-**Error model:** a `predicates` item that violates the [[#CON-4501]]
-grammar is a schema-validation failure (the schema SHOULD carry, on
-`items`, `pattern: "^[a-z][a-z0-9_]*$|^[a-z][a-z0-9]*:[A-Za-z][A-Za-z0-9_-]*$"`
-— snake OR CURIE — so the AST contract enforces the grammar, not just the
-parser; defence in depth at the hook boundary).
+**Error model:** a `predicates` item whose `predicate` value violates the
+[[#CON-4501]] grammar is a schema-validation failure (the `pattern` on
+`properties.predicate` — snake OR CURIE — makes the AST contract enforce
+the grammar, not just the parser; defence in depth at the hook boundary).
 
 **Implements:** [[#REQ-4503]].
 **Verified by:** [[#TEST-4503]].
@@ -1555,9 +1656,11 @@ minijinja (`src/web/engine.rs`).
                                          // the page that authored an
                                          // other-authored reverse edge so
                                          // the renderer can flag it.
-// page.edges_by_predicate: { "<predicate>": [ <edge>, … ], … }
+// page.edges_by_predicate: { "<predicate>": [ <edge>, … ],
+//                            "__untyped": [ <edge>, … ] }   // untyped sentinel key
 // page.backlinks[i]: existing fields + "predicate"|null, "label"|null, "annotation"|null
-// page.backlinks_by_predicate: { "<predicate>": [ <backlink>, … ], … }
+// page.backlinks_by_predicate: { "<predicate>": [ <backlink>, … ],
+//                                "__untyped": [ <backlink>, … ] }
 // vault.predicates: [ { "predicate": "derived_from", "count": 14 }, … ]
 ```
 
@@ -1566,6 +1669,18 @@ predicate's local part (after any CURIE `prefix:`), replace `_`/`-` with
 spaces, capitalise the first letter. `derived_from` → "Derived from";
 `prov:wasDerivedFrom` → "wasDerivedFrom" (or a strict `display`). Pure,
 deterministic, no I/O.
+
+**Untyped sentinel key.** JSON object / template-map keys cannot be
+`null`, so untyped edges (`predicate: null`) bucket under the reserved
+string key **`"__untyped"`** in BOTH `page.edges_by_predicate` and
+`page.backlinks_by_predicate`. The sentinel is collision-safe: no valid
+predicate can start with `_` (snake is `^[a-z]…`, CURIE prefix is
+`^[a-z]…` — [[#CON-4501]]), so `"__untyped"` can never shadow a real
+predicate group. The per-edge `predicate` field stays `null` (the maps key
+on the sentinel; the edge object itself does not). A template iterating
+the map may special-case the `__untyped` key for a "see also" heading;
+its render label is "See also" (the lone label not auto-derived from a
+predicate name). The bucket is present only when ≥1 untyped edge exists.
 
 **Pre-conditions:** additive — the addition MUST NOT remove or rename any
 existing `PageContext` field ([[#REQ-4505]]). Missing per-edge fields are
@@ -1613,30 +1728,71 @@ back to the vault namespace and lints. Export never invents entailments
 ### CON-4508: Graph-Data Edge Contract
 
 **Interface:** the per-edge shape in the graph-data feed consumed by the
-[[SPEC-028]] interactive graph and [[SPEC-037]] 3D graph (the
-serialisation site is the existing graph-data producer; exact path to be
-confirmed in [[DESIGN-045-wikilink-predicate-language]] against the
-[[SPEC-028]] feed).
+[[SPEC-028]] interactive graph and [[SPEC-037]] 3D graph. The
+serialisation site is the existing graph-data producer (`src/graph.rs`,
+the `graph-index.json` edge loop at `src/graph.rs:641`); the feed is
+graphology's `graph.import()` format ([[SPEC-028]] CON-101).
+
+**Graphology shape (the migration this requires).** [[SPEC-028]] CON-101
+declares `options.multi: false` and the producer dedupes edges by
+`(source, target)` (`src/graph.rs:641` `seen_edges`). A typed graph needs
+*multiple distinct edges between the same pair* (one per predicate). So
+CON-4508 defines a **backward-compatible superset** of the [[SPEC-028]]
+CON-101 edge contract — it *extends*, and never supersedes or amends,
+that contract (per the "add to SPEC-045, don't edit old specs"
+direction). The superset is what the producer emits when typed edges are
+present; when no edge carries a predicate the feed is byte-identical to
+CON-101 ([[#REQ-4505]]). SPEC-028/SPEC-037 therefore remain unmodified
+and their existing behaviour is preserved; folding multi-mode into the
+CON-101 baseline itself is out of scope for SPEC-045 and unnecessary,
+because the superset is backward-compatible. The superset differs from
+the baseline only as follows:
+
+- `options.multi` becomes `true` (parallel predicate-edges between a pair
+  are first-class; graphology requires multi mode to hold them). `multi:
+  true` with no parallel edges is `graph.import()`-compatible and renders
+  identically to the CON-101 `multi: false` baseline, so a consumer that
+  never opts into typed edges is unaffected.
+- The dedup key changes from `(source, target)` to `(source, target,
+  predicate)` — `a::a::[[X]]` still collapses to one edge per REQ-4503,
+  but `contradicts::[[X]]` and `relates_to::[[X]]` to the same target are
+  two edges.
+- Each edge carries a **predicate-qualified `key`** so the keys stay
+  unique under `multi: true`: `"<source>-><target>#<predicate>"`, using
+  the sentinel `#__untyped` for `predicate: null` (no valid predicate
+  starts with `_`, so the sentinel cannot collide — matches the
+  [[#CON-4506]] map-key sentinel).
+- Typed-edge fields live under **`attributes`**, where graphology's
+  `graph.import()` puts them and the [[SPEC-028]] edge reducer reads them
+  ([[SPEC-028]] CON-101 edge shape `{ key, source, target, attributes }`).
+  They are NOT top-level keys.
 
 **Post-conditions (per edge):**
 
 ```jsonc
-{ "source": "design-doc-discipline",
+{ "key":    "design-doc-discipline->move-fast-doctrine#contradicts",
+  "source": "design-doc-discipline",
   "target": "move-fast-doctrine",
-  "predicate": "contradicts" | null,    // null = untyped edge
-  "annotation": "…" | null,
-  "is_dead": false }                     // ghost/unresolved target
+  "attributes": {
+    "predicate":  "contradicts",         // null ⇒ key uses #__untyped
+    "annotation": "…",                    // null when absent
+    "is_dead":    false                   // ghost/unresolved target
+  } }
 ```
 
 - One feed edge per forward directed graph edge ([[#REQ-4506]]); a
-  K-predicate link yields K feed edges (each filterable independently).
-- `predicate`/`annotation` additive — a widget reading only
-  `source`/`target` is unaffected ([[#REQ-4505]]).
+  K-predicate link yields K feed edges (distinct keys, each filterable and
+  colourable independently — [[#REQ-4518]]).
+- `attributes.predicate`/`attributes.annotation` are additive — a widget
+  reading only `source`/`target` (and pre-existing attributes) is
+  unaffected ([[#REQ-4505]]); only consumers that opted into `multi: true`
+  + predicate keys see the parallel edges.
 - Deferred named-inverse ([[#13. Open Questions]] Q4) would add reverse
   feed edges; v1 emits forward only.
 
-**Error model:** absent predicate ⇒ `null` (untyped), never omitted — so
-a filter UI can offer an explicit "untyped" bucket.
+**Error model:** an absent predicate ⇒ `attributes.predicate: null` with a
+`#__untyped` key, never omitted — so a filter UI can offer an explicit
+"untyped" bucket ([[#REQ-4518]]).
 
 **Implements:** [[#REQ-4517]].
 **Verified by:** [[#TEST-4517]].
@@ -1934,17 +2090,27 @@ report — [[PROTO-001]] §Key Technical Concepts).
    [[SPEC-044]] vocabulary-governance call. Lean: recognise PROV-O +
    Dublin Core + SKOS by name (used internally by the export); accept any
    other prefix as opaque. Resolve in the SPEC-044 reconciliation.
-9. **Q9 — SPL functor form of a CURIE predicate.** [[#CON-4504]] projects
-   `prov:wasDerivedFrom` to an SPL fact; the `:` and camelCase may not be
-   functor-safe. Lean: deterministic sanitisation (`prov:wasDerivedFrom`
-   → `prov__wasDerivedFrom`) recorded in the projection contract;
-   confirm against the SPL parser in
-   [[DESIGN-045-wikilink-predicate-language]].
+9. **Q9 — SPL functor form of a CURIE predicate. RESOLVED (in
+   SPEC-045): excluded in v1.** A CURIE's `:` and camelCase are not
+   SPL-functor-safe, and no underscore-based sanitisation is collision-free
+   — `prov:wasDerivedFrom` → `prov__wasderivedfrom` would collide with a
+   legitimately-authored snake predicate `prov__wasderivedfrom`, so any
+   such mapping silently merges distinct edges into one fact. Rather than
+   ship a lossy transform, committed v1 **does not project CURIE predicates
+   to SPL** ([[#REQ-4510]], [[#CON-4504]]); they reach the reasoner only
+   via an author-written SPL rule, and they export losslessly to RDF
+   ([[#REQ-4516]]), which is their native semantic surface. A future,
+   collision-free functor mapping (e.g. a reserved separator that the snake
+   grammar forbids) is deferred to
+   [[DESIGN-045-wikilink-predicate-language]] — it would be additive (more
+   facts), never a behaviour change to existing snake projection.
 10. **Q10 — Typed edges in the interactive graph view. RESOLVED (in
     SPEC-045).** Both the data feed ([[#REQ-4517]], [[#CON-4508]]) and the
     filtering/styling behaviour ([[#REQ-4518]]) are specified **here in
-    SPEC-045** and applied to the [[SPEC-028]] / [[SPEC-037]] graph
-    components *without amending those specs*. Committed: filter-by-
+    SPEC-045**: the feed is a *backward-compatible superset* of the
+    [[SPEC-028]] CON-101 contract ([[#CON-4508]]) and the styling is
+    *consumer behaviour* over the [[SPEC-028]] / [[SPEC-037]] graph
+    components — neither amends those specs. Committed: filter-by-
     predicate (with an "untyped" bucket), a predicate legend from
     `vault.predicates`, colour-by-predicate (or `category`), directional
     arrowheads, annotation on hover/selection, all inside the [[SPEC-028]]

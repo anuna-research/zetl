@@ -835,6 +835,8 @@ fn make_parsed_file(page_name: &str, link_targets: &[&str]) -> zetl::types::Pars
                 block_ref: None,
                 alias: None,
                 is_embed: false,
+                predicates: Vec::new(),
+                annotation: None,
                 line: 1,
                 column: 1,
             })
@@ -1767,6 +1769,7 @@ fn test_125_vault_history_null_when_no_history() {
     ).unwrap();
 
     let vault_ctx = VaultContext {
+        predicates: Vec::new(),
         name: "test".to_owned(),
         pages: vec![],
         sidebar_tree: vec![],
@@ -1821,6 +1824,7 @@ fn test_126_vault_history_populated_in_template() {
     };
 
     let mut vault_ctx = VaultContext {
+        predicates: Vec::new(),
         name: "test".to_owned(),
         pages: vec![],
         sidebar_tree: vec![],
@@ -1910,6 +1914,8 @@ fn test_128_build_page_history_context_summary_fields() {
                     block_ref: None,
                     alias: None,
                     is_embed: false,
+                    predicates: Vec::new(),
+                    annotation: None,
                     line: i as u32 + 1,
                     column: 1,
                 })
@@ -1998,6 +2004,8 @@ fn test_129_sample_page_trend_oldest_first() {
                 block_ref: None,
                 alias: None,
                 is_embed: false,
+                predicates: Vec::new(),
+                annotation: None,
                 line: i as u32 + 1,
                 column: 1,
             })
@@ -2058,6 +2066,7 @@ fn test_130_page_history_null_in_template() {
     ).unwrap();
 
     let vault_ctx = VaultContext {
+        predicates: Vec::new(),
         name: "test".to_owned(),
         pages: vec![],
         sidebar_tree: vec![],
@@ -2073,6 +2082,9 @@ fn test_130_page_history_null_in_template() {
     };
 
     let page_ctx = PageContext {
+        edges: Vec::new(),
+        edges_by_predicate: std::collections::BTreeMap::new(),
+        backlinks_by_predicate: std::collections::BTreeMap::new(),
         title: "TestPage".to_owned(),
         slug: "TestPage".to_owned(),
         content_html: String::new(),
@@ -2127,6 +2139,7 @@ fn test_131_page_history_populated_in_template() {
     };
 
     let vault_ctx = VaultContext {
+        predicates: Vec::new(),
         name: "test".to_owned(),
         pages: vec![],
         sidebar_tree: vec![],
@@ -2142,6 +2155,9 @@ fn test_131_page_history_populated_in_template() {
     };
 
     let mut page_ctx = PageContext {
+        edges: Vec::new(),
+        edges_by_predicate: std::collections::BTreeMap::new(),
+        backlinks_by_predicate: std::collections::BTreeMap::new(),
         title: "TestPage".to_owned(),
         slug: "TestPage".to_owned(),
         content_html: String::new(),

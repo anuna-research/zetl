@@ -648,6 +648,7 @@ mod tests {
             alias: None,
             heading: None,
             block_id: None,
+            predicates: Vec::new(),
         })
     }
 

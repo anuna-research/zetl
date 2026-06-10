@@ -870,6 +870,7 @@ fn pandoc_to_inline(v: Value) -> Result<Option<Inline>, TranslationError> {
                 alias,
                 heading,
                 block_id,
+                predicates: Vec::new(),
             })))
         }
         other => Err(TranslationError::from_foreign(
@@ -1033,6 +1034,7 @@ mod tests {
             alias: Some("A".into()),
             heading: Some("H".into()),
             block_id: Some("B".into()),
+            predicates: Vec::new(),
         })])]);
         let v = t.zetl_to_foreign(&doc).unwrap();
         let span = &v["blocks"][0]["c"][0];
@@ -1052,6 +1054,7 @@ mod tests {
             alias: None,
             heading: None,
             block_id: None,
+            predicates: Vec::new(),
         })])]);
         let v = t.zetl_to_foreign(&doc).unwrap();
         let back = t.foreign_to_zetl(v).unwrap();

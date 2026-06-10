@@ -243,6 +243,10 @@ name = "vcs_independence"
 required-features = ["reason"]
 
 [[test]]
+name = "spl_projection_integration"
+required-features = ["reason"]
+
+[[test]]
 name = "history_integration"
 required-features = ["history"]
 

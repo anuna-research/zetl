@@ -58,6 +58,59 @@
       {%- endif %}
       {% if page.backlinks %}
       <div class="divider"></div>
+      {# SPEC-045 REQ-4511: render the backlink panel grouped by predicate.
+         `page.backlinks_by_predicate` buckets incoming typed edges under their
+         predicate key plus the reserved `__untyped` sentinel for plain
+         wikilinks. We detect whether any TYPED group exists; if not (only the
+         `__untyped` bucket, or the map is empty) we fall back to the original
+         flat REQ-4505 rendering verbatim so existing styling + backlink tests
+         keep passing. -#}
+      {#- The typed predicate keys = every map key except the reserved
+          `__untyped` sentinel. Built via a filter pipeline (not a loop +
+          `set`-accumulator, which minijinja scopes to the loop body). #}
+      {%- set typed_groups = page.backlinks_by_predicate | dictsort | map(attribute="0") | reject("eq", "__untyped") | list -%}
+      {%- if typed_groups -%}
+      {# Grouped rendering: typed predicate groups first, untyped "See also" last. #}
+      <h2 class="text-lg font-semibold mb-2">Backlinks</h2>
+      <div class="zetl-backlinks-grouped space-y-3">
+        {%- for predicate in typed_groups -%}
+        {%- set entries = page.backlinks_by_predicate[predicate] %}
+        <section class="zetl-backlink-group" data-predicate="{{ predicate }}">
+          <h3 class="text-sm font-semibold opacity-70 mb-1">{{ entries[0].label or predicate }} <span class="text-xs opacity-60 ml-1">({{ entries | length }})</span></h3>
+          <ul class="list-none space-y-1">
+            {%- for entry in entries %}
+            <li class="zetl-backlink" data-slug="{{ entry.slug }}">
+              <a href="{{ root_path }}{{ entry.slug | safe }}/{{ index_file }}#line-{{ entry.line }}" class="link link-secondary">{{ entry.source }}</a>
+              {%- if entry.annotation %}
+              <div class="zetl-backlink-annotation text-xs opacity-70 mt-0.5 ml-3">{{ entry.annotation }}</div>
+              {%- endif %}
+            </li>
+            {%- endfor %}
+          </ul>
+        </section>
+        {%- endfor -%}
+        {#- `default([])` keeps this Strict-undefined-safe: when there is no
+            untyped bucket the index is undefined, not an empty list. #}
+        {%- set untyped = page.backlinks_by_predicate["__untyped"] | default([]) -%}
+        {%- if untyped %}
+        <section class="zetl-backlink-group" data-predicate="__untyped">
+          <h3 class="text-sm font-semibold opacity-70 mb-1">See also <span class="text-xs opacity-60 ml-1">({{ untyped | length }})</span></h3>
+          <ul class="list-none space-y-1">
+            {%- for entry in untyped %}
+            <li class="zetl-backlink" data-slug="{{ entry.slug }}">
+              <a href="{{ root_path }}{{ entry.slug | safe }}/{{ index_file }}#line-{{ entry.line }}" class="link link-secondary">{{ entry.source }}</a>
+              {%- if entry.annotation %}
+              <div class="zetl-backlink-annotation text-xs opacity-70 mt-0.5 ml-3">{{ entry.annotation }}</div>
+              {%- endif %}
+            </li>
+            {%- endfor %}
+          </ul>
+        </section>
+        {%- endif %}
+      </div>
+      {%- else -%}
+      {# REQ-4505 fallback: no typed backlinks — render the flat list exactly as
+         before (preserves markup/classes + backlinks-group.js enhancement). #}
       <h2 class="text-lg font-semibold mb-2">Backlinks</h2>
       <ul class="list-none space-y-1 zetl-backlinks">
         {%- for bl in page.backlinks %}
@@ -70,6 +123,7 @@
         {%- endfor %}
       </ul>
       <script src="{{ root_path }}_static/backlinks-group.js" defer></script>
+      {%- endif %}
       {% endif %}
     {% if mode == "serve" %}</div>{% endif %}
 

@@ -39,6 +39,16 @@ pub struct WikiLink {
     pub line: u32,
     /// 1-indexed column
     pub column: u32,
+    /// SPEC-045 named-edge predicates recognised immediately before the
+    /// `[[`, in author order, de-duplicated. Empty ⇒ untyped edge (the
+    /// pre-SPEC-045 default). Embeds (`![[…]]`) never carry predicates.
+    #[serde(default)]
+    pub predicates: Vec<String>,
+    /// SPEC-045 edge annotation (REQ-4504): the nested sub-content beneath a
+    /// list-item named edge, captured for progressive disclosure. `None` when
+    /// the link is not a list-item named edge or carries no nested content.
+    #[serde(default)]
+    pub annotation: Option<String>,
 }
 
 /// Parsed result for a single file

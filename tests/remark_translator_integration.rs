@@ -67,6 +67,7 @@ fn text_at(pos: Position, s: &str) -> Inline {
 
 fn wikilink(target: &str) -> Inline {
     Inline::Wikilink(Wikilink {
+        predicates: Vec::new(),
         position: Position::origin(),
         target: target.to_string(),
         alias: None,
@@ -77,6 +78,7 @@ fn wikilink(target: &str) -> Inline {
 
 fn wikilink_full(target: &str, alias: &str, heading: &str, block_id: &str) -> Inline {
     Inline::Wikilink(Wikilink {
+        predicates: Vec::new(),
         position: Position::origin(),
         target: target.to_string(),
         alias: Some(alias.to_string()),
@@ -257,6 +259,7 @@ fn position_information_is_preserved_across_translation() {
                 children: vec![
                     text_at(txt_pos, "see "),
                     Inline::Wikilink(Wikilink {
+                        predicates: Vec::new(),
                         position: wl_pos,
                         target: "Target".into(),
                         alias: None,
@@ -321,6 +324,7 @@ fn mdast_wikilink_extension_attrs_all_survive_round_trip() {
         wikilink("Bare"),
         // Alias only.
         Inline::Wikilink(Wikilink {
+            predicates: Vec::new(),
             position: Position::origin(),
             target: "Aliased".into(),
             alias: Some("display".into()),
@@ -329,6 +333,7 @@ fn mdast_wikilink_extension_attrs_all_survive_round_trip() {
         }),
         // Heading only.
         Inline::Wikilink(Wikilink {
+            predicates: Vec::new(),
             position: Position::origin(),
             target: "Heading".into(),
             alias: None,
@@ -337,6 +342,7 @@ fn mdast_wikilink_extension_attrs_all_survive_round_trip() {
         }),
         // Block-id only.
         Inline::Wikilink(Wikilink {
+            predicates: Vec::new(),
             position: Position::origin(),
             target: "Anchored".into(),
             alias: None,

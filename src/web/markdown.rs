@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::OnceLock;
 
 use pulldown_cmark::{CowStr, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use regex::Regex;
@@ -145,7 +146,13 @@ pub fn render_to_html(
     let mut html_output = String::new();
     pulldown_cmark::html::push_html(&mut html_output, events.into_iter());
 
-    rewrite_wikilinks(&html_output, &wikilink_re, slug_map, root_path, index_file)
+    render_predicate_chips(rewrite_wikilinks(
+        &html_output,
+        &wikilink_re,
+        slug_map,
+        root_path,
+        index_file,
+    ))
 }
 
 /// Render a short preview (first ~200 chars of meaningful content) for tooltip.
@@ -264,7 +271,13 @@ pub fn render_preview_html(
     let mut html_output = String::new();
     pulldown_cmark::html::push_html(&mut html_output, events.into_iter());
 
-    rewrite_wikilinks_for_preview(&html_output, &wikilink_re, slug_map, root_path, index_file)
+    render_predicate_chips(rewrite_wikilinks_for_preview(
+        &html_output,
+        &wikilink_re,
+        slug_map,
+        root_path,
+        index_file,
+    ))
 }
 
 fn demote_heading_level(level: HeadingLevel) -> HeadingLevel {
@@ -392,6 +405,55 @@ fn replace_wikilinks_in_segment_preview(
 }
 
 /// Replace [[wikilinks]] with <a> tags in HTML, skipping content inside <code>/<pre>.
+/// SPEC-045: turn a recognised `predicate::` run rendered in front of a
+/// wikilink into styled chip spans, so the published page reads
+/// "⟨Derived from⟩ 2026 Q1 Retro" instead of leaking the raw
+/// `derived_from::` text.
+///
+/// Runs as a single post-pass over the already-rendered HTML. The match is
+/// anchored to a tag-close `>` immediately before the predicate run, which
+/// reproduces the scanner's *leading-position* rule without a lookbehind: in
+/// list-item form the run always follows the injected line-anchor `</a>`, and
+/// a malformed prefix (`derived from::`, `Derived_From::`, `derived_from/…::`,
+/// `derived_from:::`) is not `>`-adjacent as a clean `(predicate "::")+` run,
+/// so it stays plain text — exactly as the graph treats it (no chip where
+/// there is no typed edge). Embeds (`![[…]]`) never render as `<a … wikilink>`,
+/// so they are never chipped.
+fn render_predicate_chips(html: String) -> String {
+    static CHIP_RE: OnceLock<Regex> = OnceLock::new();
+    let re = CHIP_RE.get_or_init(|| {
+        // (>) ( 1*( (snake|curie) "::" ) ) ( <a … wikilink … > )
+        Regex::new(
+            r#"(?P<b>>)(?P<run>(?:[a-z][a-z0-9_]*::|[a-z][a-z0-9]*:[A-Za-z][A-Za-z0-9_-]*::)+)(?P<a><a\b[^>]*\bwikilink\b)"#,
+        )
+        .expect("invalid predicate-chip regex")
+    });
+
+    if !html.contains("::") {
+        return html; // fast path: nothing to do
+    }
+
+    re.replace_all(&html, |caps: &regex::Captures| {
+        let run = &caps["run"];
+        let mut seen: Vec<&str> = Vec::new();
+        let mut chips = String::new();
+        for seg in run.split("::") {
+            if seg.is_empty() || seen.contains(&seg) {
+                continue; // drop the trailing empty + de-duplicate (a::a → one)
+            }
+            seen.push(seg);
+            let label = html_escape(&crate::predicates::auto_label(seg));
+            chips.push_str(&format!(
+                r#"<span class="zetl-edge-predicate" data-predicate="{}">{}</span>"#,
+                html_escape(seg),
+                label
+            ));
+        }
+        format!("{}{}{}", &caps["b"], chips, &caps["a"])
+    })
+    .into_owned()
+}
+
 fn rewrite_wikilinks(
     html: &str,
     re: &Regex,
@@ -569,14 +631,14 @@ pub fn render_to_html_with_visibility(
     let mut html_output = String::new();
     pulldown_cmark::html::push_html(&mut html_output, events.into_iter());
 
-    rewrite_wikilinks_with_visibility(
+    render_predicate_chips(rewrite_wikilinks_with_visibility(
         &html_output,
         &wikilink_re,
         slug_map,
         denied_pages,
         root_path,
         index_file,
-    )
+    ))
 }
 
 /// Replace [[wikilinks]] with visibility-aware <a> tags in HTML, skipping <code>/<pre>.
@@ -939,6 +1001,52 @@ mod tests {
         let html = render_to_html("See [[Target]] here", &slug_map, "/", "");
         assert!(html.contains(r#"href="/folder/target/""#));
         assert!(html.contains("link-primary"));
+    }
+
+    #[test]
+    fn spec045_predicate_renders_as_chip() {
+        // A list-item named edge renders the predicate as a styled chip span
+        // (auto-derived label) in front of a clean link — not raw `pred::` text.
+        let mut slug_map = HashMap::new();
+        slug_map.insert("Retro".to_string(), "retro".to_string());
+        let html = render_to_html("- derived_from::[[Retro]]", &slug_map, "/", "");
+        assert!(html.contains(
+            r#"<span class="zetl-edge-predicate" data-predicate="derived_from">Derived from</span>"#
+        ));
+        // The raw `derived_from::` text must NOT leak into the body.
+        assert!(!html.contains("derived_from::<a"));
+        // The link itself stays clean.
+        assert!(html.contains(r#"class="link link-primary wikilink">Retro</a>"#));
+    }
+
+    #[test]
+    fn spec045_multiple_predicates_render_two_chips() {
+        let mut slug_map = HashMap::new();
+        slug_map.insert("Retro".to_string(), "retro".to_string());
+        let html = render_to_html("- derived_from::informed_by::[[Retro]]", &slug_map, "/", "");
+        assert!(html.contains(r#"data-predicate="derived_from">Derived from</span>"#));
+        assert!(html.contains(r#"data-predicate="informed_by">Informed by</span>"#));
+    }
+
+    #[test]
+    fn spec045_malformed_prefix_is_not_chipped() {
+        // Render recognition matches the graph: a space in the predicate name
+        // means no typed edge, so no chip — the text stays verbatim.
+        let mut slug_map = HashMap::new();
+        slug_map.insert("X".to_string(), "x".to_string());
+        let html = render_to_html("- derived from::[[X]]", &slug_map, "/", "");
+        assert!(!html.contains("zetl-edge-predicate"));
+        assert!(html.contains("derived from::"));
+    }
+
+    #[test]
+    fn spec045_curie_predicate_chip_uses_local_part() {
+        let mut slug_map = HashMap::new();
+        slug_map.insert("X".to_string(), "x".to_string());
+        let html = render_to_html("- prov:wasDerivedFrom::[[X]]", &slug_map, "/", "");
+        assert!(html.contains(
+            r#"<span class="zetl-edge-predicate" data-predicate="prov:wasDerivedFrom">wasDerivedFrom</span>"#
+        ));
     }
 
     #[test]

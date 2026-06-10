@@ -66,7 +66,7 @@ fn sample_transform_output_validates_against_schema() {
     // Canonical shape checks — the representative corpus must hit the full
     // set of node kinds the page exercises.
     assert_eq!(json["type"], "Document");
-    assert_eq!(json["ast_version"], "1.0");
+    assert_eq!(json["ast_version"], "1.1");
     assert_eq!(json["frontmatter"]["title"], "Sample");
 
     let children = json["children"].as_array().expect("children is array");
