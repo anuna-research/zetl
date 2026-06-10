@@ -380,7 +380,11 @@ fn test_210_gitignore_exclusions_are_always_ignored() {
     git_init(root);
     write(root, ".gitignore", "corpus/\n"); // would hide corpus/ if consulted
     write(root, "a.md", "# A (tracked)\n");
-    write(root, "corpus/note.md", "# note (gitignored corpus material)\n");
+    write(
+        root,
+        "corpus/note.md",
+        "# note (gitignored corpus material)\n",
+    );
 
     let result = pages(root, &ScanOptions::default());
     assert_eq!(
