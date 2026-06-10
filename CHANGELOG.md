@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Wikilink predicate language — typed named edges** ([SPEC-045](specs/SPEC-045-wikilink-predicate-language.md)).
+  Label a wikilink with a predicate to record *how* two pages connect:
+  `derived_from::[[Target]]`, chained `supersedes::informed_by::[[Target]]`,
+  with optional nested-bullet annotations. A bare `[[wikilink]]` stays an
+  untyped edge, so vaults without predicates are byte-identical to before.
+  Full guide: [`docs/wikilink-predicates.md`](docs/wikilink-predicates.md).
+  - **Recogniser** — leading-position snake (`^[a-z][a-z0-9_]*`) or CURIE
+    (`prefix:localName`) predicates at the scan boundary; conservative
+    (a typo such as `derived from::`, `derived_from:::`, or `Derived_From::`
+    falls through to an untyped edge, never a guessed predicate).
+  - **Typed link graph** — a K-predicate link expands to K directed edges;
+    backlinks, dead-links, and ghost edges carry their predicate + annotation.
+  - **`zetl edges`** — query the typed graph: `--predicate` (repeatable OR),
+    `--from`/`--to`, `--by-predicate` histogram, `--untyped`, `--annotated`;
+    `-f json|table`. A read-only superset of `zetl links`.
+  - **`zetl check` predicate lints** — `predicate-drift` (edit-distance typo
+    signal), `predicate-prefer-conforms-to` (`is_a::` → `conforms_to::`),
+    `predicate-relates-to-overuse`, `predicate-undeclared-prefix`; advisory by
+    default.
+  - **Optional strict vocabulary** — `.zetl/predicates.toml` (absent by
+    default) moves a vault *emergent → crystallising → controlled*; under
+    `enforce = true` an undeclared predicate fails `zetl check`/the build.
+    Governance/presentation metadata only (`display`, `category`, `maps_to`,
+    `[prefixes]`) — never semantics.
+  - **SPL projection** (`--features reason`) — each typed snake edge projects
+    to a provenance-tagged fact `(<predicate> "<src>" "<tgt>")`, queryable by
+    the defeasible engine; conclusions trace back to the asserting page+line.
+  - **Web + graph view** — `page.edges` / `page.edges_by_predicate` /
+    `page.backlinks_by_predicate` / `vault.predicates` template vars; backlink
+    panel grouped by predicate with inline annotations; `/_graph` colours,
+    labels, filters (per-predicate legend), and arrowheads typed edges.
+  - **Search** — a faceted `predicate` field on a page's outgoing typed edges.
+  - **`zetl predicates migrate --dry-run`** — read-only report of frontmatter
+    `tags:` that name a page and could become body predicates (never rewrites).
+  - **`zetl export --rdf {turtle,ntriples,jsonld}`** — typed edges as RDF with
+    PROV-O provenance + SKOS vocabulary; CURIE/`maps_to` IRI expansion.
+  - **AST** — additive `Wikilink.predicates` (zetl-ext AST schema `1.0 → 1.1`).
+
 - **Pluggable `--collab` authentication** ([SPEC-041](specs/SPEC-041-pluggable-collab-auth.md)).
   `[collab.auth] methods = [...]` in `.zetl/config.toml` selects from
   six authenticators that share one `Authenticator` trait and one
