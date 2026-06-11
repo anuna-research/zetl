@@ -1,25 +1,30 @@
 ---
 title: "SPEC-044: Concept Graph — Subject-Predicate-Object Relations, Emergent Vocabulary, and In-Situ Ratification"
-version: 0.3.0
+version: 0.4.0
 status: strawman
-date: 2026-06-09
+date: 2026-06-11
 audience: agent, human
 parent: null
 related:
   - SPEC-026  # Vault scan exclusions (the .zetlignore layer the corpus view rides on)
   - SPEC-043  # --no-gitignore + first-class .zetlignore (the corpus view this graph lives in)
+  - SPEC-045  # Wikilink predicate language (the body-inline `::` substrate this layer rides on)
   - SPEC-012  # Named themes (the render layer the graph surfaces through)
   - SPEC-005  # Defeasible reasoning / SPL (consumes the triples)
 ---
 
 # SPEC-044: Concept Graph — SPO Relations, Emergent Vocabulary, In-Situ Ratification
 
-> **Status: strawman (v0.3.0).** This document sets out a direction and a
+> **Status: strawman (v0.4.0).** This document sets out a direction and a
 > validated manual pilot, not a finished design. Schemas, thresholds, and
-> endpoints are provisional. It is offered for review and revision. v0.3.0
-> adds §1.2 (contexts of use, as job stories), which establishes the
-> surface-coverage scope that distinguishes an organisational product from an
-> author's toolkit.
+> endpoints are provisional. It is offered for review and revision. v0.4.0
+> adds the **Tier-1 design** (§6 reconciled to body-inline edges as the source
+> of truth; §7.1 ratify-not-fill as the *accessibility mechanism*; §7.2 the
+> five predicate families; §7.3 user-local vs shared-corpus settings; §7.4 the
+> core / plugin / MCP boundary), grounded by the 2026-06-11 dogfood of SPEC-045
+> on the EarthianLabs corpus. v0.3.0 added §1.2 (contexts of use, as job
+> stories), which establishes the surface-coverage scope that distinguishes an
+> organisational product from an author's toolkit.
 
 ## Information Table
 
@@ -298,40 +303,158 @@ treating load-bearing knowledge as a black box produces brittleness (Bainbridge,
 1983); demanding effortful engagement with what could be black-boxed produces
 fatigue.
 
-## 6. Render (partially implemented)
+## 6. Render — the read surface (body edges are the source of truth)
 
-The `earthian` theme renders a concept node's frontmatter as a visual grammar
-(the render target downstream work builds on):
+**Reconciliation (dogfood 2026-06-11).** SPEC-045 settled the surface fork
+empirically: typed edges live in the **body** as `predicate::[[Target]]`, and the
+edge graph + SPL projection read *only* the body. Frontmatter `relations:` is
+**invisible** to `zetl edges` — two frontmatter-only relations vanished from the
+graph entirely in testing. The render therefore reads the **body edge graph**, not
+a frontmatter schema; frontmatter carries scalars only (`title`, `tags`, status).
 
-- frontmatter `title` preferred over the filename slug;
-- `tags` as quiet pills;
-- a **Connections** block — typed edges grouped by category (e.g. *Relates to* /
-  *Developed in* / *Operative in*), each shown as a coloured type-tag plus linked
-  object plus note;
+What the engine already exposes ([[SPEC-045]]):
+
+- each typed edge renders as `.zetl-edge-predicate[data-predicate="…"]` — the
+  predicate **auto-humanises** (`developed_in` → "Developed in") and carries a
+  **per-predicate CSS hook**, so distinguishing relationship-types *visually*
+  (colour, icon, weight) is a **theme task, not a typing task**;
+- `page.edges_by_predicate` / `page.backlinks_by_predicate` / `vault.predicates`
+  template vars expose the grouped view; the backlink panel already groups by
+  predicate; `/_graph` colours, labels, and filters typed edges with a per-predicate
+  legend;
 - concept→concept objects link to `/concepts/<slug>/`; non-existent targets render
-  as new-page stubs — an **accretion affordance** (the link invites defining the
-  target next).
+  as new-page stubs — the **accretion affordance**.
 
-To be designed: collapsible / right-rail placement (the block is heavy at the top
-of a file); the renderer must remain generic (reading arbitrary frontmatter, not a
-fixed schema) so it generalises across corpora.
+To be designed: a collapsible / right-rail **Connections panel** that collects a
+page's *body* edges grouped by family (heavy inline today); **per-family colour**
+(the `data-predicate` hook plus the `.zetl/predicates.toml` `category` field already
+make this a theme-CSS change, not an engine change).
 
 ## 7. Implementation tiers
 
-- **Tier 0 — manual (complete).** Authoring by hand; a worked example node plus one
-  ratification pass validated the node shape, the surfacing (signal versus noise),
-  and the loop.
-- **Tier 1 — ratify-queue plus write-back.** Render pending candidates (frontmatter
-  or sidecar) as a ratify-queue with predicate suggestions; a backend endpoint
-  patches frontmatter surgically (promote a candidate to a typed triple). Removes
-  raw-markdown edit friction. Buildable in the tool alone.
-- **Tier 2 — background generation.** Asynchronous processes pre-compute candidates
-  and suggested predicates across the corpus; the renderer displays the pending set
-  per file. This removes the need for the UI to invoke an agent live — the process
-  pre-populates; the UI only renders.
+- **Tier 0 — manual (complete).** Authoring by hand; worked example nodes
+  (`relational-posture`, `autopoiesis`) plus ratification passes validated the node
+  shape, the surfacing (signal versus noise), and the loop.
+- **Tier 1 — ratify-queue plus write-back.** Surface pending candidates (sidecar —
+  §5.1) as a ratify-queue with predicate suggestions; a backend endpoint writes the
+  confirmed body edge. Removes raw-markdown edit friction. Buildable in the tool
+  alone. **Design detailed in §7.1–§7.4.**
+- **Tier 2 — background generation.** Asynchronous processes (an **MCP / agent
+  surface**, §7.4) pre-compute candidate edges and suggested predicates across the
+  corpus — including the **generative-stub loop** (draft a node for a high-frequency
+  ghost, with content + typed edges + a `machine-drafted` flag requiring human
+  review) and **reference-checking** (web-search / source-verify for the academic and
+  scientific literature concepts draw on). The renderer displays the pending set per
+  file; the UI only renders. The model proposes; the human ratifies.
+
+### 7.1 Tier-1 design — ratify-not-fill is the accessibility mechanism
+
+The `predicate::[[Target]]` syntax is the **storage substrate**, comfortably
+authored only by the small minority fluent in Markdown + a formal grammar — and
+brittle even for them: a single space (`developed_in:: [[X]]`), inserted by hand or
+by a formatter on save, **silently demotes every typed edge to untyped, with no
+warning** (dogfood 2026-06-11). Manual typing is therefore not the authoring model;
+it is the storage format.
+
+The authoring model is **ratify-not-fill**, and this is the **accessibility
+mechanism**, not merely a convenience. A person **recognises and confirms** a
+proposed relation rather than **composing** its syntax. Recognition is available to
+nearly anyone; syntactic composition requires a fluency a small fraction of the
+population has — so the same act that removes friction for engineers is what opens
+the tool to non-engineers *at all*. The design serves the §1.2 job stories whose
+actors are not Markdown-native. Two surfaces over one substrate:
+
+- **Syntax surface** (Markdown `::`) — for prose-native authors. Unchanged; the
+  source of truth.
+- **GUI surface** (the rendered web view) — for everyone else. Draw a link, or
+  accept a surfaced candidate; the tool proposes a **ranked predicate list**
+  (existing-vocabulary matches by fit + one inferred from the two endpoints — §4,
+  *the predicate must be suggested*); pick one; the `::predicate` is **written for
+  you**. The non-engineer never types `::` — and per SPEC-045's conservative
+  recogniser, cannot produce a malformed predicate this way.
+
+**Robustness lint (Tier-1, cheap).** Extend the `predicate-drift` lint family with a
+**spaced-near-miss** check: a bare `[[X]]` immediately preceded by `word:: ` is
+almost certainly a typed edge a formatter broke — flag it (advisory) rather than let
+it demote silently. The same class of fix as the schema-rebuild bug: detect the
+near-miss, don't fail silently.
+
+### 7.2 Predicate families — the suggestion + grouping substrate
+
+The emergent vocabulary (13 predicates from the first two nodes) already clusters
+into **five functional families**:
+
+| Family | Predicates (observed) | The relation it carries |
+| --- | --- | --- |
+| **Lineage / derivation** | `rooted_in` · `developed_in` · `draws_on` · `originates` | where it comes from |
+| **Mapping / correspondence** | `maps_to` · `instance_of` · `has_dimension` · `measured_by` | how it relates conceptually |
+| **Application** | `applied_in` · `operationalised_in` | where it does work |
+| **Tension / revision** | `contrasted_with` · `reframed_by` | the dialectic |
+| **Support** | `underpins` | what it grounds |
+
+The families are **not** a controlled vocabulary (declaring one now, at 13
+predicates from 2 nodes, would freeze the folksonomy and kill the viscosity gap —
+§3). They are the *latent structure*, and they do three jobs at once: the render
+**grouping/colour** (via the `category` field), the suggestion engine's **ranking
+buckets**, and the drift detector's **categories**. Crystallisation stays
+**collision-driven**: when two predicates compete for the *same* relation — e.g.
+`underpins` vs `maps_to`, both observed pointing at `coherence-entrainment` — that
+collision is the corpus asking for a canonical choice. Crystallise *that relation*,
+not the whole vocabulary. Seeds the suggestion engine may rank against without
+imposing: SKOS (`broader`/`narrower`/`related`), Dublin Core relations, the
+Christopher Allen predicate set (already [[SPEC-045]]'s source).
+
+### 7.3 Local, user-specific settings vs the shared corpus
+
+Presentation and authoring preference are **personal**; the corpus is **shared**.
+Conflating them entrains every reader to one person's view. Two layers:
+
+- **Corpus layer — `.zetl/predicates.toml` (committed, shared).** Team governance
+  and presentation metadata: `category` (the family), `display` label, `maps_to`
+  IRI, sanctioned-or-not. One per corpus.
+- **User layer — per-person, NOT committed (gap to name).** Personal colour scheme,
+  preferred / pinned predicates, the **authoring-surface choice** (syntax vs GUI),
+  suggestion-ranking personalisation. This must **not** live in the committed
+  `.zetl/` (which is shared); it needs a per-person location — a gitignored
+  `.zetl/local/` overlay, or an external `~/.config/zetl/`. Open question (§8):
+  which, and how the layers compose (user overrides corpus *presentation*, never
+  corpus *semantics*).
+
+### 7.4 Core zetl vs plugin vs MCP — the architecture boundary
+
+The substrate and the ratification loop are **core and model-free**; generation is
+an **MCP that proposes into them**; presentation is a **swappable plugin**.
+
+- **Core zetl** (universal, LangSec-strict, portable): the `::` grammar + AST; the
+  typed edge graph, `zetl edges`, SPL projection; the **sidecar candidate /
+  ratification data model** (`.zetl/decisions/`, §5.1); `zetl check` lints (incl.
+  the §7.1 near-miss); the render hooks (`data-predicate`, `edges_by_predicate`). The
+  engine and the data model must be identical everywhere or the graph is not
+  portable.
+- **Theme / plugin** (presentation, swappable): per-family colour, the Connections
+  panel, display labels, `/_graph` styling. Reads the core hooks; never touches the
+  substrate.
+- **MCP / agent surface** (generative, opt-in): candidate *generation* —
+  stub-drafting, predicate *inference*, and reference-checking / source-sourcing via
+  web search. The model does work *here*, proposing into the sidecar candidate store;
+  the human ratifies through the GUI.
+
+**The boundary principle:** a vault with **no MCP and the default theme is fully
+usable** — hand-authored or GUI-ratified. The agent layer only accelerates candidate
+*supply*; it is never required to author, ratify, or read the graph. Generation
+augments; it is not a dependency. (Same demotion-validation posture as the
+criticality substrate: the model may draft freely because the human ratification
+gate is the validation, and the `machine-drafted` flag keeps the demotion visible.)
 
 ## 8. Open questions
 
+- **User-layer location and composition (§7.3).** Where do per-person, non-committed
+  settings live — a gitignored `.zetl/local/` overlay, or an external
+  `~/.config/zetl/`? And how do the layers compose: the user layer must override
+  corpus *presentation* (colour, display label, preferred predicates, authoring
+  surface) but never corpus *semantics* (the predicate name, the target, the SPL
+  projection). The split is the safeguard against one person's view entraining the
+  shared graph.
 - **One pattern, three triggers.** Vocabulary promotion (§3), concept maturation,
   and an edge acquiring defeasible/provenance structure are the same pattern —
   flat by default, structure earned per item, ratified in context — but with
