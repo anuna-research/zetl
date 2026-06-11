@@ -24,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (gitignore format). The `--no-gitignore` flag introduced in SPEC-043 v1 has
   been removed — it is no longer needed.
 
+### Fixed
+
+- **Stale search index after a schema-changing upgrade.** `SearchIndex::build`
+  reused an existing on-disk Tantivy schema, so an index created before the
+  SPEC-045 `predicate` field caused `zetl serve` / `search` / `build` to fail
+  with `field 'predicate' missing from search schema`. The build now detects a
+  schema mismatch and re-indexes from scratch — honouring the documented
+  "old indexes are re-indexed on upgrade" contract. No manual
+  `rm -rf .zetl/search` needed.
+
 ### Added
 
 - **Wikilink predicate language — typed named edges** ([SPEC-045](specs/SPEC-045-wikilink-predicate-language.md)).

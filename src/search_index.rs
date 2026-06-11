@@ -52,8 +52,23 @@ impl SearchIndex {
             .with_context(|| format!("creating search index directory {index_dir:?}"))?;
 
         let index = if index_dir.join("meta.json").exists() {
-            Index::open_in_dir(&index_dir)
-                .with_context(|| format!("opening existing search index at {index_dir:?}"))?
+            let existing = Index::open_in_dir(&index_dir)
+                .with_context(|| format!("opening existing search index at {index_dir:?}"))?;
+            // If the on-disk schema predates a field the current schema needs
+            // (e.g. SPEC-045's `predicate`), rebuild from scratch — honouring the
+            // documented "old indexes are re-indexed on upgrade" contract rather
+            // than failing later on the missing field.
+            if fields_from_index(&existing).is_ok() {
+                existing
+            } else {
+                drop(existing);
+                std::fs::remove_dir_all(&index_dir)
+                    .with_context(|| format!("removing stale search index at {index_dir:?}"))?;
+                std::fs::create_dir_all(&index_dir)
+                    .with_context(|| format!("recreating search index directory {index_dir:?}"))?;
+                Index::create_in_dir(&index_dir, make_schema())
+                    .with_context(|| format!("creating search index at {index_dir:?}"))?
+            }
         } else {
             Index::create_in_dir(&index_dir, make_schema())
                 .with_context(|| format!("creating search index at {index_dir:?}"))?
@@ -296,6 +311,33 @@ mod tests {
 
         let opened = SearchIndex::open(dir.path()).unwrap();
         assert!(opened.is_some());
+    }
+
+    #[test]
+    fn build_rebuilds_over_stale_schema_index() {
+        // Regression: a pre-SPEC-045 index on disk lacks the `predicate` field.
+        // `build()` must re-index from scratch (the documented "old indexes are
+        // re-indexed on upgrade" contract), not fail with
+        // "field 'predicate' missing from search schema".
+        let dir = TempDir::new().unwrap();
+        let index_dir = dir.path().join(".zetl").join("search");
+        std::fs::create_dir_all(&index_dir).unwrap();
+
+        // Simulate the old schema: page_name / path / body, no `predicate`.
+        let mut builder = SchemaBuilder::new();
+        builder.add_text_field("page_name", STRING | STORED);
+        builder.add_text_field("path", STORED);
+        builder.add_text_field("body", TEXT | STORED);
+        Index::create_in_dir(&index_dir, builder.build()).unwrap();
+
+        let file = make_parsed_file(dir.path(), "notes.md", "Rust programming language.");
+        let index = SearchIndex::build(dir.path(), &[file]).unwrap();
+        let hits = index.query("rust", 10).unwrap();
+        assert_eq!(
+            hits.len(),
+            1,
+            "stale-schema index should be rebuilt and queryable"
+        );
     }
 
     #[test]
