@@ -176,11 +176,23 @@ impl LinkGraph {
             let source_idx = node_map[source_name];
 
             for link in &file.links {
-                // Try to resolve via the resolved_pages map; fall back to raw_target
-                let target_name = resolved_pages
-                    .get(&link.raw_target)
-                    .cloned()
-                    .unwrap_or_else(|| link.target_page.clone());
+                // A bare in-document anchor like `[[#heading]]` or `[[#REQ-001]]`
+                // has no page part, so the scanner leaves `target_page` empty.
+                // Obsidian resolves these against the containing page, and the
+                // fully-qualified form `[[this-page#REQ-001]]` already resolves to
+                // a self-edge — so treat the source page as the target here too,
+                // rather than letting the link dangle as a dead link with an empty
+                // target (issue #54).
+                let target_name = if link.target_page.is_empty() && link.raw_target.starts_with('#')
+                {
+                    source_name.clone()
+                } else {
+                    // Try to resolve via the resolved_pages map; fall back to raw_target
+                    resolved_pages
+                        .get(&link.raw_target)
+                        .cloned()
+                        .unwrap_or_else(|| link.target_page.clone())
+                };
 
                 // Create the target node if it doesn't exist yet (phantom node)
                 let target_idx = *node_map

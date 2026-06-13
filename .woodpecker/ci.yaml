@@ -4,6 +4,18 @@ when:
 steps:
   - name: test
     image: rust:1-bookworm
+    environment:
+      # The debug build of ~70 integration-test binaries — each statically
+      # linking tantivy + vendored OpenSSL — overflows the shared Codeberg
+      # runner's disk ("No space left on device" / "ld ... Bus error",
+      # os error 28). Debug info is the bulk of that footprint and CI never
+      # runs a debugger, so strip it from both the dep (dev) and test-binary
+      # (test) profiles; also disable the incremental cache, which is pure
+      # disk waste on a one-shot CI build. Local dev builds are unaffected
+      # (this lives in CI env, not Cargo.toml / .cargo/config.toml).
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
     commands:
       - rustup component add rustfmt clippy
       # Install Node + Python for helper-js build, TEST-3210 cross-language
