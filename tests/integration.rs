@@ -541,6 +541,47 @@ fn test_005_dead_link_detection() {
     );
 }
 
+/// Regression for issue #54: bare in-document anchors `[[#heading]]` were
+/// reported as dead links with an empty target. They should resolve against
+/// the containing page (Obsidian semantics), exactly like the qualified
+/// `[[this-page#heading]]` form already does.
+#[test]
+fn issue_054_bare_in_document_anchor_not_dead() {
+    let dir = TempDir::new().expect("create temp dir");
+    write_file(
+        dir.path(),
+        "SPEC-001-demo.md",
+        "\
+# SPEC-001: Demo
+
+## Requirements
+
+### REQ-001: Example
+
+Trace: [[#TEST-001]]
+
+### TEST-001: Example test
+
+Validates [[SPEC-001-demo#REQ-001]].
+",
+    );
+
+    let (json, status) = run_json_any(zetl_cmd(dir.path()).arg("check").arg("--dead-links"));
+
+    let dead_links = json["dead_links"]
+        .as_array()
+        .expect("dead_links should be array");
+
+    assert!(
+        dead_links.is_empty(),
+        "bare in-document anchors must not be dead links, got: {dead_links:?}"
+    );
+    assert!(
+        status.success(),
+        "check --dead-links should exit zero when no dead links exist"
+    );
+}
+
 // ===========================================================================
 // TEST-006: Orphan Detection
 // ===========================================================================
