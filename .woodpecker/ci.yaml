@@ -80,6 +80,13 @@ steps:
 
   - name: windows-cross-check
     image: rust:1-bookworm
+    environment:
+      # This step only proves the windows cfg paths compile — it never
+      # produces a runnable binary, so debug info is pure disk weight.
+      # Dropping it roughly halves the cross target tree (incl. the
+      # vendored-OpenSSL build), keeping the step under the shared-runner
+      # disk quota alongside the windows std/deps + mingw toolchain.
+      CARGO_PROFILE_DEV_DEBUG: "0"
     commands:
       # BUG-001 follow-up: catch Windows-only compilation regressions at
       # PR time without a Windows runner. We cross-compile to
@@ -92,6 +99,16 @@ steps:
       # which mock Windows separators by injecting backslashes into the
       # input `PathBuf` directly — the slug normaliser is forced to
       # handle them deterministically regardless of host OS.
+      #
+      # Steps share the workspace, so the `test` step's full native
+      # target/ (tantivy + vendored OpenSSL + ~70 integration-test
+      # binaries) is still on disk here. Cross-compiling adds a second
+      # full target tree, which together overflow the runner disk
+      # ("No space left on device", os error 28). The native artifacts
+      # are dead weight by now — `cargo clean` reclaims them before the
+      # cross build. (df -h left in for future disk-pressure debugging.)
+      - cargo clean
+      - df -h .
       - apt-get update && apt-get install -y gcc-mingw-w64-x86-64
       - rustup target add x86_64-pc-windows-gnu
       - cargo check --features "reason,history,mcp,vendored-openssl" --target x86_64-pc-windows-gnu
