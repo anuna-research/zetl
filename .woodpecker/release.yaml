@@ -47,7 +47,9 @@ steps:
         export CXX_aarch64_apple_darwin=aarch64-apple-darwin23.5-clang++
         export CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER=aarch64-apple-darwin23.5-clang
         cd -
-        cargo build --release --features "reason,history,mcp,vendored-openssl" --target aarch64-apple-darwin
+        # Soften LTO for the cross-link (same OOM mitigation as the windows and
+        # macos-x86_64 steps) — arm64 passed in #432 but is on the same edge.
+        CARGO_PROFILE_RELEASE_LTO=thin CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 cargo build --release --features "reason,history,mcp,vendored-openssl" --target aarch64-apple-darwin
         mkdir -p dist
         cp target/aarch64-apple-darwin/release/zetl dist/zetl
         cd dist && tar czf zetl-macos-arm64.tar.gz zetl && rm zetl && cd ..
@@ -67,7 +69,11 @@ steps:
         export CXX_x86_64_apple_darwin=x86_64-apple-darwin23.5-clang++
         export CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER=x86_64-apple-darwin23.5-clang
         cd -
-        cargo build --release --features "reason,history,mcp,vendored-openssl" --target x86_64-apple-darwin
+        # Soften LTO for the cross-link — fat LTO + codegen-units=1 OOMs the
+        # shared CI runner during LTO codegen of the (now-larger) zetl crate,
+        # the same failure the windows step already works around (pipelines
+        # #158/#159; this is what killed #432's build-macos-x86_64).
+        CARGO_PROFILE_RELEASE_LTO=thin CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 cargo build --release --features "reason,history,mcp,vendored-openssl" --target x86_64-apple-darwin
         mkdir -p dist
         cp target/x86_64-apple-darwin/release/zetl dist/zetl
         cd dist && tar czf zetl-macos-x86_64.tar.gz zetl && rm zetl && cd ..
