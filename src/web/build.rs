@@ -1622,6 +1622,17 @@ pub fn build_static(
     // ── static assets ─────────────────────────────────────────────────
     let static_copied = copy_static_assets(vault_root, out, theme)?;
 
+    // ── SPEC-048: design tokens, component CSS, templated static pages ──
+    check_component_cycles(vault_root, theme)?;
+    let tokens_emitted = emit_design_tokens(vault_root, out, theme)?;
+    let component_css_emitted = emit_component_css(vault_root, out, theme)?;
+    let static_pages = render_static_pages(&engine, vault_root, out, theme, &vault_name)?;
+    if verbose && (tokens_emitted || component_css_emitted || static_pages > 0) {
+        eprintln!(
+            "[zetl] SPEC-048: tokens.css={tokens_emitted} components.css={component_css_emitted} static_pages={static_pages}"
+        );
+    }
+
     // ── public overlay (copies over output root, overwriting generated pages) ──
     let public_copied = if let Some(pub_dir) = public {
         let pub_path = Path::new(pub_dir);
@@ -1953,15 +1964,222 @@ fn copy_static_assets(vault_root: &Path, out: &Path, theme: &str) -> Result<bool
         }
     }
 
-    // (2) Shared vault static (overwrites bundled on conflict)
+    // (2) Shared vault static (overwrites bundled on conflict). SPEC-048: `.html.jinja`
+    // templated pages are skipped here — they are rendered to the output root instead
+    // of copied verbatim into `_static/` (REQ-4811).
     if shared_exists {
-        copy_dir_recursive(&shared_static, &dest)?;
+        copy_dir_recursive_skip_jinja(&shared_static, &dest)?;
     }
     // (3) Installed theme-specific static (overwrites everything on conflict)
     if theme_exists {
-        copy_dir_recursive(&theme_static, &dest)?;
+        copy_dir_recursive_skip_jinja(&theme_static, &dest)?;
     }
 
+    Ok(true)
+}
+
+/// Like [`copy_dir_recursive`] but skips SPEC-048 templated static pages
+/// (`*.html.jinja`), which are rendered separately by [`render_static_pages`].
+fn copy_dir_recursive_skip_jinja(src: &Path, dest: &Path) -> Result<()> {
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let path = entry.path();
+        let target = dest.join(entry.file_name());
+        if path.is_dir() {
+            std::fs::create_dir_all(&target)?;
+            copy_dir_recursive_skip_jinja(&path, &target)?;
+        } else if path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.ends_with(".html.jinja"))
+            == Some(true)
+        {
+            continue;
+        } else {
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::copy(&path, &target)?;
+        }
+    }
+    Ok(())
+}
+
+/// SPEC-048 REQ-4811: render every `*.html.jinja` static override page with site-only
+/// context, mapping `foo.html.jinja → foo/index.html` and `index.html.jinja →
+/// index.html` (pretty-URL). Theme static overrides vault static per relative path.
+/// Returns the number of pages rendered.
+fn render_static_pages(
+    engine: &TemplateEngine,
+    vault_root: &Path,
+    out: &Path,
+    theme: &str,
+    vault_name: &str,
+) -> Result<usize> {
+    use std::collections::BTreeMap;
+    let mut found: BTreeMap<String, std::path::PathBuf> = BTreeMap::new();
+    let tiers = [
+        vault_root.join(".zetl/static"),
+        vault_root.join(format!(".zetl/themes/{theme}/static")),
+    ];
+    fn collect(base: &Path, dir: &Path, found: &mut BTreeMap<String, std::path::PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect(base, &path, found);
+            } else if path.to_string_lossy().ends_with(".html.jinja") {
+                if let Ok(rel) = path.strip_prefix(base) {
+                    found.insert(rel.to_string_lossy().replace('\\', "/"), path.clone());
+                }
+            }
+        }
+    }
+    for tier in &tiers {
+        collect(tier, tier, &mut found);
+    }
+
+    let mut count = 0usize;
+    for (rel, abs) in &found {
+        let source = std::fs::read_to_string(abs)
+            .with_context(|| format!("read static page {}", abs.display()))?;
+        let out_slug = jinja_out_slug(rel);
+        let html = engine
+            .render_static_page(vault_name, &source, &out_slug, "build")
+            .map_err(|e| anyhow::anyhow!("static page {rel}: {e}"))?;
+        let out_path = if out_slug.is_empty() {
+            out.join("index.html")
+        } else {
+            out.join(&out_slug).join("index.html")
+        };
+        if let Some(parent) = out_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&out_path, html)?;
+        count += 1;
+    }
+    Ok(count)
+}
+
+/// Map a `*.html.jinja` relative path to its output slug (directory part of the
+/// pretty-URL). `about.html.jinja → about`, `index.html.jinja → ""`,
+/// `blog/index.html.jinja → blog`.
+fn jinja_out_slug(rel: &str) -> String {
+    let stem = rel.strip_suffix(".html.jinja").unwrap_or(rel);
+    if stem == "index" {
+        String::new()
+    } else if let Some(dir) = stem.strip_suffix("/index") {
+        dir.to_string()
+    } else {
+        stem.to_string()
+    }
+}
+
+/// SPEC-048 REQ-4812: compile `tokens.toml` (theme, then vault overriding key-by-key)
+/// to a single `tokens.css` string, or `None` when no token file exists (REQ-4813).
+/// Shared by `zetl build` (writes the file) and `zetl serve` (responds on the fly) so
+/// the two modes emit identical CSS.
+pub fn compute_tokens_css(vault_root: &Path, theme: &str) -> Result<Option<String>> {
+    use crate::web::components::tokens::{emit_css, merge_layers, parse_tokens, TokenLayer};
+    let mut layer: Option<TokenLayer> = None;
+    let theme_toml = vault_root.join(format!(".zetl/themes/{theme}/tokens.toml"));
+    if let Ok(src) = std::fs::read_to_string(&theme_toml) {
+        layer = Some(parse_tokens(&src).map_err(|e| anyhow::anyhow!("{e}"))?);
+    }
+    let vault_toml = vault_root.join(".zetl/tokens.toml");
+    if let Ok(src) = std::fs::read_to_string(&vault_toml) {
+        let v = parse_tokens(&src).map_err(|e| anyhow::anyhow!("{e}"))?;
+        layer = Some(match layer {
+            Some(base) => merge_layers(&base, &v),
+            None => v,
+        });
+    }
+    Ok(layer.map(|l| emit_css(&l)))
+}
+
+/// SPEC-048 REQ-4809: deduped, deterministically ordered component CSS string, or `None`
+/// when no component ships CSS (REQ-4813). Shared by build and serve.
+pub fn compute_components_css(vault_root: &Path, theme: &str) -> Result<Option<String>> {
+    use crate::web::components::css::CssCollector;
+    use crate::web::components::resolve::discover_components;
+    let comps = discover_components(vault_root, theme).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let mut collector = CssCollector::new();
+    for (name, c) in &comps {
+        if let Some(css) = &c.css {
+            collector.add(name, c.layer, css);
+        }
+    }
+    Ok(collector.emit())
+}
+
+/// SPEC-048 REQ-4811 (serve parity): resolve a `*.html.jinja` static override page for a
+/// pretty-URL `slug` (`""` = root) across the static tiers (theme static overrides vault
+/// static), mirroring the build-time `render_static_pages` mapping. Returns the source.
+pub fn resolve_static_page_source(vault_root: &Path, theme: &str, slug: &str) -> Option<String> {
+    if slug.contains("..") {
+        return None;
+    }
+    let rels = if slug.is_empty() {
+        vec!["index.html.jinja".to_string()]
+    } else {
+        vec![
+            format!("{slug}.html.jinja"),
+            format!("{slug}/index.html.jinja"),
+        ]
+    };
+    let tiers = [
+        vault_root.join(format!(".zetl/themes/{theme}/static")),
+        vault_root.join(".zetl/static"),
+    ];
+    for tier in &tiers {
+        for rel in &rels {
+            if let Ok(src) = std::fs::read_to_string(tier.join(rel)) {
+                return Some(src);
+            }
+        }
+    }
+    None
+}
+
+/// Build-mode wrapper: write `_static/tokens.css` when present. Returns whether written.
+fn emit_design_tokens(vault_root: &Path, out: &Path, theme: &str) -> Result<bool> {
+    let Some(css) = compute_tokens_css(vault_root, theme)? else {
+        return Ok(false);
+    };
+    let dest = out.join("_static");
+    std::fs::create_dir_all(&dest)?;
+    std::fs::write(dest.join("tokens.css"), css)?;
+    Ok(true)
+}
+
+/// SPEC-048 REQ-4807: compile-time component cycle detection. Builds the static
+/// component-invocation graph (each component's template `{% component %}` sites) and
+/// rejects a cycle (`component-cycle`) naming the path, before any render.
+fn check_component_cycles(vault_root: &Path, theme: &str) -> Result<()> {
+    use crate::web::components::lower::invoked_components;
+    use crate::web::components::nesting::{detect_cycle, InvocationGraph};
+    use crate::web::components::resolve::discover_components;
+    let comps = discover_components(vault_root, theme).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let mut graph = InvocationGraph::new();
+    for (name, c) in &comps {
+        let edges = invoked_components(&c.template)
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        graph.insert(name.clone(), edges);
+    }
+    detect_cycle(&graph).map_err(|e| anyhow::anyhow!("{e}"))
+}
+
+/// Build-mode wrapper: write `_static/components.css` when present. Returns whether written.
+fn emit_component_css(vault_root: &Path, out: &Path, theme: &str) -> Result<bool> {
+    let Some(css) = compute_components_css(vault_root, theme)? else {
+        return Ok(false);
+    };
+    let dest = out.join("_static");
+    std::fs::create_dir_all(&dest)?;
+    std::fs::write(dest.join("components.css"), css)?;
     Ok(true)
 }
 

@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod build;
+pub mod components;
 pub mod context;
 pub mod engine;
 pub mod flush;
