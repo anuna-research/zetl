@@ -2,7 +2,7 @@
 id: SPEC-050
 title: "Component Islands & Inter-Island Messaging"
 status: draft
-version: 0.4.0-strawman
+version: 0.5.0-strawman
 last-updated: 2026-06-24
 audience: agent, human
 ---
@@ -63,9 +63,9 @@ other directly; they pin to and read from named channels.
 
 **Open** (each blocks the Phase 2 gate — see
 [[SPEC-050-component-islands-and-messaging#12. Open Questions]]):
-Q1 persisted-default / FOUC mechanism · Q4 bus/bridge residence in the SPEC-028 shell ·
-Q5 delivery/ordering + `postMessage` latency · Q6 iframe cost at scale (owner: spec author,
-to ground in Phase 1). *(Q2 sandbox and Q3 typed-payloads resolved in v0.2.0.)*
+Q4 bus/bridge residence in the SPEC-028 shell · Q5 delivery/ordering + `postMessage`
+latency · Q6 iframe cost at scale · Q7 exact trusted-island topic declaration (owner: spec
+author, to ground in Phase 1). *(Q1 FOUC, Q2 sandbox, Q3 typed-payloads — resolved.)*
 
 **Detail:** the full requirement, contract, and test nodes follow below.
 
@@ -87,7 +87,7 @@ to ground in Phase 1). *(Q2 sandbox and Q3 typed-payloads resolved in v0.2.0.)*
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | [[SPEC-050-component-islands-and-messaging\|SPEC-050]]                                  |
 | Title        | Component Islands & Inter-Island Messaging                                              |
-| Version      | 0.4.0-strawman                                                                          |
+| Version      | 0.5.0-strawman                                                                          |
 | Status       | Draft (strawman; NOT converged — pending Phase 1 + Phase 2 gates)                       |
 | Author       | Agent (Claude Opus 4.8 [1M], [[PROTO-001\|USDD Agent Protocol]] v1.11.0)                |
 | Date         | 2026-06-24                                                                              |
@@ -307,7 +307,10 @@ The SPA shell SHALL expose exactly two coordination primitives on a stable globa
 ([[SPEC-050-component-islands-and-messaging#CON-5003]]). Islands SHALL communicate
 **only** through these — never by one island importing another, and never via a shared
 reactive-store compile unit ([[SPEC-050-component-islands-and-messaging#ADR-5001]]). The
-global SHALL be present only when at least one island is emitted on the page (REQ-5012).
+global (and the bus runtime) SHALL be present **iff at least one island is emitted on the
+page**. A page that declares a persisted topic but ships **no** island gets the inline
+pre-paint script ([[SPEC-050-component-islands-and-messaging#REQ-5018]]) and **no** bus
+runtime — there is exactly one runtime model: `window.zetl` ⇔ island present (REQ-5012).
 
 **Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5004]], [[SPEC-050-component-islands-and-messaging#CON-5003]], [[SPEC-050-component-islands-and-messaging#ADR-5001]].
 
@@ -322,14 +325,22 @@ to multiple subscribers SHALL be deterministic (subscription order).
 **Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5005]], [[SPEC-050-component-islands-and-messaging#CON-5003]]; [[SPEC-050-component-islands-and-messaging#3.3 HP3]].
 
 ### REQ-5006: Persisted Topics
-A topic MAY be declared **persisted**, in which case the shell SHALL back it with
-`localStorage` and reflect cross-tab changes via the `storage` event. A persisted topic
-SHALL declare a **default value**, applied when storage is empty, so first paint is
-deterministic. Values read from `localStorage` or a `storage` event are **untrusted
-input** and SHALL be recognised against the topic's declared shape before being applied
+A topic MAY be declared **persisted**, backed by `localStorage` with a required **default
+value** applied when storage is empty. Two distinct mechanisms, by page kind:
+- **First paint, every page with the topic:** the inline pre-paint script
+  ([[SPEC-050-component-islands-and-messaging#REQ-5018]]) reads `localStorage` at load and
+  applies the recognised value (or default) before paint — this runs whether or not the page
+  has an island.
+- **Live cross-tab reflection, island pages only:** WHEN the bus runtime is present (i.e. the
+  page has an island, REQ-5004), the shell SHALL additionally subscribe to the `storage`
+  event and reflect cross-tab changes into the retained store mid-session. A persisted-only
+  page (no island, no bus) applies the value at load but does **not** live-reflect later
+  cross-tab changes — an explicit, documented limitation of the no-bus model.
+
+Values read from `localStorage` or a `storage` event are **untrusted input** and SHALL be
+recognised against the topic's declared type before being applied
 ([[SPEC-050-component-islands-and-messaging#CON-5004]], [[SPEC-050-component-islands-and-messaging#Threat C]]);
-a value failing recognition SHALL be discarded in favour of the declared default, never
-applied raw.
+a value failing recognition SHALL be discarded for the declared default, never applied raw.
 
 **Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5006]], [[SPEC-050-component-islands-and-messaging#CON-5004]], [[SPEC-050-component-islands-and-messaging#ADR-5005]]; [[SPEC-050-component-islands-and-messaging#Threat C]], [[SPEC-050-component-islands-and-messaging#Threat F]].
 
@@ -347,16 +358,28 @@ A [[Component Manifest]] for an island-bearing component MAY declare `publishes`
 ([[SPEC-050-component-islands-and-messaging#REQ-5011]]). The build SHALL statically
 verify wiring: a `subscribes` topic with **no** declared publisher in the resolved
 component set SHALL be `island-topic-unpublished` (warning); a malformed topic name SHALL
-be `island-topic-malformed` (error); a component whose island publishes/subscribes a
-topic **absent from its own manifest** SHALL be `island-topic-undeclared` (warning) so the
-manifest stays an accurate contract; a content island subscribing a **trusted** topic with
-no matching `[[theme.island-grants]]` entry SHALL be `island-capability-ungranted` (error),
-and a content island publishing a non-`content:` topic or lacking `sandbox = true` SHALL be
-`island-content-unsandboxed` (error) ([[SPEC-050-component-islands-and-messaging#CON-5002]]).
-These declarations are advisory *wiring* metadata — the runtime trust boundary is enforced
-by REQ-5010/5015/5016, not by this declaration. The manifest
-keys `publishes`/`subscribes`, reserved-and-rejected in [[SPEC-048]] CON-4801, become
-accepted under this spec's feature gate.
+be `island-topic-malformed` (error).
+
+**Enforceability differs by tier, and the spec is honest about it:**
+- For a **content island**, the manifest `publishes`/`subscribes` (+ `[[theme.island-grants]]`)
+  are the **exact, enforced** capability contract — the bridge grant table is built from them
+  and rejects anything else at runtime (REQ-5016). Here `island-capability-ungranted` (a
+  content island subscribing a trusted topic with no grant) and `island-content-unsandboxed`
+  (publishing a non-`content:` topic, or missing `sandbox = true`) are hard **build errors**
+  ([[SPEC-050-component-islands-and-messaging#CON-5002]]).
+- For a **trusted in-realm island**, the runtime API is bare `window.zetl.store(topic)` /
+  `bus.emit(topic, …)` with **no island identity and no generated per-island capability**, so
+  the build *cannot* soundly prove which trusted island touches which topic. Therefore
+  `island-topic-undeclared` for a trusted island is an explicitly **best-effort lint**
+  (warning): the build scans the island's `<name>.js` for **literal** `store("…")`/`bus.emit("…")`
+  topic strings and flags ones absent from the manifest; dynamically-computed topics are
+  acknowledged as uncheckable and out of scope. v1 does **not** mandate a wrapper or metadata
+  export to make this exact (deferred — `[Blocked: Q7]`).
+
+These manifest declarations are *wiring/audit* metadata for trusted islands and the
+*enforced capability set* for content islands; the runtime trust boundary itself is enforced
+by REQ-5010/5015/5016, not by the declaration. The keys `publishes`/`subscribes`,
+reserved-and-rejected in [[SPEC-048]] CON-4801, are accepted under this spec's feature gate.
 
 **Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5008]], [[SPEC-050-component-islands-and-messaging#CON-5002]]; [[SPEC-050-component-islands-and-messaging#3.4 HP4]].
 
@@ -406,16 +429,19 @@ or call site SHALL fail closed (`island-topic-malformed`).
 **Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5011]], [[SPEC-050-component-islands-and-messaging#CON-5001]].
 
 ### REQ-5012: Backward-Compatible Default
-WHEN a page uses no island-bearing component **and** declares no persisted topic, its build
-output SHALL be byte-identical to a [[SPEC-048]]-only build: no `window.zetl`, no bus
-runtime, no island `<script>`/iframe, no pre-paint script. The bus/bridge setup SHALL be
-emitted (and the [[SPEC-028]] shell SHALL initialise `window.zetl`) **only** on pages that
-emit at least one island or persisted-topic pre-paint script — i.e. the shell gates the bus
-bootstrap on a build-set marker, so adding SPEC-050 to a vault does not perturb pages that
-don't use it. (A page with a persisted topic but no interactive island emits *only* the
-REQ-5018 pre-paint script — the one acknowledged exception.) The precise gating mechanism
-depends on bus residence ([[SPEC-050-component-islands-and-messaging#12. Open Questions|Q4]])
-and SHALL be pinned in IMPL-050.
+The runtime model is a clean two-marker gate, with no third state:
+- **No island AND no persisted topic** → output is **byte-identical** to a [[SPEC-048]]-only
+  build: no `window.zetl`, no bus runtime, no island `<script>`/iframe, no pre-paint script.
+- **≥ 1 island** → the [[SPEC-028]] shell initialises `window.zetl` + the bus/bridge runtime
+  (REQ-5004); island assets and (if any persisted topic) the pre-paint script are emitted.
+- **persisted topic but no island** → **only** the inline pre-paint script is emitted; **no**
+  `window.zetl`, no bus runtime (REQ-5006 live reflection does not apply).
+
+The shell gates the bus bootstrap on a build-set "has-island" marker; the pre-paint script is
+gated on a separate "has-persisted-topic" marker. Adding SPEC-050 to a vault therefore does
+not perturb pages that use neither. (The two markers are independent; the contradictory
+v0.3.0 phrasing — persisted pages "trigger bus bootstrap" yet "emit only the pre-paint
+script" — is removed.) Bus residence/load-order is [[SPEC-050-component-islands-and-messaging#12. Open Questions|Q4]], pinned in IMPL-050.
 
 **Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5012]]; [[SPEC-050-component-islands-and-messaging#3.1 HP1]].
 
@@ -472,22 +498,28 @@ indexable ([[SPEC-002]]).
 The shell SHALL connect a sandboxed content island to the bus through a **capability-scoped
 bridge** built on two object identities the parent **creates and never shares**: the
 `<iframe>` **element** (and its `contentWindow`) it mounts, and a fresh `MessageChannel`. On
-mount the parent SHALL: create the iframe element; create a `MessageChannel`; record the
-island's grant against **`port1`** in a `WeakMap<MessagePort, Grant>`; and deliver **`port2`
-as the single transferable of the first `postMessage` sent directly to that iframe's
-`contentWindow`** (`iframe.contentWindow.postMessage(initData, "*", [port2])`). Because a
-`postMessage` to a specific window object reaches only that window's realm, no other frame —
-including any other opaque-origin (`"null"`) frame or extension content script — can obtain
-or intercept the port; **port-object identity is the sole, sufficient discriminator**, and
-`MessageEvent.origin`/`.source` (both non-discriminating for opaque-origin frames and
-`MessageChannel` messages) SHALL NOT be used for identity
-([[SPEC-050-component-islands-and-messaging#Threat J]]). The parent SHALL maintain the
-`iframe-element → port1 → Grant` correlation for the island's lifetime and SHALL re-establish
-a **new** iframe+channel+grant on any remount ([[SPEC-050-component-islands-and-messaging#REQ-5017]]),
-so a torn-down island's port can never be confused with a live one. (`initData` MAY carry a
-liveness token the island echoes so the parent learns the listener attached; this is a
-*timing/readiness* aid, **not** an identity or security control — identity is port
-possession, which the transfer already guarantees.)
+mount the parent SHALL create the iframe element, create a `MessageChannel`, and record the
+island's grant against **`port1`** in a `WeakMap<MessagePort, Grant>`.
+
+**Deterministic bootstrap (child-ready-first, so the port transfer is never lost):** a bare
+`postMessage([port2])` sent before the child's document has navigated past `about:blank` and
+installed a listener can be dropped, so the parent SHALL NOT push the port blindly. Instead:
+(1) the parent loads the island bootstrap into the iframe; (2) once running, the **child**
+posts a `zetl:ready` signal to `window.parent` via `postMessage` (over `window`, pre-port);
+(3) the parent's `window` `message` handler accepts that signal **only when
+`event.source === <this island's> iframe.contentWindow`** — a window-object identity the
+parent holds, which *does* discriminate in the window→parent direction (unlike the
+`"null"`-origin string) — and then transfers **`port2` as the single transferable of a
+`postMessage` to that same `contentWindow`**. Because a targeted `postMessage` reaches only
+that window's realm, no other frame can obtain or intercept the port. If no `zetl:ready`
+arrives within a bounded timeout (`[Provisional]`, IMPL-050) the parent SHALL retry once,
+then mark the island failed and tear it down ([[SPEC-050-component-islands-and-messaging#REQ-5017]])
+rather than hang. After transfer, **port-object identity is the sole discriminator** for all
+bus traffic, and `MessageEvent.origin`/`.source` SHALL NOT be used for per-message identity
+on the port ([[SPEC-050-component-islands-and-messaging#Threat J]]). The parent SHALL maintain
+the `iframe-element → port1 → Grant` correlation for the island's lifetime and re-establish a
+**new** iframe+channel+grant on any remount, so a torn-down island's port is never confused
+with a live one.
 
 The parent-side bridge SHALL, on **every** inbound message, enforce: (a) it arrived on a
 `port1` present in the `WeakMap` (an open, known island port); (b) `(topic, direction)` is in
@@ -521,17 +553,22 @@ to eliminate the timing channel — only to coarsen it to value transitions.
 ### REQ-5017: Island & Port Lifecycle Under SPA Navigation
 The shell SHALL define a deterministic island lifecycle across [[SPEC-028]] client-side
 navigation, since islands mount, unmount, and re-mount as page subtrees swap. On removal of
-an island's subtree the shell SHALL (a) **close both ends** of that island's
-`MessageChannel` and **revoke** its grant-table/`WeakMap` entry — messages subsequently
-arriving on a closed port SHALL be dropped silently (`island-port-closed`); and (b) **release
-its bus subscriptions** (invoke the `unsubscribe()` handles from
-[[SPEC-050-component-islands-and-messaging#CON-5003]]) so subscriber count does not grow
-across navigations toward the [[SPEC-050-component-islands-and-messaging#NFR-5002]] cap. On
-re-mount the shell SHALL hydrate idempotently
-([[SPEC-050-component-islands-and-messaging#REQ-5003]]) and issue a **fresh** `MessageChannel`
-+ grant for a sandboxed island (never reuse a prior port). Retained store *values* persist on
-the nav-surviving shell ([[SPEC-050-component-islands-and-messaging#REQ-5007]]); only
-per-mount *subscriptions and ports* are torn down and rebuilt.
+an island's subtree the shell SHALL perform the teardown it can actually effect from the
+parent side (the parent owns only `port1` after `port2` is transferred): (a) **close `port1`**
+(`port1.close()`), **delete the `WeakMap` grant entry**, and **remove/destroy the `<iframe>`
+element** — destroying the iframe disposes the child realm and therefore its `port2`; any
+late message still in flight is dropped because `port1` is closed and unkeyed
+(`island-port-closed`); it MAY first post a `close` request asking the child to `port2.close()`
+for prompt cleanup, but correctness SHALL NOT depend on the child cooperating; and (b)
+**release its bus subscriptions** (invoke the `unsubscribe()` handles from
+[[SPEC-050-component-islands-and-messaging#CON-5003]]) so the subscriber count does not grow
+across navigations toward the [[SPEC-050-component-islands-and-messaging#NFR-5002]] cap
+(bridge-relayed subscriptions count against the same cap and are released here). On re-mount
+the shell SHALL hydrate idempotently ([[SPEC-050-component-islands-and-messaging#REQ-5003]])
+and issue a **fresh** iframe + `MessageChannel` + grant for a sandboxed island (never reuse a
+prior port). Retained store *values* persist on the nav-surviving shell
+([[SPEC-050-component-islands-and-messaging#REQ-5007]]); only per-mount *subscriptions, iframes,
+and ports* are torn down and rebuilt.
 
 **Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5017]], [[SPEC-050-component-islands-and-messaging#REQ-5003]], [[SPEC-050-component-islands-and-messaging#REQ-5016]]; [[SPEC-050-component-islands-and-messaging#Threat J]].
 
@@ -721,19 +758,25 @@ unauditable, collision-prone).
 trust partition is **encoded in the grammar** (two disjoint productions), not enforced by a
 post-parse semantic check — so a recogniser that implements only the grammar already
 rejects a content island's attempt to name a trusted topic.
-**Grammar (LL(1), unambiguous — the `content:` prefix is a literal, not an optional `ns`):**
+**Grammar (the two productions are genuinely disjoint — `trusted-first` is a *regular set
+difference* that structurally excludes the literal `content`, so the partition is in the
+recogniser's DFA, not a post-parse check):**
 ```
 topic          = content-topic | trusted-topic ;
 content-topic  = "content" ":" segment { ":" segment } ;   (* content-author islands *)
-trusted-topic  = segment { ":" segment } ;                 (* first segment ≠ "content" *)
-segment        = lower { alnum | "-" } alnum ;             (* ≥ 2 chars; lower-first; no trailing "-", *)
-                                                           (* encoded structurally — not a post-check *)
+trusted-topic  = trusted-first { ":" segment } ;           (* trusted islands *)
+trusted-first  = segment \ "content" ;     (* any segment EXCEPT the exact string "content"; *)
+                                           (* set difference of regular languages — still regular *)
+segment        = lower { alnum | "-" } alnum ;             (* ≥ 2 chars; lower-first; no trailing "-" *)
 alnum          = lower | digit ;
 lower          = "a".."z" ; digit = "0".."9" ;
 ```
-(`trusted-topic`'s first segment being literally `content` is the only `content-topic`;
-the two productions are disjoint, so a recogniser implementing the grammar alone rejects a
-content island naming a trusted topic and vice-versa — no semantic post-check.)
+`content:filter` matches only `content-topic` (its first token after `content:` cannot
+re-enter `trusted-first`); a trusted topic whose first segment is the bare word `content`
+is **not in the trusted-topic language at all** (excluded by `\ "content"`), and bare
+`content` with no `:` matches neither production — all rejected structurally. Regular
+languages are closed under finite set difference, so `trusted-first` is implementable as a
+DFA; the disjointness is therefore a property of the grammar, not an out-of-band rule.
 **Pre-conditions:** ≤ 128 bytes total; ≤ 8 segments; matches exactly one production; a
 trusted (theme-author) declaration parses as `trusted-topic` (a `content`-first name is a
 `content-topic` and is rejected for a trusted declaration **structurally**); a content
@@ -748,24 +791,28 @@ build for declarations, dropped with a console diagnostic at runtime for call si
 ### CON-5002: Island Manifest Fields (topics, types, persistence, grants)
 **Interface:** the island-related keys added to the [[SPEC-048]] CON-4801 manifest, plus
 the theme-level capability grants for content islands.
-**Grammar (TOML, strict):**
+**Grammar (valid TOML — topic keys are *quoted* keys since `:`/`-` are not bare-key chars;
+`default` is a native TOML value of the topic's declared type, not a string):**
 ```
-publishes   = "publishes"  "=" "[" { topic } "]" ;
-subscribes  = "subscribes" "=" "[" { topic } "]" ;
+publishes   = "publishes"  "=" "[" { quoted-topic } "]" ;   (* quoted-topic = '"' topic '"' *)
+subscribes  = "subscribes" "=" "[" { quoted-topic } "]" ;
 sandbox     = "sandbox" "=" bool ;          (* content islands: MUST be true; trusted: absent/false *)
 topics      = "[island.topics]" , { topic-decl } ;
-topic-decl  = topic "=" "{" "type" "=" type-expr        (* type-expr per CON-5005 *)
+topic-decl  = quoted-topic "=" inline-table ;               (* e.g. "search:open" = { type = "bool" } *)
+inline-table= "{" "type" "=" '"' type-expr '"'             (* type-expr text per CON-5005, quoted *)
                  [ "," "persisted" "=" bool ]
-                 [ "," "default" "=" literal ] "}" ;
+                 [ "," "default" "=" toml-value ] "}" ;     (* toml-value MUST match the declared type: *)
+              (* string/enum -> TOML string; bool -> TOML bool; int -> TOML integer;        *)
+              (* number -> TOML float; record -> TOML inline table of scalar values         *)
 (* theme.toml only — authorises a content island to SUBSCRIBE a trusted topic: *)
-grant       = "[[theme.island-grants]]" , component-line , topic-line , dir-line ;
-dir-line    = "direction" "=" "\"subscribe\"" ;          (* publish grants for trusted topics are not expressible *)
+grant       = "[[theme.island-grants]]" , 'component = "' name '"' ,
+                                          'topic = "' topic '"' , 'direction = "subscribe"' ;
 ```
-**Pre-conditions:** every topic matches CON-5001; each published/subscribed topic has a
-`[island.topics]` type declaration; a `persisted = true` topic declares a `default` whose
-literal conforms to its `type`; a content-author component's `publishes` are all
-`content:`-prefixed (REQ-5011) and its manifest sets `sandbox = true` (REQ-5015); a
-`subscribes` of a trusted topic by a content island requires a matching
+**Pre-conditions:** every topic matches CON-5001 (quoted in TOML); each published/subscribed
+topic has an `[island.topics]` declaration; a `persisted = true` topic declares a `default`
+whose **TOML value conforms to its declared type** (CON-5005); a content-author component's
+`publishes` are all `content:`-prefixed (REQ-5011) and its manifest sets `sandbox = true`
+(REQ-5015); a content island's `subscribes` of a trusted topic requires a matching
 `[[theme.island-grants]]` entry.
 **Post-conditions:** typed island metadata feeding wiring verification (REQ-5008), the
 audit graph (REQ-5009), the bridge grant table (REQ-5016), and payload typing (REQ-5013).
@@ -858,8 +905,10 @@ per type (one parser per language, [[PROTO-001]] §LangSec), not three:
   list MUST be non-empty with unique idents; the recogniser rebuilds onto a null-prototype
   object and rejects `__proto__`/`constructor`/`prototype` keys
   ([[SPEC-050-component-islands-and-messaging#Threat H]]).
-**Pre-conditions:** the type-expr parses (non-empty enum/record, unique idents/literals); a
-topic's `default` literal conforms.
+**Pre-conditions:** the type-expr parses (non-empty enum/record, unique idents/literals).
+(`literal` here is only the **enum-member** form *inside* a type-expr — always a quoted
+string; a topic's **`default`** is a separate native TOML value of the declared type per
+CON-5002, not a `literal`.) A declared `default` MUST itself conform to the type.
 **Post-conditions:** a recogniser that accepts exactly the conforming values; **no nested/
 recursive shapes** in v1 (records are flat — keeps validation decidable). The recogniser
 operates on the normalised value; it never trusts a raw structured-clone object before the
@@ -1084,8 +1133,8 @@ island imports.
 ### TEST-5015: Content-Island iframe Sandbox
 **Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5015]], [[SPEC-050-component-islands-and-messaging#Threat I]]. Positive: the island enhances inside the sandboxed iframe. Negative-input: sandbox token set lacks `allow-same-origin`/`allow-top-navigation`/`allow-popups`; CSP present. Negative-output: with JS off or sandbox unsupported, the parent-document static HTML renders, is usable, and is indexable; a top-navigation/parent-DOM attempt from inside fails.
 
-### TEST-5016: Capability-Scoped Bridge (Port-Identity, Handshake, Grants)
-**Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5016]], [[SPEC-050-component-islands-and-messaging#CON-5006]], [[SPEC-050-component-islands-and-messaging#Threat A]], [[SPEC-050-component-islands-and-messaging#Threat J]], [[SPEC-050-component-islands-and-messaging#Threat K]]. Positive: a content island completes the nonce handshake, publishes its `content:filter` grant, and reads a theme-granted `theme` subscribe (gets `ack` then rate-coalesced `update`s). Negative-input: publishing `theme` (no publish grant) → `denied:ungranted`; a message before/with a wrong handshake nonce → ignored; a message posted to `window` (origin `"null"`) or on any port other than the island's own → ignored (the bridge keys on **port object identity**, asserting an origin check would NOT distinguish it); a publish grant for a trusted topic is unexpressible in the manifest grammar. Negative-output: no ungranted/unhandshaken/type-invalid message ever reaches the real bus (fuzz the `postMessage` protocol incl. `__proto__` payloads).
+### TEST-5016: Capability-Scoped Bridge (Bootstrap, Port-Identity, Grants)
+**Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5016]], [[SPEC-050-component-islands-and-messaging#CON-5006]], [[SPEC-050-component-islands-and-messaging#Threat A]], [[SPEC-050-component-islands-and-messaging#Threat J]], [[SPEC-050-component-islands-and-messaging#Threat K]]. Positive: the child posts `zetl:ready`; the parent (matching `event.source` to that island's `iframe.contentWindow`) transfers `port2`; the island then publishes its `content:filter` grant and reads a theme-granted `theme` subscribe (`ack` then value-change-only `update`s). **Bootstrap negative:** a `zetl:ready` whose `event.source` is **not** the expected iframe `contentWindow` → ignored (no port transferred); if no `zetl:ready` arrives within the timeout → one retry, then teardown (no hang). **Grant negative:** publishing `theme` (no publish grant) or any ungranted topic → `denied:ungranted`; a publish grant for a trusted topic is unexpressible in the manifest grammar. **Identity negative:** a message arriving on any port not in the `WeakMap`, or a `postMessage` to `window` (origin `"null"`), is ignored — the bridge keys on **port-object identity**, and the test asserts an origin/source check would NOT discriminate. Negative-output: no ungranted/type-invalid message reaches the bus (fuzz the `postMessage` protocol incl. `__proto__`/poisoned-prototype structured-clone payloads).
 
 ### TEST-5017: Island & Port Lifecycle Under SPA Nav
 **Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5017]], [[SPEC-050-component-islands-and-messaging#Threat J]]. Positive: navigating away closes the island's port and releases its subscriptions; navigating back issues a fresh port + grant and re-hydrates idempotently. Negative-input: a message on a closed (torn-down) port → dropped (`island-port-closed`). Negative-output: repeated nav cycles do not grow the subscriber count toward the NFR-5002 cap (assert bounded after N cycles); a retained store value survives the nav (REQ-5007) while subscriptions do not.
@@ -1157,10 +1206,13 @@ everything else composes [[SPEC-048]] and [[SPEC-028]].
 
 ## 12. Open Questions
 
-- **Q1 — Persisted-default / FOUC mechanism.** Exact shape of the inline pre-paint script
-  and how the declared default is threaded into it (`[Blocked: Q1]`,
-  [[SPEC-050-component-islands-and-messaging#ADR-5005]]). Phase 1: how do operators expect
-  theme persistence to behave on first paint and cross-tab?
+- **Q1 — Persisted-default / FOUC mechanism.** *Resolved (v0.5.0):* the normative shape is
+  fixed by [[SPEC-050-component-islands-and-messaging#REQ-5018]] (static, self-contained,
+  `try/catch`-defaulting, `sha256`-CSP, applied as a DOM signal) and
+  [[SPEC-050-component-islands-and-messaging#ADR-5005]]; REQ-5018's clauses are stable
+  normative SHALLs, no longer `[Blocked]`. *Left to IMPL-050:* the exact data-island encoding
+  that keeps the script bytes (and thus the CSP hash) constant across pages with different
+  persisted-topic sets.
 - **Q2 — Sandboxed content-author islands.** *Resolved (v0.2.0):* content islands are
   **permitted, in an `<iframe sandbox>` with a capability-scoped bridge**
   ([[SPEC-050-component-islands-and-messaging#REQ-5010]],
@@ -1183,38 +1235,63 @@ everything else composes [[SPEC-048]] and [[SPEC-028]].
 - **Q6 — iframe cost at scale.** Per-content-island iframes carry layout/memory cost; is a
   shared-iframe-per-page (multiplexed bridge) needed when a page has many content islands?
   Ground against Phase 1 page profiles.
+- **Q7 — Exact trusted-island topic declaration.** The bare `window.zetl.store(topic)` API
+  gives no island identity, so `island-topic-undeclared` for trusted islands is only a
+  best-effort literal-string lint (REQ-5008). Should v2 add a generated per-island wrapper
+  (`zetl.island("name").store(...)`) or a required metadata export so the check becomes
+  exact for trusted islands too? (`[Blocked: Q7]`.)
 
 ---
 
 ## 13. Convergence Status
 
-**NOT converged** (but materially hardened). A strawman revised to a sandbox + capability +
-typing model and put through **two fresh-context adversarial reviews** ([[PROTO-001]]
-Principle 12): the first (Sonnet) raised 14 findings resolved in v0.3.0; the second (Opus)
-found several of those v0.3.0 fixes were *relocated, not solved* and raised 14 more (3
-Blocking / 5 Major / 6 Minor), all resolved in v0.4.0 — chiefly the bridge identity model
-(targeted-`postMessage` + port-object identity; nonce demoted to a liveness echo), the impossible
-`srcdoc` port delivery, and the "one recogniser over heterogeneous input shapes" correction.
-The two passes were the same model **family** (Claude); cross-family diversity was not
-achieved (Fable was unavailable). Before the Phase 2 gate this spec still requires: (1) a
-**third** review from a clean context that is ideally a **different model family or a human
-security domain expert** (this is a Tier-2 boundary and two same-family passes can share
-blind spots), with **adversarial fuzzing** of the bridge protocol against its *actual*
-structured-clone input and of the type recogniser; (2) Phase 1 operator/theme-author profiles
-to ground every `[Provisional]` value (incl. the REQ-5021 debounce interval) and close
-Q1/Q4/Q5/Q6; (3) feasibility spikes for the ≤ 4 KiB replay-store bus and the iframe capability
-bridge (port delivery, teardown, the data-island pre-paint CSP-hash model) against the
+**NOT converged, but convergence is visibly approaching.** Three fresh-context adversarial
+reviews ([[PROTO-001]] Principle 12), each driving a revision: **Sonnet** (14 findings →
+v0.3.0); **Opus** (found several v0.3.0 fixes *relocated, not solved*; 14 more → v0.4.0); and
+a **cross-family review (codex)** — the different-family pass the prior status asked for —
+which found 8 (3 Blocking / 5 Major), all resolved in **v0.5.0**: the genuinely-disjoint topic
+grammar, the single persisted-page runtime model, the deterministic child-ready-first port
+bootstrap, achievable teardown, valid-TOML manifest, honest best-effort lint for trusted-island
+declarations, and the realigned TEST-5016. The trajectory is converging — each pass found
+fewer and shallower defects (14 → 14 → 8, and the v0.5.0 set were specification-precision gaps,
+not a broken security model). Before the Phase 2 gate this spec still requires: (1) **one more
+clean-context review confirming the v0.5.0 fixes are sound (not relocated)** and reaching
+*adversary exhaustion*, plus **executable fuzzing** of the bridge protocol against real
+structured-clone input and of the type recogniser — for a Tier-2 boundary a **human security
+expert** sign-off is the right terminal gate; (2) Phase 1 operator/theme-author profiles to
+ground every `[Provisional]` value (timeout/retry, REQ-5021 debounce, bounds) and close
+Q4/Q5/Q6/Q7; (3) feasibility spikes for the ≤ 4 KiB replay-store bus and the iframe capability
+bridge (the ready→transfer→teardown handshake, the data-island pre-paint CSP-hash) against the
 [[SPEC-028]] shell; (4) IMPL-050 to pin the grammars, numeric bounds, sandbox token set +
-`sha256` CSP, pre-paint script, and lifecycle teardown. It depends on [[SPEC-048]] (the
-component + `data-z` substrate) and [[SPEC-049]] (the content-author component surface the
-sandbox isolates) and gates independently of both.
+`sha256` CSP, pre-paint script, and lifecycle. It depends on [[SPEC-048]] (the component +
+`data-z` substrate) and [[SPEC-049]] (the content-author component surface the sandbox
+isolates) and gates independently of both.
 
 ---
 
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.4.0</summary>
+<summary>Revision history — 0.1.0 → 0.5.0</summary>
+
+- **0.5.0** (2026-06-25) — *normative; third-review (cross-family/codex) fixes (3 Blocking /
+  5 Major).* **B1:** CON-5001 made genuinely disjoint — `trusted-first = segment \ "content"`
+  (a regular set difference in the DFA), so `content:`/trusted are partitioned structurally,
+  not by prose. **B2:** one runtime model — `window.zetl`/bus ⇔ an island is present; a
+  persisted-only page emits *only* the pre-paint script (no bus); live `storage` reflection
+  requires the bus (REQ-5004/5006/5012, contradiction removed). **B3:** REQ-5016/CON-5006 now
+  specify a deterministic **child-ready-first bootstrap** (child posts `zetl:ready` over
+  `window`; parent matches `event.source === iframe.contentWindow` then transfers `port2`;
+  timeout → one retry → teardown), fixing the lost-port-before-listener race. **M1:** REQ-5017
+  teardown is now achievable from the parent (close `port1`, revoke the `WeakMap` grant,
+  destroy the iframe → disposes `port2`; optional child `close`) — no impossible "close both
+  ends." **M2:** CON-5002 manifest is valid TOML — quoted topic keys, `default` a native TOML
+  value of the declared type (not a json-string); CON-5005 clarifies `literal` is enum-only.
+  **M3:** `island-topic-undeclared` is an explicit best-effort literal-string **lint** for
+  trusted in-realm islands (no island identity in `window.zetl.store`), exact only for content
+  islands via the bridge grant table; added Q7. **M4:** TEST-5016 rewritten to the bootstrap/
+  port-identity model (no "nonce handshake"/"unhandshaken"). **M5:** Q1 (FOUC) closed — REQ-5018
+  is stable normative, not `[Blocked]`.
 
 - **0.4.0** (2026-06-24) — *normative; second adversarial-review fixes.* A second
   fresh-context review (3 Blocking / 5 Major / 6 Minor) found the v0.3.0 bridge fixes
