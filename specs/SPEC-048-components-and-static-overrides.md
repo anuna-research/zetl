@@ -1,72 +1,90 @@
 ---
 id: SPEC-048
-title: "Template Components & Templated Static Pages — shared-context components and rendered static overrides"
-version: 0.2.0-strawman
+title: "Template Components & Templated Static Pages"
 status: draft
-date: 2026-06-24
+version: 0.2.0-strawman
+last-updated: 2026-06-24
 audience: agent, human
-related:
-  - SPEC-032  # Hook pipeline + zetl-ext AST + ExpansionBound contract (transform-stage reuse for successor SPEC-049)
-  - SPEC-028  # SPA shell / graph placement (islands successor SPEC-050 plugs in here)
-  - SPEC-045  # Wikilink Predicate Language (typed edges — components may read edges_by_predicate)
-  - SPEC-040  # zetl-mobile (mobile_mode global; component variants for mobile shells)
-  - SPEC-002  # Full-text search (v1 output is fully server-rendered HTML, hence indexable by construction)
-source:
-  - "minijinja template engine — {% macro %}, {% call %}/caller(), {% import %}, {% set %} capture, set_undefined_behavior(Strict)"
-  - "Observed drift in ../anuna-web (static/ vs theme/) — see §1.1"
-revision_notes:
-  - v0.1.0 (initial strawman, 2026-06-24): first draft from an exploration of
-    web-component-like nesting + extending templating to static overrides.
-  - v0.1.1 (2026-06-24): added inter-island messaging (REQ-4816/4817, ADR-4808).
-  - v0.2.0 (2026-06-24) — **TIGHTENED SCOPE.** Reframed the central feasibility
-    claim: components are minijinja **macros** (`{% macro %}` + `{% call %}`/
-    `caller()` + `{% import %}`), optionally fronted by a thin source-lowering pass
-    for the `{% component %}`/`{% slot %}` sugar — NOT a new custom statement tag
-    (minijinja has no extension API for block tags), so the "no new engine" claim is
-    now grounded. Separated the compile-time tier check from the render-time
-    strict-undefined check in REQ-4808 (the original conflated them). Reduced
-    REQ-4809 to **collect + dedup + deterministic emission of unscoped component
-    CSS** (selector scoping needs a full CSS parser and is deferred). **Moved out**
-    to named successor specs: content-author Markdown directives + sanitisation
-    (REQ-4806/4815, CON-4803, ADR-4802, Threat A → **SPEC-049**); JS islands +
-    inter-island bus + manifest topics (REQ-4810/4816/4817, ADR-4808 → **SPEC-050**);
-    build-time **scoped** CSS / selector rewriting (the scoping half of REQ-4809,
-    Threat C → **SPEC-051**). The v1 core is exactly the slice that lets zetl render
-    its own static override pages with shared site context — replacing a second
-    static-site generator (the "Jekyll + zetl" alternative) for the anuna-web
-    archetype. Fixed the 0.1.0/0.1.1 version-field inconsistency. Retained REQ
-    numbers; gaps (4806, 4810, 4815–4817) point to successors (§ Deferred
-    Capabilities). NOT reviewed, NOT converged.
 ---
 
 # SPEC-048: Template Components & Templated Static Pages
 
-> **Strawman notice.** This is a *first* draft produced from a design exploration,
-> not a converged specification. It has had **no** Phase 1 surveys, **no**
-> synthetic-user runs, and **no** fresh-context adversarial review. Per
-> [[PROTO-001]] Constitutional Principle 11 ([[Anti-Slop Bias]]), treat every
-> clause as carrying hidden debt until adversarial review proves otherwise.
-> Sections tagged **`[Blocked: Qn]`** depend on an open question
-> ([[SPEC-048-components-and-static-overrides#12. Open Questions]]) and MUST NOT
-> pass the Phase 2 gate until it closes. `[Provisional]` marks a value still to be
+## Orientation
+
+**Intent:** Let zetl render its *own* hand-authored static pages (landing, about,
+404) with the **same** navigation, link base, and brand tokens its themed vault
+pages already use — so a site needs no second generator and brand details cannot
+drift between the two surfaces.
+
+**Metaphor:** *One print shop, shared plates.* Components are reusable plates and
+`tokens.css` is the single tin of ink; the press stamps both the bound book (themed
+vault pages) and the loose posters (static override pages) from the same plates and
+the same ink, so the two can never disagree on what the brand looks like.
+
+**Structure** (v1 core — `≤ 7` boxes; arrows = data/flow direction):
+
+```
+          ┌──────────── Site Context (REQ-4801 / REQ-4802) ─────────────┐
+          │  site.nav · tokens · root_path · build mode — ALWAYS present │
+          └──────┬───────────────────────────────────────────┬─────────┘
+                 │ (site+page tier)              (site tier)   │
+        ┌────────▼─────────┐                      ┌────────────▼─────────┐
+        │ Themed content   │                      │ Templated static page│
+        │ page             │                      │ *.html.jinja (4811)  │
+        └────────┬─────────┘                      └────────────┬─────────┘
+                 │       {% component %} / native {% call %}    │
+                 └───────────────────┬──────────────────────────┘
+                                     ▼
+                   ┌────────────────────────────────────┐
+                   │ Component resolver → minijinja MACRO │
+                   │ (REQ-4803 / REQ-4804 / REQ-4805)     │
+                   └───────┬──────────────────────┬───────┘
+                           ▼                      ▼
+                 ┌──────────────────┐   ┌────────────────────────┐
+                 │ Token compiler   │   │ Component CSS:          │
+                 │ tokens.css(4812) │   │ dedup + deterministic   │
+                 │                  │   │ emit, UNSCOPED (4809)   │
+                 └──────────────────┘   └────────────────────────┘
+```
+
+**Decisions** (deliberate before implementing):
+[[SPEC-048-components-and-static-overrides#ADR-4803]] components ARE minijinja macros,
+not a new engine tag ·
+[[SPEC-048-components-and-static-overrides#ADR-4804]] site/page tiering is the
+load-bearing primitive ·
+[[SPEC-048-components-and-static-overrides#ADR-4805]] static pages render via site
+context, opt-in by `.html.jinja` suffix ·
+[[SPEC-048-components-and-static-overrides#ADR-4809]] one generator, not "Jekyll + zetl".
+
+**Load-bearing requirements:**
+[[SPEC-048-components-and-static-overrides#REQ-4801]] site/page tier split ·
+[[SPEC-048-components-and-static-overrides#REQ-4802]] depth-correct `root_path` ·
+[[SPEC-048-components-and-static-overrides#REQ-4805]] macro substrate + optional sugar ·
+[[SPEC-048-components-and-static-overrides#REQ-4811]] templated static pages ·
+[[SPEC-048-components-and-static-overrides#REQ-4812]] single-source merged tokens ·
+[[SPEC-048-components-and-static-overrides#REQ-4813]] byte-identical default.
+
+**Open** (each blocks the Phase 2 gate — see
+[[SPEC-048-components-and-static-overrides#12. Open Questions]]):
+Q1 static-render marker · Q3 unify `![[embed]]` · Q5 cross-vault packages ·
+Q6 sidebar vs top-strip · Q7 unscoped-CSS collision convention (owner: spec author,
+to ground in Phase 1 / IMPL-048).
+
+**Detail:** the full requirement, contract, and test nodes follow below — this
+one-pager is the door, not the room.
+
+> **Conformance.** The key words MUST, MUST NOT, REQUIRED, SHALL, SHALL NOT, SHOULD,
+> SHOULD NOT, RECOMMENDED, MAY, and OPTIONAL in this document are to be interpreted as
+> described in BCP 14 (RFC 2119, RFC 8174) when, and only when, they appear in all
+> capitals ([[PROTO-001#Requirement-Level Keywords (BCP 14)]]).
+
+> **Strawman notice.** A *first* draft from a design exploration — **NOT** converged.
+> No Phase 1 surveys, no synthetic-user runs, no fresh-context adversarial review. Per
+> [[PROTO-001]] Constitutional Principle 11 ([[Anti-Slop Bias]]), treat every clause
+> as carrying hidden debt until adversarial review proves otherwise.
+> **`[Blocked: Qn]`** marks a clause depending on an open question that MUST NOT pass
+> the Phase 2 gate until it closes; **`[Provisional]`** marks a value still to be
 > grounded in Phase 1.
->
-> **Composition-first pin.** This spec specifies *almost no new runtime*. Components
-> are [[minijinja]] **macros**; the optional `{% component %}` sugar is a
-> source-lowering pass into `{% call %}` + `{% set %}` capture (NOT a new engine
-> tag — minijinja exposes no custom-statement-tag API); nesting bounds combine
-> minijinja's own recursion limit with static cycle detection over the
-> statically-discoverable macro graph; resolution reuses the existing three-tier
-> theme fallback. See
-> [[SPEC-048-components-and-static-overrides#11. Composition-First Feasibility]].
->
-> **Scope discipline (v0.2.0).** This document is deliberately the *v1 core*: the
-> render-context tier split, macro-based components, **templated static override
-> pages**, and design tokens — the minimum that lets zetl render its own static
-> pages with shared site context instead of delegating them to a second generator.
-> Content-author Markdown directives, JS islands + inter-island messaging, and the
-> **scoped**-CSS compiler are deferred to named successors
-> ([[SPEC-048-components-and-static-overrides#Deferred Capabilities (Successor Specs)]]).
 
 ## Information Table
 
@@ -968,3 +986,35 @@ named slots via `{% set %}` capture) against the current `src/web/engine.rs`;
 (4) IMPL-048 to pin the EBNF grammars, the numeric bounds, and the unscoped-CSS
 convention. The successor specs (SPEC-049 directives, SPEC-050 islands+messaging,
 SPEC-051 scoped CSS) are deliberately out of this document and gate independently.
+
+---
+
+## Changelog
+
+<details>
+<summary>Revision history — 0.1.0 → 0.2.0</summary>
+
+- **0.2.0** (2026-06-24) — *normative; scope reduction + reframing.* **Tightened to the
+  v1 core.** Reframed the central feasibility claim: components are minijinja **macros**
+  (`{% macro %}` + `{% call %}`/`caller()` + `{% import %}`), optionally fronted by a
+  thin source-lowering pass for the `{% component %}`/`{% slot %}` sugar — NOT a new
+  custom statement tag (minijinja has no block-tag extension API), grounding the "no new
+  engine" claim (ADR-4803). Split REQ-4808 into a compile-time tier check and a
+  render-time strict-undefined check (v0.1.x conflated them). Reduced REQ-4809 to
+  dedup + deterministic emission of **unscoped** component CSS (selector scoping needs a
+  full parser → deferred). **Moved out** to named successors: content-author Markdown
+  directives + sanitisation (REQ-4806/4815, CON-4803, ADR-4802, Threat A → SPEC-049);
+  JS islands + inter-island bus + manifest topics (REQ-4810/4816/4817, ADR-4808 →
+  SPEC-050); **scoped** CSS / selector rewriting (scoping half of REQ-4809, Threat C →
+  SPEC-051). Added ADR-4809 (one generator, not "Jekyll + zetl"). Conformance pass to
+  [[PROTO-001]] v1.11.0: added the Orientation block (Intent/Metaphor/ASCII Structure/
+  Decisions/Load-bearing/Open/Detail), the BCP 14 conformance declaration, scalar-only
+  frontmatter, and this `## Changelog` (history moved out of frontmatter). Fixed the
+  0.1.0/0.1.1 version-field inconsistency. Retained REQ numbers; gaps (4806, 4810,
+  4815–4817) point to successors.
+- **0.1.1** (2026-06-24) — *normative.* Added inter-island messaging (REQ-4816/4817,
+  ADR-4808). *(Relocated to SPEC-050 in 0.2.0.)*
+- **0.1.0** (2026-06-24) — *initial strawman.* First draft from an exploration of
+  web-component-like nesting + extending templating to static overrides.
+
+</details>
