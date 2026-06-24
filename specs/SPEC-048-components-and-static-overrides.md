@@ -2,7 +2,7 @@
 id: SPEC-048
 title: "Template Components & Templated Static Pages"
 status: draft
-version: 0.2.0-strawman
+version: 0.2.1-strawman
 last-updated: 2026-06-24
 audience: agent, human
 ---
@@ -54,7 +54,9 @@ not a new engine tag ·
 load-bearing primitive ·
 [[SPEC-048-components-and-static-overrides#ADR-4805]] static pages render via site
 context, opt-in by `.html.jinja` suffix ·
-[[SPEC-048-components-and-static-overrides#ADR-4809]] one generator, not "Jekyll + zetl".
+[[SPEC-048-components-and-static-overrides#ADR-4809]] one generator, not "Jekyll + zetl" ·
+[[SPEC-048-components-and-static-overrides#ADR-4810]] transclusion is an addressed site
+capability, not a page tier.
 
 **Load-bearing requirements:**
 [[SPEC-048-components-and-static-overrides#REQ-4801]] site/page tier split ·
@@ -62,13 +64,14 @@ context, opt-in by `.html.jinja` suffix ·
 [[SPEC-048-components-and-static-overrides#REQ-4805]] macro substrate + optional sugar ·
 [[SPEC-048-components-and-static-overrides#REQ-4811]] templated static pages ·
 [[SPEC-048-components-and-static-overrides#REQ-4812]] single-source merged tokens ·
-[[SPEC-048-components-and-static-overrides#REQ-4813]] byte-identical default.
+[[SPEC-048-components-and-static-overrides#REQ-4813]] byte-identical default ·
+[[SPEC-048-components-and-static-overrides#REQ-4818]] addressed vault transclusion.
 
 **Open** (each blocks the Phase 2 gate — see
 [[SPEC-048-components-and-static-overrides#12. Open Questions]]):
-Q1 static-render marker · Q3 unify `![[embed]]` · Q5 cross-vault packages ·
-Q6 sidebar vs top-strip · Q7 unscoped-CSS collision convention (owner: spec author,
-to ground in Phase 1 / IMPL-048).
+Q1 static-render marker · Q5 cross-vault packages · Q6 sidebar vs top-strip ·
+Q7 unscoped-CSS collision convention · Q8 transclusion syntax form (owner: spec author,
+to ground in Phase 1 / IMPL-048). *(Q3 embed-relationship resolved by REQ-4818.)*
 
 **Detail:** the full requirement, contract, and test nodes follow below — this
 one-pager is the door, not the room.
@@ -92,7 +95,7 @@ one-pager is the door, not the room.
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | [[SPEC-048-components-and-static-overrides\|SPEC-048]]                                  |
 | Title        | Template Components & Templated Static Pages                                            |
-| Version      | 0.2.0-strawman                                                                          |
+| Version      | 0.2.1-strawman                                                                          |
 | Status       | Draft (strawman; NOT converged — pending Phase 1 + Phase 2 gates)                       |
 | Author       | Agent (Claude Opus 4.8 [1M], [[PROTO-001\|USDD Agent Protocol]] v1.8.0)                 |
 | Date         | 2026-06-24                                                                              |
@@ -220,7 +223,9 @@ emission of (unscoped) component CSS
 pages ([[SPEC-048-components-and-static-overrides#REQ-4811]]); design tokens with
 merge-not-replace ([[SPEC-048-components-and-static-overrides#REQ-4812]]); a
 backward-compatible default ([[SPEC-048-components-and-static-overrides#REQ-4813]]);
-prop validation ([[SPEC-048-components-and-static-overrides#REQ-4814]]).
+prop validation ([[SPEC-048-components-and-static-overrides#REQ-4814]]); addressed
+vault transclusion into any render path
+([[SPEC-048-components-and-static-overrides#REQ-4818]]).
 
 **Deferred to successors (NOT in this spec):** content-author Markdown directives +
 output sanitisation (→ **SPEC-049**); JS islands + inter-island messaging bus +
@@ -322,6 +327,19 @@ other, are detected at compile time (cycle) or capped at render time (depth),
 producing a [[HookDiagnostic]] and a non-zero build under `--strict`, never a hang or
 OOM ([[SPEC-048-components-and-static-overrides#REQ-4807]],
 [[SPEC-048-components-and-static-overrides#Threat B]]).
+
+### 3.6 HP6: A Static Page Transcludes Live Wiki Content
+The operator wants their `about.html.jinja` landing page to show the project's mission
+straight from the vault, so it can never go stale. They write
+`{{ transclude("handbook#mission") }}`. The build resolves it through the same
+[[Embed]] resolver that backs `![[handbook#mission]]` on themed pages, renders that
+section's HTML into the static page, and exposes `transclude("handbook").title` for a
+heading. Editing the mission once in `handbook.md` updates both the wiki page and the
+landing page. Backlinks and edges of `handbook` remain unreachable from the static
+page; renaming `handbook` surfaces a dead link in `zetl check`
+([[SPEC-048-components-and-static-overrides#REQ-4818]],
+[[SPEC-048-components-and-static-overrides#CON-4806]],
+[[SPEC-048-components-and-static-overrides#ADR-4810]]).
 
 ---
 
@@ -534,6 +552,34 @@ raw ([[SPEC-048-components-and-static-overrides#Threat E]]).
 
 **Trace:** [[SPEC-048-components-and-static-overrides#TEST-4814]], [[SPEC-048-components-and-static-overrides#CON-4801]], [[SPEC-048-components-and-static-overrides#CON-4802]]; [[SPEC-048-components-and-static-overrides#Threat E]].
 
+### REQ-4818: Addressed Vault Transclusion in Site Context
+[[Site Context]] SHALL expose a read-only **[[Vault Transclusion]]** capability — a
+minijinja function `transclude(<target>)` — available to every render path (themed
+pages, folder indexes, and templated static override pages
+([[SPEC-048-components-and-static-overrides#REQ-4811]])). The capability SHALL resolve
+`<target>` as a **named, content-addressed** reference (a whole page, a `#heading`
+section, or a `#^block-id` block) **reusing the existing [[Embed]] resolver** that
+backs `![[…]]` transclusion — one recogniser, one resolver
+([[SPEC-048-components-and-static-overrides#ADR-4810]], [[PROTO-001]] §LangSec
+one-parser-per-language). It SHALL return the *rendered HTML* of the addressed
+content plus an **allow-listed metadata subset** (`title`, and frontmatter fields the
+target marks publishable) — and SHALL NOT expose the target page's backlinks, edges,
+raw frontmatter, or any other page-tier field, so addressing a *named* page does not
+re-admit the ambient [[Page Context]] forbidden on static pages
+([[SPEC-048-components-and-static-overrides#Threat G]],
+[[SPEC-048-components-and-static-overrides#Threat H]]). The capability SHALL respect
+page visibility — a `transclude` of a draft/unpublished or non-existent target SHALL
+fail closed with a [[HookDiagnostic]] (`transclude-target-unresolved`, error) and
+SHALL surface as a dead link in `zetl check --dead-links`, never as silent empty
+output. Transclusion MAY nest (a transcluded page may itself transclude) and SHALL be
+bounded by the [[SPEC-048-components-and-static-overrides#REQ-4807]] depth/cycle bound,
+sharing its counter so a transclude chain cannot exceed the nest cap nor form a cycle.
+Because resolution and render happen at build time, transcluded content SHALL remain
+byte-deterministic ([[SPEC-048-components-and-static-overrides#NFR-4802]]) and fully
+indexable by [[SPEC-002]] search.
+
+**Trace:** [[SPEC-048-components-and-static-overrides#TEST-4818]], [[SPEC-048-components-and-static-overrides#CON-4806]], [[SPEC-048-components-and-static-overrides#ADR-4810]], [[SPEC-048-components-and-static-overrides#REQ-4807]]; [[SPEC-048-components-and-static-overrides#Threat H]]; [[SPEC-048-components-and-static-overrides#3.6 HP6]].
+
 ---
 
 ## 5. Non-Functional Requirements
@@ -647,6 +693,29 @@ removing it. This ADR records the decision that motivated the v0.2.0 tightening:
 v1 core is exactly the slice needed to retire the second-generator proposal for the
 anuna-web archetype.
 
+### ADR-4810: Transclusion Is an Addressed Site Capability, Not a Page Tier
+Pulling vault content into a static (or any) page is modelled as a **content-addressed
+read function** (`transclude("page#section")`) living in [[Site Context]], NOT as
+ambient access to a [[Page Context]] tier
+([[SPEC-048-components-and-static-overrides#REQ-4818]]). The pivotal distinction:
+*ambient* page context = "the content/backlinks of the page being rendered" (undefined
+for a static page — correctly forbidden by
+[[SPEC-048-components-and-static-overrides#Threat G]]); *addressed* transclusion =
+"the published content of *this named page*" (a deliberate, explicit read). (+) Keeps
+the tier model clean — tiers describe ambient context a path exposes; transclusion is
+a function over named data, so it composes onto every path (incl. static) without
+widening the page tier ([[PROTO-001]] Principle 15). (+) Reuses the existing
+[[Embed]] resolver, so `![[embed]]` in `.md` and `transclude()` in templates share one
+recogniser — this **resolves Q3** rather than growing a second transclusion path.
+(+) The allow-listed exposed-field set
+([[SPEC-048-components-and-static-overrides#CON-4806]]) keeps backlinks/edges/raw
+frontmatter out, so an addressed read cannot smuggle the page tier back in. (−) Authors
+learn one capability (mitigated: it mirrors `![[…]]` they already know). Rejected:
+exposing a `page`/`vault` object with arbitrary fields to static pages — that *is* the
+page tier under another name and re-opens [[SPEC-048-components-and-static-overrides#Threat G]];
+rejected: a client-side fetch — breaks `file://`, determinism, and indexability
+([[SPEC-048-components-and-static-overrides#ADR-4801]]).
+
 ---
 
 ## 7. Contracts (LangSec)
@@ -750,6 +819,39 @@ partial HTML is never emitted.
 **Verified by:** [[SPEC-048-components-and-static-overrides#TEST-4805]],
 [[SPEC-048-components-and-static-overrides#TEST-4808]].
 
+### CON-4806: Vault Transclusion (`transclude(<target>)`)
+**Interface:** the read-only site-context capability that resolves a named vault
+reference to rendered HTML + safe metadata
+([[SPEC-048-components-and-static-overrides#REQ-4818]]). The `<target>` is
+author-supplied data and is therefore recognised against a grammar before any
+resolution ([[PROTO-001]] §LangSec).
+**Grammar (the existing [[Embed]] wikilink-target grammar — reused, not re-rolled):**
+```
+target   = page [ fragment ] ;
+page     = path-segment { "/" path-segment } ;   (* a resolvable vault page name *)
+fragment = "#" heading | "#^" block-id ;          (* section or block address *)
+heading  = text ;                                 (* matched against the page's headings *)
+block-id = ident ;                                (* matched against ^block markers *)
+```
+**Pre-conditions:** `<target>` matches the grammar; `page` resolves to an existing,
+**publishable** vault page (draft/unpublished → fail closed); the fragment (if any)
+resolves to a real heading/block; the transclude does not exceed the
+[[SPEC-048-components-and-static-overrides#REQ-4807]] depth bound nor close a cycle.
+**Post-conditions:** returns the addressed content as **rendered HTML** plus an
+allow-listed metadata map limited to `{ title, <publishable frontmatter fields> }`;
+the result re-enters the page as recognised, already-escaped output (the vault content
+is trusted, but autoescape governs interpolation of the returned metadata values). The
+exposed set is **closed** — `backlinks`, `edges`, `frontmatter` (raw/unpublishable),
+and any other page-tier field are NOT reachable through this capability
+([[SPEC-048-components-and-static-overrides#Threat H]]).
+**Error model:** out-of-grammar `<target>`, unresolved page/fragment, or
+draft/unpublished target → `transclude-target-unresolved` (error), surfaced as a dead
+link in `zetl check --dead-links`; depth/cycle breach →
+`component-depth-bound` ([[SPEC-048-components-and-static-overrides#REQ-4807]]); no
+silent empty output in any case.
+**Implements:** [[SPEC-048-components-and-static-overrides#REQ-4818]].
+**Verified by:** [[SPEC-048-components-and-static-overrides#TEST-4818]].
+
 ---
 
 ## 8. Threat Model
@@ -787,12 +889,28 @@ declaration and inject a rule. **Mitigation:** CON-4804 recognises values as
 CSS-token-safe (no `;`/`}`/comment/markup/`\`-reopen); an out-of-grammar value is
 rejected, not emitted ([[SPEC-048-components-and-static-overrides#REQ-4812]]).
 
-### Threat G: Static-Render Context Leak
-A `.html.jinja` static page tries to reach page context (another page's content,
-backlinks) it should not see. **Mitigation:** static pages are rendered with
-site-only context; page-tier access is a compile error (REQ-4808 first layer) and a
-strict-undefined render failure if attempted dynamically
-([[SPEC-048-components-and-static-overrides#REQ-4811]]).
+### Threat G: Static-Render *Ambient* Context Leak
+A `.html.jinja` static page tries to reach the **ambient** page context (the content
+or backlinks of "the current page", which does not exist for a static page).
+**Mitigation:** static pages are rendered with site-only context; page-tier access is
+a compile error (REQ-4808 first layer) and a strict-undefined render failure if
+attempted dynamically ([[SPEC-048-components-and-static-overrides#REQ-4811]]). This is
+distinct from **addressed** transclusion ([[SPEC-048-components-and-static-overrides#REQ-4818]]),
+which reads a *named* page through a closed allow-list and is permitted — see
+[[SPEC-048-components-and-static-overrides#Threat H]].
+
+### Threat H: Transclusion Over-Exposure (Page-Tier Smuggling)
+An author (or a crafted `<target>`) uses `transclude()` hoping to reach more than
+rendered content — the target page's `backlinks`, `edges`, raw/unpublishable
+frontmatter, or a draft page — thereby re-admitting the page tier that Threat G
+closes, but through the addressed path. **Mitigation:** the
+[[SPEC-048-components-and-static-overrides#CON-4806]] post-condition fixes a **closed
+allow-list** (`title` + publishable frontmatter fields + rendered HTML only); no other
+field is reachable, by construction. `<target>` is grammar-recognised before
+resolution; draft/unpublished/non-existent targets fail closed
+(`transclude-target-unresolved`). Transclusion depth/cycles reuse the
+[[SPEC-048-components-and-static-overrides#REQ-4807]] bound, so a transclude chain is
+also an expansion-bomb mitigation ([[SPEC-048-components-and-static-overrides#Threat B]]).
 
 > Deferred threats: **Threat A** (script injection via a content directive) and
 > **Threat C** (CSS scope escape) move with their capabilities to **SPEC-049** and
@@ -898,6 +1016,20 @@ defaults fill. Negative-input: unknown prop / type mismatch / enum miss / missin
 required → distinct errors. Negative-output: a `" onload=` prop value is escaped in
 the rendered attribute, not active.
 
+### TEST-4818: Addressed Vault Transclusion
+**Validates:** [[SPEC-048-components-and-static-overrides#REQ-4818]],
+[[SPEC-048-components-and-static-overrides#CON-4806]],
+[[SPEC-048-components-and-static-overrides#Threat H]]. Positive: `about.html.jinja`
+calls `transclude("handbook#mission")` and renders that section's HTML, identical to
+the `![[handbook#mission]]` embed on a themed page (shared-resolver golden);
+`transclude("handbook").title` exposes the title. Negative-input: a non-existent page,
+an unresolved `#heading`, or a draft/unpublished target → `transclude-target-unresolved`
++ a `zetl check --dead-links` hit (no empty output); a transclude cycle / depth-17 chain
+→ `component-depth-bound`. Negative-output: `transclude("handbook").backlinks` (and
+`edges`, raw `frontmatter`) are NOT reachable — the closed allow-list rejects page-tier
+fields (fuzz the `<target>` grammar and the field accessor — page-tier smuggling is
+inert).
+
 ---
 
 ## 10. Observability
@@ -915,9 +1047,9 @@ regressions.
 **Trace:** [[SPEC-048-components-and-static-overrides#NFR-4802]].
 
 ### OBS-4803: Bound Rejections
-Emit counts of `component-depth-bound`, `component-cycle`, and `tokens-value-unsafe`
-rejections, so fail-closed events are auditable.
-**Trace:** [[SPEC-048-components-and-static-overrides#NFR-4803]], [[SPEC-048-components-and-static-overrides#REQ-4807]].
+Emit counts of `component-depth-bound`, `component-cycle`, `tokens-value-unsafe`, and
+`transclude-target-unresolved` rejections, so fail-closed events are auditable.
+**Trace:** [[SPEC-048-components-and-static-overrides#NFR-4803]], [[SPEC-048-components-and-static-overrides#REQ-4807]], [[SPEC-048-components-and-static-overrides#REQ-4818]].
 
 ---
 
@@ -936,11 +1068,12 @@ before specifying new surface:
 | Static asset layering | four-tier `copy_static_assets` | **Extend** — add a render pass for `.html.jinja`; verbatim copy unchanged ([[SPEC-048-components-and-static-overrides#REQ-4811]]) |
 | Per-output link base | `compute_root_path` | **Extend** — lift into site context for static pages too ([[SPEC-048-components-and-static-overrides#REQ-4802]]) |
 | Token compile + dedup component CSS emission | *(none)* | **New** — the only genuinely new *build* surface in v1; selector **scoping** is deferred to SPEC-051 ([[SPEC-048-components-and-static-overrides#REQ-4809]], [[SPEC-048-components-and-static-overrides#REQ-4812]]) |
+| Pull named vault content into any page | existing [[Embed]] resolver (`![[page#section]]`) | **Compose/Extend** — expose the same resolver as a site-context `transclude()` function; add only the closed exposed-field allow-list ([[SPEC-048-components-and-static-overrides#REQ-4818]], [[SPEC-048-components-and-static-overrides#ADR-4810]]) |
 
-Net new surface in v1 is confined to (a) the token compiler and (b) deduped component
-CSS emission (collection only, no scoping). Everything else composes existing
-primitives — the spec's central design claim, now grounded against minijinja's actual
-extension surface.
+Net new surface in v1 is confined to (a) the token compiler, (b) deduped component CSS
+emission (collection only, no scoping), and (c) the `transclude()` allow-list wrapper
+over the existing embed resolver. Everything else composes existing primitives — the
+spec's central design claim, now grounded against minijinja's actual extension surface.
 
 ---
 
@@ -950,9 +1083,18 @@ extension surface.
   front-matter flag on a plain `.html`? (`[Blocked: Q1]`,
   [[SPEC-048-components-and-static-overrides#ADR-4805]]). Decision needs the Phase 1
   operator survey: how do operators currently name hand-authored pages?
-- **Q3 — Relationship to `![[embed]]`.** Should the existing block-level [[Embed]]
-  (`![[page]]`) and auto-generated transclusion cards be re-expressed as a built-in
-  `embed` component, unifying transclusion with the component model, or kept separate?
+- **Q3 — Relationship to `![[embed]]`.** *Resolved by
+  [[SPEC-048-components-and-static-overrides#REQ-4818]] /
+  [[SPEC-048-components-and-static-overrides#ADR-4810]]:* the embed resolver is reused —
+  exposed to templates and static pages as a site-context `transclude()` function —
+  rather than forking a second transclusion path. Whether the auto-generated
+  transclusion *card* chrome should itself become a built-in `embed` component is a
+  successor concern, not a v1 blocker.
+- **Q8 — Transclusion syntax form (new in v0.2.1).** Should a `.html.jinja` static page
+  also accept literal `![[page#section]]` markdown-style syntax, or *only* the explicit
+  `{{ transclude("page#section") }}` function form? The function form is cleaner inside
+  an HTML/jinja file and is the spec's default; confirm against how operators expect to
+  author these pages in the Phase 1 survey.
 - **Q5 — Cross-vault component packages.** Out of scope for v1, but the whole-directory
   resolution model is forward-compatible with a future package registry. Worth a
   successor spec? (`[Blocked: Q5]`).
@@ -992,8 +1134,17 @@ SPEC-051 scoped CSS) are deliberately out of this document and gate independentl
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.2.0</summary>
+<summary>Revision history — 0.1.0 → 0.2.1</summary>
 
+- **0.2.1** (2026-06-24) — *normative; additive.* Added **addressed vault transclusion**
+  so static (and any) pages can pull live, named wiki content: REQ-4818 (`transclude()`
+  in site context, reusing the existing [[Embed]] resolver, closed exposed-field
+  allow-list, visibility-gated, bounded by REQ-4807), CON-4806 (target grammar + exposed
+  set), ADR-4810 (addressed read is a site capability, NOT a page tier — the distinction
+  that keeps Threat G intact), Threat H (page-tier smuggling, closed by the allow-list),
+  TEST-4818, HP6, OBS-4803 extension. **Resolves Q3** (embed relationship); adds Q8
+  (transclusion syntax form: `transclude()` function vs literal `![[…]]`). Clarified
+  Threat G as *ambient*-context leak, distinct from addressed transclusion.
 - **0.2.0** (2026-06-24) — *normative; scope reduction + reframing.* **Tightened to the
   v1 core.** Reframed the central feasibility claim: components are minijinja **macros**
   (`{% macro %}` + `{% call %}`/`caller()` + `{% import %}`), optionally fronted by a
