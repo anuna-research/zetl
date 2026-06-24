@@ -482,6 +482,42 @@ pub async fn page_handler(
         }
     }
 
+    // SPEC-048 REQ-4811 (serve parity): render a `*.html.jinja` static override page
+    // with site-only context, matching `zetl build`. Checked before content-page
+    // resolution so a static page wins the slug exactly as it does at build time (where
+    // the static render pass runs after page rendering). A plain content page with the
+    // same slug is unaffected unless an author also ships a `.html.jinja` for it.
+    if !slug.starts_with('_') {
+        if let Some(src) =
+            crate::web::build::resolve_static_page_source(&state.vault_root, &state.theme, slug)
+        {
+            let vault_name = state
+                .vault_root
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "vault".to_string());
+            return match state
+                .engine
+                .render_static_page(&vault_name, &src, slug, "serve")
+            {
+                Ok(html) => (
+                    [
+                        (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                        (header::CACHE_CONTROL, "no-cache"),
+                    ],
+                    html,
+                )
+                    .into_response(),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                    format!("static page render error: {e}\n"),
+                )
+                    .into_response(),
+            };
+        }
+    }
+
     // SPEC-027 REQ-303: /_history → vault-wide history page.
     if slug == "_history" {
         return vault_history_handler_inner(State(state)).await;
@@ -2039,6 +2075,28 @@ pub async fn static_handler(
     // Also reject empty path
     if req_path.is_empty() {
         return StatusCode::NOT_FOUND.into_response();
+    }
+
+    // SPEC-048 serve parity: tokens.css (REQ-4812) and components.css (REQ-4809) are
+    // generated artefacts in build mode; in serve mode they are computed on the fly via
+    // the same shared helpers so both modes emit identical CSS.
+    if req_path == "tokens.css" || req_path == "components.css" {
+        let computed = if req_path == "tokens.css" {
+            crate::web::build::compute_tokens_css(&state.vault_root, &state.theme)
+        } else {
+            crate::web::build::compute_components_css(&state.vault_root, &state.theme)
+        };
+        if let Ok(Some(css)) = computed {
+            return (
+                [
+                    (header::CONTENT_TYPE, "text/css; charset=utf-8"),
+                    (header::CACHE_CONTROL, "no-cache"),
+                ],
+                css,
+            )
+                .into_response();
+        }
+        // fall through to the on-disk lookup (a vault may ship a literal file)
     }
 
     // Build candidate paths (two-tier lookup)
