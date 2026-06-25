@@ -517,3 +517,20 @@
 (claims agent:claude
   :at "2026-06-25T13:56:26Z"
   (given completed-50-wire))
+
+(claims agent:claude
+  :at "2026-06-25T13:59:13Z"
+  (given claim-v1-50-tests)
+  (normally r-cl-state-v1-50-tests claim-v1-50-tests state-claimed-v1-50-tests)
+  (normally r-cl-chain-v1-50-tests state-claimed-v1-50-tests claimed-50-tests)
+)
+
+;; Propagation rules: failures in '50-tests' block downstream tasks
+(normally r-propagate-verify-from-50-tests-failed failed-50-tests upstream-blocked-verify)
+(normally r-propagate-verify-from-50-tests-permanently-failed permanently-failed-50-tests upstream-blocked-verify)
+(normally r-propagate-verify-from-50-tests-stale-v1 stale-v1-50-tests upstream-blocked-verify)
+(normally r-propagate-verify-from-50-tests-timeout-v1 timeout-v1-50-tests upstream-blocked-verify)
+
+(claims agent:claude
+  :at "2026-06-25T13:59:13Z"
+  (given completed-50-tests))
