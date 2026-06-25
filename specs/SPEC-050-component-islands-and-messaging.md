@@ -2,7 +2,7 @@
 id: SPEC-050
 title: "Component Islands & Inter-Island Messaging"
 status: draft
-version: 0.14.0-strawman
+version: 0.15.0-strawman
 last-updated: 2026-06-25
 audience: agent, human
 ---
@@ -65,8 +65,8 @@ other directly; they pin to and read from named channels.
 
 **Open** (each blocks the Phase 2 gate — see
 [[SPEC-050-component-islands-and-messaging#12. Open Questions]]):
-Q4 bus/bridge residence in the SPEC-028 shell · Q5 delivery/ordering + `postMessage`
-latency · Q7 exact trusted-island topic declaration · Q9 mode-aware consolidation follow-through
+Q4 bus/bridge residence in the SPEC-028 shell · Q5 `postMessage` latency budget (ordering +
+sequencing now pinned, REQ-5030) · Q7 exact trusted-island topic declaration · Q9 mode-aware consolidation follow-through
 (owner: spec author, to ground in Phase 1). *(Q1 FOUC, Q2 sandbox/worker, Q3 typed-payloads,
 Q6 iframe cost — now largely moot under the default Worker model, Q8 controlled-element — resolved.)*
 
@@ -90,7 +90,7 @@ Q6 iframe cost — now largely moot under the default Worker model, Q8 controlle
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | [[SPEC-050-component-islands-and-messaging\|SPEC-050]]                                  |
 | Title        | Component Islands & Inter-Island Messaging                                              |
-| Version      | 0.14.0-strawman                                                                         |
+| Version      | 0.15.0-strawman                                                                         |
 | Status       | Draft (strawman; NOT converged — pending Phase 1 + Phase 2 gates)                       |
 | Author       | Agent (Claude Opus 4.8 [1M], [[PROTO-001\|USDD Agent Protocol]] v1.11.0)                |
 | Date         | 2026-06-24                                                                              |
@@ -768,6 +768,49 @@ islands drive updates by **re-emitting**:
 
 **Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5029]], [[SPEC-050-component-islands-and-messaging#REQ-5025]], [[SPEC-050-component-islands-and-messaging#CON-5007]], [[SPEC-050-component-islands-and-messaging#REQ-5026]], [[SPEC-050-component-islands-and-messaging#NFR-5002]].
 
+### REQ-5030: Message Ordering, Sequencing & Delivery Semantics
+The bus SHALL define an explicit ordering + sequencing model so islands can reason about
+delivery (and detect the drops that coalescing deliberately introduces).
+
+- **Per-island FIFO.** Messages from a single island are processed in send order (the platform's
+  per-channel `postMessage`/Worker in-order guarantee). The bus relies on this and SHALL NOT
+  reorder a single island's messages.
+- **Single host total order (linearizable, causality-preserving).** The bus runs on the host's
+  single-threaded event loop and serializes **all** islands' messages into **one total order =
+  arrival order**. Each message is processed **atomically** — recognise → apply to the store/bus
+  → **synchronous** subscriber fan-out (REQ-5005) → only then the next message — so no subscriber
+  observes half-applied state. Because the bus is the **sole** inter-island channel, this total
+  order is consistent with causality by construction: an island cannot observe an effect before
+  its cause (the cause passed through the same serializer first).
+- **Host-assigned sequence (this is the "sequencing").** The host SHALL stamp each store
+  mutation with a **strictly monotonic `seq`** (integer, per session, from 1) in that total
+  order, and SHALL carry it on every delivered `update` and on the replay value at subscribe
+  (CON-5006). Because the host is the single writer, `seq` is a true **total order**, not a
+  partial one. Uses: (1) **drop detection** — a subscriber comparing successive `seq`s sees a
+  **gap** exactly when REQ-5021/5026 coalesced intermediate changes, so it knows it skipped and
+  by how much without seeing the skipped values; (2) **idempotency across replay/remount** —
+  replay-on-subscribe (REQ-5005) and SPA remount (REQ-5017) re-deliver the current value, and
+  `seq` lets an island recognise "already applied through N" and not double-apply; (3) a stable
+  cursor for audit/debug. Each topic also exposes the `seq` of its **last change** (for per-topic
+  staleness). An island MAY also stamp its **own** outbound messages with a local counter that
+  the host echoes in `ack`, to correlate request→ack (debug aid, not load-bearing).
+- **No cross-island ordering assumption.** The relative order of messages from *different*
+  islands is just arrival order — nondeterministic; coordination MUST NOT depend on it. Use the
+  retained store (last-value-wins) for state, never "island A published before island B."
+- **Coalescing preserves order, drops content.** REQ-5021 (`update` value-change-only, debounced)
+  and REQ-5026 (`render` ≤ one paint/frame) deliver a **monotonic subsequence** — intermediate
+  messages dropped (visible as `seq` gaps), latest wins, **never reordered**.
+- **Cross-tab is last-write-wins, not logically clocked.** Persisted-topic cross-tab reflection
+  (REQ-5006) has multiple independent serializers (one host per tab); it resolves by **LWW** on
+  `storage`-event arrival, which is adequate for UI-coordination state. A **Lamport/vector clock
+  is deliberately NOT used** — it would only give a *partial* order weaker than the host's total
+  order for the in-page case, and for the genuine multi-serializer (cross-tab) case it cannot
+  *merge* concurrent writes (LWW already provides the consistent tiebreak; real merge would need
+  a CRDT, out of scope for theme/UI state). `seq` is a single-writer sequence counter, **not** a
+  distributed logical clock — recorded here so a future reader does not add one reflexively.
+
+**Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5030]], [[SPEC-050-component-islands-and-messaging#REQ-5005]], [[SPEC-050-component-islands-and-messaging#REQ-5021]], [[SPEC-050-component-islands-and-messaging#REQ-5026]], [[SPEC-050-component-islands-and-messaging#CON-5006]], [[SPEC-050-component-islands-and-messaging#REQ-5006]].
+
 ### REQ-5015: Content-Island iframe Sandbox (Opt-In Full-DOM Mode)
 A content-author island that opts into **full-DOM mode** ([[SPEC-050-component-islands-and-messaging#REQ-5010]],
 [[SPEC-050-component-islands-and-messaging#ADR-5010]] — because it needs arbitrary DOM or a
@@ -1401,10 +1444,12 @@ unsubscribe: { op: "unsubscribe", topic }
 render     : { op: "render",   tree }                (* default mode only; requires a render grant
                                                         (CON-5002) — a headless island cannot paint *)
 (* parent → child, on the channel: *)
-ack        : { op: "ack",    topic }
+ack        : { op: "ack",    topic, cseq? }           (* cseq = echo of the island's own outbound counter, if sent *)
 denied     : { op: "denied", topic?, node?, reason }  (* node = locator of a dropped render node *)
-update     : { op: "update", topic, value }
+update     : { op: "update", topic, value, seq }      (* seq = host total-order sequence of this change (REQ-5030) *)
 reason     ∈ { "ungranted", "type", "cap-exceeded", "malformed", "render" }
+seq        = strictly-monotonic per-session integer assigned by the host in total order (REQ-5030);
+             also delivered on the replay value at subscribe; gaps mean coalesced (REQ-5021/5026) drops
 value      = a structured-clone datum: prototype-checked + null-proto-normalised, then
              recognised against the topic's declared type (CON-5005) — see above
 tree       = a RECURSIVE controlled element tree recognised + painted ONLY per CON-5007 (its own
@@ -1732,6 +1777,9 @@ island imports.
 ### TEST-5029: Dynamic Update via Host Reconciliation
 **Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5029]], [[SPEC-050-component-islands-and-messaging#CON-5007]]. Positive: a worker re-emits a `render` with a changed tree → the host applies **minimal DOM mutations** (assert unchanged keyed nodes are not recreated); a keyed list re-order **moves** nodes (preserves their DOM identity); **focus and uncontrolled input value survive** a re-render of a keyed `<input>`. Negative-input: a re-render that exceeds CON-5007 bounds or includes a non-allowlisted node → that node dropped (`denied:render`), rest reconciles; `key` is **never** emitted as a DOM attribute. Negative-output: re-rendering on every keystroke is coalesced to ≤ one paint/frame (REQ-5026), main thread not saturated; zetl ships **no** VDOM framework runtime (assert no framework global, NFR-5002).
 
+### TEST-5030: Message Ordering, Sequencing & Delivery Semantics
+**Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5030]], [[SPEC-050-component-islands-and-messaging#REQ-5005]], [[SPEC-050-component-islands-and-messaging#REQ-5021]]. Positive: a single island's messages are processed in send order (per-island FIFO); each `update`/replay carries a strictly-monotonic `seq`; processing is atomic (a subscriber notified during fan-out never observes a half-applied store). **Drop detection:** a rapid burst on one topic coalesced by REQ-5021 → the subscriber sees a `seq` **gap** (knows it skipped, by how much), values never reordered. **Replay idempotency:** an SPA remount (REQ-5017) re-delivers the current value with its `seq` → an island that tracked "applied through N" does not double-apply. Negative-input: two islands publishing the same topic → resolved by arrival order only (no cross-island ordering asserted); a test MUST NOT depend on which island "won" except via last-value-wins. Negative-output: `seq` is strictly increasing per session with no duplicates; **no Lamport/vector clock is present** (assert it is a single host-assigned counter, not a per-island logical timestamp).
+
 ### TEST-5023: Session-Persistent Bus Across SPA Nav
 **Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5023]], [[SPEC-050-component-islands-and-messaging#REQ-5007]]. Positive: navigating from an island page to a no-island page keeps the **same** `window.zetl` instance (not torn down, not duplicated); a persisted topic still live-reflects in that session. Negative-input: a session that loads **only** no-island pages never creates `window.zetl` (only per-page pre-paint applies). Negative-output: across N navigations there is never a second bus instance, and the **emitted HTML** of each page still matches its build-time marker gate (REQ-5012) regardless of runtime bus presence.
 
@@ -1822,9 +1870,12 @@ everything else composes [[SPEC-048]] and [[SPEC-028]].
 - **Q4 — Bus residence.** Does the bus + bridge reference-monitor live inside the existing
   SPEC-028 shell module or a new sibling shell module? Determines load order vs the
   pre-paint script.
-- **Q5 — Delivery/ordering guarantees.** Beyond per-subscriber subscription-order, are any
-  cross-topic ordering or synchronous-vs-microtask delivery guarantees required (incl. the
-  added `postMessage` hop latency for sandboxed islands)? Pin in IMPL-050.
+- **Q5 — Delivery/ordering guarantees.** *Ordering half resolved (v0.15.0):* REQ-5030 pins
+  per-island FIFO, a single host total order (linearizable + causality-preserving, atomic
+  per-message + synchronous fan-out), a host-assigned monotonic `seq` for drop-detection and
+  replay-idempotency, no cross-island ordering assumption, and LWW (not a logical clock) for
+  cross-tab. *Still open (Phase 1):* the `postMessage`-hop **latency** budget for sandboxed
+  islands — a number to profile, not a semantic.
 - **Q6 — iframe cost at scale.** *Largely moot (v0.9.0):* the default content-island mode is a
   Worker, not an iframe (REQ-5025), so the per-iframe layout/memory cost only applies to the
   opt-in escape hatch. *Residual:* Worker spawn cost at scale and whether a shared Worker pool
@@ -1966,7 +2017,20 @@ pass.
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.14.0</summary>
+<summary>Revision history — 0.1.0 → 0.15.0</summary>
+
+- **0.15.0** (2026-06-25) — *message ordering + sequencing (resolves Q5's ordering half).* New
+  **REQ-5030 + TEST-5030**: per-island FIFO; a **single host total order** (linearizable +
+  causality-preserving because the bus is the sole inter-island channel; atomic per-message
+  processing + synchronous fan-out); a **host-assigned monotonic `seq`** on every `update`/replay
+  (CON-5006) for **drop-detection** (coalescing gaps become visible) and **replay/remount
+  idempotency** (dedup "applied through N"); explicit **no cross-island ordering** assumption
+  (coordinate via the retained store); cross-tab stays **LWW**. Records — per the design
+  discussion — that a **Lamport/vector clock is deliberately not used**: with a single serializer
+  the `seq` counter is a *total* order (stronger than a logical clock's partial order), and the
+  one genuine multi-serializer case (cross-tab) needs a CRDT to *merge*, not a clock to *order*;
+  `seq` is a single-writer counter, not a distributed timestamp. Q5's remaining half is just the
+  `postMessage`-latency number (Phase 1 profiling).
 
 - **0.14.0** (2026-06-25) — *the author's side of the permission model + the dynamic-update
   model.* **REQ-5028 + TEST-5028 + `[island.requests]`:** a content-island author can now
