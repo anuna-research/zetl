@@ -428,3 +428,41 @@
 (claims agent:claude
   :at "2026-06-25T13:47:39Z"
   (given completed-50-csp))
+
+(claims agent:claude
+  :at "2026-06-25T13:49:00Z"
+  (given claim-v1-50-runtime-js)
+  (normally r-cl-state-v1-50-runtime-js claim-v1-50-runtime-js state-claimed-v1-50-runtime-js)
+  (normally r-cl-chain-v1-50-runtime-js state-claimed-v1-50-runtime-js claimed-50-runtime-js)
+)
+
+;; Propagation rules: failures in '50-runtime-js' block downstream tasks
+(normally r-propagate-50-bridge-js-from-50-runtime-js-failed failed-50-runtime-js upstream-blocked-50-bridge-js)
+(normally r-propagate-50-bridge-js-from-50-runtime-js-permanently-failed permanently-failed-50-runtime-js upstream-blocked-50-bridge-js)
+(normally r-propagate-50-bridge-js-from-50-runtime-js-stale-v1 stale-v1-50-runtime-js upstream-blocked-50-bridge-js)
+(normally r-propagate-50-bridge-js-from-50-runtime-js-timeout-v1 timeout-v1-50-runtime-js upstream-blocked-50-bridge-js)
+(normally r-propagate-50-bridge-js-from-50-runtime-js-blocked upstream-blocked-50-runtime-js upstream-blocked-50-bridge-js)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-50-wire-from-50-bridge-js-blocked upstream-blocked-50-bridge-js upstream-blocked-50-wire)
+
+(claims agent:claude
+  :at "2026-06-25T13:49:00Z"
+  (given completed-50-runtime-js))
+
+(claims agent:claude
+  :at "2026-06-25T13:49:00Z"
+  (given claim-v1-50-bridge-js)
+  (normally r-cl-state-v1-50-bridge-js claim-v1-50-bridge-js state-claimed-v1-50-bridge-js)
+  (normally r-cl-chain-v1-50-bridge-js state-claimed-v1-50-bridge-js claimed-50-bridge-js)
+)
+
+;; Propagation rules: failures in '50-bridge-js' block downstream tasks
+(normally r-propagate-50-wire-from-50-bridge-js-failed failed-50-bridge-js upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-bridge-js-permanently-failed permanently-failed-50-bridge-js upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-bridge-js-stale-v1 stale-v1-50-bridge-js upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-bridge-js-timeout-v1 timeout-v1-50-bridge-js upstream-blocked-50-wire)
+
+(claims agent:claude
+  :at "2026-06-25T13:49:00Z"
+  (given completed-50-bridge-js))
