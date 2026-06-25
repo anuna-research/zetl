@@ -2,7 +2,7 @@
 id: SPEC-049
 title: "Content-Author Components & Directives"
 status: draft
-version: 0.5.0-strawman
+version: 0.6.0-strawman
 last-updated: 2026-06-25
 audience: agent, human
 ---
@@ -77,21 +77,23 @@ allowlist scope.
 > SHOULD NOT, RECOMMENDED, MAY, and OPTIONAL in this document are to be interpreted as
 > described in BCP 14 (RFC 2119 + RFC 8174) when, and only when, they appear in all capitals.
 
-> **Strawman notice.** Strawman with **two adversarial passes** (v0.2.0 isolated-body
-> architecture; v0.3.0 relocation fixes) + a **factual correction** (v0.4.0: minijinja *does*
-> expose an AST) and a **sound static context lint** (v0.5.0, CON-4904 — closing the prop/slot
-> context residual at build time). It carves the deferred content-directive material out of
-> [[SPEC-048]] (former REQ-4806/4815, CON-4803, ADR-4802, Threat A). The **one remaining unsettled
-> piece is the body-sanitiser policy** (SPEC-048's "old Q2", Q1) — engine, complete grammar,
-> serialise→reparse fixed-point. Like [[SPEC-050]], this untrusted-surface security needs a further
-> fresh-context pass on the v0.5.0 lint + **executable fuzzing** + a **human security expert**; do
-> not treat it as settled.
+> **Strawman notice — NOT converged.** **Three adversarial passes**, each of which found the
+> security core *relocated* rather than solved: v0.2.0 (isolated-body architecture), v0.3.0
+> (context pushed to a contract+tripwire), v0.5.0 (a static lint) — and the **3rd pass (v0.6.0)
+> found the lint relocated the residual again** into a set of environment preconditions
+> (autoescape mode, whitespace, template inheritance, minijinja feature set). v0.6.0 states + tries
+> to discharge those (CON-4904(0)), but **prose cannot verify them — only an implementation +
+> fuzzing can.** Two unsettled axes remain: the **CON-4904 lint** (Q6 — possibly better served by a
+> dedicated restricted template language) and the **body-sanitiser policy** (Q1). The recurring
+> relocation across three passes is itself the signal: this untrusted-HTML boundary needs a
+> **running PoC + executable fuzzing + a human security expert** before any gate — do not treat it
+> as settled, and **v1 SHOULD NOT ship content-invocable components until Q1+Q6 land.**
 
 | Field        | Value                                                                                  |
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | [[SPEC-049-content-author-components\|SPEC-049]]                                        |
 | Title        | Content-Author Components & Directives                                                  |
-| Version      | 0.5.0-strawman                                                                          |
+| Version      | 0.6.0-strawman                                                                          |
 | Status       | Draft (strawman; NOT converged — no adversarial pass; sanitiser policy unsettled)      |
 | Author       | Agent (Claude Opus 4.8 [1M], [[PROTO-001\|USDD Agent Protocol]])                        |
 | Date         | 2026-06-25                                                                              |
@@ -149,12 +151,15 @@ sanitiser must un-mix):
    sanitiser. A `url`-typed prop is **scheme-validated when parsed** (context-independent, so safe
    wherever it lands); `string`/scalar props rely on minijinja HTML autoescape (sound in element
    text + double-quoted attribute); a **tainted-value tripwire** aborts a `|safe` raw-emit of an
-   untrusted value. And the CSS/JS/unquoted/URL contexts autoescape *cannot* neutralise are
-   **statically forbidden** by a **sound HTML-context lint** (CON-4904) — the Go `html/template`
-   technique over minijinja's `unstable_machinery` AST — which rejects at build any content prop
-   **or the sanitised slot** reaching an unsafe context, including transitively through trusted
-   sub-components, fail-closed on anything it cannot prove. So prop/slot context safety is a
-   **build-time guarantee**, not a trusted-author contract.
+   untrusted value. And the CSS/JS/unquoted/URL contexts autoescape *cannot* neutralise are the
+   target of a **static HTML-context lint** (CON-4904) — the Go `html/template` technique over
+   minijinja's `unstable_machinery` AST — which rejects at build any content prop **or sanitised
+   slot** reaching an unsafe context, transitively, fail-closed. This is a **build-time guarantee
+   *conditional on* enforced environment preconditions** (global Html-autoescape, no
+   whitespace-trim, inheritance-complete taint — CON-4904(0)); a third review showed those
+   preconditions are load-bearing and only an implementation + fuzzing can verify them, so context
+   safety is **closeable, not yet closed** (Q6 still open; a restricted template language is the
+   strong alternative).
 3. **The body and any raw HTML** — the body is the author's Markdown, rendered and **sanitised
    *in isolation* (CON-4902) before being slotted into the trusted template**. The sanitiser
    sees only untrusted body HTML, never the composite, so it can be a closed default-deny
@@ -510,7 +515,9 @@ embed applet form input button template noscript svg math foreignObject base met
 `on*`, `style`, `is`, `srcdoc`, `name`, `xlink:*` + **HTML comments / processing instructions /
 CDATA** (classic mXSS pivots).
 **URL validation (scheme *allowlist* after canonicalisation, not a denylist).** A URL attribute
-value (`href`/`src`/`poster`) and a `url`-typed prop (REQ-4904, validated at ingestion) SHALL be
+value (the **closed `URL_ATTR` set shared verbatim with CON-4904(1)**: `href`/`src`/`srcset`/
+`poster`/`action`/`formaction`/`cite`/`data`/`background`/`ping`/`usemap`/`longdesc`) and a
+`url`-typed prop (REQ-4904, validated at ingestion) SHALL be
 **canonicalised** (lowercase scheme, strip leading/embedded control chars + whitespace —
 `Java\tscript:` ≡ `javascript:`) then accepted **only** if it is `https`/`http`/`mailto` **or** a
 relative reference that is **path-absolute or path-relative**. It SHALL be **rejected** if it is
@@ -534,9 +541,13 @@ islands — CON-4902 validates *scheme*, not *destination*; the spec states this
 implying body HTML is egress-free.
 **Pre-conditions:** input is the rendered HTML of the **untrusted body only**; a poisoned/exotic
 node → dropped. **Post-conditions:** a body HTML subtree with no script, event handler, dangerous
-URL, comment/PI, or non-allowlisted element — **Threat A's body path holds iff this contract
-holds AND the prop path (REQ-4904) holds** (stated plainly: an incomplete/fail-open allowlist, or
-an unescaped prop context, re-admits XSS — closure is *pending* Q1 + fuzzing, not asserted now).
+URL, comment/PI, or non-allowlisted element; **AND the output is a well-balanced element-content
+subtree that is context-neutral in `TEXT` position** — i.e. slotting it into a template's
+element-content position cannot shift the surrounding HTML context for following literal text
+(every open tag is closed, no dangling quote/`<`). This balance post-condition is the lemma
+**CON-4904(2) relies on** to permit the sanitised slot in `TEXT`. **Threat A's body path holds iff
+this contract holds AND the prop/slot context path (REQ-4904/CON-4904 + its (0) preconditions)
+holds** (an incomplete/fail-open allowlist re-admits XSS — closure is *pending* Q1 + fuzzing).
 **Error model:** a dropped node/attribute is counted (OBS-4901); a missing/empty allowlist is a
 **build error** (`sanitiser-policy-missing`), never fail-open.
 **Engine/policy baseline** (a named `ammonia`-class allowlist sanitiser + the fixed-point
@@ -587,18 +598,43 @@ content-invocable component's template — closing the Q6 residual by adopting t
 `html/template` context-autoescaper technique** over minijinja's parser AST (reachable via the
 `unstable_machinery` feature; [[SPEC-049-content-author-components#NFR-4903]] pins it). "Sound"
 means **no false negatives**: it never *misses* an unsafe placement; it achieves this by
-**failing closed** on anything it cannot prove safe (conservative — possible false positives a
-trusted theme author resolves, the correct trade-off at a trust boundary).
+**failing closed** on anything it cannot prove safe (conservative — it *will* reject some safe
+templates, the correct trade-off at a trust boundary; the ergonomic cost on real theme trees is
+acknowledged, Q3/Q6).
+
+**(0) Discharged environment preconditions (load-bearing — the soundness of (1)–(5) depends on
+these being ENFORCED, not assumed).** The lint inspects a *template* AST, but several
+HTML-context-relevant facts live in the **render environment**, not the AST, and MUST be pinned:
+- **Autoescape MUST be `Html` over every tainted interpolation.** minijinja selects autoescape
+  from the *environment* (default `None`; `Html` only for `.html`/`.xml` outputs), invisible to a
+  macro's own AST — so a content macro imported into a `None`-escaped page would emit a prop raw.
+  The build SHALL render content-invocable components and **every transitively-tainted callee**
+  under `AutoEscape::Html`, and the lint SHALL treat any `{% autoescape false %}`/non-`Html`
+  region over a tainted interpolation as `content-context-unsafe`. Without this, (2)'s "safe in
+  TEXT/attr via autoescape" is false.
+- **Whitespace control MUST NOT trim the literal spans the tokeniser reads.** `trim_blocks`/
+  `lstrip_blocks`/`-%}` mutate `EmitRaw` text at token boundaries, so the reconstructed literal
+  stream could diverge from the rendered bytes. The build SHALL forbid whitespace-trimming config
+  for content-invocable templates (or run the tokeniser over the *post-trim* emitted bytes and
+  prove equivalence); v1 forbids it.
+- **AST coverage MUST be exhaustive.** The lint SHALL `match` minijinja AST node variants with
+  **no `_` catch-all** (a minijinja upgrade adding a `Stmt`/`Expr` variant then fails to
+  *compile*, not silently passes), and SHALL pin the minijinja **feature set** (variants are
+  cfg-gated) — NFR-4903.
 
 **(1) HTML context state machine.** The check SHALL run an HTML/CSS/JS **tokeniser state machine**
-over the template's *literal text spans* (interleaved with AST expression nodes from
-`machinery::parse`), tracking the context at every `{{ expr }}` / `{% … %}` interpolation point.
-Contexts include at least: `TEXT` (element content) · `RCDATA` (`<title>`/`<textarea>`) ·
-`TAG`/`ATTR_NAME` · `ATTR_VALUE_DQ`/`_SQ`/`_UQ` (double/single/unquoted attribute value) ·
-`URL_ATTR` (a value position of `href`/`src`/`srcset`/`poster`/`action`/`formaction`/`cite`/…) ·
-`CSS` (inside `<style>` or a `style=` value) · `JS` (inside `<script>` or an `on*=` value) ·
-`COMMENT`. A template whose literal HTML does not tokenise to a single well-defined context at an
-interpolation (e.g. an unclosed tag/quote) → `content-context-indeterminate` (fail closed).
+over the template's literal text spans (the ordered `EmitRaw` slices interleaved with `EmitExpr`
+nodes from `machinery::parse`), tracking the context at every interpolation. Contexts: `TEXT` ·
+`RCDATA` (`<title>`/`<textarea>`) · `TAG`/`ATTR_NAME` · `ATTR_VALUE_DQ`/`_SQ`/`_UQ` · `URL_ATTR` ·
+`CSS` (inside `<style>`/`style=`) · `JS` (inside `<script>`/`on*=`) · `COMMENT`. The **`URL_ATTR`
+trigger set is a closed, exhaustive list pinned ONCE and shared verbatim with CON-4902** (no
+open-ended "…"): `href`, `src`, `srcset`, `poster`, `action`, `formaction`, `cite`, `data`,
+`background`, `ping`, `usemap`, `longdesc`; an attribute not classified is treated as `URL_ATTR`
+**only if** on the list, else its value position is `ATTR_VALUE_*` — and a *tainted* value in an
+attribute the lint cannot positively classify → `content-context-indeterminate` (fail closed, not
+silently "plain text"). An **interpolated element or attribute *name*** (`<{{ t }}>` /
+`{{ a }}=`) → `content-template-unanalyzable` (the following context is unknowable). A literal HTML
+that does not tokenise to a single well-defined context at an interpolation → `content-context-indeterminate`.
 
 **(2) Per-value-kind safe-context sets.** A *tainted* value (content prop / slot) is permitted
 ONLY in:
@@ -619,26 +655,37 @@ MUST be identical (else `content-context-indeterminate`); a `{% for %}` body MUS
 as `props.href` in `u`'s context. An expression that *combines* a tainted subvalue with others
 (`{{ 'https://' ~ props.host }}`) is tainted in its interpolation context (conservative).
 
-**(4) Interprocedural taint (transitive flow).** Taint SHALL flow across statically-resolvable
-`{% call comp(arg=tainted) %}` / macro calls: the callee's template is linted with its
-corresponding parameter marked tainted, recursively, using the same component-resolution graph as
-REQ-4902/REQ-4908 (acyclic, depth-bounded). So a content prop passed to a *trusted* sub-component
-that places it in a URL/CSS context is **caught**, not missed.
+**(4) Interprocedural taint — across ALL minijinja composition forms, not just `{% call %}`.**
+Taint SHALL flow, recursively (acyclic, depth-bounded, same graph as REQ-4902/REQ-4908), across
+**every** statically-resolvable construct that can carry a tainted value into another template
+context: `{% call %}`/macro calls (arg→param); **template inheritance** `{% extends %}` +
+`{% block %}` (a block's landing context is its **parent** template's — the lint MUST resolve the
+override into the parent and taint the block by the parent's context, *not* analyse the child in
+isolation); `{% import %}` / `{% from … import %}` (imported macro params); `{% filter %}` (a
+filter applied to a tainted body — `| safe`/`| raw` here is `content-unsafe-emit`); `{% with %}` /
+`{% set %}…{% endset %}` capture blocks (rebind taint under the new name); and `caller()` / slot
+forwarding (a content slot handed to a sub-component is tainted in *that* component's context).
+A tainted value reaching any of these via a target the lint **cannot statically resolve** →
+`content-template-unanalyzable`. (Template inheritance is the dominant theme-composition path, so
+omitting it — as an earlier draft did — would have made the "transitive" claim false.)
 
-**(5) Analyzable-subset precondition (this is what makes 1–4 decidable + sound).** A
-**content-invocable** component's template (and every template transitively reached from it with
-tainted args) MUST be in a **statically-analyzable subset**: component/macro/`include` targets are
-**statically resolvable** (no computed/dynamic names), attribute **names** are literal (no
-`{{ }}`-built attribute names), and no construct defeats the context tokeniser. A template outside
-the subset → `content-template-unanalyzable` (build error) — the theme author rewrites it (these
-are trusted, allowlisted, few). Soundness holds **only** on this subset; the spec states the
-restriction rather than claiming full-minijinja analysis.
+**(5) Analyzable-subset = a closed, fail-closed node-shape allowlist (this is what makes 1–4
+decidable + sound).** A **content-invocable** template, and every template transitively reached
+with tainted data, MUST consist **only** of an **enumerated allowlist of AST node shapes** the
+lint handles — NOT "anything that doesn't defeat the tokeniser" (that would be circular and
+undecidable). Concretely: statically-resolvable component/macro/`include`/`extends`/`import`
+targets (no computed/dynamic names); **literal element AND attribute names** (no interpolated
+tag/attr names, (1)); the control constructs (3)/(4) enumerate; and nothing else. **Any AST node
+variant not on the allowlist → `content-template-unanalyzable`** (the exhaustive-match (0) makes
+this the compiler-enforced default). The theme author rewrites such a template (trusted,
+allowlisted, few). Soundness holds **only** on this subset — stated, not hidden.
 
-**Pre-conditions:** the lint runs only on content-invocable templates + their tainted-reachable
-callees; the minijinja version is pinned (NFR-4903). **Post-conditions:** a proof that every
-content-derived value reaches only a safe context (or a fail-closed build error) — so the
-CSS/JS/unquoted/URL prop+slot injection path of Threat A is closed **statically** (no runtime
-trust-author contract needed for these contexts). **Error model:** `content-context-unsafe` /
+**Pre-conditions:** (0)'s environment pins hold; the lint runs on content-invocable templates +
+their tainted-reachable callees (incl. inherited parents); minijinja version + features pinned
+(NFR-4903). **Post-conditions:** a proof that every content-derived value reaches only a safe
+context **given the (0) preconditions and the subset**, or a fail-closed build error. **This
+closes the prop/slot *context* path of Threat A at build time *conditional on* (0) — it is not an
+unconditional "closed by design."** **Error model:** `content-context-unsafe` /
 `content-context-indeterminate` / `content-unsafe-emit` / `content-template-unanalyzable` (all
 build errors, fail-closed).
 **Implements:** [[SPEC-049-content-author-components#REQ-4904]], [[SPEC-049-content-author-components#REQ-4905]].
@@ -663,14 +710,18 @@ the rendered tree. No client-side framework is introduced (interactivity, if any
 
 ### NFR-4903: Pinned Unstable-Machinery Dependency
 The CON-4904 context lint parses templates via minijinja's **`unstable_machinery`** API, which
-carries **no semver guarantee**. The build SHALL therefore (a) **pin an exact minijinja version**
-(not a `^`/`~` range) while `unstable_machinery` is enabled; (b) ship **AST-shape regression
-tests** that fail the build loudly if a minijinja upgrade changes the parsed AST shape the lint
-relies on (so a silent break cannot weaken the security check); and (c) gate the whole feature on
-`content-components` so a build that does not enable content components does not take the unstable
-dependency. This is the accepted cost of a sound static check (CON-4904); the alternative — a
-dedicated restricted template language — remains the Q6 fallback if the unstable dependency proves
-untenable.
+carries **no semver guarantee** and whose AST variants are **cfg-gated by feature**. The build
+SHALL: (a) **pin an exact minijinja version** (not a `^`/`~` range) **and an exact feature set**
+while `unstable_machinery` is enabled; (b) make the lint **`match` AST variants exhaustively with
+no `_` catch-all**, so a minijinja upgrade that adds a `Stmt`/`Expr` variant **fails to compile**
+(not silently passes a construct the lint doesn't understand) — a *semantic* guard, stronger than
+a shape snapshot; (c) additionally ship **AST-shape + whitespace-trim regression tests** (a
+behaviour change in `EmitRaw` chunking or trim config must fail loudly, B-3); (d) gate the whole
+feature on `content-components`. **This is a standing liability, not a fully-mitigated cost:** a
+security-critical check on a no-semver-guarantee internal API is fragile, and the spec states so
+plainly — which is exactly why the **dedicated restricted template language** (Q6 option b) is a
+serious alternative, not just a fallback: it has *none* of CON-4904's environment-precondition
+(autoescape/whitespace/inheritance/feature-set) exposure because the language is controlled.
 **Trace:** [[SPEC-049-content-author-components#TEST-4904]], [[SPEC-049-content-author-components#CON-4904]].
 
 ---
@@ -753,11 +804,14 @@ isolation** (REQ-4905/CON-4902, a closed fixed-point-stable allowlist; raw HTML 
 passed through, ADR-4906); (2) **props** by **`url` ingestion validation + HTML autoescape**, with
 every CSS/JS/unquoted/un-validated-URL placement **statically rejected** (CON-4904); (3) **slot
 landing** **statically restricted** to element-content position (CON-4904) — both transitively,
-fail-closed. **Closure now rests on two *static* contracts:** it holds **iff CON-4904 holds** (the
-sound context lint — fails closed on anything unprovable) **and CON-4902 converges** (Q1 — the
-body-sanitiser engine + complete grammar + fixed-point reparse + fuzzing). The prop/slot *context*
-path is **closed by design** (no trusted-author contract); the remaining unsettled piece is the
-body-sanitiser policy (Q1), same posture as [[SPEC-050]] CON-5007. (Note: this is *injection*; **outbound egress** from an
+fail-closed. **Closure rests on two static contracts, *conditional on CON-4904's (0) preconditions*:** it holds
+**iff CON-4904 holds** — which itself requires the **enforced** environment pins (global
+`Html`-autoescape over taint, no whitespace-trim, inheritance-complete taint, pinned feature set;
+CON-4904(0)) — **and CON-4902 converges** (Q1). So the prop/slot *context* path is **closeable at
+build time, but not yet *closed***: it is "closed **conditional on** (0) being discharged + the
+analyzable-subset being expressible for real themes," which a third review flagged is **not the
+same as "closed by design."** The remaining unsettled pieces are the (0) preconditions + the
+body-sanitiser policy (Q1) — same honest posture as [[SPEC-050]] CON-5007; do not over-read. (Note: this is *injection*; **outbound egress** from an
 allowlisted body `<img>`/`<a>` is the operator's CSP, not this threat — CON-4902.)
 
 ### Threat B: Capability Leak via an Over-Exposed Component
@@ -820,7 +874,7 @@ wiring graph (REQ-5009).
 **Validates:** [[SPEC-049-content-author-components#REQ-4903]], [[SPEC-049-content-author-components#CON-4903]]. Positive: a `content_invocable = true` component expands from content. Negative-input: a directive naming a non-existent component, or an existing component **without** `content_invocable` → `content-directive-unknown`, rendered inert (never expanded). Negative-output: trusted template invocation of the same (non-invocable) component still works (the flag gates only the content path); `content_invocable` cannot be set from content.
 
 ### TEST-4904: Untrusted Prop Recognition + Context Escaping
-**Validates:** [[SPEC-049-content-author-components#REQ-4904]], [[SPEC-049-content-author-components#CON-4904]], [[SPEC-049-content-author-components#NFR-4903]], [[SPEC-049-content-author-components#Threat A]], [[SPEC-049-content-author-components#Threat C]]. Positive: a `url`-typed prop is scheme-validated at ingestion (safe anywhere); a scalar prop in `TEXT`/`ATTR_VALUE_DQ` HTML-autoescapes; a slot in `TEXT` renders. Negative-input (recognition): unknown/wrong-type/missing-required/out-of-`enum` → `content-prop-*`; `list`/`map` → `content-prop-unsupported`; a `url` value `javascript:`/`data:`/`//evil.com`/`Java\tscript:` → rejected at ingestion. **Negative-input (CON-4904 static lint) — the context matrix, each a build error:** a content prop in `style="…{{p}}…"` / `<style>` (`CSS`) / `on*="{{p}}"` / `<script>` (`JS`) / unquoted attr / a non-`url` prop in `href` → `content-context-unsafe`; the **slot** in any attribute (`<a href="{{slot}}">`) → `content-context-unsafe`; a prop passed to a **trusted sub-component** that places it in a URL/CSS context → caught **transitively**; `{{ props.x | safe }}` → `content-unsafe-emit`; a template whose context is branch-dependent or uses dynamic dispatch → `content-context-indeterminate`/`content-template-unanalyzable` (fail-closed). **Soundness:** no unsafe placement passes (the lint rejects what it cannot prove). **NFR-4903:** an AST-shape change on a minijinja bump fails the regression test, not the security check silently.
+**Validates:** [[SPEC-049-content-author-components#REQ-4904]], [[SPEC-049-content-author-components#CON-4904]], [[SPEC-049-content-author-components#NFR-4903]], [[SPEC-049-content-author-components#Threat A]], [[SPEC-049-content-author-components#Threat C]]. Positive: a `url`-typed prop is scheme-validated at ingestion (safe anywhere); a scalar prop in `TEXT`/`ATTR_VALUE_DQ` HTML-autoescapes; a slot in `TEXT` renders. Negative-input (recognition): unknown/wrong-type/missing-required/out-of-`enum` → `content-prop-*`; `list`/`map` → `content-prop-unsupported`; a `url` value `javascript:`/`data:`/`//evil.com`/`Java\tscript:` → rejected at ingestion. **Negative-input (CON-4904 static lint) — the context matrix, each a build error:** a content prop in `style="…{{p}}…"` / `<style>` (`CSS`) / `on*="{{p}}"` / `<script>` (`JS`) / unquoted attr / a non-`url` prop in `href` → `content-context-unsafe`; the **slot** in any attribute (`<a href="{{slot}}">`) → `content-context-unsafe`; a prop passed to a **trusted sub-component** that places it in a URL/CSS context → caught **transitively**; `{{ props.x | safe }}` → `content-unsafe-emit`; a template whose context is branch-dependent or uses dynamic dispatch → `content-context-indeterminate`/`content-template-unanalyzable` (fail-closed). **Soundness:** no unsafe placement passes (the lint rejects what it cannot prove). **Precondition (0) cases (v0.6.0):** a content macro imported into a **`None`-autoescaped** page emits a tainted prop raw → `content-context-unsafe` (the autoescape-mode pin, B-1); a `{% block %}` whose **parent** template lands it in `<a href=…>` → caught via inheritance taint (B-2); a `trim_blocks`/`-%}` template for a content-invocable component → rejected (B-3). **NFR-4903:** a minijinja bump adding an AST variant **fails to compile** (exhaustive match, no `_`), not silently passes.
 
 ### TEST-4905: Isolated Body Sanitisation
 **Validates:** [[SPEC-049-content-author-components#REQ-4905]], [[SPEC-049-content-author-components#CON-4902]], [[SPEC-049-content-author-components#Threat A]], [[SPEC-049-content-author-components#Threat E]]. **Provenance:** the sanitiser is invoked on the **body fragment alone**, before composition — assert a trusted template's legitimate `<form>`/`<svg>`/`<button>` is **NOT** stripped (it never reaches the sanitiser), while the same elements in the **body** ARE stripped. Positive: a body with allowlisted Markdown renders intact. Negative-input — **vector matrix**: `<script>`, `<img onerror>`, `<a href="javascript:">`, `<iframe>`, `<style>`, `data:`/`blob:` URL, `on*`, an HTML comment/PI, a `srcset` with a hidden `javascript:` descriptor, an mXSS/`<svg>`-foreign-content probe → each dropped to inert text, kind+count surfaced (OBS-4901, never the payload verbatim). **Fixed-point:** re-sanitising the sanitiser's own output is byte-identical (mXSS guard). Negative-output: no script/handler/dangerous-URL/comment/non-allowlisted node survives — **closure is conditional on CON-4902 converging (Q1)**; a missing allowlist → `sanitiser-policy-missing` (fail-closed).
@@ -893,15 +947,19 @@ wiring graph (REQ-5009).
 - **Q5 — Allowlist scope.** Is `content_invocable` strictly per-component, or should a theme be
   able to declare a content-component *namespace*/folder allowlist? Per-component (explicit) is
   the v1 default.
-- **Q6 — Prop/slot context enforcement.** *Resolved (v0.5.0): option (a) adopted.* A **sound
-  static HTML-context lint** ([[SPEC-049-content-author-components#CON-4904]]) over minijinja's
-  `unstable_machinery` AST now **rejects at build** any content prop/slot reaching a
-  CSS/JS/unquoted/un-validated-URL context (transitively, fail-closed), on a statically-analyzable
-  subset of content-invocable templates; the unstable dependency is pinned + regression-tested
-  ([[SPEC-049-content-author-components#NFR-4903]]). *Left to IMPL-049 / human-expert review:* the
-  HTML-context tokeniser's completeness (the lint's own fuzzing) and whether the analyzable-subset
-  restriction is ergonomic, with a **restricted/dedicated template language** as the fallback if
-  the unstable dependency proves untenable. (The body-sanitiser policy remains Q1.)
+- **Q6 — Prop/slot context enforcement. *NOT resolved* (re-opened after the 3rd review).** v0.5.0
+  proposed option (a) — a static context lint ([[SPEC-049-content-author-components#CON-4904]]) —
+  and v0.6.0 hardened it (discharged the autoescape/whitespace/inheritance/feature-set
+  preconditions as *stated* requirements). But the third pass showed the lint's soundness now rests
+  on a **growing list of environment preconditions** (CON-4904(0)) that prose can require but only
+  an implementation + fuzzing can verify, and the analyzable-subset's ergonomics on real theme
+  trees (template inheritance especially) are unproven. So Q6 weighs, more evenly than before:
+  **(a)** the `unstable_machinery` context lint — viable but precondition-heavy and on a no-semver
+  API (NFR-4903); **(b)** a **dedicated restricted template language** for content-invocable
+  components — *more attractive now*, because it has none of (a)'s environment exposure (you control
+  autoescape, whitespace, inheritance, parsing). The choice + the lint's own fuzzing is the
+  human-expert gate; v1 SHOULD NOT ship content-invocable components until it lands. (Body-sanitiser
+  policy remains Q1.) (`[Blocked: Q6]`.)
 - **Q8 — Named content slots.** `content_slots` is deferred (CON-4903): it re-opens the
   slot-landing-context problem per named slot and needs an author syntax. v1 fills only the default
   slot (container body). Revisit if multi-slot content components are needed. (`[Blocked: Q8]`.)
@@ -911,7 +969,30 @@ wiring graph (REQ-5009).
 <details>
 <summary>Changelog</summary>
 
-<summary>Revision history — 0.1.0 → 0.5.0</summary>
+<summary>Revision history — 0.1.0 → 0.6.0</summary>
+
+- **0.6.0** (2026-06-25) — *third adversarial pass (Opus, fresh, source-grounded): 3 Blocking /
+  3 Major / 3 Minor; verdict "CON-4904 RELOCATED — another relocation."* The reviewer verified
+  against minijinja 2.16 source that the AST premise is real (`EmitRaw` preserves literal spans),
+  but the "sound lint" rested on **three unstated environment preconditions**: **B-1** autoescape
+  mode is environment-selected (`None` by default), invisible to the per-template AST → a content
+  macro in a `None`-escaped page passed the lint and emitted a prop raw (a lint-approved XSS);
+  **B-2** taint omitted **template inheritance** (`extends`/`block`/`import`/`filter`/`with`/`set`-
+  block) — the dominant theme path; **B-3** whitespace control (`trim_blocks`/`-%}`) mutates the
+  literal spans the tokeniser reads. Plus **B-4** "closed by design / Q6 resolved" overclaimed
+  (the subset is a rewrite-or-reject author contract); **B-5** the subset must be a closed
+  node-shape allowlist, not the circular "no construct defeats the tokeniser"; **B-6** the
+  `URL_ATTR` set was a denylist-with-`…` drifting from CON-4902. Applied: CON-4904 gains a **(0)
+  discharged-preconditions** block (enforced Html-autoescape over taint, no whitespace-trim,
+  exhaustive no-`_` match + pinned feature set); taint (4) extended to all inheritance/import/
+  filter/with/set-block/caller forms; subset (5) is now a closed fail-closed allowlist (literal
+  element+attr names); the `URL_ATTR` list is closed + shared verbatim with CON-4902; CON-4902
+  gains a **balance/context-neutral post-condition** (the lemma CON-4904 relies on for the slot);
+  NFR-4903 hardened (compile-fail on new variants; standing-liability stated). **Threat A
+  downgraded** to "closeable *conditional on* (0)", **Q6 re-opened (NOT resolved)** with a
+  **restricted template language** now an equal alternative to the precondition-heavy lint. **The
+  recurring 3-pass relocation is the signal:** v1 SHOULD NOT ship content-invocable components
+  until Q1+Q6 land via a running PoC + executable fuzzing + a human security expert.
 
 - **0.5.0** (2026-06-25) — *closes the prop/slot context residual with a sound static check
   (resolves Q6, option a).* Now that v0.4.0 established minijinja **does** expose a parser+AST
