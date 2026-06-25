@@ -204,3 +204,28 @@
 (claims agent:claude
   :at "2026-06-25T13:02:32Z"
   (given completed-deps))
+
+(claims agent:claude
+  :at "2026-06-25T13:06:46Z"
+  (given claim-v1-49-manifest)
+  (normally r-cl-state-v1-49-manifest claim-v1-49-manifest state-claimed-v1-49-manifest)
+  (normally r-cl-chain-v1-49-manifest state-claimed-v1-49-manifest claimed-49-manifest)
+)
+
+;; Propagation rules: failures in '49-manifest' block downstream tasks
+(normally r-propagate-49-expand-from-49-manifest-failed failed-49-manifest upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-manifest-permanently-failed permanently-failed-49-manifest upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-manifest-stale-v1 stale-v1-49-manifest upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-manifest-timeout-v1 timeout-v1-49-manifest upstream-blocked-49-expand)
+(normally r-propagate-49-props-from-49-manifest-failed failed-49-manifest upstream-blocked-49-props)
+(normally r-propagate-49-props-from-49-manifest-permanently-failed permanently-failed-49-manifest upstream-blocked-49-props)
+(normally r-propagate-49-props-from-49-manifest-stale-v1 stale-v1-49-manifest upstream-blocked-49-props)
+(normally r-propagate-49-props-from-49-manifest-timeout-v1 timeout-v1-49-manifest upstream-blocked-49-props)
+(normally r-propagate-50-manifest-from-49-manifest-failed failed-49-manifest upstream-blocked-50-manifest)
+(normally r-propagate-50-manifest-from-49-manifest-permanently-failed permanently-failed-49-manifest upstream-blocked-50-manifest)
+(normally r-propagate-50-manifest-from-49-manifest-stale-v1 stale-v1-49-manifest upstream-blocked-50-manifest)
+(normally r-propagate-50-manifest-from-49-manifest-timeout-v1 timeout-v1-49-manifest upstream-blocked-50-manifest)
+
+(claims agent:claude
+  :at "2026-06-25T13:06:46Z"
+  (given completed-49-manifest))

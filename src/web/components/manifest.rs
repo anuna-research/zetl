@@ -1,9 +1,15 @@
-//! SPEC-048 CON-4801 — Component Manifest (`<name>.toml`) recogniser.
+//! SPEC-048 CON-4801 — Component Manifest (`<name>.toml`) recogniser, extended by
+//! SPEC-049 CON-4903 (content-authoring gate + `url` ptype) and SPEC-050 CON-5002
+//! (island fields).
 //!
-//! A strict TOML parser (LangSec: recognise before act). Unknown top-level keys are
-//! rejected — the manifest is zetl-defined, not an external standard — so the keys
-//! `publishes`/`subscribes` reserved for SPEC-050 (islands) are rejected as unknown in
-//! v1. Out-of-grammar input yields `component-malformed`, never a partial accept.
+//! A strict TOML parser (LangSec: recognise before act). Genuinely-unknown top-level
+//! keys are still rejected (`component-malformed`) — the manifest is zetl-defined, not
+//! an external standard. The SPEC-049 keys `content_invocable`/`content_props` and the
+//! SPEC-050 island keys (`publishes`/`subscribes`/`render`/`sandbox`/`paints`/`hydrate`
+//! and the `[island]` table) are **recognised-and-reserved**: they are accepted (so a
+//! manifest annotated for a successor still builds under a gate-off build, CON-4903
+//! forward-compat) and the island detail is left to [`crate::web::islands::manifest`].
+//! Out-of-grammar input yields `component-malformed`, never a partial accept.
 
 use super::{CResult, ComponentError};
 use serde::Deserialize;
@@ -39,7 +45,10 @@ impl Tier {
     }
 }
 
-/// Declared type of a prop (CON-4801 `ptype`).
+/// Declared type of a prop (CON-4801 `ptype`, extended by SPEC-049 CON-4903 with
+/// `url`). `Url` is a `string` whose value is scheme-validated per CON-4902 wherever it
+/// lands in a URL context; for trusted-author (SPEC-048) validation it behaves exactly
+/// like `String`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PropType {
     String,
@@ -48,6 +57,8 @@ pub enum PropType {
     Number,
     List,
     Map,
+    /// SPEC-049 CON-4903(a): a `string` ingestion-validated as a URL.
+    Url,
 }
 
 impl PropType {
@@ -59,6 +70,7 @@ impl PropType {
             PropType::Number => "number",
             PropType::List => "list",
             PropType::Map => "map",
+            PropType::Url => "url",
         }
     }
 
@@ -70,8 +82,18 @@ impl PropType {
             "number" => Some(PropType::Number),
             "list" => Some(PropType::List),
             "map" => Some(PropType::Map),
+            "url" => Some(PropType::Url),
             _ => None,
         }
+    }
+
+    /// Whether a prop of this type may be set from untrusted content (REQ-4904): only
+    /// the scalar types and `url`. `list`/`map` are not content-settable in v1.
+    pub fn is_content_settable(self) -> bool {
+        matches!(
+            self,
+            PropType::String | PropType::Bool | PropType::Int | PropType::Number | PropType::Url
+        )
     }
 }
 
@@ -85,6 +107,36 @@ pub struct PropDef {
     pub enum_values: Option<Vec<toml::Value>>,
 }
 
+/// Raw, un-interpreted SPEC-050 island fields, captured during manifest recognition so
+/// the manifest stays one parse while the island detail (topic/type grammars, render
+/// mode, grants) is recognised by [`crate::web::islands::manifest`]. Empty for a plain
+/// SPEC-048 component.
+#[derive(Debug, Clone, Default)]
+pub struct IslandRaw {
+    pub publishes: Option<toml::Value>,
+    pub subscribes: Option<toml::Value>,
+    pub render: Option<toml::Value>,
+    pub sandbox: Option<toml::Value>,
+    pub paints: Option<toml::Value>,
+    pub hydrate: Option<toml::Value>,
+    /// The `[island]` table (`[island.topics]`, `[island.requests]`).
+    pub island: Option<toml::Value>,
+}
+
+impl IslandRaw {
+    /// True when the manifest declares no island fields at all — the component ships no
+    /// island and SPEC-050 emits nothing for it (REQ-5012 backward compat).
+    pub fn is_empty(&self) -> bool {
+        self.publishes.is_none()
+            && self.subscribes.is_none()
+            && self.render.is_none()
+            && self.sandbox.is_none()
+            && self.paints.is_none()
+            && self.hydrate.is_none()
+            && self.island.is_none()
+    }
+}
+
 /// A recognised, typed component manifest.
 #[derive(Debug, Clone)]
 pub struct Manifest {
@@ -93,11 +145,25 @@ pub struct Manifest {
     /// Declared named slots (the default slot is always implicit).
     pub slots: Vec<String>,
     pub props: BTreeMap<String, PropDef>,
+    /// SPEC-049 REQ-4903: theme-author opt-in making this component invocable from
+    /// untrusted content via a `:::name{…}` directive. Default-deny (`false`).
+    pub content_invocable: bool,
+    /// SPEC-049 CON-4903(b): the exact props settable from content. Default `[]` (the
+    /// narrowest surface — a prop is content-settable only if explicitly listed here).
+    pub content_props: Vec<String>,
+    /// SPEC-050 island fields, captured raw (see [`IslandRaw`]).
+    pub island_raw: IslandRaw,
 }
 
 impl Manifest {
     pub fn requires_tier(&self, tier: Tier) -> bool {
         self.requires.contains(&tier)
+    }
+
+    /// Whether `prop` may be set from untrusted content (SPEC-049 REQ-4904): the
+    /// component is `content_invocable` AND the prop is listed in `content_props`.
+    pub fn is_content_settable_prop(&self, prop: &str) -> bool {
+        self.content_invocable && self.content_props.iter().any(|p| p == prop)
     }
 }
 
@@ -113,6 +179,20 @@ struct RawManifest {
     slots: Vec<String>,
     #[serde(default)]
     props: BTreeMap<String, RawProp>,
+    // ---- SPEC-049 CON-4903 (recognised-and-reserved) ----
+    #[serde(default)]
+    content_invocable: bool,
+    #[serde(default)]
+    content_props: Vec<String>,
+    // ---- SPEC-050 CON-5002 island fields (recognised-and-reserved; detail parsed by
+    // the islands module so this stays one manifest parse) ----
+    publishes: Option<toml::Value>,
+    subscribes: Option<toml::Value>,
+    render: Option<toml::Value>,
+    sandbox: Option<toml::Value>,
+    paints: Option<toml::Value>,
+    hydrate: Option<toml::Value>,
+    island: Option<toml::Value>,
 }
 
 #[derive(Deserialize)]
@@ -207,12 +287,81 @@ pub fn parse_manifest(src: &str, dir_name: &str) -> CResult<Manifest> {
         );
     }
 
-    Ok(Manifest {
+    let island_raw = IslandRaw {
+        publishes: raw.publishes,
+        subscribes: raw.subscribes,
+        render: raw.render,
+        sandbox: raw.sandbox,
+        paints: raw.paints,
+        hydrate: raw.hydrate,
+        island: raw.island,
+    };
+
+    let manifest = Manifest {
         name: raw.name,
         requires,
         slots: raw.slots,
         props,
-    })
+        content_invocable: raw.content_invocable,
+        content_props: raw.content_props,
+        island_raw,
+    };
+
+    // SPEC-049 CON-4903: the content-authoring gate is validated only when the
+    // `content-components` feature is active. Under gate-off these keys are
+    // accepted-and-ignored (REQ-4912 forward-compat), so no error here.
+    #[cfg(feature = "content-components")]
+    validate_content_gate(&manifest)?;
+
+    Ok(manifest)
+}
+
+/// SPEC-049 CON-4903 pre-conditions on the content-authoring gate. A `content_props`
+/// entry MUST name a declared prop that is scalar/`url`-typed; a `content_invocable`
+/// component MUST be able to satisfy every required prop from content or a default.
+#[cfg(feature = "content-components")]
+fn validate_content_gate(m: &Manifest) -> CResult<()> {
+    for cp in &m.content_props {
+        match m.props.get(cp) {
+            None => {
+                return Err(ComponentError::new(
+                    "content-manifest-unknown-ref",
+                    format!("content_props names undeclared prop `{cp}`"),
+                ));
+            }
+            Some(def) if !def.ty.is_content_settable() => {
+                return Err(ComponentError::new(
+                    "content-prop-unsupported",
+                    format!(
+                        "content_props `{cp}` has type `{}`; only string/bool/int/number/url are content-settable",
+                        def.ty.as_str()
+                    ),
+                ));
+            }
+            Some(_) => {}
+        }
+    }
+
+    if m.content_invocable {
+        // Every required prop must be fulfillable from content (content-settable) or
+        // carry a default — else a content directive could never satisfy it
+        // (`content-invocable-unfulfillable`).
+        for (name, def) in &m.props {
+            if def.required
+                && def.default.is_none()
+                && !m.content_props.iter().any(|p| p == name)
+            {
+                return Err(ComponentError::new(
+                    "content-invocable-unfulfillable",
+                    format!(
+                        "content_invocable component requires prop `{name}` but it is neither content-settable nor defaulted"
+                    ),
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -257,14 +406,103 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_top_level_key() {
-        // `publishes` is reserved for SPEC-050 islands; rejected as unknown in v1.
+    fn rejects_genuinely_unknown_top_level_key() {
         let src = r#"
             name = "toggle"
-            publishes = ["theme"]
+            frobnicate = true
         "#;
         let err = parse_manifest(src, "toggle").unwrap_err();
         assert_eq!(err.code, "component-malformed");
+    }
+
+    #[test]
+    fn reserves_island_keys_instead_of_rejecting() {
+        // SPEC-050 `publishes`/`subscribes` and friends are recognised-and-reserved
+        // (CON-4903 forward-compat), captured into island_raw, not rejected.
+        let src = r#"
+            name = "toggle"
+            publishes = ["content:filter"]
+            subscribes = ["theme"]
+            render = "worker"
+            paints = true
+            hydrate = "visible"
+            [island.topics."content:filter"]
+            type = "string"
+        "#;
+        let m = parse_manifest(src, "toggle").expect("reserved island keys accepted");
+        assert!(!m.island_raw.is_empty());
+        assert!(m.island_raw.publishes.is_some());
+        assert!(m.island_raw.island.is_some());
+    }
+
+    #[test]
+    fn url_ptype_parses() {
+        let src = r#"
+            name = "link-card"
+            [props]
+            href = { type = "url", required = true }
+        "#;
+        let m = parse_manifest(src, "link-card").expect("url ptype parses");
+        assert_eq!(m.props["href"].ty, PropType::Url);
+        assert!(m.props["href"].ty.is_content_settable());
+    }
+
+    #[test]
+    fn content_invocable_and_props_parse() {
+        let src = r#"
+            name = "callout"
+            content_invocable = true
+            content_props = ["tone"]
+            [props]
+            tone = { type = "string", default = "info" }
+        "#;
+        let m = parse_manifest(src, "callout").expect("content gate parses");
+        assert!(m.content_invocable);
+        assert_eq!(m.content_props, vec!["tone".to_string()]);
+        assert!(m.is_content_settable_prop("tone"));
+        assert!(!m.is_content_settable_prop("other"));
+    }
+
+    #[cfg(feature = "content-components")]
+    #[test]
+    fn content_props_naming_undeclared_prop_rejected() {
+        let src = r#"
+            name = "callout"
+            content_invocable = true
+            content_props = ["nope"]
+            [props]
+            tone = { type = "string", default = "info" }
+        "#;
+        let err = parse_manifest(src, "callout").unwrap_err();
+        assert_eq!(err.code, "content-manifest-unknown-ref");
+    }
+
+    #[cfg(feature = "content-components")]
+    #[test]
+    fn content_props_with_list_type_rejected() {
+        let src = r#"
+            name = "gallery"
+            content_invocable = true
+            content_props = ["items"]
+            [props]
+            items = { type = "list" }
+        "#;
+        let err = parse_manifest(src, "gallery").unwrap_err();
+        assert_eq!(err.code, "content-prop-unsupported");
+    }
+
+    #[cfg(feature = "content-components")]
+    #[test]
+    fn content_invocable_unfulfillable_required_prop_rejected() {
+        // `tone` is required, has no default, and is not content-settable.
+        let src = r#"
+            name = "callout"
+            content_invocable = true
+            [props]
+            tone = { type = "string", required = true }
+        "#;
+        let err = parse_manifest(src, "callout").unwrap_err();
+        assert_eq!(err.code, "content-invocable-unfulfillable");
     }
 
     #[test]
