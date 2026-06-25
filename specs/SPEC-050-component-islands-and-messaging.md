@@ -2,8 +2,8 @@
 id: SPEC-050
 title: "Component Islands & Inter-Island Messaging"
 status: draft
-version: 0.6.0-strawman
-last-updated: 2026-06-24
+version: 0.7.0-strawman
+last-updated: 2026-06-25
 audience: agent, human
 ---
 
@@ -87,7 +87,7 @@ author, to ground in Phase 1). *(Q1 FOUC, Q2 sandbox, Q3 typed-payloads — reso
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | [[SPEC-050-component-islands-and-messaging\|SPEC-050]]                                  |
 | Title        | Component Islands & Inter-Island Messaging                                              |
-| Version      | 0.6.0-strawman                                                                          |
+| Version      | 0.7.0-strawman                                                                          |
 | Status       | Draft (strawman; NOT converged — pending Phase 1 + Phase 2 gates)                       |
 | Author       | Agent (Claude Opus 4.8 [1M], [[PROTO-001\|USDD Agent Protocol]] v1.11.0)                |
 | Date         | 2026-06-24                                                                              |
@@ -143,6 +143,16 @@ scoped bridge** the parent reference-monitors, over **typed** messages. Isolatio
 (REQ-5015) + capability scoping (REQ-5016) + payload typing (REQ-5013) are the three legs
 that let untrusted authors add interactivity without being able to forge a trusted topic
 ([[SPEC-050-component-islands-and-messaging#ADR-5003]]).
+
+**Where this sits relative to prior art ([[Astro Islands]]).** The *trusted* half of this
+spec is well-trodden: static-first islands, partial hydration, per-island hydration timing
+(`client:*` → REQ-5024), and replay-on-subscribe state (Astro's [[Nano Stores]] →
+REQ-5005/ADR-5002) all mirror a shipping framework, which is reassuring evidence the design
+is sound. The *untrusted content-island* half — an iframe sandbox + capability bridge so a
+**markdown author** can ship an interactive widget — has **no prior art**: Astro, the
+framework that popularised islands, has no untrusted-author tier at all. That novelty is why
+this half carried the design risk (and four adversarial review passes); the trusted half did
+not need them.
 
 ### 1.3 Design Principles
 
@@ -300,6 +310,28 @@ hydrated node SHALL NOT be double-bound — and SHALL bind only nodes within the
 swapped subtree on re-hydration, not the whole document.
 
 **Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5003]], [[SPEC-028]].
+
+### REQ-5024: Per-Island Hydration Strategy
+An island MAY declare a **hydration strategy** in its manifest
+([[SPEC-050-component-islands-and-messaging#CON-5002]]) controlling *when* it hydrates —
+modelled on Astro's `client:*` directives (prior art, [[Astro Islands]]) so the pattern is
+familiar and proven:
+- `load` (default) — hydrate on initial load / immediately after the swapped subtree mounts.
+- `idle` — hydrate at the next browser idle period (`requestIdleCallback`, fallback timeout).
+- `visible[(<rootMargin>)]` — hydrate when the island's root enters the viewport
+  (`IntersectionObserver`); for a **content island**, the sandboxed iframe + capability
+  bootstrap ([[SPEC-050-component-islands-and-messaging#REQ-5016]]) SHALL be created lazily at
+  this point, not at page load, so off-screen content islands cost nothing until scrolled to.
+- `media(<query>)` — hydrate when a CSS media query matches (e.g. only above a breakpoint).
+
+The strategy SHALL be **purely a timing optimisation over progressive enhancement**: the
+static component HTML ([[SPEC-050-component-islands-and-messaging#REQ-5002]]) is fully usable
+before (and without) hydration regardless of strategy, and `visible`/`media`/`idle` SHALL
+never withhold content required for the page to be usable or indexable. Strategy selection
+SHALL NOT change the once-per-type emission (REQ-5001) or the bus/bridge semantics — only the
+hydration trigger.
+
+**Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5024]], [[SPEC-050-component-islands-and-messaging#REQ-5002]], [[SPEC-050-component-islands-and-messaging#NFR-5001]], [[SPEC-050-component-islands-and-messaging#ADR-5009]].
 
 ### REQ-5004: Shell-Provided Message Bus
 The SPA shell SHALL expose exactly two coordination primitives on a stable global
@@ -739,21 +771,32 @@ reusing the [[SPEC-048]] NFR-4802 determinism guarantee.
 
 ### ADR-5001: Inter-Island Messaging Is a Shell Bus, Not a Shared Store Module
 Islands coordinate through a shell-provided bus (`store` + `bus`) rather than each island
-importing a shared reactive-store compile unit (the Astro/nanostores pattern). (+) Islands
-stay mutually decoupled (publish/subscribe by topic name, no cross-import); no shared
-compile unit, so the once-per-type emission model holds; one shell capability serves all
-islands ([[PROTO-001]] Principle 15). (−) A retained store is marginally more than a bare
-emitter. Rejected: a shared imported store (couples islands into a bundle, fights
-once-per-type emission); per-island `window` globals (no contract, no audit, collide).
-Carried verbatim from the deferred [[SPEC-048]] ADR-4808.
+importing a shared reactive-store compile unit — the **[[Astro Islands]] / [[Nano Stores]]
+pattern**, the production reference for cross-island state. (+) Islands stay mutually
+decoupled (publish/subscribe by topic name, no cross-import); no shared compile unit, so the
+once-per-type emission model holds; one shell capability serves all islands ([[PROTO-001]]
+Principle 15). (−) A retained store is marginally more than a bare emitter. **Prior art and
+the load-bearing reason we diverge:** Astro — the framework that popularised islands — shares
+state via Nano Stores, a `import`ed module every island reads. That is the *simpler, proven*
+choice **and SPEC-050 would adopt it for a trusted-only design**. We cannot, because of the
+**untrusted content-island tier**: a sandboxed, opaque-origin iframe (REQ-5015) **cannot
+`import` the parent's store** — there is no shared module across the realm boundary. The
+shell bus + capability bridge therefore earns its complexity *specifically* for the
+content-island tier; for trusted in-realm islands alone, a Nano-Stores-style shared module
+would suffice. Rejected: a shared imported store (cannot cross the sandbox; couples trusted
+islands into a bundle; fights once-per-type emission); per-island `window` globals (no
+contract, no audit, collide). Carried and extended from the deferred [[SPEC-048]] ADR-4808.
 
 ### ADR-5002: Replay-on-Subscribe Retained Store Is the Default Primitive
 The default coordination primitive retains the last value and replays it on subscribe; the
 ephemeral `bus` is secondary. (+) Correctness survives SPA re-hydration and late hydration
 — the dominant islands failure mode (a `CustomEvent` fired before a subscriber mounts is
 lost forever) is eliminated by construction; state like `theme` is exactly last-value-wins.
-(−) Slightly more than a bare event emitter, and retained values must be bounded
-(NFR-5002). Rejected: bare `CustomEvent` only (loses late subscribers — wrong for state).
+**This is not novel — it is exactly [[Nano Stores]]' semantics** (`atom.subscribe(fn)` fires
+`fn` immediately with the current value, then on every change), which validates the design
+against a shipping library used across Astro islands. (−) Slightly more than a bare event
+emitter, and retained values must be bounded (NFR-5002). Rejected: bare `CustomEvent` only
+(loses late subscribers — wrong for state, and what Nano Stores exists to avoid).
 
 ### ADR-5003: Content Islands Are iframe-Sandboxed With a Capability-Scoped Bridge
 Content-author islands are **permitted but isolated**: they run in a sandboxed iframe with
@@ -834,6 +877,21 @@ a filtered `window.zetl` proxy into the iframe (requires `allow-same-origin`, wh
 the realm isolation REQ-5015 depends on); a per-topic global callback registry (ambient,
 unauditable, collision-prone).
 
+### ADR-5009: Hydration Strategies Mirror Astro's `client:*` Directives
+Per-island hydration timing (`load`/`idle`/`visible`/`media`,
+[[SPEC-050-component-islands-and-messaging#REQ-5024]]) is modelled directly on [[Astro
+Islands]]' `client:load`/`client:idle`/`client:visible`/`client:media` directives. (+) A
+proven, widely-understood vocabulary; `visible` (IntersectionObserver) is a large
+below-the-fold win and, for content islands, defers the *entire* iframe + capability
+bootstrap until scrolled to — turning off-screen content islands into zero runtime cost.
+(+) Composes with progressive enhancement (REQ-5002): strategy is a timing optimisation over
+already-usable static HTML, never a gate on content. (−) Four triggers to implement and test
+(all are small platform-API wrappers — `requestIdleCallback`, `IntersectionObserver`,
+`matchMedia`). Rejected: a single eager `load`-only model (wastes work and, for content
+islands, pays the iframe cost for never-seen widgets); `client:only` (skip server render) —
+out of scope, since SPEC-050 mandates a static no-JS rendering (REQ-5002). Astro's broader
+prior art (Nano Stores for state, partial hydration) also grounds ADR-5001/5002.
+
 ---
 
 ## 7. Contracts (LangSec)
@@ -890,6 +948,8 @@ the theme-level capability grants for content islands.
 publishes   = "publishes"  "=" "[" { quoted-topic } "]" ;   (* quoted-topic = '"' topic '"' *)
 subscribes  = "subscribes" "=" "[" { quoted-topic } "]" ;
 sandbox     = "sandbox" "=" bool ;          (* content islands: MUST be true; trusted: absent/false *)
+hydrate     = "hydrate" "=" '"' strategy '"' ;   (* default "load" — REQ-5024 *)
+strategy    = "load" | "idle" | "visible" | "visible(" rootmargin ")" | "media(" css-query ")" ;
 topics      = "[island.topics]" , { topic-decl } ;
 topic-decl  = quoted-topic "=" inline-table ;               (* e.g. "search:open" = { type = "bool" } *)
 inline-table= "{" "type" "=" '"' type-expr '"'             (* type-expr text per CON-5005, quoted *)
@@ -906,18 +966,20 @@ topic has an `[island.topics]` declaration; a `persisted = true` topic declares 
 whose **TOML value conforms to its declared type** (CON-5005); a content-author component's
 `publishes` are all `content:`-prefixed (REQ-5011) and its manifest sets `sandbox = true`
 (REQ-5015); a content island's `subscribes` of a trusted topic requires a matching
-`[[theme.island-grants]]` entry.
+`[[theme.island-grants]]` entry; a `hydrate` value matches `strategy` (REQ-5024), defaulting
+to `"load"`.
 **Post-conditions:** typed island metadata feeding wiring verification (REQ-5008), the
-audit graph (REQ-5009), the bridge grant table (REQ-5016), and payload typing (REQ-5013).
+audit graph (REQ-5009), the bridge grant table (REQ-5016), payload typing (REQ-5013), and the
+hydration trigger (REQ-5024).
 **Error model:** malformed topic → `island-topic-malformed`; persisted-without-default or
 default-not-of-type → `island-persisted-no-default`; content island publishing a non-`content:`
 topic or lacking `sandbox = true` → `island-content-unsandboxed`; content island
 subscribing a trusted topic with no grant → `island-capability-ungranted`; a content island
 **publishing** a topic whose declared type is free `string` or a record with a `string`
-field → `island-content-value-type` ([[SPEC-050-component-islands-and-messaging#REQ-5022]]) —
-all build errors.
-**Implements:** [[SPEC-050-component-islands-and-messaging#REQ-5006]], [[SPEC-050-component-islands-and-messaging#REQ-5008]], [[SPEC-050-component-islands-and-messaging#REQ-5013]], [[SPEC-050-component-islands-and-messaging#REQ-5016]], [[SPEC-050-component-islands-and-messaging#REQ-5022]].
-**Verified by:** [[SPEC-050-component-islands-and-messaging#TEST-5006]], [[SPEC-050-component-islands-and-messaging#TEST-5008]], [[SPEC-050-component-islands-and-messaging#TEST-5016]].
+field → `island-content-value-type` ([[SPEC-050-component-islands-and-messaging#REQ-5022]]); an
+unrecognised `hydrate` strategy → `island-hydrate-invalid` — all build errors.
+**Implements:** [[SPEC-050-component-islands-and-messaging#REQ-5006]], [[SPEC-050-component-islands-and-messaging#REQ-5008]], [[SPEC-050-component-islands-and-messaging#REQ-5013]], [[SPEC-050-component-islands-and-messaging#REQ-5016]], [[SPEC-050-component-islands-and-messaging#REQ-5022]], [[SPEC-050-component-islands-and-messaging#REQ-5024]].
+**Verified by:** [[SPEC-050-component-islands-and-messaging#TEST-5006]], [[SPEC-050-component-islands-and-messaging#TEST-5008]], [[SPEC-050-component-islands-and-messaging#TEST-5016]], [[SPEC-050-component-islands-and-messaging#TEST-5024]].
 
 ### CON-5003: Bus Runtime API (`window.zetl`)
 **Interface:** the client-side bus surface.
@@ -1286,6 +1348,9 @@ island imports.
 ### TEST-5023: Session-Persistent Bus Across SPA Nav
 **Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5023]], [[SPEC-050-component-islands-and-messaging#REQ-5007]]. Positive: navigating from an island page to a no-island page keeps the **same** `window.zetl` instance (not torn down, not duplicated); a persisted topic still live-reflects in that session. Negative-input: a session that loads **only** no-island pages never creates `window.zetl` (only per-page pre-paint applies). Negative-output: across N navigations there is never a second bus instance, and the **emitted HTML** of each page still matches its build-time marker gate (REQ-5012) regardless of runtime bus presence.
 
+### TEST-5024: Per-Island Hydration Strategy
+**Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5024]], [[SPEC-050-component-islands-and-messaging#REQ-5002]]. Positive: `hydrate = "load"` hydrates on load; `"idle"` after `requestIdleCallback`; `"visible"` only when scrolled into view (and a `visible` **content island** creates its iframe + bootstrap only then — assert no iframe before scroll); `"media(...)"` only when the query matches. Negative-input: an unrecognised strategy → `island-hydrate-invalid` (build error). Negative-output: regardless of strategy, the static component HTML is present and usable/indexable **before** hydration (JS-off renders identically); a `visible`/`media` island never hides page-essential content behind hydration.
+
 ### TEST-5011: Topic Grammar
 **Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5011]], [[SPEC-050-component-islands-and-messaging#CON-5001]]. Positive: `theme`, `search:open` accepted. Negative-input: `Theme`, `a b`, an over-long, a trailing-`-`, a non-ASCII homoglyph, or a `content`-first trusted topic → `island-topic-malformed` (and the build and runtime recognisers agree). Negative-output: a malformed runtime topic is dropped, not silently coerced.
 
@@ -1310,7 +1375,7 @@ instances), and a stable hash of each, to detect nondeterminism regressions.
 ### OBS-5003: Bound Rejections
 Emit counts of the **build** errors `island-topic-malformed`, `island-topic-unpublished`,
 `island-topic-undeclared`, `island-persisted-no-default`, `island-topic-type-conflict`,
-`island-topic-type-invalid`, `island-content-unsandboxed`, `island-content-value-type`,
+`island-topic-type-invalid`, `island-content-unsandboxed`, `island-content-value-type`, `island-hydrate-invalid`,
 `island-capability-ungranted`, and the `island-focus-trap` warning; plus **runtime** counters (dev console / optional debug
 channel) for `island-payload-type`, `island-capability-denied` (by `denied` reason), and
 `island-port-closed`, so fail-closed events are auditable. The audit wiring graph (OBS-5001)
@@ -1333,6 +1398,8 @@ additionally lists, per content island, its iframe-sandbox status and its grante
 | Untrusted-island isolation | platform `<iframe sandbox>` (opaque origin) | **Compose (platform)** — the browser's own sandbox is the isolation primitive; no custom sandbox built ([[SPEC-050-component-islands-and-messaging#REQ-5015]], [[PROTO-001]] Simplicity-Ladder rung 3) |
 | Sandbox↔bus channel | platform `MessageChannel` + `postMessage` | **Compose (platform)** — transferred port *is* the capability; parent is the reference monitor ([[SPEC-050-component-islands-and-messaging#REQ-5016]]) |
 | Payload recognition | the `[island.topics]` type + a small recogniser | **New** — a deliberately tiny type language (CON-5005), the LangSec recogniser for runtime messages ([[SPEC-050-component-islands-and-messaging#REQ-5013]]) |
+| Hydration timing | platform `requestIdleCallback` / `IntersectionObserver` / `matchMedia`, vocabulary from [[Astro Islands]] `client:*` | **Compose (platform + prior art)** — thin wrappers over platform APIs, names borrowed from a proven framework ([[SPEC-050-component-islands-and-messaging#REQ-5024]], [[SPEC-050-component-islands-and-messaging#ADR-5009]]) |
+| Cross-island state model | [[Nano Stores]] (Astro's shared-module approach) | **Diverge (with reason)** — adopt its replay-on-subscribe *semantics* but a shell bus not a shared module, because the untrusted iframe tier cannot import a shared module ([[SPEC-050-component-islands-and-messaging#ADR-5001]]) |
 
 Net new surface is confined to (a) the ≤ 4 KiB shell bus runtime (`store`/`bus` + the
 capability-bridge reference monitor), (b) the inline persisted-topic pre-paint script, and
@@ -1416,7 +1483,19 @@ token set + `sha256` CSP, the data-island pre-paint encoding, and the lifecycle.
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.6.0</summary>
+<summary>Revision history — 0.1.0 → 0.7.0</summary>
+
+- **0.7.0** (2026-06-25) — *additive; prior-art grounding from [[Astro Islands]]* (researched
+  via `ar-crawl` over the Astro docs). Added **REQ-5024 + ADR-5009** per-island **hydration
+  strategy** (`load`/`idle`/`visible`/`media`) modelled on Astro's `client:*` directives —
+  `visible` defers a content island's entire iframe+bootstrap until scrolled into view;
+  `hydrate` manifest field (CON-5002), `island-hydrate-invalid` error, TEST-5024. Grounded the
+  existing design in prior art: **ADR-5001** now explains the shell-bus-vs-shared-module choice
+  via Astro's [[Nano Stores]] (the shared-module pattern is correct for trusted-only; SPEC-050
+  diverges *only* because the untrusted iframe tier cannot import a shared module); **ADR-5002**
+  notes replay-on-subscribe **is** Nano Stores' `atom.subscribe` semantics (validation, not
+  novelty); §1.2 records that the trusted half mirrors Astro while the sandboxed-content half
+  has no prior art (explaining its review risk). No security-model change.
 
 - **0.6.0** (2026-06-25) — *normative; fourth-review fixes (2 Blocking / 5 Major / 6 Minor).*
   **B-1:** removed the self-contradiction the 4th pass caught — REQ-5016/CON-5006/ADR-5008/
