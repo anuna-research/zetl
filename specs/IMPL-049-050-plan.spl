@@ -534,3 +534,14 @@
 (claims agent:claude
   :at "2026-06-25T13:59:13Z"
   (given completed-50-tests))
+
+(claims agent:claude
+  :at "2026-06-25T14:05:55Z"
+  (given claim-v1-verify)
+  (normally r-cl-state-v1-verify claim-v1-verify state-claimed-v1-verify)
+  (normally r-cl-chain-v1-verify state-claimed-v1-verify claimed-verify)
+)
+
+(claims agent:claude
+  :at "2026-06-25T14:05:55Z"
+  (given completed-verify))

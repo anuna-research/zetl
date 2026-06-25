@@ -358,7 +358,7 @@ pub fn lint_component(template_src: &str, manifest: &Manifest) -> CResult<()> {
     let ast = parse(
         template_src,
         &manifest.name,
-        SyntaxConfig::default(),
+        SyntaxConfig,
         WhitespaceConfig::default(),
     )
     .map_err(|e| err("content-template-unanalyzable", format!("template parse error: {e}")))?;

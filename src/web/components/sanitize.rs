@@ -137,7 +137,7 @@ pub fn is_safe_url(value: &str) -> bool {
 /// `None` (drop the whole attribute) if any candidate is unsafe or unparseable.
 fn sanitise_srcset(value: &str) -> Option<()> {
     for candidate in value.split(',') {
-        let url = candidate.trim().split_whitespace().next().unwrap_or("");
+        let url = candidate.split_whitespace().next().unwrap_or("");
         if url.is_empty() || !is_safe_url(url) {
             return None;
         }
