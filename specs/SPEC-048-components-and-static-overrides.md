@@ -2,7 +2,7 @@
 id: SPEC-048
 title: "Template Components & Templated Static Pages"
 status: draft
-version: 0.2.1-strawman
+version: 0.2.2-strawman
 last-updated: 2026-06-24
 audience: agent, human
 ---
@@ -95,7 +95,7 @@ one-pager is the door, not the room.
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | [[SPEC-048-components-and-static-overrides\|SPEC-048]]                                  |
 | Title        | Template Components & Templated Static Pages                                            |
-| Version      | 0.2.1-strawman                                                                          |
+| Version      | 0.2.2-strawman                                                                          |
 | Status       | Draft (strawman; NOT converged — pending Phase 1 + Phase 2 gates)                       |
 | Author       | Agent (Claude Opus 4.8 [1M], [[PROTO-001\|USDD Agent Protocol]] v1.8.0)                 |
 | Date         | 2026-06-24                                                                              |
@@ -468,8 +468,13 @@ Verification has **two distinct layers**, and the spec does not conflate them:
   enforced by the existing strict-undefined render mode
   (`env.set_undefined_behavior(Strict)`, `src/web/engine.rs:284`): reading an
   undeclared/absent variable is a strict-undefined **render** failure, not an empty
-  string. The spec does NOT claim a compile-time guarantee here — minijinja exposes
-  no public template AST to statically enumerate variable reads.
+  string. The spec does NOT claim a compile-time guarantee here — minijinja's **stable**
+  public API exposes no template AST to statically enumerate variable reads, so
+  render-time strict-undefined is the chosen enforcement. (Minijinja *does* expose a
+  parser + AST via its `unstable_machinery` feature, but that carries **no semver
+  guarantee**; building a compile-time read-enumeration on it is possible at that cost —
+  see [[SPEC-049-content-author-components#CON-4904]], which takes exactly that route for
+  the untrusted-content lint — but is unnecessary for this trusted-author check.)
 
 `requires = ["site"]` is the precondition that makes a component cross-context
 (themed-page + static-page) reusable, and that precondition is checked at compile
@@ -1134,7 +1139,15 @@ SPEC-051 scoped CSS) are deliberately out of this document and gate independentl
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.2.1</summary>
+<summary>Revision history — 0.1.0 → 0.2.2</summary>
+
+- **0.2.2** (2026-06-25) — *factual correction (no normative change).* REQ-4808's
+  justification said "minijinja exposes no public template AST"; this is imprecise —
+  minijinja's **stable** API exposes none, but the `unstable_machinery` feature does
+  expose a parser + AST (no semver guarantee). Tightened the wording; the design choice
+  (render-time strict-undefined for this trusted-author check) is unchanged. Surfaced
+  while drafting [[SPEC-049-content-author-components#CON-4904]], which *does* take the
+  `unstable_machinery` route for the untrusted-content context lint.
 
 - **0.2.1** (2026-06-24) — *normative; additive.* Added **addressed vault transclusion**
   so static (and any) pages can pull live, named wiki content: REQ-4818 (`transclude()`
