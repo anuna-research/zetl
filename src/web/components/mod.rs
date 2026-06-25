@@ -16,6 +16,8 @@ pub mod css;
 #[cfg(feature = "content-components")]
 pub mod content_props;
 #[cfg(feature = "content-components")]
+pub mod context_lint;
+#[cfg(feature = "content-components")]
 pub mod directive;
 pub mod lower;
 pub mod manifest;

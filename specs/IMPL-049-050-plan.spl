@@ -280,3 +280,20 @@
 (claims agent:claude
   :at "2026-06-25T13:16:56Z"
   (given completed-49-props))
+
+(claims agent:claude
+  :at "2026-06-25T13:24:24Z"
+  (given claim-v1-49-lint)
+  (normally r-cl-state-v1-49-lint claim-v1-49-lint state-claimed-v1-49-lint)
+  (normally r-cl-chain-v1-49-lint state-claimed-v1-49-lint claimed-49-lint)
+)
+
+;; Propagation rules: failures in '49-lint' block downstream tasks
+(normally r-propagate-49-wire-from-49-lint-failed failed-49-lint upstream-blocked-49-wire)
+(normally r-propagate-49-wire-from-49-lint-permanently-failed permanently-failed-49-lint upstream-blocked-49-wire)
+(normally r-propagate-49-wire-from-49-lint-stale-v1 stale-v1-49-lint upstream-blocked-49-wire)
+(normally r-propagate-49-wire-from-49-lint-timeout-v1 timeout-v1-49-lint upstream-blocked-49-wire)
+
+(claims agent:claude
+  :at "2026-06-25T13:24:24Z"
+  (given completed-49-lint))
