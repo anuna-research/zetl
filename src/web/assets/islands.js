@@ -652,7 +652,12 @@
     "div": ["class", "id", "tabindex", "title", "lang", "dir", "hidden"],
     "span": ["class", "id", "title", "lang", "dir"],
     "p": ["class", "id"],
-    "a": ["class", "id", "href", "title", "target", "rel", "download", "hreflang"],
+    // `target`/`rel`/`download` are deliberately NOT allowed: an untrusted island could
+    // emit `target="_blank"` (reverse tabnabbing, no enforced rel="noopener") or
+    // `download` to force a drive-by save — and the server-side body sanitiser (CON-4902)
+    // forbids them too. Keep the runtime renderer no more permissive than the static
+    // fallback (BUG-9).
+    "a": ["class", "id", "href", "title", "hreflang"],
     "button": ["class", "id", "type", "disabled", "title", "value"], // submit guarded below
     "ul": ["class", "id"], "ol": ["class", "id", "start", "reversed"], "li": ["class", "id", "value"],
     "h1": ["class"], "h2": ["class"], "h3": ["class"], "h4": ["class"], "h5": ["class"], "h6": ["class"],
@@ -1091,12 +1096,15 @@
     // (c) payload conforms? Normalise the structured-clone graph first (CON-5006).
     var normalised = normaliseClone(msg.value, 0);
     if (normalised === REJECT) { diag("island-payload-type", topic); return deny(rec, { topic: topic, reason: "type" }); }
+    // (c) payload conforms to the declared type? At the bridge (untrusted Worker)
+    // recognition is a SECURITY control, not best-effort (REQ-5013): a granted topic with
+    // NO declared type is fail-closed, never accept-raw (BUG-10 — the previous
+    // "no type → forward" branch was fail-open at a trust boundary).
     var typeExpr = rec.types.get(topic) || declaredTypes.get(topic);
-    if (typeExpr) {
-      var r = recognise(normalised, typeExpr);
-      if (!r.ok) { diag("island-payload-type", topic); return deny(rec, { topic: topic, reason: "type" }); }
-      normalised = r.value;
-    }
+    if (!typeExpr) { diag("island-payload-type", topic + " (no declared type)"); return deny(rec, { topic: topic, reason: "type" }); }
+    var r = recognise(normalised, typeExpr);
+    if (!r.ok) { diag("island-payload-type", topic); return deny(rec, { topic: topic, reason: "type" }); }
+    normalised = r.value;
     if (isEphemeral) { busApi.emit(topic, normalised); }
     else { storeSet(topic, normalised); }
   }

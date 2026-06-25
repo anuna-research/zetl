@@ -98,6 +98,12 @@ fn canonicalise(value: &str) -> String {
 /// scheme-relative (`//host`, `\\host` after canonicalisation — resolves off-origin) and
 /// any non-allowlisted scheme (`javascript:`, `data:`, `blob:`, `vbscript:`, `file:`, …).
 pub fn is_safe_url(value: &str) -> bool {
+    // Fail-closed length bound (NFR-4803-style) — a URL/srcset value past this is rejected
+    // rather than processed, bounding pathological inputs (BUG-3 defensive hardening).
+    const MAX_URL_LEN: usize = 4096;
+    if value.len() > MAX_URL_LEN {
+        return false;
+    }
     let canon = canonicalise(value);
     if canon.is_empty() {
         // empty / whitespace-only → treat as a harmless empty reference
@@ -239,19 +245,29 @@ fn count_drops(input: &str) -> SanitiseReport {
     report
 }
 
+/// Run the allowlist sanitiser, after stripping `U+FEFF` (BOM / zero-width no-break
+/// space). html5ever drops a *leading* BOM during tokenisation, so a raw ammonia pass is
+/// **not idempotent** on BOM-bearing input (each re-parse strips one more) — which would
+/// break the CON-4902 serialise→reparse fixed-point post-condition (the mutation-XSS
+/// guard). `U+FEFF` carries no legitimate meaning in a body fragment, so removing it up
+/// front makes the output fixed-point. (Found by the LangSec fuzz pass.)
+fn clean_html(html: &str) -> String {
+    let pre: String = html.chars().filter(|&c| c != '\u{feff}').collect();
+    cached().clean(&pre).to_string()
+}
+
 /// Sanitise an untrusted body HTML fragment (CON-4902). Returns the cleaned HTML and a
 /// best-effort drop report.
 pub fn sanitise_body(html: &str) -> (String, SanitiseReport) {
     let report = count_drops(html);
-    let cleaned = cached().clean(html).to_string();
-    (cleaned, report)
+    (clean_html(html), report)
 }
 
 /// CON-4902 fixed-point invariant helper: `sanitise(sanitise(x)) == sanitise(x)`.
 /// Exposed for tests and a debug assertion in the expansion path.
 pub fn is_fixed_point(html: &str) -> bool {
-    let once = cached().clean(html).to_string();
-    let twice = cached().clean(&once).to_string();
+    let once = clean_html(html);
+    let twice = clean_html(&once);
     once == twice
 }
 

@@ -159,8 +159,13 @@ impl HtmlState {
                             .collect::<String>()
                             .to_ascii_lowercase();
                         if close == self.tag {
-                            self.st = St::TagName; // will hit '>' → BeforeAttrName/Text
-                            self.tag = close;
+                            // An end tag never opens content — return to Text and FORGET
+                            // the tag. The previous `st = TagName; tag = close` re-entered
+                            // RawJs/RawCss via enter_content() (keyed on the still-set tag)
+                            // and never left raw mode (BUG-4). EndTagOpen consumes the tag
+                            // name then `>` → Text.
+                            self.st = St::EndTagOpen;
+                            self.tag.clear();
                             i += 2;
                             continue;
                         }
@@ -497,18 +502,18 @@ fn walk_stmt(
             // no taint: treat the whole block as opaque text; poison context to be safe
             state.poisoned = true;
         }
-        ast::Stmt::Macro(m) => {
-            // A local macro definition: analyse its body with parameters untainted. A
-            // call carrying taint into it is handled at the call site (unanalyzable).
-            let saved = env.locals.clone();
-            for arg in &m.args {
-                if let ast::Expr::Var(v) = arg {
-                    env.locals.insert(v.id.to_string(), Taint::None);
-                }
-            }
-            let mut macro_state = HtmlState::new();
-            walk_body(&m.body, &mut macro_state, env, escape_html)?;
-            env.locals = saved;
+        ast::Stmt::Macro(_m) => {
+            // A content-invocable template that defines a local macro is outside the
+            // CON-4904 analyzable subset: soundly tracking arg→param taint into the
+            // macro's internal interpolation sinks requires full interprocedural
+            // re-walking (the macro body has its own HTML context). Rather than analyse
+            // the body with parameters forced untainted — which silently misses a tainted
+            // argument reaching a JS/URL/CSS sink inside the macro (BUG-1, confirmed XSS)
+            // — fail closed. Content components are leaf widgets; inline instead.
+            return Err(err(
+                "content-template-unanalyzable",
+                "content-invocable template defines a `{% macro %}` (outside the CON-4904 analyzable subset)",
+            ));
         }
         ast::Stmt::CallBlock(c) => {
             // {% call sub(...) %}body{% endcall %}. If any argument or the body carries
@@ -669,10 +674,23 @@ fn check_emit(et: ExprTaint, state: &HtmlState, escape_html: bool) -> CResult<()
 /// Analyse an expression's taint and escaper-bypass status.
 fn analyse_expr(expr: &ast::Expr, env: &Env) -> CResult<ExprTaint> {
     match expr {
-        ast::Expr::Var(v) => Ok(ExprTaint {
-            taint: env.locals.get(v.id).copied().unwrap_or(Taint::None),
-            unsafe_emit: false,
-        }),
+        ast::Expr::Var(v) => {
+            // Bare use of the `props`/`caller` capability identifiers — i.e. NOT the
+            // recognised `props.field` / `props["field"]` / `caller()` patterns (those
+            // are handled in GetAttr/GetItem/Call before recursing here) — cannot be
+            // tracked per-field through an alias, so a tainted value could be laundered
+            // (`{% set p = props %}{{ p['msg'] }}`). Fail closed (BUG-7).
+            if v.id == "props" || v.id == "caller" {
+                return Err(err(
+                    "content-template-unanalyzable",
+                    format!("bare use of `{}` cannot be statically tracked", v.id),
+                ));
+            }
+            Ok(ExprTaint {
+                taint: env.locals.get(v.id).copied().unwrap_or(Taint::None),
+                unsafe_emit: false,
+            })
+        }
         ast::Expr::Const(_) => Ok(ExprTaint::none()),
         ast::Expr::GetAttr(g) => {
             // props.<name>
@@ -748,16 +766,23 @@ fn analyse_expr(expr: &ast::Expr, env: &Env) -> CResult<ExprTaint> {
                     return Ok(ExprTaint { taint: Taint::Slot, unsafe_emit: false });
                 }
             }
-            // any other call carrying tainted args we cannot model → propagate taint
-            // conservatively so it is checked / rejected by context.
-            let mut taint = Taint::None;
-            let mut bypass = false;
+            // Any other call: if a content-tainted value flows in as an argument or the
+            // receiver, it enters a body the lint does not re-walk (e.g. a local macro
+            // whose internal interpolation is the real sink). We cannot prove the
+            // callee's interior context, so fail closed (BUG-1 — the macro arg→param
+            // taint hole). A call with no tainted inputs yields an untainted result.
+            let mut arg_taint = Taint::None;
             for a in &c.args {
-                taint = taint.join(call_arg_taint(a, env)?);
+                arg_taint = arg_taint.join(call_arg_taint(a, env)?);
             }
             let recv = analyse_expr(&c.expr, env)?;
-            bypass |= recv.unsafe_emit;
-            Ok(ExprTaint { taint: taint.join(recv.taint), unsafe_emit: bypass })
+            if arg_taint != Taint::None || recv.taint != Taint::None {
+                return Err(err(
+                    "content-template-unanalyzable",
+                    "a content-tainted value is passed into a call whose body the lint cannot analyse",
+                ));
+            }
+            Ok(ExprTaint { taint: Taint::None, unsafe_emit: recv.unsafe_emit })
         }
         ast::Expr::List(l) => {
             let mut taint = Taint::None;
@@ -859,6 +884,39 @@ mod tests {
     fn scalar_in_style_attr_css_unsafe() {
         let e = lint(r#"<div style="color:{{ props.msg }}">x</div>"#).unwrap_err();
         assert_eq!(e.code, "content-context-unsafe");
+    }
+
+    // ---- adversarial-review regressions (BUG-1/4/7) ----
+
+    #[test]
+    fn bug1_macro_definition_rejected() {
+        // A local macro whose body sinks a param into a JS context would launder taint;
+        // defining a macro at all is now fail-closed.
+        let e = lint(r#"{% macro emit(x) %}<script>var a={{ x }}</script>{% endmacro %}<p>{{ props.msg }}</p>"#)
+            .unwrap_err();
+        assert_eq!(e.code, "content-template-unanalyzable");
+    }
+
+    #[test]
+    fn bug1_tainted_arg_to_call_rejected() {
+        // Passing a content prop into any non-`caller` call hides the real sink.
+        let e = lint(r#"<p>{{ emit(props.msg) }}</p>"#).unwrap_err();
+        assert_eq!(e.code, "content-template-unanalyzable");
+    }
+
+    #[test]
+    fn bug7_props_alias_laundering_rejected() {
+        // `{% set p = props %}{{ p['msg'] }}` must not launder a tainted prop into href.
+        let e = lint(r#"{% set p = props %}<a href="{{ p['msg'] }}">y</a>"#).unwrap_err();
+        assert_eq!(e.code, "content-template-unanalyzable");
+    }
+
+    #[test]
+    fn bug4_text_after_script_is_text_context() {
+        // After </script> the tokeniser must return to TEXT; a scalar prop there is safe.
+        assert!(lint(r#"<script>var x=1;</script><p>{{ props.msg }}</p>"#).is_ok());
+        // and a scalar after </style> is likewise TEXT, not CSS
+        assert!(lint(r#"<style>.a{color:red}</style><p>{{ props.msg }}</p>"#).is_ok());
     }
 
     #[test]

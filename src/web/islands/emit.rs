@@ -88,12 +88,19 @@ impl IslandSet {
         }
         let mut entries = String::new();
         for (topic, _ty, default_json) in &topics {
-            // Each topic: read localStorage, apply value or default as a DOM signal on
-            // <html> (data-zt-<topic>). All in try/catch, default on any failure.
+            // Each topic: read localStorage, RECOGNISE the value before applying it as a
+            // DOM signal on <html> (data-zt-<topic>) — REQ-5006/CON-5004 require
+            // recognition of the untrusted stored value before apply. The value is only
+            // applied if it is a simple safe token (no control chars, no CSS-selector
+            // breakout, bounded length); otherwise the declared default is used. All in
+            // try/catch, default on any failure (BUG-8).
             entries.push_str(&format!(
                 "try{{var v=localStorage.getItem('zetl:topic:{t}');var d={def};\
 var val=(v==null||v==='')?d:JSON.parse(v);\
-document.documentElement.setAttribute('data-zt-{t}',String(typeof val==='object'?d:val));\
+if(typeof val==='object'){{val=d;}}\
+var sv=String(val);\
+if(!/^[A-Za-z0-9_.:-]{{0,64}}$/.test(sv)){{sv=String(d);}}\
+document.documentElement.setAttribute('data-zt-{t}',sv);\
 }}catch(e){{try{{document.documentElement.setAttribute('data-zt-{t}',String({def}));}}catch(_){{}}}}",
                 t = sanitise_attr_name(topic),
                 def = default_json,
@@ -165,11 +172,14 @@ document.documentElement.setAttribute('data-zt-{t}',String(typeof val==='object'
     /// Inject hydration markers + head assets into a rendered page. Returns the modified
     /// HTML. No-op (byte-identical) when the page hosts no island component.
     pub fn inject_into_page(&self, html: &str, root_path: &str) -> String {
-        // which island components actually appear on this page?
+        // Which island components actually appear on this page — matched ONLY as a real
+        // `data-z="name"` attribute *inside a start tag* (BUG-5). A literal occurrence in
+        // prose/code text is never inside an open tag, and the body sanitiser strips
+        // `data-z` from author content, so this never matches author-influenced bytes.
         let present: Vec<&String> = self
             .islands
             .keys()
-            .filter(|name| html.contains(&format!("data-z=\"{name}\"")))
+            .filter(|name| island_node_re(name).is_match(html))
             .collect();
         let persisted = self.prepaint();
         if present.is_empty() && persisted.is_none() {
@@ -178,7 +188,7 @@ document.documentElement.setAttribute('data-zt-{t}',String(typeof val==='object'
 
         let mut out = html.to_string();
 
-        // 1. stamp markers onto each island component's data-z node(s)
+        // 1. stamp markers onto each island component's real data-z start-tag node(s)
         let mut content_island_on_page = false;
         for name in &present {
             let im = &self.islands[*name];
@@ -186,10 +196,12 @@ document.documentElement.setAttribute('data-zt-{t}',String(typeof val==='object'
                 content_island_on_page = true;
             }
             let markers = self.node_markers(im, root_path);
-            out = out.replace(
-                &format!("data-z=\"{name}\""),
-                &format!("data-z=\"{name}\" {markers}"),
-            );
+            let re = island_node_re(name);
+            out = re
+                .replace_all(&out, |caps: &regex::Captures| {
+                    format!("{} {}", &caps[1], markers)
+                })
+                .into_owned();
         }
 
         // 2. assemble head assets
@@ -242,8 +254,16 @@ document.documentElement.setAttribute('data-zt-{t}',String(typeof val==='object'
             if im.paints {
                 m.push_str(" data-island-paints=\"true\"");
             }
-            m.push_str(&format!(" data-island-grants='{}'", self.grants_json(im)));
-            m.push_str(&format!(" data-island-types='{}'", self.types_json(im)));
+            // HTML-attribute-escape the JSON before embedding in a single-quoted attr so
+            // a `'`/`<`/`&` in any topic or type-expr literal cannot break out (BUG-6).
+            m.push_str(&format!(
+                " data-island-grants='{}'",
+                attr_escape(&self.grants_json(im))
+            ));
+            m.push_str(&format!(
+                " data-island-types='{}'",
+                attr_escape(&self.types_json(im))
+            ));
         }
         m
     }
@@ -328,6 +348,30 @@ fn insert_before_head_close(html: &str, frag: &str) -> String {
 
 fn sanitise_attr_name(topic: &str) -> String {
     topic.replace(':', "-")
+}
+
+/// A regex matching a real `data-z="<name>"` attribute *inside a start tag* — i.e. with
+/// no `<`/`>` between the tag open and the attribute. This distinguishes a component's
+/// emitted root attribute from a literal `data-z="…"` occurrence in prose/code text
+/// (which is never inside an open tag), so marker injection cannot be forged or corrupt
+/// unrelated markup (BUG-5). Capture group 1 is the matched tag prefix up to and
+/// including the `data-z` attribute.
+fn island_node_re(name: &str) -> regex::Regex {
+    let pat = format!(
+        r#"(<[a-zA-Z][a-zA-Z0-9]*[^<>]*?\sdata-z="{}")"#,
+        regex::escape(name)
+    );
+    // The pattern is always valid (name is regex-escaped); fall back to a never-match.
+    regex::Regex::new(&pat).unwrap_or_else(|_| regex::Regex::new(r"$.^").unwrap())
+}
+
+/// HTML-attribute-escape (for single- or double-quoted attribute values).
+fn attr_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('\'', "&#39;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn sha256_b64(s: &str) -> String {
