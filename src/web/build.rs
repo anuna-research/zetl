@@ -1172,6 +1172,22 @@ pub fn build_static(
         ce.has_content_invocable().then_some(ce)
     };
 
+    // SPEC-050: build-scoped island set. Discovers island components, parses theme
+    // grants + operator CSP, and verifies wiring (REQ-5008/9 — fatal findings abort the
+    // build). `None` when no island is declared (REQ-5012 byte-identical default).
+    #[cfg(feature = "component-islands")]
+    let island_set: Option<crate::web::islands::emit::IslandSet> = {
+        let set = crate::web::islands::emit::IslandSet::discover(vault_root, theme)
+            .map_err(|e| anyhow::anyhow!("SPEC-050 island error: {e}"))?;
+        for f in &set.wiring.findings {
+            eprintln!("[zetl] {}: {}", f.code, f.message);
+        }
+        if set.wiring.has_fatal() {
+            anyhow::bail!("SPEC-050 fatal island wiring error");
+        }
+        (!set.is_empty()).then_some(set)
+    };
+
     let vault_name = vault_root
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -1478,6 +1494,13 @@ pub fn build_static(
                         eprintln!("{}", e.stderr_line(&slug));
                         anyhow::anyhow!("{e}")
                     })?;
+                // SPEC-050: inject island hydration markers + bootstrap + CSP + pre-paint
+                // for pages that host an island; byte-identical otherwise (REQ-5012).
+                #[cfg(feature = "component-islands")]
+                let page_html = match island_set.as_ref() {
+                    Some(set) => set.inject_into_page(&page_html, &root_path),
+                    None => page_html,
+                };
                 std::fs::write(page_dir.join("index.html"), page_html)?;
 
                 let src_ext = file
@@ -1684,6 +1707,20 @@ pub fn build_static(
         eprintln!(
             "[zetl] SPEC-048: tokens.css={tokens_emitted} components.css={component_css_emitted} static_pages={static_pages}"
         );
+    }
+
+    // ── SPEC-050: island assets (bus runtime, worker/module scripts, CSP headers, audit) ──
+    #[cfg(feature = "component-islands")]
+    if let Some(set) = island_set.as_ref() {
+        set.emit_assets(out)?;
+        if verbose {
+            eprintln!(
+                "[zetl] SPEC-050: islands={} scripts={} content_islands={}",
+                set.islands.len(),
+                set.scripts.len(),
+                set.has_content_island()
+            );
+        }
     }
 
     // ── public overlay (copies over output root, overwriting generated pages) ──

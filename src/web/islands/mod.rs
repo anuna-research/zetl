@@ -11,6 +11,7 @@
 //! carrier with SPEC-050 `island-*` codes.
 
 pub mod csp;
+pub mod emit;
 pub mod manifest;
 pub mod theme;
 pub mod topic;

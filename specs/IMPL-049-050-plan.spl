@@ -466,3 +466,54 @@
 (claims agent:claude
   :at "2026-06-25T13:49:00Z"
   (given completed-50-bridge-js))
+
+(claims agent:claude
+  :at "2026-06-25T13:56:26Z"
+  (given claim-v1-50-emit)
+  (normally r-cl-state-v1-50-emit claim-v1-50-emit state-claimed-v1-50-emit)
+  (normally r-cl-chain-v1-50-emit state-claimed-v1-50-emit claimed-50-emit)
+)
+
+;; Propagation rules: failures in '50-emit' block downstream tasks
+(normally r-propagate-50-wire-from-50-emit-failed failed-50-emit upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-emit-permanently-failed permanently-failed-50-emit upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-emit-stale-v1 stale-v1-50-emit upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-emit-timeout-v1 timeout-v1-50-emit upstream-blocked-50-wire)
+
+(claims agent:claude
+  :at "2026-06-25T13:56:26Z"
+  (given completed-50-emit))
+
+(claims agent:claude
+  :at "2026-06-25T13:56:26Z"
+  (given claim-v1-50-prepaint)
+  (normally r-cl-state-v1-50-prepaint claim-v1-50-prepaint state-claimed-v1-50-prepaint)
+  (normally r-cl-chain-v1-50-prepaint state-claimed-v1-50-prepaint claimed-50-prepaint)
+)
+
+;; Propagation rules: failures in '50-prepaint' block downstream tasks
+(normally r-propagate-50-wire-from-50-prepaint-failed failed-50-prepaint upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-prepaint-permanently-failed permanently-failed-50-prepaint upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-prepaint-stale-v1 stale-v1-50-prepaint upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-prepaint-timeout-v1 timeout-v1-50-prepaint upstream-blocked-50-wire)
+
+(claims agent:claude
+  :at "2026-06-25T13:56:26Z"
+  (given completed-50-prepaint))
+
+(claims agent:claude
+  :at "2026-06-25T13:56:26Z"
+  (given claim-v1-50-wire)
+  (normally r-cl-state-v1-50-wire claim-v1-50-wire state-claimed-v1-50-wire)
+  (normally r-cl-chain-v1-50-wire state-claimed-v1-50-wire claimed-50-wire)
+)
+
+;; Propagation rules: failures in '50-wire' block downstream tasks
+(normally r-propagate-50-tests-from-50-wire-failed failed-50-wire upstream-blocked-50-tests)
+(normally r-propagate-50-tests-from-50-wire-permanently-failed permanently-failed-50-wire upstream-blocked-50-tests)
+(normally r-propagate-50-tests-from-50-wire-stale-v1 stale-v1-50-wire upstream-blocked-50-tests)
+(normally r-propagate-50-tests-from-50-wire-timeout-v1 timeout-v1-50-wire upstream-blocked-50-tests)
+
+(claims agent:claude
+  :at "2026-06-25T13:56:26Z"
+  (given completed-50-wire))
