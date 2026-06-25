@@ -2,7 +2,7 @@
 id: SPEC-050
 title: "Component Islands & Inter-Island Messaging"
 status: draft
-version: 0.7.0-strawman
+version: 0.8.0-strawman
 last-updated: 2026-06-25
 audience: agent, human
 ---
@@ -87,7 +87,7 @@ author, to ground in Phase 1). *(Q1 FOUC, Q2 sandbox, Q3 typed-payloads — reso
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | [[SPEC-050-component-islands-and-messaging\|SPEC-050]]                                  |
 | Title        | Component Islands & Inter-Island Messaging                                              |
-| Version      | 0.7.0-strawman                                                                          |
+| Version      | 0.8.0-strawman                                                                          |
 | Status       | Draft (strawman; NOT converged — pending Phase 1 + Phase 2 gates)                       |
 | Author       | Agent (Claude Opus 4.8 [1M], [[PROTO-001\|USDD Agent Protocol]] v1.11.0)                |
 | Date         | 2026-06-24                                                                              |
@@ -144,15 +144,24 @@ scoped bridge** the parent reference-monitors, over **typed** messages. Isolatio
 that let untrusted authors add interactivity without being able to forge a trusted topic
 ([[SPEC-050-component-islands-and-messaging#ADR-5003]]).
 
-**Where this sits relative to prior art ([[Astro Islands]]).** The *trusted* half of this
-spec is well-trodden: static-first islands, partial hydration, per-island hydration timing
-(`client:*` → REQ-5024), and replay-on-subscribe state (Astro's [[Nano Stores]] →
-REQ-5005/ADR-5002) all mirror a shipping framework, which is reassuring evidence the design
-is sound. The *untrusted content-island* half — an iframe sandbox + capability bridge so a
-**markdown author** can ship an interactive widget — has **no prior art**: Astro, the
-framework that popularised islands, has no untrusted-author tier at all. That novelty is why
-this half carried the design risk (and four adversarial review passes); the trusted half did
-not need them.
+**Where this sits relative to prior art.** The *trusted* half is well-trodden: static-first
+islands, partial hydration, per-island hydration timing (`client:*` → REQ-5024), and
+replay-on-subscribe state (Astro's [[Nano Stores]] → REQ-5005/ADR-5002) all mirror
+[[Astro Islands]]. Critically, the *untrusted content-island* half is **also an established
+pattern** — "run untrusted third-party code in a sandbox and let it drive a controlled UI /
+exchange capability-scoped messages with a trusted host" has multiple production
+implementations: **[[Shopify Remote DOM]]** (untrusted code in a sandboxed JS environment
+renders a *controlled set of UI elements* to the host page — the closest structural twin,
+used for third-party app/checkout extensions); **[[SES]]/[[Endo]]** object-capability
+confinement + [[CapTP]] capability-transport messaging (the [[Google Caja]] lineage; powers
+[[MetaMask Snaps]]); **[[amp-script]]/[[worker-dom]]** (untrusted author JS in a Web Worker
+with a sanitized DOM bridge — the worker variant of Q2); and **[[Penpal]]/[[Comlink]]** for
+the promise-RPC-over-`postMessage` plumbing. So the **sandbox + capability-bridge mechanism is
+not novel**; what is new here is only the *application* — markdown-authored components in a
+**static-site generator**. The four adversarial passes hardened the *specification* of
+adapting that pattern (the `null`-origin/port-identity, lifecycle, and value-flow details);
+they did not have to invent the pattern, and IMPL-050 SHOULD study these systems (especially
+Remote DOM's controlled-element model — see Q8) rather than re-derive.
 
 ### 1.3 Design Principles
 
@@ -1425,7 +1434,9 @@ everything else composes [[SPEC-048]] and [[SPEC-028]].
   [[SPEC-050-component-islands-and-messaging#REQ-5016]],
   [[SPEC-050-component-islands-and-messaging#ADR-5003]]), superseding the strawman's
   forbid-only stance. *Still open:* whether a Worker-based variant is also offered for
-  non-DOM content islands, and the exact iframe layout/auto-resize ergonomics.
+  non-DOM content islands — prior art exists ([[amp-script]]/[[worker-dom]] runs author JS in
+  a Web Worker with a sanitized DOM bridge) — and the exact iframe layout/auto-resize
+  ergonomics.
 - **Q3 — Typed topic payloads.** *Resolved (v0.2.0):* topics are **typed**; the bus, the
   persisted-read path, and the bridge recognise every payload against a small declared type
   ([[SPEC-050-component-islands-and-messaging#REQ-5013]],
@@ -1445,6 +1456,15 @@ everything else composes [[SPEC-048]] and [[SPEC-028]].
   best-effort literal-string lint (REQ-5008). Should v2 add a generated per-island wrapper
   (`zetl.island("name").store(...)`) or a required metadata export so the check becomes
   exact for trusted islands too? (`[Blocked: Q7]`.)
+- **Q8 — Controlled-element content islands (a stronger Threat-M defense).** [[Shopify Remote
+  DOM]] lets untrusted sandboxed code render only a **host-approved set of UI elements** (a
+  declarative element tree the *host* paints), so untrusted code never emits raw HTML — which
+  would close [[SPEC-050-component-islands-and-messaging#Threat M]] *by construction*, a
+  stronger guarantee than v1's producer-restriction + subscriber-obligation
+  ([[SPEC-050-component-islands-and-messaging#REQ-5022]]). Should v2 offer content islands a
+  Remote-DOM-style controlled vocabulary instead of (or alongside) arbitrary DOM inside the
+  iframe? Evaluate the ergonomics/expressiveness trade-off against the current raw-iframe model
+  in IMPL-050.
 
 ---
 
@@ -1464,14 +1484,19 @@ subscriber safety; REQ-5023 session-runtime model; the unified one-ceremony boot
 WindowProxy routing map; AST lint; etc.).
 
 The **security architecture has converged and is stable** across all four passes (realm
-isolation + capability port + null-prototype structured-clone recognition); what keeps
-surfacing is **specification-text debt** — each fix, layered on the last, leaves a stale clause
-or an unstated obligation that the next clean context finds. That pattern (relocation + new
-axes at pass four) means **the adversary is not exhausted** and the convergence trajectory is
-not yet monotone. Honest conclusion: further AI passes have **diminishing returns and a real
-relocation risk**; the right terminal gate now is a **human security expert** plus
-**executable fuzzing/PoC** of the bridge (structured-clone protocol, the `event.source`
-bootstrap, teardown races) and the type recogniser — not another model review. Before Phase 2
+isolation + capability port + null-prototype structured-clone recognition) — and, as the
+v0.7.0/v0.8.0 prior-art research confirmed, it is **not a novel architecture**: it is the
+established "untrusted-code-in-a-sandbox + capability-scoped host bridge" pattern shipped by
+[[Shopify Remote DOM]], [[SES]]/[[Endo]]/[[CapTP]], [[amp-script]]/[[worker-dom]], and the
+[[Penpal]]/[[Comlink]] RPC plumbing. That *raises* confidence: the design follows proven
+systems, so the remaining work is verification against them, not invention. What keeps
+surfacing across passes is **specification-text debt** — each fix, layered on the last, leaves
+a stale clause or unstated obligation the next clean context finds (relocation + new axes at
+pass four), so **the adversary is not yet exhausted**. Honest conclusion: further AI passes
+have **diminishing returns and a real relocation risk**; the right terminal gate is a **human
+security expert** plus **executable fuzzing/PoC** of the bridge (structured-clone protocol,
+the `event.source` bootstrap, teardown races) and the type recogniser — benchmarked against
+the prior-art implementations above (esp. Remote DOM and SES/CapTP) — not another model review. Before Phase 2
 this spec also needs: Phase 1 profiles to ground every `[Provisional]` (timeout/retry, debounce,
 bounds, the iframe-creation cap) and close Q4/Q5/Q6/Q7; feasibility spikes for the ≤ 4 KiB bus
 and the bridge against the [[SPEC-028]] shell; and IMPL-050 to pin the grammars, bounds, sandbox
@@ -1483,7 +1508,20 @@ token set + `sha256` CSP, the data-island pre-paint encoding, and the lifecycle.
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.7.0</summary>
+<summary>Revision history — 0.1.0 → 0.8.0</summary>
+
+- **0.8.0** (2026-06-25) — *correction; prior-art research (`ar-crawl`).* **Retracts the v0.7.0
+  "the untrusted content-island half has no prior art" claim** — it was wrong. The sandbox +
+  capability-scoped-host-bridge pattern is established and shipping: **[[Shopify Remote DOM]]**
+  (untrusted sandboxed code renders a controlled UI to the host — the closest twin),
+  **[[SES]]/[[Endo]]/[[CapTP]]** object-capability confinement + capability-transport (the
+  [[Google Caja]] lineage; powers [[MetaMask Snaps]]), **[[amp-script]]/[[worker-dom]]** (worker
+  variant of Q2), and **[[Penpal]]/[[Comlink]]** (postMessage RPC). §1.2 and §13 rewritten:
+  the *mechanism* is proven, only the *application* (markdown components in a static-site
+  generator) is new — which raises confidence and points IMPL-050 at real systems to benchmark
+  against. Added **Q8** — Remote DOM's controlled-element model would close Threat M *by
+  construction* (untrusted code never emits raw HTML), a stronger guarantee than v1's
+  producer-restriction; evaluate for v2. No normative requirement change.
 
 - **0.7.0** (2026-06-25) — *additive; prior-art grounding from [[Astro Islands]]* (researched
   via `ar-crawl` over the Astro docs). Added **REQ-5024 + ADR-5009** per-island **hydration
