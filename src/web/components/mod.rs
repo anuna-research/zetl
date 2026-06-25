@@ -19,6 +19,8 @@ pub mod content_props;
 pub mod context_lint;
 #[cfg(feature = "content-components")]
 pub mod directive;
+#[cfg(feature = "content-components")]
+pub mod expand;
 pub mod lower;
 pub mod manifest;
 pub mod nesting;

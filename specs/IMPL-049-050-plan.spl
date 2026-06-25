@@ -297,3 +297,20 @@
 (claims agent:claude
   :at "2026-06-25T13:24:24Z"
   (given completed-49-lint))
+
+(claims agent:claude
+  :at "2026-06-25T13:28:32Z"
+  (given claim-v1-49-expand)
+  (normally r-cl-state-v1-49-expand claim-v1-49-expand state-claimed-v1-49-expand)
+  (normally r-cl-chain-v1-49-expand state-claimed-v1-49-expand claimed-49-expand)
+)
+
+;; Propagation rules: failures in '49-expand' block downstream tasks
+(normally r-propagate-49-wire-from-49-expand-failed failed-49-expand upstream-blocked-49-wire)
+(normally r-propagate-49-wire-from-49-expand-permanently-failed permanently-failed-49-expand upstream-blocked-49-wire)
+(normally r-propagate-49-wire-from-49-expand-stale-v1 stale-v1-49-expand upstream-blocked-49-wire)
+(normally r-propagate-49-wire-from-49-expand-timeout-v1 timeout-v1-49-expand upstream-blocked-49-wire)
+
+(claims agent:claude
+  :at "2026-06-25T13:28:32Z"
+  (given completed-49-expand))
