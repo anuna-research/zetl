@@ -2,7 +2,7 @@
 id: SPEC-049
 title: "Content-Author Components & Directives"
 status: draft
-version: 0.3.0-strawman
+version: 0.4.0-strawman
 last-updated: 2026-06-25
 audience: agent, human
 ---
@@ -88,7 +88,7 @@ allowlist scope.
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | [[SPEC-049-content-author-components\|SPEC-049]]                                        |
 | Title        | Content-Author Components & Directives                                                  |
-| Version      | 0.3.0-strawman                                                                          |
+| Version      | 0.4.0-strawman                                                                          |
 | Status       | Draft (strawman; NOT converged — no adversarial pass; sanitiser policy unsettled)      |
 | Author       | Agent (Claude Opus 4.8 [1M], [[PROTO-001\|USDD Agent Protocol]])                        |
 | Date         | 2026-06-25                                                                              |
@@ -146,10 +146,13 @@ sanitiser must un-mix):
    sanitiser. A `url`-typed prop is **scheme-validated when parsed** (context-independent, so safe
    wherever it lands); `string`/scalar props rely on minijinja HTML autoescape (sound in element
    text + double-quoted attribute); a **tainted-value tripwire** aborts a `|safe` raw-emit of an
-   untrusted value. **Honest limit:** minijinja exposes no template AST ([[SPEC-048]] REQ-4808),
-   so v1 *cannot statically prevent* a trusted theme author from placing a content prop in a
-   CSS/JS/unquoted-attribute context — that is a documented trusted-author contract + the
-   `[Blocked: Q6]` restricted-template-language candidate, not a closed guarantee.
+   untrusted value. **v1 scope choice (corrected):** statically forbidding a trusted theme author
+   from placing a content prop in a CSS/JS/unquoted-attribute context **is buildable** — minijinja
+   *does* expose a parser + AST via its `unstable_machinery` feature (no semver guarantee) — but it
+   costs an unstable-API dependency + a hand-built HTML-context classifier. v1 **defers** that to
+   Q6 and ships the ingestion-validation + autoescape + tripwire baseline, with the CSS/JS/unquoted
+   case a **documented trusted-author contract** in the interim — a deliberate scoping choice, not
+   a substrate impossibility.
 3. **The body and any raw HTML** — the body is the author's Markdown, rendered and **sanitised
    *in isolation* (CON-4902) before being slotted into the trusted template**. The sanitiser
    sees only untrusted body HTML, never the composite, so it can be a closed default-deny
@@ -267,11 +270,16 @@ A directive's `{attrs}` SHALL be recognised against the component's `[props]` sc
 [[SPEC-048]] CON-4801 — so a content prop's *type* is one of `string`/`bool`/`int`/`number`/
 `url`; `list`/`map` are **not** content-settable in v1, `content-prop-unsupported`.)
 
-**Prop safety is achieved where the substrate allows it — and the residual is stated, not
-hidden.** [[SPEC-048]] REQ-4808 is explicit that **minijinja exposes no template AST**, so a
-*static* "lint every interpolation site" guarantee (an earlier draft's claim) is **not
-buildable** on this engine. v1 therefore uses **context-independent ingestion validation + HTML
-autoescape + a tainted-value tripwire**, and is honest about the one context it cannot enforce:
+**Prop safety, with the residual stated honestly.** A *static* "lint every interpolation site"
+guarantee (an earlier draft's claim) **is buildable** — minijinja **does** expose its parser + AST
+via the **`unstable_machinery`** feature (carrying *no semver guarantee*; the project does not
+currently enable it). The earlier "minijinja has no template AST" framing was an over-reading of
+[[SPEC-048]] REQ-4808's "no *public* AST" — the machinery exists. The real costs of the static
+route are an **unstable-API dependency** (version-pin/maintenance risk) + a **hand-built
+context-aware HTML classifier** (minijinja autoescape is context-blind, like Go `html/template`
+solves). v1 **defers** that route to Q6 and ships a simpler baseline — **context-independent
+ingestion validation + HTML autoescape + a tainted-value tripwire** — naming the one context the
+baseline leaves to a trusted-author contract:
 
 - **`url` ptype → validated at *ingestion* (CON-4902), context-independently.** When a `url`-typed
   prop is parsed from the directive, its scheme is canonicalised + allowlist-checked *then*
@@ -285,15 +293,15 @@ autoescape + a tainted-value tripwire**, and is honest about the one context it 
 - **Tainted-value tripwire.** A content-settable prop value is a distinct **tainted** `Value`;
   `{{ x | safe }}` / raw emission of a tainted value is a **render abort** (`content-unsafe-emit`),
   so a trusted template cannot accidentally bypass autoescape on untrusted data.
-- **Honest residual — CSS/JS/unquoted-attribute contexts cannot be statically prevented on
-  minijinja.** Autoescape does not neutralise CSS-internal (`}`, `url(...)`) or JS-string
-  injection, and there is no AST to forbid those sites at build. v1's position: a trusted theme
-  author **MUST NOT** interpolate a content-settable prop into a `style`/`on*`/`<script>`/
-  unquoted-attribute context — a **documented trusted-author contract** (the same posture
-  [[SPEC-048]] REQ-4808 takes for token/prop escaping), backed by the tripwire for the `|safe`
-  case. The *real* fix — a restricted, context-aware template language for content-invocable
-  components — is `[Blocked: Q6]`; until then this residual is a known limitation, not a closed
-  guarantee, and it gates with Q1 on the human-expert + fuzzing review.
+- **Residual (deferred, not impossible) — CSS/JS/unquoted-attribute contexts.** Autoescape does
+  not neutralise CSS-internal (`}`, `url(...)`) or JS-string injection. A build-time check of these
+  sites is **possible** (`unstable_machinery` AST + a context classifier, above) but deferred. v1's
+  interim position: a trusted theme author **MUST NOT** interpolate a content-settable prop into a
+  `style`/`on*`/`<script>`/unquoted-attribute context — a **documented trusted-author contract**,
+  backed by the tripwire for the `|safe` case. **Q6** weighs the candidate real fixes — (a)
+  `unstable_machinery` AST + context-aware static lint, (b) a restricted/dedicated template
+  language for content-invocable components, (c) keep the documented residual — each with real
+  trade-offs; this gates with Q1 on the human-expert + fuzzing review.
 
 **Trace:** [[SPEC-049-content-author-components#TEST-4904]], [[SPEC-048]]; [[SPEC-049-content-author-components#Threat A]], [[SPEC-049-content-author-components#Threat C]].
 
@@ -314,9 +322,10 @@ may legitimately use `<form>`/`<svg>`/`<button>`/etc.); only the untrusted body 
 safety is REQ-4904's concern, not this sanitiser's.
 
 **Slot landing context (the dual of REQ-4904's prop rule).** The sanitised body is **safe HTML**,
-which is correct only in **element-content** position. The same minijinja limit applies: there is
-no AST to statically prove *where* a template interpolates the slot. So v1 binds the sanitised
-body as a **tainted SafeHtml** fragment and: (a) emitting it in element-content context is its
+which is correct only in **element-content** position. The same Q6 trade-off applies: a static
+check of *where* a template interpolates the slot is **buildable** (`unstable_machinery` AST), but
+v1 defers it. So v1 binds the sanitised body as a **tainted SafeHtml** fragment and: (a) emitting
+it in element-content context is its
 intended use; (b) a content-invocable template **MUST NOT** interpolate the slot
 (`caller()` / a named content slot) into an attribute / URL / CSS / JS position — the **documented
 trusted-author contract**, since sanitised *HTML* in an attribute or `href` is the wrong language
@@ -670,8 +679,8 @@ ADR-4906); (2) **props** by **ingestion validation (`url` scheme) + HTML autoesc
 tripwire** (REQ-4904); (3) **slot landing** restricted to element-content position by the
 trusted-author contract (REQ-4905). **Closure is *pending*, not asserted:** it holds **iff**
 CON-4902 converges (Q1 — engine, complete grammar, fixed-point reparse, fuzzing) **and** the
-CSS/JS/unquoted **prop+slot residual** (Q6 — a restricted template language; minijinja has no
-AST to enforce it, [[SPEC-048]] REQ-4808) is closed. An incomplete allowlist, or a content
+CSS/JS/unquoted **prop+slot residual** (Q6 — closeable via an `unstable_machinery`-AST context
+lint or a restricted template language; deferred in v1, not impossible) is closed. An incomplete allowlist, or a content
 value/slot a trusted template places in a CSS/JS/unquoted context, re-admits XSS — same honest
 posture as [[SPEC-050]] CON-5007. (Note: this is *injection*; **outbound egress** from an
 allowlisted body `<img>`/`<a>` is the operator's CSP, not this threat — CON-4902.)
@@ -809,14 +818,18 @@ wiring graph (REQ-5009).
 - **Q5 — Allowlist scope.** Is `content_invocable` strictly per-component, or should a theme be
   able to declare a content-component *namespace*/folder allowlist? Per-component (explicit) is
   the v1 default.
-- **Q6 — Prop/slot context enforcement (the load-bearing residual).** minijinja exposes no
-  template AST ([[SPEC-048]] REQ-4808), so v1 cannot *statically* prevent a trusted theme author
-  from interpolating a content prop or the sanitised slot into a CSS/JS/unquoted-attribute context
-  (REQ-4904/4905). v1 relies on ingestion-validation (`url`), autoescape, a tainted-value tripwire,
-  and a documented trusted-author contract. The **real** fix is a **restricted, context-aware
-  template language** for content-invocable components (a recogniser, not full minijinja) — should
-  v2 adopt one, or accept the documented residual? This + Q1 is the human-expert + executable-fuzz
-  gate. (`[Blocked: Q6]`.)
+- **Q6 — Prop/slot context enforcement (the load-bearing residual).** v1 cannot *yet* prevent a
+  trusted theme author from interpolating a content prop or the sanitised slot into a
+  CSS/JS/unquoted-attribute context (REQ-4904/4905); the baseline is ingestion-validation (`url`),
+  autoescape, a tainted-value tripwire, and a documented trusted-author contract. **Correction:**
+  this is *not* a substrate impossibility — minijinja **does** expose a parser + AST via its
+  **`unstable_machinery`** feature (no semver guarantee; not currently enabled). So Q6 weighs three
+  real options: **(a)** enable `unstable_machinery`, parse content-invocable templates, and run a
+  **context-aware static lint** (rejects a content prop/slot reaching a CSS/JS/URL/unquoted site) —
+  buildable now, but pins an unstable API + needs a hand-built HTML-context classifier (the Go
+  `html/template` technique); **(b)** a **restricted/dedicated template language** for
+  content-invocable components (a recogniser that only permits safe contexts); **(c)** keep the
+  documented residual + tripwire. This + Q1 is the human-expert + executable-fuzz gate. (`[Blocked: Q6]`.)
 - **Q8 — Named content slots.** `content_slots` is deferred (CON-4903): it re-opens the
   slot-landing-context problem per named slot and needs an author syntax. v1 fills only the default
   slot (container body). Revisit if multi-slot content components are needed. (`[Blocked: Q8]`.)
@@ -826,13 +839,29 @@ wiring graph (REQ-5009).
 <details>
 <summary>Changelog</summary>
 
-<summary>Revision history — 0.1.0 → 0.3.0</summary>
+<summary>Revision history — 0.1.0 → 0.4.0</summary>
+
+- **0.4.0** (2026-06-25) — *factual correction: "minijinja has no template AST" was wrong.*
+  Verified against the minijinja 2.16.0 source: the `unstable_machinery` feature **does** expose
+  `machinery::parse` + `machinery::ast` ("an unstable internal API (no semver guarantees)"; the
+  project doesn't enable it). The v0.2.0/v0.3.0 reviews (and this spec) over-read [[SPEC-048]]
+  REQ-4808's "no *public* AST" as "no AST," and wrongly concluded a static prop/slot context lint
+  is **unbuildable**. It is buildable — at the cost of an unstable-API dependency + a hand-built
+  HTML-context classifier (the Go `html/template` technique). Re-framed REQ-4904/4905/Threat A and
+  **Q6**: the CSS/JS/unquoted prop+slot context is a **deferred v1 scope choice**, not a substrate
+  dead-end, with three real options — (a) `unstable_machinery` AST + context-aware static lint,
+  (b) a restricted template language, (c) the documented residual + tripwire. The v1 *baseline*
+  (ingestion-validation + autoescape + tripwire) is unchanged; only the framing of the residual is
+  corrected. **Follow-up:** [[SPEC-048]] REQ-4808's wording ("no public AST") should be tightened
+  to "no *stable/semver-guaranteed* public AST; `unstable_machinery` exposes one" — a one-line fix
+  in a separate SPEC-048 revision.
 
 - **0.3.0** (2026-06-25) — *second adversarial pass (Opus, fresh): 3 Blocking / 5 Major / 4 Minor;
   verdict "NOT converging — round-N fixes resurfacing as round-N+1 defects" (the SPEC-050
-  pattern). All applied.* Root cause: v0.2.0 specified **static template guarantees on minijinja,
-  which exposes no template AST** ([[SPEC-048]] REQ-4808 — the reviewer's decisive cite). **B-1
-  (RELOCATED):** the prop-context *linter* is unbuildable → re-grounded REQ-4904 on
+  pattern). All applied.* Root cause (as understood at 0.3.0; **the "no AST" premise was
+  corrected in 0.4.0**): v0.2.0 specified static template guarantees on minijinja, believed at the
+  time to expose no template AST ([[SPEC-048]] REQ-4808). **B-1 (RELOCATED):** the prop-context
+  *linter* was treated as unbuildable → re-grounded REQ-4904 on
   **ingestion-validation (`url` scheme, context-independent) + HTML autoescape + a tainted-value
   tripwire**, with the CSS/JS/unquoted context stated as an **honest residual** (Q6 — a restricted
   template language is the real fix), not a closed guarantee. **B-2 (PARTIAL):** the **slot
