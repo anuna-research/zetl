@@ -2,7 +2,7 @@
 id: SPEC-050
 title: "Component Islands & Inter-Island Messaging"
 status: draft
-version: 0.9.0-strawman
+version: 0.10.0-strawman
 last-updated: 2026-06-25
 audience: agent, human
 ---
@@ -32,12 +32,13 @@ other directly; they pin to and read from named channels.
             │   └─ ephemeral bus: fire-and-forget                                │
             │                       ▲  capability bridge (reference monitor)     │
             └──────▲────────────────┼──────────── grant table + type check ──────┘
-   in realm (trusted)               │ postMessage (MessageChannel port)
-  ┌──────────────────┐     ┌────────┴──────────────────────────────┐
-  │ trusted island   │     │  ⌗ sandboxed iframe (opaque origin)    │
-  │ direct window.   │     │    content island — NO window.zetl     │
-  │ zetl (REQ-5010)  │     │    (REQ-5010/5015/5016)                │
-  └──────────────────┘     └───────────────────────────────────────┘
+   in realm (trusted)               │ postMessage — Worker handle (default) │ port (iframe)
+  ┌──────────────────┐     ┌────────┴──────────────────────────────────────┐
+  │ trusted island   │     │ content island — NO window.zetl (REQ-5010):    │
+  │ direct window.   │     │  • DEFAULT: Worker → host-painted element tree │
+  │ zetl (REQ-5010)  │     │    (REQ-5025, Remote DOM) — closes Threat M    │
+  └──────────────────┘     │  • escape hatch: sandboxed iframe (REQ-5015)   │
+                           └────────────────────────────────────────────────┘
   build: emit <name>.js once/type (REQ-5001) · manifest topics+types+grants → wiring
   graph (REQ-5008/CON-5002) · persisted topics → localStorage + storage event (REQ-5006)
 ```
@@ -45,27 +46,29 @@ other directly; they pin to and read from named channels.
 **Decisions** (deliberate before implementing):
 [[SPEC-050-component-islands-and-messaging#ADR-5001]] shell bus, not a shared store module ·
 [[SPEC-050-component-islands-and-messaging#ADR-5002]] replay-on-subscribe is the default primitive ·
-[[SPEC-050-component-islands-and-messaging#ADR-5003]] content islands are iframe-sandboxed with a capability-scoped bridge (trusted islands run in-realm) ·
+[[SPEC-050-component-islands-and-messaging#ADR-5010]] content islands default to a Worker + host-rendered controlled-element model (Remote DOM); iframe sandbox is the opt-in escape hatch (supersedes ADR-5003) ·
 [[SPEC-050-component-islands-and-messaging#ADR-5007]] topics are typed; payloads recognised at the bus boundary ·
-[[SPEC-050-component-islands-and-messaging#ADR-5008]] the bridge is a capability (transferred port + parent reference monitor) ·
+[[SPEC-050-component-islands-and-messaging#ADR-5008]] the bridge is a capability (island handle + parent reference monitor) ·
 [[SPEC-050-component-islands-and-messaging#ADR-5005]] persisted topics carry a declared default + inline pre-paint set (FOUC).
 
 **Load-bearing requirements:**
 [[SPEC-050-component-islands-and-messaging#REQ-5001]] gated per-type island emission ·
 [[SPEC-050-component-islands-and-messaging#REQ-5004]] shell bus (`store` + `bus`) ·
 [[SPEC-050-component-islands-and-messaging#REQ-5005]] replay-on-subscribe ·
-[[SPEC-050-component-islands-and-messaging#REQ-5010]] two trust tiers (in-realm vs sandboxed) ·
+[[SPEC-050-component-islands-and-messaging#REQ-5010]] two trust tiers (in-realm vs isolated, two render modes) ·
 [[SPEC-050-component-islands-and-messaging#REQ-5013]] typed payloads ·
-[[SPEC-050-component-islands-and-messaging#REQ-5015]] content-island iframe sandbox ·
-[[SPEC-050-component-islands-and-messaging#REQ-5016]] capability-scoped bridge (port-identity + handshake) ·
-[[SPEC-050-component-islands-and-messaging#REQ-5017]] island/port lifecycle under SPA nav ·
+[[SPEC-050-component-islands-and-messaging#REQ-5025]] controlled-element content islands (Worker, default) ·
+[[SPEC-050-component-islands-and-messaging#REQ-5015]] content-island iframe sandbox (escape hatch) ·
+[[SPEC-050-component-islands-and-messaging#REQ-5016]] capability-scoped bridge (transport-agnostic reference monitor) ·
+[[SPEC-050-component-islands-and-messaging#REQ-5017]] island lifecycle under SPA nav ·
 [[SPEC-050-component-islands-and-messaging#REQ-5012]] backward-compatible default.
 
 **Open** (each blocks the Phase 2 gate — see
 [[SPEC-050-component-islands-and-messaging#12. Open Questions]]):
 Q4 bus/bridge residence in the SPEC-028 shell · Q5 delivery/ordering + `postMessage`
-latency · Q6 iframe cost at scale · Q7 exact trusted-island topic declaration (owner: spec
-author, to ground in Phase 1). *(Q1 FOUC, Q2 sandbox, Q3 typed-payloads — resolved.)*
+latency · Q7 exact trusted-island topic declaration · Q9 mode-aware consolidation follow-through
+(owner: spec author, to ground in Phase 1). *(Q1 FOUC, Q2 sandbox/worker, Q3 typed-payloads,
+Q6 iframe cost — now largely moot under the default Worker model, Q8 controlled-element — resolved.)*
 
 **Detail:** the full requirement, contract, and test nodes follow below.
 
@@ -87,7 +90,7 @@ author, to ground in Phase 1). *(Q1 FOUC, Q2 sandbox, Q3 typed-payloads — reso
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | [[SPEC-050-component-islands-and-messaging\|SPEC-050]]                                  |
 | Title        | Component Islands & Inter-Island Messaging                                              |
-| Version      | 0.9.0-strawman                                                                          |
+| Version      | 0.10.0-strawman                                                                         |
 | Status       | Draft (strawman; NOT converged — pending Phase 1 + Phase 2 gates)                       |
 | Author       | Agent (Claude Opus 4.8 [1M], [[PROTO-001\|USDD Agent Protocol]] v1.11.0)                |
 | Date         | 2026-06-24                                                                              |
@@ -610,60 +613,46 @@ indexable ([[SPEC-002]]).
 
 **Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5015]], [[SPEC-050-component-islands-and-messaging#REQ-5010]], [[SPEC-050-component-islands-and-messaging#REQ-5020]]; [[SPEC-050-component-islands-and-messaging#Threat A]], [[SPEC-050-component-islands-and-messaging#Threat I]], [[SPEC-050-component-islands-and-messaging#Threat J]].
 
-### REQ-5016: Capability-Scoped Bridge
-The shell SHALL connect a sandboxed content island to the bus through a **capability-scoped
-bridge** built on two object identities the parent **creates and never shares**: the
-`<iframe>` **element** (and its `contentWindow` `WindowProxy`) it mounts, and a fresh
-`MessageChannel`. On mount, **before** attaching its bootstrap listener, the parent SHALL
-create the iframe element and the `MessageChannel`, and record one entry in an island
-registry `Map<WindowProxy, Island>` keyed by the iframe's `contentWindow`, where
-`Island = { iframe, port1, port2, grant }`. (`WindowProxy` identity is unique per frame and
-**preserved across the iframe's navigation** from `about:blank` to its document, so the key
-is stable.) The grant is *also* indexed `WeakMap<port1, Island>` for per-message lookup.
-
-**Deterministic bootstrap (child-ready-first, so the port transfer is never lost):** a bare
-`postMessage([port2])` sent before the child has installed a listener can be dropped, so the
-parent SHALL NOT push the port blindly. Instead: (1) the parent loads the island bootstrap
-into the iframe; (2) once running, the **child** posts a `zetl:ready` signal to `window.parent`
-via `postMessage` (over `window`, **before** any port exists); (3) the parent's single
-`window` `message` handler routes **solely by `event.source`**: it looks up `event.source`
-in the `Map<WindowProxy, Island>`; on a hit it transfers **that island's `port2`** as the
-single transferable of a `postMessage` to `event.source`; on a miss (any other frame,
-including a hostile `"null"`-origin one) it is a **no-op**. `zetl:ready` payload contents are
-**ignored for routing** — a child cannot select another island's slot because routing is by
-its own `WindowProxy` identity only, which it cannot forge. Because the resulting port
-transfer is a *targeted* `postMessage` to that one window, no other frame can obtain or
-intercept the port. If no valid `zetl:ready` arrives within a bounded timeout (`[Provisional]`,
-IMPL-050) the parent SHALL retry once, then mark the island failed and tear it down
-([[SPEC-050-component-islands-and-messaging#REQ-5017]]) rather than hang; per-page
-(re)creations are bounded ([[SPEC-050-component-islands-and-messaging#NFR-5002]]) so a child
-that stalls to force retries cannot amplify iframe allocation unboundedly.
-
-This is the spec's one identity ceremony, and it is consistent everywhere: the **window-level
-`zetl:ready` is matched by `event.source` `WindowProxy` identity** (which *does* discriminate
-in the window→parent direction — unlike a port message's `source`, which is `null`); the
-**port transfer is the first *port-bearing* message** (preceded only by that window-level
-ready); and **after transfer, port-object identity is the sole discriminator** for all bus
-traffic, with `MessageEvent.origin`/`.source` never used for per-message identity on the port
-([[SPEC-050-component-islands-and-messaging#Threat J]], [[SPEC-050-component-islands-and-messaging#CON-5006]]).
-The parent maintains the registry for the island's lifetime and re-establishes a **new**
-iframe+channel+registry-entry on any remount, so a torn-down island's port is never confused
-with a live one.
-
-The parent-side bridge SHALL, on **every** inbound message, enforce: (a) it arrived on a
-`port1` present in the `WeakMap` (an open, known island port); (b) `(topic, direction)` is in
-that island's grant table; (c) the payload conforms to the topic's declared type
-([[SPEC-050-component-islands-and-messaging#REQ-5013]],
+### REQ-5016: Capability-Scoped Bridge (Transport-Agnostic Reference Monitor)
+The shell SHALL connect a content island to the bus through a **capability-scoped bridge** in
+which the **parent is the sole reference monitor**, holding a per-island **grant table** and,
+on **every** inbound message, enforcing: (a) the message arrived from a **known island
+handle** the parent created and holds (the discriminator differs by transport, below);
+(b) `(topic, direction)` is in that island's grant table; (c) the payload conforms to the
+topic's declared type ([[SPEC-050-component-islands-and-messaging#REQ-5013]],
 [[SPEC-050-component-islands-and-messaging#CON-5006]]). A message failing any check SHALL be
-answered `denied` with a reason and never forwarded to the bus. The island SHALL NOT be able
-to enumerate, widen, or forge grants — it holds only the port; the parent is the sole
-reference monitor. Grants for trusted topics SHALL be **subscribe-only** and SHALL require an
-explicit `[[theme.island-grants]]` declaration
+answered `denied` with a reason and never reach the bus. The island SHALL NOT be able to
+enumerate, widen, or forge grants — it holds only its end of the channel. Grants for trusted
+topics SHALL be **subscribe-only** and require an explicit `[[theme.island-grants]]` entry
 ([[SPEC-050-component-islands-and-messaging#CON-5002]]); a publish grant for a non-`content:`
-topic is unexpressible. Update relay to subscribers is governed by
-[[SPEC-050-component-islands-and-messaging#REQ-5021]].
+topic is unexpressible. Update relay is governed by
+[[SPEC-050-component-islands-and-messaging#REQ-5021]]. This holds identically for **both
+render modes** ([[SPEC-050-component-islands-and-messaging#REQ-5010]]); only the **transport
+and the island handle** differ:
 
-**Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5016]], [[SPEC-050-component-islands-and-messaging#CON-5002]], [[SPEC-050-component-islands-and-messaging#CON-5006]], [[SPEC-050-component-islands-and-messaging#REQ-5013]], [[SPEC-050-component-islands-and-messaging#REQ-5017]], [[SPEC-050-component-islands-and-messaging#REQ-5021]]; [[SPEC-050-component-islands-and-messaging#Threat A]], [[SPEC-050-component-islands-and-messaging#Threat J]]; [[SPEC-050-component-islands-and-messaging#3.5 HP5]].
+- **Worker transport (DEFAULT — [[SPEC-050-component-islands-and-messaging#REQ-5025]]).** The
+  parent calls `new Worker(url)` and holds the returned **`Worker` object** — that reference
+  **is** the island handle (the grant is keyed `Map<Worker, Grant>`). The parent
+  `worker.postMessage`s and listens on `worker.onmessage`; a `Worker`'s messages are
+  unambiguously from that worker (no `origin`, no `source`, no other frame can post to it), so
+  **there is no bootstrap ceremony, no `"null"`-origin problem, no `event.source` matching, no
+  port transfer, and no routing map**. This is the simple, default path and the recommended
+  model for content islands.
+- **Iframe transport (OPT-IN escape hatch — [[SPEC-050-component-islands-and-messaging#REQ-5015]]).**
+  When an island needs arbitrary DOM, the parent mounts a sandboxed iframe and must bridge across
+  the opaque-origin boundary, where the simple `Worker` identity is unavailable. It therefore
+  uses the **child-ready-first `MessageChannel` bootstrap**: the parent records
+  `Map<WindowProxy, Island{iframe,port1,port2,grant}>` keyed by `iframe.contentWindow` *before*
+  listening; the **child** posts `zetl:ready` over `window`; the parent's `window` handler
+  routes **solely by `event.source` `WindowProxy` identity** (a hit transfers that island's
+  `port2`; a miss is a no-op; `zetl:ready` payload is ignored for routing); after transfer the
+  island handle is **`port1` object identity** (`WeakMap<port1, Island>`), never
+  `origin`/`source` ([[SPEC-050-component-islands-and-messaging#Threat J]]). A missing
+  `zetl:ready` within a bounded timeout → one retry → teardown (REQ-5017); (re)creations are
+  bounded (NFR-5002). This is the heavier path that the four review passes hardened; it exists
+  **only** for the escape hatch.
+
+**Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5016]], [[SPEC-050-component-islands-and-messaging#TEST-5025]], [[SPEC-050-component-islands-and-messaging#CON-5002]], [[SPEC-050-component-islands-and-messaging#CON-5006]], [[SPEC-050-component-islands-and-messaging#REQ-5013]], [[SPEC-050-component-islands-and-messaging#REQ-5017]], [[SPEC-050-component-islands-and-messaging#REQ-5021]], [[SPEC-050-component-islands-and-messaging#REQ-5025]]; [[SPEC-050-component-islands-and-messaging#Threat A]], [[SPEC-050-component-islands-and-messaging#Threat J]]; [[SPEC-050-component-islands-and-messaging#3.5 HP5]].
 
 ### REQ-5021: Subscribe-Relay Semantics (Value-Change-Only)
 The bridge's outbound relay of a granted subscription to a content island SHALL deliver an
@@ -705,31 +694,29 @@ onerror=…>"` is type-valid yet an XSS payload). Two obligations follow:
 
 **Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5022]], [[SPEC-050-component-islands-and-messaging#CON-5002]], [[SPEC-050-component-islands-and-messaging#REQ-5013]]; [[SPEC-050-component-islands-and-messaging#Threat H]], [[SPEC-050-component-islands-and-messaging#Threat M]].
 
-### REQ-5017: Island & Port Lifecycle Under SPA Navigation
+### REQ-5017: Island Lifecycle Under SPA Navigation
 The shell SHALL define a deterministic island lifecycle across [[SPEC-028]] client-side
-navigation, since islands mount, unmount, and re-mount as page subtrees swap. On removal of
-an island's subtree the shell SHALL perform the teardown it can actually effect from the
-parent side (the parent owns only `port1` after `port2` is transferred): (a) **delete the
-island's registry + `WeakMap<port1, Island>` entries**, **close `port1`** (`port1.close()`),
-**cancel any pending debounced `update` relay timer** for the island, and **remove/destroy the
-`<iframe>` element** (which disposes the child realm and its `port2`). The **load-bearing
-in-flight guard is the WeakMap miss, not `close()`**: `close()` only stops *future* delivery,
-so the inbound handler SHALL look up `port1` in the `WeakMap` **first** and treat a miss as a
-silent drop (`island-port-closed`) — this covers a `message` event already dispatched/queued
-before `close()`. Likewise every outbound relay closure SHALL re-check WeakMap membership
-immediately before `port.postMessage` and skip a torn-down island, so a debounced `update`
-that fires after teardown is a no-op and never dereferences freed grant/topic state. The
-parent MAY first post a `close` request asking the child to `port2.close()` for prompt
-cleanup, but correctness SHALL NOT depend on the child cooperating. The shell SHALL also (b)
-**release its bus subscriptions** (invoke the `unsubscribe()` handles from
-[[SPEC-050-component-islands-and-messaging#CON-5003]]) so the subscriber count does not grow
-across navigations toward the [[SPEC-050-component-islands-and-messaging#NFR-5002]] cap
-(bridge-relayed subscriptions count against the same cap and are released here). On re-mount
-the shell SHALL hydrate idempotently ([[SPEC-050-component-islands-and-messaging#REQ-5003]])
-and issue a **fresh** iframe + `MessageChannel` + grant for a sandboxed island (never reuse a
-prior port). Retained store *values* persist on the nav-surviving shell
-([[SPEC-050-component-islands-and-messaging#REQ-5007]]); only per-mount *subscriptions, iframes,
-and ports* are torn down and rebuilt.
+navigation, since islands mount, unmount, and re-mount as page subtrees swap. On removal of an
+island's subtree the shell SHALL, from the parent side: (a) **revoke the island's grant**
+(delete its handle entry — `Map<Worker, Grant>` default, or `Map<WindowProxy>` +
+`WeakMap<port1>` escape hatch), **cancel any pending debounced `update` relay timer**, and
+**dispose its realm** — **`worker.terminate()`** in the default mode, or **close `port1` +
+remove the `<iframe>`** in the escape hatch. The **load-bearing in-flight guard is the handle
+miss, not channel closure**: closure only stops *future* delivery, so the inbound handler SHALL
+look the island handle up **first** and treat a miss as a silent drop (`island-port-closed`),
+covering a `message` already dispatched before disposal; likewise every outbound relay closure
+SHALL re-check handle membership immediately before posting and skip a torn-down island, so a
+debounced `update` firing after teardown is a no-op that never dereferences freed state. (In the
+default mode `terminate()` is synchronous and decisive, so this guard is belt-and-braces; in the
+escape hatch it is essential.) The shell SHALL also (b) **release its bus subscriptions** (the
+`unsubscribe()` handles from [[SPEC-050-component-islands-and-messaging#CON-5003]]) so the
+subscriber count does not grow across navigations toward the
+[[SPEC-050-component-islands-and-messaging#NFR-5002]] cap (bridge-relayed subscriptions count
+against the same cap and are released here). On re-mount the shell SHALL hydrate idempotently
+([[SPEC-050-component-islands-and-messaging#REQ-5003]]) and issue a **fresh** Worker (or
+iframe+`MessageChannel`) + grant (never reuse a prior handle). Retained store *values* persist
+on the nav-surviving shell ([[SPEC-050-component-islands-and-messaging#REQ-5007]]); only
+per-mount *subscriptions, workers/iframes, and channels* are torn down and rebuilt.
 
 **Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5017]], [[SPEC-050-component-islands-and-messaging#REQ-5003]], [[SPEC-050-component-islands-and-messaging#REQ-5016]]; [[SPEC-050-component-islands-and-messaging#Threat J]].
 
@@ -795,11 +782,12 @@ hydration cost.
 ### NFR-5002: No Framework Runtime; Bounded Bus
 The shell bus runtime SHALL be ≤ 4 KiB minified (`[Provisional]`) and SHALL pull in no
 third-party framework. The bus SHALL enforce fail-closed bounds: ≤ 256 distinct topics,
-≤ 1024 total subscribers (counting bridge-relayed content-island subscriptions, decremented
+≤ 1024 total subscribers (counting bridge-relayed content-island subscriptions, released
 on teardown — REQ-5017), ≤ 64 KiB per retained value, and ≤ a per-page cap on content-island
-iframe (re)creations (`[Provisional]`) so a child that stalls past the bootstrap timeout to
-force retries cannot amplify iframe/port allocation (REQ-5016). A breach SHALL be dropped
-with a console diagnostic, never an unbounded allocation.
+**runtime (re)creations** — Worker spawns in the default mode, iframe (re)creations in the
+escape hatch (`[Provisional]`) — so a stalling child cannot amplify Worker/iframe/port
+allocation (REQ-5016). A breach SHALL be dropped with a console diagnostic, never an unbounded
+allocation.
 
 **Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5004]]; [[SPEC-050-component-islands-and-messaging#Threat D]].
 
@@ -1016,6 +1004,8 @@ the theme-level capability grants for content islands.
 publishes   = "publishes"  "=" "[" { quoted-topic } "]" ;   (* quoted-topic = '"' topic '"' *)
 subscribes  = "subscribes" "=" "[" { quoted-topic } "]" ;
 sandbox     = "sandbox" "=" bool ;          (* content islands: MUST be true; trusted: absent/false *)
+render      = "render" "=" '"' render-mode '"' ;  (* content islands; default "worker" — REQ-5010/5025 *)
+render-mode = "worker" | "iframe" ;         (* "worker" = controlled-element default; "iframe" = full-DOM escape hatch *)
 hydrate     = "hydrate" "=" '"' strategy '"' ;   (* default "load" — REQ-5024 *)
 strategy    = "load" | "idle" | "visible" | "visible(" rootmargin ")" | "media(" css-query ")" ;
 topics      = "[island.topics]" , { topic-decl } ;
@@ -1032,20 +1022,21 @@ grant       = "[[theme.island-grants]]" , 'component = "' name '"' ,
 **Pre-conditions:** every topic matches CON-5001 (quoted in TOML); each published/subscribed
 topic has an `[island.topics]` declaration; a `persisted = true` topic declares a `default`
 whose **TOML value conforms to its declared type** (CON-5005); a content-author component's
-`publishes` are all `content:`-prefixed (REQ-5011) and its manifest sets `sandbox = true`
-(REQ-5015); a content island's `subscribes` of a trusted topic requires a matching
-`[[theme.island-grants]]` entry; a `hydrate` value matches `strategy` (REQ-5024), defaulting
-to `"load"`.
+`publishes` are all `content:`-prefixed (REQ-5011); a content island's `render` is `"worker"`
+(default) or `"iframe"`, and `render = "iframe"` requires `sandbox = true` (REQ-5010/5015);
+a content island's `subscribes` of a trusted topic requires a matching `[[theme.island-grants]]`
+entry; a `hydrate` value matches `strategy` (REQ-5024), defaulting to `"load"`.
 **Post-conditions:** typed island metadata feeding wiring verification (REQ-5008), the
-audit graph (REQ-5009), the bridge grant table (REQ-5016), payload typing (REQ-5013), and the
-hydration trigger (REQ-5024).
+audit graph (REQ-5009, incl. render mode), the bridge grant table (REQ-5016), payload typing
+(REQ-5013), and the hydration trigger (REQ-5024).
 **Error model:** malformed topic → `island-topic-malformed`; persisted-without-default or
-default-not-of-type → `island-persisted-no-default`; content island publishing a non-`content:`
-topic or lacking `sandbox = true` → `island-content-unsandboxed`; content island
-subscribing a trusted topic with no grant → `island-capability-ungranted`; a content island
-**publishing** a topic whose declared type is free `string` or a record with a `string`
-field → `island-content-value-type` ([[SPEC-050-component-islands-and-messaging#REQ-5022]]); an
-unrecognised `hydrate` strategy → `island-hydrate-invalid` — all build errors.
+default-not-of-type → `island-persisted-no-default`; a content island with `render = "iframe"`
+publishing a non-`content:` topic or lacking `sandbox = true` → `island-content-unsandboxed`;
+content island subscribing a trusted topic with no grant → `island-capability-ungranted`; a
+content island **publishing** a topic whose declared type is free `string` or a record with a
+`string` field → `island-content-value-type` ([[SPEC-050-component-islands-and-messaging#REQ-5022]]);
+an unrecognised `render` mode → `island-render-invalid`; an unrecognised `hydrate` strategy →
+`island-hydrate-invalid` — all build errors.
 **Implements:** [[SPEC-050-component-islands-and-messaging#REQ-5006]], [[SPEC-050-component-islands-and-messaging#REQ-5008]], [[SPEC-050-component-islands-and-messaging#REQ-5013]], [[SPEC-050-component-islands-and-messaging#REQ-5016]], [[SPEC-050-component-islands-and-messaging#REQ-5022]], [[SPEC-050-component-islands-and-messaging#REQ-5024]].
 **Verified by:** [[SPEC-050-component-islands-and-messaging#TEST-5006]], [[SPEC-050-component-islands-and-messaging#TEST-5008]], [[SPEC-050-component-islands-and-messaging#TEST-5016]], [[SPEC-050-component-islands-and-messaging#TEST-5024]].
 
@@ -1145,38 +1136,32 @@ deliver).
 **Implements:** [[SPEC-050-component-islands-and-messaging#REQ-5013]].
 **Verified by:** [[SPEC-050-component-islands-and-messaging#TEST-5013]].
 
-### CON-5006: Capability-Bridge `postMessage` Protocol
-**Interface:** the wire protocol between a sandboxed content-island iframe and the
-parent-side bridge ([[SPEC-050-component-islands-and-messaging#REQ-5016]]). **The iframe is
-untrusted** — every inbound message is recognised before any bus action.
+### CON-5006: Capability-Bridge Message Protocol
+**Interface:** the wire protocol between an untrusted content island and the parent-side
+bridge ([[SPEC-050-component-islands-and-messaging#REQ-5016]]). **The island is untrusted** —
+every inbound message is recognised before any bus action. The **message shapes and the value
+recognition below are identical for both render modes**; only the *transport and island
+handle* differ.
 
-**Island identification — two stages (window-source for the ready, port-identity after):**
-a sandboxed iframe without `allow-same-origin` has an **opaque origin**
-(`MessageEvent.origin === "null"` for *every* such frame) and `MessageChannel` messages carry
-`source === null` — so origin/source are non-discriminating **on the transferred port** and
-MUST NOT be used for per-message identity there. Identity is established in the bootstrap
-([[SPEC-050-component-islands-and-messaging#REQ-5016]]) and held thereafter by the port:
-1. **Bootstrap (window stage):** the child posts a `zetl:ready` to `window.parent` *before*
-   any port exists. The parent's `window` `message` handler routes **by `event.source`
-   `WindowProxy` identity** — which *is* discriminating in the window→parent direction (the
-   parent created the iframe and holds its `contentWindow`; a child cannot forge another
-   frame's `WindowProxy`) — looking `event.source` up in the `Map<WindowProxy, Island>`. On a
-   hit it transfers that island's `port2` to `event.source`; on a miss it is a no-op. The
-   `zetl:ready` payload is ignored for routing.
-2. **Steady state (port stage):** after the targeted transfer, the island is identified
-   **solely by the object identity of its `port1`** (the `WeakMap<port1, Island>` key). The
-   transfer is the **first *port-bearing* message** (preceded only by the window-level
-   `zetl:ready`); a targeted `postMessage` reaches only that one window's realm, so no other
-   frame can obtain the port.
+**Island handle — by transport:**
+- **Worker (default — [[SPEC-050-component-islands-and-messaging#REQ-5025]]):** the parent
+  holds the `Worker` object it created; the handle is that object (`Map<Worker, Grant>`).
+  Messages from a `Worker` are unambiguously that worker's — **no `origin`, no `source`, no
+  bootstrap, no port transfer**. The worker installs `self.onmessage` synchronously at script
+  top, so the first message is never lost. This is the simple default.
+- **Iframe (escape hatch — [[SPEC-050-component-islands-and-messaging#REQ-5015]]):** an
+  opaque-origin iframe has `MessageEvent.origin === "null"` for *every* such frame and
+  `MessageChannel` messages carry `source === null`, so origin/source are non-discriminating
+  and MUST NOT be used for identity. Identity is the **child-ready-first bootstrap**: the
+  child posts `zetl:ready` over `window`; the parent routes by `event.source` `WindowProxy`
+  identity (`Map<WindowProxy, Island>`, hit → transfer that island's `port2`, miss → no-op,
+  payload ignored for routing); thereafter the handle is **`port1` object identity**
+  (`WeakMap<port1, Island>`). This is the one handshake, and it exists only because the iframe
+  realm denies the simple `Worker` identity.
 
-There is exactly one handshake — the child-ready-first bootstrap above — and it is for
-**delivery readiness and window-source attribution**, after which **port possession is the
-authority**. (This supersedes the v0.4.0 "the port is the first message; no handshake is
-needed" wording, which raced the child's listener installation.)
-
-**Inbound `value` recognition is by input *shape*, not "JSON text":** messages cross the
-port by **structured clone**, so the parent receives a **live object graph**, not a JSON
-string. The bridge SHALL therefore (1) reject any `value` whose prototype is not
+**Inbound `value`/`tree` recognition is by input *shape*, not "JSON text":** messages cross
+the channel (`Worker` or port) by **structured clone**, so the parent receives a **live object
+graph**, not a JSON string. The bridge SHALL therefore (1) reject any `value` whose prototype is not
 `Object.prototype`/`Array.prototype`/a primitive (no exotic or poisoned prototype), (2)
 **re-build** `value` onto a `null`-prototype structure copying only own-enumerable data
 properties (so `__proto__`/`constructor`/getters cannot ride along), then (3) recognise that
@@ -1187,64 +1172,76 @@ normalised value (CON-5005), not three divergent parsers
 ([[SPEC-050-component-islands-and-messaging#REQ-5013]]).
 
 **Message *object shapes* (these cross by `postMessage`/structured clone — they are live
-object graphs, NOT JSON text; do not write a JSON-string parser for them):**
+object graphs, NOT JSON text; do not write a JSON-string parser for them). "Channel" = the
+`Worker` (default) or the transferred `port1` (iframe escape hatch):**
 ```
-(* window stage — child → parent, over window.parent.postMessage, before any port: *)
+(* iframe escape hatch only — child → parent over window, before the port exists: *)
 zetl:ready : { op: "ready" }                         (* routed by event.source identity only *)
-(* port stage — child → parent, on the transferred port: *)
+(* both transports — child → parent, on the channel: *)
 publish    : { op: "publish",  topic, value }
 emit       : { op: "emit",     topic, value }
 subscribe  : { op: "subscribe",  topic }
 unsubscribe: { op: "unsubscribe", topic }
-(* parent → child, on the port: *)
+render     : { op: "render",   tree }                (* default mode only — REQ-5025 element tree *)
+(* parent → child, on the channel: *)
 ack        : { op: "ack",    topic }
 denied     : { op: "denied", topic, reason }
 update     : { op: "update", topic, value }
-reason     ∈ { "ungranted", "type", "cap-exceeded", "malformed" }
+reason     ∈ { "ungranted", "type", "cap-exceeded", "malformed", "render" }
 value      = a structured-clone datum: prototype-checked + null-proto-normalised, then
              recognised against the topic's declared type (CON-5005) — see above
-op, topic  = own string properties; the parent reads ONLY op/topic/value/reason as own
-             enumerable data (a poisoned-prototype envelope is rejected like a poisoned value)
+tree       = a controlled element tree: each node = { tag ∈ allowlist, props ⊆ attr-allowlist,
+             children: [ tree | text-string ] }; same prototype-check + null-proto-normalise as
+             value; the host paints it (REQ-5025) — non-allowlisted tag/prop/URL → drop node,
+             never raw HTML/script
+op, topic  = own string properties; the parent reads ONLY own-enumerable data (a
+             poisoned-prototype envelope is rejected like a poisoned value)
 ```
-**Pre-conditions (enforced by the parent on every inbound msg):** the message arrives on a
-`port1` present in the `WeakMap` (open, known island); `op`/`topic` parse (CON-5001);
-`(topic, op-direction)` is in the island's grant table (REQ-5016); `value` passes the
-prototype check + null-proto normalisation + type recognition above; size/rate within
-NFR-5002; the bridge's subscriptions count against the same global caps (NFR-5002) and are
-decremented on teardown (REQ-5017).
+**Pre-conditions (enforced by the parent on every inbound msg):** the message arrives from a
+**known island handle** (the `Worker`, default; or a `port1` in the `WeakMap`, escape hatch);
+`op`/`topic` parse (CON-5001); `(topic, op-direction)` is in the island's grant table
+(REQ-5016); `value`/`tree` passes the prototype check + null-proto normalisation + type/allowlist
+recognition above; size/rate within NFR-5002; the bridge's subscriptions count against the same
+global caps (NFR-5002) and are released on teardown (REQ-5017).
 **Post-conditions:** a conforming, granted request is forwarded to the real bus; a granted
 `subscribe` is answered `ack` then value-change-only `update`s (REQ-5021, each re-recognised);
-a refusal is answered `denied` + reason (so silence ≠ denial — closes the probe oracle); a
-closed port (post-teardown, REQ-5017) drops messages silently.
-**Error model:** unknown/closed port → ignored; ungranted topic/direction →
+a `render` (default mode) is painted by the host via the allowlist (REQ-5025); a refusal is
+answered `denied` + reason (so silence ≠ denial — closes the probe oracle); a torn-down island
+(terminated `Worker` / closed `port1`, REQ-5017) drops messages silently.
+**Error model:** message from an unknown/torn-down handle → ignored; ungranted topic/direction →
 `denied:ungranted` (+ `island-capability-denied`); prototype/type failure → `denied:type`
-(+ `island-payload-type`); cap breach → `denied:cap-exceeded`; malformed → `denied:malformed`.
-No inbound message ever reaches the bus without passing all checks.
-**Implements:** [[SPEC-050-component-islands-and-messaging#REQ-5016]], [[SPEC-050-component-islands-and-messaging#REQ-5017]].
-**Verified by:** [[SPEC-050-component-islands-and-messaging#TEST-5016]].
+(+ `island-payload-type`); a `render` with a non-allowlisted node → `denied:render` (offending
+node dropped, never painted); cap breach → `denied:cap-exceeded`; malformed → `denied:malformed`.
+No inbound message ever reaches the bus or the DOM without passing all checks.
+**Implements:** [[SPEC-050-component-islands-and-messaging#REQ-5016]], [[SPEC-050-component-islands-and-messaging#REQ-5017]], [[SPEC-050-component-islands-and-messaging#REQ-5025]].
+**Verified by:** [[SPEC-050-component-islands-and-messaging#TEST-5016]], [[SPEC-050-component-islands-and-messaging#TEST-5025]].
 
 ---
 
 ## 8. Threat Model
 
 Trust boundary: **theme/component authors are trusted** (they ship in-realm JS);
-**content-author island code is untrusted** and runs only in a sandboxed iframe reaching
-the bus through a capability bridge (REQ-5010/5015/5016); **`localStorage`/cross-tab values
-and all inbound bridge messages are untrusted input** crossing into the runtime. (Threat
-letters align with [[SPEC-048]]'s threat model for cross-spec parity; **G is intentionally
-unused** here — SPEC-048's Threat G, static-render context leak, has no SPEC-050 analogue.)
+**content-author island code is untrusted** and runs in an isolated realm — a **Worker**
+(default) or a sandboxed iframe (escape hatch) — reaching the bus only through a capability
+bridge (REQ-5010/5015/5016/5025); **`localStorage`/cross-tab values and all inbound bridge
+messages are untrusted input** crossing into the runtime. (Threat letters align with
+[[SPEC-048]]'s threat model for cross-spec parity; **G is intentionally unused** here —
+SPEC-048's Threat G has no SPEC-050 analogue. Threats **I/J** are *iframe-escape-hatch-only*;
+the default Worker mode does not have a sandbox-escape or a `null`-origin-spoofing surface.)
 
 ### Threat A: Island-Bus Escalation via a Content Author
 A markdown author ships a content island trying to read/forge/overwrite a trusted topic
 (`theme`) on `window.zetl`. **Mitigation (defense in depth, three legs):** (1) **realm
-isolation** — the island runs in a sandboxed iframe with an opaque origin and no
-`allow-same-origin`, so it holds no reference to the parent realm or `window.zetl`
-(REQ-5015); (2) **capability scoping** — its only authority is a transferred port whose
-grant table the parent enforces on every message; trusted-topic grants are subscribe-only
-and theme-declared, so it can at most *read* `theme`, never *write* it (REQ-5016); (3)
-**payload typing** — even granted messages must conform to the topic's declared type
-(REQ-5013). String-namespacing is a clarity aid, explicitly **not** the boundary
-(ADR-5003). Supersedes the v0.1.0 forbid-only mitigation.
+isolation** — the island runs with no reference to the parent realm or `window.zetl`: a
+**Worker** has no DOM/`window` at all (default, REQ-5025), or an opaque-origin sandboxed
+iframe holds no parent reference (escape hatch, REQ-5015); (2) **capability scoping** — its
+only authority is its bridge handle (a `Worker` it doesn't control, or a transferred port)
+whose grant table the parent enforces on every message; trusted-topic grants are
+subscribe-only and theme-declared, so it can at most *read* `theme`, never *write* it
+(REQ-5016); (3) **payload typing** — even granted messages must conform to the topic's
+declared type (REQ-5013), and in the default mode it cannot emit HTML at all (Threat M closed
+by construction, REQ-5025). String-namespacing is a clarity aid, explicitly **not** the
+boundary (ADR-5003). Supersedes the v0.1.0 forbid-only mitigation.
 
 ### Threat B: Silent Mis-Wiring (Topic Typo)
 A `subscribes`/`publishes` magic-string typo silently breaks coordination. **Mitigation
@@ -1304,16 +1301,21 @@ delivered values as untrusted text (`textContent`, never `innerHTML`; no raw `ja
 `data:` URLs). Recognition (Threat H) checks type, not output safety; the controlled-element
 model (default) or these two (escape hatch) close the value-flow path it does not.
 
-### Threat I: iframe Sandbox Escape / Escalation
-A content island tries to break out of the sandbox — navigating the top frame, opening
-popups, or reaching the parent DOM. **Mitigation:** the `sandbox` token set grants only
-`allow-scripts` (no `allow-same-origin`, `allow-top-navigation`, `allow-popups`,
-`allow-modals`), and a restrictive CSP confines network/inline execution (REQ-5015); the
-opaque origin denies same-origin DOM/storage access by construction.
+### Threat I: iframe Sandbox Escape / Escalation *(escape-hatch mode only)*
+*Applies only to the opt-in iframe full-DOM mode (REQ-5015); the default Worker mode has no
+DOM/top-frame/popup surface to escape to.* A content island tries to break out of the sandbox
+— navigating the top frame, opening popups, or reaching the parent DOM. **Mitigation:** the
+`sandbox` token set grants only `allow-scripts` (no `allow-same-origin`, `allow-top-navigation`,
+`allow-popups`, `allow-modals`), and a restrictive CSP confines network/inline execution
+(REQ-5015); the opaque origin denies same-origin DOM/storage access by construction.
 
-### Threat J: `postMessage` Spoofing / Confused-Source Injection
-A script (another `"null"`-origin frame, an extension, or a stale/torn-down island) posts
-messages to the bridge pretending to be a granted island. **Note the trap this corrects:**
+### Threat J: `postMessage` Spoofing / Confused-Source Injection *(escape-hatch mode only)*
+*In the default Worker mode this threat does not exist:* a `Worker` is addressed by the object
+reference the parent holds, no other context can post to it, and there is no
+`origin`/`source`/`null`-frame surface — spoofing is impossible by construction. The threat
+exists only across the iframe escape hatch's opaque-origin boundary, where a script (another
+`"null"`-origin frame, an extension, or a stale/torn-down island) posts messages to the bridge
+pretending to be a granted island. **Note the trap this corrects:**
 a sandboxed iframe's `MessageEvent.origin` is the literal `"null"` for *every* such frame
 and channel-port messages carry `source === null`, so **origin/source checks are
 non-discriminating on the transferred port and are explicitly NOT the per-message mechanism**.
@@ -1398,8 +1400,8 @@ island imports.
 ### TEST-5015: Content-Island iframe Sandbox
 **Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5015]], [[SPEC-050-component-islands-and-messaging#Threat I]]. Positive: the island enhances inside the sandboxed iframe. Negative-input: sandbox token set lacks `allow-same-origin`/`allow-top-navigation`/`allow-popups`; CSP present. Negative-output: with JS off or sandbox unsupported, the parent-document static HTML renders, is usable, and is indexable; a top-navigation/parent-DOM attempt from inside fails.
 
-### TEST-5016: Capability-Scoped Bridge (Bootstrap, Port-Identity, Grants)
-**Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5016]], [[SPEC-050-component-islands-and-messaging#CON-5006]], [[SPEC-050-component-islands-and-messaging#Threat A]], [[SPEC-050-component-islands-and-messaging#Threat J]], [[SPEC-050-component-islands-and-messaging#Threat K]]. Positive: the child posts `zetl:ready`; the parent (matching `event.source` to that island's `iframe.contentWindow`) transfers `port2`; the island then publishes its `content:filter` grant and reads a theme-granted `theme` subscribe (`ack` then value-change-only `update`s). **Bootstrap negative:** a `zetl:ready` whose `event.source` is **not** the expected iframe `contentWindow` → ignored (no port transferred); if no `zetl:ready` arrives within the timeout → one retry, then teardown (no hang). **Grant negative:** publishing `theme` (no publish grant) or any ungranted topic → `denied:ungranted`; a publish grant for a trusted topic is unexpressible in the manifest grammar. **Identity negative (note the two stages):** *on the transferred port*, a message arriving on any `port1` not in the `WeakMap` is ignored and an `origin`/`source` check would NOT discriminate (port `source` is `null`); *for the window-level `zetl:ready`*, `event.source` `WindowProxy` identity **IS** the discriminator and a `zetl:ready` from a foreign frame is a registry miss → no-op. The test asserts both — source is useless on the port, decisive on the ready. Negative-output: no ungranted/type-invalid message reaches the bus (fuzz the `postMessage` protocol incl. `__proto__`/poisoned-prototype structured-clone payloads).
+### TEST-5016: Capability Bridge — Grants (both modes) + iframe-Escape-Hatch Bootstrap
+**Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5016]], [[SPEC-050-component-islands-and-messaging#CON-5006]], [[SPEC-050-component-islands-and-messaging#Threat A]], [[SPEC-050-component-islands-and-messaging#Threat J]], [[SPEC-050-component-islands-and-messaging#Threat K]]. The **grant checks apply to both transports** (run the grant matrix once per mode): a `Worker`-handle message and a `port1` message are each accepted only when `(topic, direction)` is granted. The **bootstrap/port-identity assertions below are escape-hatch (iframe) only** — the default Worker mode has no bootstrap, no `event.source`, no port (TEST-5025 covers worker identity). *iframe path —* Positive: the child posts `zetl:ready`; the parent (matching `event.source` to that island's `iframe.contentWindow`) transfers `port2`; the island then publishes its `content:filter` grant and reads a theme-granted `theme` subscribe (`ack` then value-change-only `update`s). **Bootstrap negative:** a `zetl:ready` whose `event.source` is **not** the expected iframe `contentWindow` → ignored (no port transferred); if no `zetl:ready` arrives within the timeout → one retry, then teardown (no hang). **Grant negative:** publishing `theme` (no publish grant) or any ungranted topic → `denied:ungranted`; a publish grant for a trusted topic is unexpressible in the manifest grammar. **Identity negative (note the two stages):** *on the transferred port*, a message arriving on any `port1` not in the `WeakMap` is ignored and an `origin`/`source` check would NOT discriminate (port `source` is `null`); *for the window-level `zetl:ready`*, `event.source` `WindowProxy` identity **IS** the discriminator and a `zetl:ready` from a foreign frame is a registry miss → no-op. The test asserts both — source is useless on the port, decisive on the ready. Negative-output: no ungranted/type-invalid message reaches the bus (fuzz the `postMessage` protocol incl. `__proto__`/poisoned-prototype structured-clone payloads).
 
 ### TEST-5017: Island & Port Lifecycle Under SPA Nav
 **Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5017]], [[SPEC-050-component-islands-and-messaging#Threat J]]. Positive: navigating away deletes the registry/`WeakMap` entries, closes `port1`, cancels pending relays, and destroys the iframe; navigating back issues a fresh iframe+port+grant and re-hydrates idempotently. Negative-input: a `message` event already dispatched before `close()` is dropped by the **WeakMap-miss** check (not by `close()`); a debounced `update` that fires after teardown is a no-op (relay re-checks membership) and **throws nothing**. Negative-output: repeated nav cycles do not grow the subscriber count toward the NFR-5002 cap (assert bounded after N cycles); a retained store value survives the nav (REQ-5007) while subscriptions do not.
@@ -1449,7 +1451,7 @@ instances), and a stable hash of each, to detect nondeterminism regressions.
 ### OBS-5003: Bound Rejections
 Emit counts of the **build** errors `island-topic-malformed`, `island-topic-unpublished`,
 `island-topic-undeclared`, `island-persisted-no-default`, `island-topic-type-conflict`,
-`island-topic-type-invalid`, `island-content-unsandboxed`, `island-content-value-type`, `island-hydrate-invalid`,
+`island-topic-type-invalid`, `island-content-unsandboxed`, `island-content-value-type`, `island-render-invalid`, `island-hydrate-invalid`,
 `island-capability-ungranted`, and the `island-focus-trap` warning; plus **runtime** counters (dev console / optional debug
 channel) for `island-payload-type`, `island-capability-denied` (by `denied` reason), and
 `island-port-closed`, so fail-closed events are auditable. The audit wiring graph (OBS-5001)
@@ -1512,9 +1514,10 @@ everything else composes [[SPEC-048]] and [[SPEC-028]].
 - **Q5 — Delivery/ordering guarantees.** Beyond per-subscriber subscription-order, are any
   cross-topic ordering or synchronous-vs-microtask delivery guarantees required (incl. the
   added `postMessage` hop latency for sandboxed islands)? Pin in IMPL-050.
-- **Q6 — iframe cost at scale.** Per-content-island iframes carry layout/memory cost; is a
-  shared-iframe-per-page (multiplexed bridge) needed when a page has many content islands?
-  Ground against Phase 1 page profiles.
+- **Q6 — iframe cost at scale.** *Largely moot (v0.9.0):* the default content-island mode is a
+  Worker, not an iframe (REQ-5025), so the per-iframe layout/memory cost only applies to the
+  opt-in escape hatch. *Residual:* Worker spawn cost at scale and whether a shared Worker pool
+  is worth it — ground against Phase 1 profiles.
 - **Q7 — Exact trusted-island topic declaration.** The bare `window.zetl.store(topic)` API
   gives no island identity, so `island-topic-undeclared` for trusted islands is only a
   best-effort literal-string lint (REQ-5008). Should v2 add a generated per-island wrapper
@@ -1526,13 +1529,16 @@ everything else composes [[SPEC-048]] and [[SPEC-028]].
   element tree, closing Threat M by construction; the iframe is the opt-in escape hatch. *Left
   to IMPL-050:* the exact element/attribute allowlist vocabulary and the element-tree wire
   shape (extend CON-5006).
-- **Q9 — Consolidation pass (v0.9.0 debt).** v0.9.0 introduced the dual render-mode model
-  (Worker default / iframe escape hatch) via ADR-5010/REQ-5025 but did **not** re-thread every
-  iframe-specific clause (REQ-5015/5016, CON-5006, Threats I/J/K, NFR-5002 caps, REQ-5017
-  lifecycle) to be explicitly mode-aware. A follow-up revision SHOULD make the worker-mode
-  bridge/lifecycle/bounds first-class (most simplify — no `null` origin, no bootstrap), and
-  scope the iframe machinery as escape-hatch-only throughout, to avoid the layering debt the
-  reviews repeatedly flagged.
+- **Q9 — Mode-aware consolidation pass.** *Resolved (v0.10.0):* every content-island clause is
+  now explicitly mode-aware — REQ-5016 is a transport-agnostic reference monitor (Worker handle
+  default / iframe bootstrap escape hatch); CON-5006 states one shared message protocol with the
+  handle differing by transport (+ the `render` element-tree message); REQ-5017 teardown is
+  `worker.terminate()` (default) or close-port+destroy-iframe (escape hatch); Threats I/J are
+  marked escape-hatch-only (the Worker has no escape/spoofing surface); NFR-5002 bounds island
+  *runtime* (re)creations; CON-5002 gained the `render` field (`worker` default / `iframe`).
+  The iframe machinery the four reviews hardened is retained verbatim but scoped to the escape
+  hatch. *Left to IMPL-050:* the element/attribute allowlist vocabulary and the `tree` wire
+  shape.
 
 ---
 
@@ -1571,22 +1577,41 @@ and the bridge against the [[SPEC-028]] shell; and IMPL-050 to pin the grammars,
 token set + `sha256` CSP, the data-island pre-paint encoding, and the lifecycle. It depends on
 [[SPEC-048]] and [[SPEC-049]] and gates independently of both.
 
-**v0.9.0 changes the recommended direction** (ADR-5010): the default content-island surface is
-now the [[Shopify Remote DOM]]-style Worker + controlled-element model, which *removes* most of
-the bridge surface the four reviews hardened (no `null` origin, no bootstrap race) and closes
-Threat M by construction. That is a net simplification — but it also means a **consolidation
-pass (Q9) is owed** before convergence: the iframe-specific clauses must be re-scoped as the
-escape-hatch path and the worker-mode bridge/lifecycle/bounds made first-class. Until that pass
-lands, the spec carries two partly-overlapping models, so it is **further** from text-convergence
-than v0.8.0 even though it is closer to the *right* architecture. The terminal gate is unchanged
-(human security review + PoC), now benchmarked primarily against Remote DOM.
+**v0.9.0–v0.10.0 changed the recommended direction and then consolidated it** (ADR-5010): the
+default content-island surface is now the [[Shopify Remote DOM]]-style Worker +
+controlled-element model, which *removes* most of the bridge surface the four reviews hardened
+(no `null` origin, no bootstrap race) and closes Threat M by construction. v0.9.0 introduced
+that as a second model (carrying temporary two-model debt); **v0.10.0 completed the Q9
+consolidation** — every content-island clause (REQ-5016/5017, CON-5002/5006, Threats A/I/J,
+NFR-5002, Orientation) is now explicitly mode-aware, with the worker bridge/lifecycle/bounds
+first-class and the iframe machinery scoped as the escape hatch. So the spec is now both *closer
+to the right architecture* and *back to single-model text coherence*. **Caveat:** the four
+adversarial passes were run against the iframe-centric design; the now-default Worker model is
+*simpler* (it deletes their hardest surface) but **has not itself had a fresh-context adversarial
+pass** — the next review should target the Worker bridge + the controlled-element renderer
+(allowlist completeness, the `tree` recogniser). The terminal gate is unchanged (human security
+review + executable PoC), now benchmarked primarily against Remote DOM and worker-dom.
 
 ---
 
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.9.0</summary>
+<summary>Revision history — 0.1.0 → 0.10.0</summary>
+
+- **0.10.0** (2026-06-25) — *consolidation (closes Q9); no new normative direction.* Re-threaded
+  every content-island clause to be **explicitly mode-aware** so the spec no longer carries two
+  overlapping models: **REQ-5016** is now a transport-agnostic reference monitor (Worker-handle
+  default / iframe-bootstrap escape hatch); **CON-5006** states one shared message protocol with
+  the island handle differing by transport, plus the `render` element-tree message; **REQ-5017**
+  teardown is `worker.terminate()` (default) or close-port+destroy-iframe (escape hatch);
+  **Threats I/J** are marked escape-hatch-only (the Worker has no escape/spoofing surface);
+  **Threat A** covers both modes; **NFR-5002** bounds island *runtime* (re)creations;
+  **CON-5002** gained the `render` field (`worker` default / `iframe`) + `island-render-invalid`;
+  Orientation diagram/decisions/load-bearing updated. The iframe machinery the four reviews
+  hardened is retained verbatim, scoped as the escape hatch. §13 notes the now-default Worker
+  model still owes its **own** fresh-context adversarial pass (the prior four targeted the iframe
+  design). *Left to IMPL-050:* the element/attribute allowlist + `tree` wire shape.
 
 - **0.9.0** (2026-06-25) — *design change, drawn from the v0.8.0 prior art.* Adopted the
   **[[Shopify Remote DOM]] / [[worker-dom]] model as the default content-island surface**
