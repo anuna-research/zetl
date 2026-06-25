@@ -200,3 +200,7 @@
 (normally r-propagate-50-tests-from-50-wire-blocked upstream-blocked-50-wire upstream-blocked-50-tests)
 (normally r-propagate-50-wire-from-50-csp-blocked upstream-blocked-50-csp upstream-blocked-50-wire)
 (normally r-propagate-verify-from-50-tests-blocked upstream-blocked-50-tests upstream-blocked-verify)
+
+(claims agent:claude
+  :at "2026-06-25T13:02:32Z"
+  (given completed-deps))
