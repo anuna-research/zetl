@@ -13,6 +13,8 @@
 //! `build.rs`.
 
 pub mod css;
+#[cfg(feature = "content-components")]
+pub mod directive;
 pub mod lower;
 pub mod manifest;
 pub mod nesting;

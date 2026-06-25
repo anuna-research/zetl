@@ -229,3 +229,20 @@
 (claims agent:claude
   :at "2026-06-25T13:06:46Z"
   (given completed-49-manifest))
+
+(claims agent:claude
+  :at "2026-06-25T13:11:18Z"
+  (given claim-v1-49-directive)
+  (normally r-cl-state-v1-49-directive claim-v1-49-directive state-claimed-v1-49-directive)
+  (normally r-cl-chain-v1-49-directive state-claimed-v1-49-directive claimed-49-directive)
+)
+
+;; Propagation rules: failures in '49-directive' block downstream tasks
+(normally r-propagate-49-expand-from-49-directive-failed failed-49-directive upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-directive-permanently-failed permanently-failed-49-directive upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-directive-stale-v1 stale-v1-49-directive upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-directive-timeout-v1 timeout-v1-49-directive upstream-blocked-49-expand)
+
+(claims agent:claude
+  :at "2026-06-25T13:11:18Z"
+  (given completed-49-directive))
