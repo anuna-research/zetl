@@ -1,6 +1,9 @@
 /target
 /dist
 /demo-dist
+# Local release artifacts from `make dist` + wrangler upload cache.
+/dist-release
+/.wrangler
 .zetl/
 .DS_Store
 # Mobile build artifacts produced by `make mobile-android-build*`.

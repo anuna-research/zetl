@@ -7,7 +7,7 @@ BASHCOMPDIR ?= $(PREFIX)/share/bash-completion/completions
 ZSHCOMPDIR  ?= $(PREFIX)/share/zsh/site-functions
 FISHCOMPDIR ?= $(PREFIX)/share/fish/vendor_completions.d
 
-.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build nfr-gates nfr-gates-strict nfr-gates-033 nfr-gates-033-strict check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts eco-features-check eco-matrix-check translator-roundtrip audit-corpus dist dist-macos-arm64 dist-macos-x86_64 dist-windows dist-metadata dist-upload dist-clean help mobile-build mobile-run mobile-test mobile-clean mobile-wipe mobile-android-init mobile-android-dev mobile-android-build mobile-ios-init mobile-ios-dev mobile-ios-build
+.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build nfr-gates nfr-gates-strict nfr-gates-033 nfr-gates-033-strict check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts eco-features-check eco-matrix-check translator-roundtrip audit-corpus dist dist-macos-arm64 dist-macos-x86_64 dist-linux-x86_64 dist-linux-arm64 dist-windows dist-metadata dist-upload dist-clean help mobile-build mobile-run mobile-test mobile-clean mobile-wipe mobile-android-init mobile-android-dev mobile-android-build mobile-ios-init mobile-ios-dev mobile-ios-build
 
 all: build
 
@@ -214,17 +214,21 @@ clean:
 release:
 	./release.sh $(VERSION)
 
-# Local release artifact builder — use when CI upload times out.
-# Builds macOS arm64 + x86_64 + Windows from the current tag, packages
-# them, and writes metadata. Linux builds are done in CI only (Docker).
+# Local release artifact builder — use when the CI release pipeline is
+# too slow (osxcross alone costs ~30 min per release). Builds all five
+# shipped targets locally and packages them.
 #
 # Usage:
-#   make dist                  # build all three platforms
+#   make dist                  # build all five platforms
 #   make dist-macos-arm64      # single platform
 #   make dist-upload           # upload dist-release/ to R2 via wrangler
 #   make dist-clean            # remove dist-release/
 #
-# Windows requires: brew install mingw-w64
+# Prerequisites:
+#   Linux   : brew install zig && cargo install --locked cargo-zigbuild
+#   Windows : brew install mingw-w64
+#   Upload  : pnpm add -g wrangler && wrangler login
+#             (or: npm i -g wrangler)
 DIST_DIR      ?= dist-release
 DIST_FEATURES  = reason,history,mcp,vendored-openssl
 DIST_TAG      := $(shell git describe --tags --abbrev=0)
@@ -237,7 +241,7 @@ R2_PREFIX      = zetl
 CARGO_RUSTUP  := $(shell rustup which cargo 2>/dev/null || echo $(HOME)/.cargo/bin/cargo)
 RUSTC_RUSTUP  := $(shell rustup which rustc 2>/dev/null || echo $(HOME)/.cargo/bin/rustc)
 
-dist: dist-macos-arm64 dist-macos-x86_64 dist-windows dist-metadata
+dist: dist-macos-arm64 dist-macos-x86_64 dist-linux-x86_64 dist-linux-arm64 dist-windows dist-metadata
 	@echo ""
 	@ls -lh $(DIST_DIR)/
 
@@ -259,6 +263,32 @@ dist-macos-x86_64:
 	rm $(DIST_DIR)/zetl
 	@echo "Packaged: $(DIST_DIR)/zetl-macos-x86_64.tar.gz"
 
+# Linux targets cross-compile from macOS via cargo-zigbuild — zig
+# supplies the linker + libc sysroot so we don't need Docker or a
+# native gcc cross-toolchain. vendored-openssl avoids needing an
+# arm64/x86_64 libssl on the host.
+dist-linux-x86_64:
+	rustup target add x86_64-unknown-linux-gnu
+	RUSTC=$(RUSTC_RUSTUP) $(CARGO_RUSTUP) zigbuild --release --features "$(DIST_FEATURES)" --target x86_64-unknown-linux-gnu
+	mkdir -p $(DIST_DIR)
+	cp target/x86_64-unknown-linux-gnu/release/zetl $(DIST_DIR)/zetl
+	tar czf $(DIST_DIR)/zetl-linux-x86_64.tar.gz -C $(DIST_DIR) zetl
+	rm $(DIST_DIR)/zetl
+	@echo "Packaged: $(DIST_DIR)/zetl-linux-x86_64.tar.gz"
+
+dist-linux-arm64:
+	rustup target add aarch64-unknown-linux-gnu
+	RUSTC=$(RUSTC_RUSTUP) $(CARGO_RUSTUP) zigbuild --release --features "$(DIST_FEATURES)" --target aarch64-unknown-linux-gnu
+	mkdir -p $(DIST_DIR)
+	cp target/aarch64-unknown-linux-gnu/release/zetl $(DIST_DIR)/zetl
+	tar czf $(DIST_DIR)/zetl-linux-arm64.tar.gz -C $(DIST_DIR) zetl
+	rm $(DIST_DIR)/zetl
+	@echo "Packaged: $(DIST_DIR)/zetl-linux-arm64.tar.gz"
+
+# Windows uses mingw-w64 rather than zigbuild because zig's bundled
+# `any-windows-any` headers are missing newer Winsock symbols
+# (e.g. SIO_UDP_NETRESET) that OpenSSL 3.x's QUIC code needs.
+# `brew install mingw-w64` to provide x86_64-w64-mingw32-gcc.
 dist-windows:
 	rustup target add x86_64-pc-windows-gnu
 	RUSTC=$(RUSTC_RUSTUP) \
@@ -284,6 +314,8 @@ dist-upload:
 	@echo "Uploading $(DIST_DIR)/ → R2 $(R2_BUCKET)/$(R2_PREFIX)/$(DIST_TAG)/ + latest/"
 	@for f in $(DIST_DIR)/zetl-macos-arm64.tar.gz \
 	           $(DIST_DIR)/zetl-macos-x86_64.tar.gz \
+	           $(DIST_DIR)/zetl-linux-x86_64.tar.gz \
+	           $(DIST_DIR)/zetl-linux-arm64.tar.gz \
 	           $(DIST_DIR)/zetl-windows-x86_64.zip \
 	           $(DIST_DIR)/version.json \
 	           $(DIST_DIR)/install.sh \
