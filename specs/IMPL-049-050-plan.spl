@@ -246,3 +246,20 @@
 (claims agent:claude
   :at "2026-06-25T13:11:18Z"
   (given completed-49-directive))
+
+(claims agent:claude
+  :at "2026-06-25T13:14:57Z"
+  (given claim-v1-49-sanitize)
+  (normally r-cl-state-v1-49-sanitize claim-v1-49-sanitize state-claimed-v1-49-sanitize)
+  (normally r-cl-chain-v1-49-sanitize state-claimed-v1-49-sanitize claimed-49-sanitize)
+)
+
+;; Propagation rules: failures in '49-sanitize' block downstream tasks
+(normally r-propagate-49-expand-from-49-sanitize-failed failed-49-sanitize upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-sanitize-permanently-failed permanently-failed-49-sanitize upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-sanitize-stale-v1 stale-v1-49-sanitize upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-sanitize-timeout-v1 timeout-v1-49-sanitize upstream-blocked-49-expand)
+
+(claims agent:claude
+  :at "2026-06-25T13:14:57Z"
+  (given completed-49-sanitize))

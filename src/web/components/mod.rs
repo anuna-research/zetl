@@ -19,6 +19,8 @@ pub mod lower;
 pub mod manifest;
 pub mod nesting;
 pub mod resolve;
+#[cfg(feature = "content-components")]
+pub mod sanitize;
 pub mod tokens;
 pub mod transclude;
 pub mod validate;
