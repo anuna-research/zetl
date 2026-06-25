@@ -1,0 +1,257 @@
+;; Plan — `zetl build` performance pass for large vaults (2026-05-12)
+;; Branch: perf/build-large-vault-2026-05-12
+;;
+;; Motivating findings (from initial source audit, 2026-05-12):
+;;   * src/main.rs:215   — resolve_pages loop calls resolve_page_name
+;;     against a Vec<(String, PathBuf)> for every link in every file
+;;     (O(L · N)). Painful at 10k+ pages with dense linking.
+;;   * src/scanner.rs:142 — uses WalkBuilder::build() (single-threaded
+;;     iterator). All file IO + Merkle hashing + pulldown-cmark parse
+;;     happens on one core. The crate already supports build_parallel.
+;;   * src/web/build.rs:1310 — per-page render loop is fully sequential
+;;     (markdown render, OG PNG composite, git2 lookup, history render,
+;;     page write). Independent per page; classic rayon target.
+;;   * src/web/build.rs:1420 — git2::Repository::discover(vault_root)
+;;     is called inside the per-page loop, then file_log(repo, ...).
+;;     Repo open is cheap-ish but non-zero; doing it N times wastes
+;;     real time and serialises behind libgit2.
+;;   * src/web/build.rs:1489 — folder-index emission is O(folders · files)
+;;     because of the inner `data.files.iter().any(...)` membership check.
+;;   * No `rayon` dependency in Cargo.toml. Wholesale build parallelism
+;;     is unrealised.
+
+(meta plan
+  (id "PERF-BUILD-2026-05-12")
+  (title "zetl build performance pass for large vaults")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-05-12")
+  (author "agent:claude")
+  (description
+   "Investigate and remediate `zetl build` performance for vaults with many pages and dense wikilink graphs. Phase 0 captures a measured baseline and flamegraph. Phase 1 fixes confirmed asymptotic and loop-invariant defects. Phase 2 introduces rayon parallelism in scanner and per-page render. Phase 3 verifies byte-equal output and reports speedup."))
+
+;; ---------------------------------------------------------------------------
+;; Agents
+;; ---------------------------------------------------------------------------
+
+(given agent-claude-available)
+
+;; ---------------------------------------------------------------------------
+;; Phase 0 — baseline & instrumentation
+;; ---------------------------------------------------------------------------
+
+(given task-bench-fixture)
+(meta task-bench-fixture
+  (priority "P0")
+  (description "Add a synthetic-vault generator (e.g. `cargo run --bin gen-vault -- --pages N --avg-links K`) that emits a deterministic vault under target/perf/vault-N/ with N pages and ~K outbound wikilinks per page. Cover at least three sizes: 1k, 10k, 50k pages. Mix in a realistic distribution of headings, transclusions, and code blocks so parse and render costs are representative.")
+  (acceptance "`gen-vault --pages 10000 --avg-links 12` produces a vault with 10k .md files in under 30s, deterministic across runs, and `zetl build --no-cache` against it completes successfully."))
+
+(given task-baseline-measurement)
+(meta task-baseline-measurement
+  (priority "P0")
+  (description "Capture cold-cache and warm-cache `zetl build` timings on the 1k, 10k, 50k synthetic vaults plus the maintainer's own real vault. Record wall time, peak RSS, and the OBS-007 / OBS-009 stage counters already emitted under `--verbose`. Save numbers in research/perf-build-2026-05-12.md as a baseline table.")
+  (acceptance "Markdown table in research/perf-build-2026-05-12.md showing wall time and RSS for cold vs warm builds at each vault size. Baseline documented for later regression and win comparison."))
+
+(given task-flamegraph)
+(meta task-flamegraph
+  (priority "P0")
+  (description "Profile a cold-cache build of the 10k-page synthetic vault using `cargo flamegraph` or `samply`. Annotate the top-10 self-time frames in research/perf-build-2026-05-12.md and label which suspected hot spot (scanner, per-page render, OG, git2, resolve_pages) each frame corresponds to. Falsify or confirm the audit hypotheses before writing optimisation code.")
+  (acceptance "Flamegraph SVG committed under research/. Top-10 frames listed with attribution. Each Phase 1 and Phase 2 task is either retained, dropped, or re-prioritised based on what the profile actually shows."))
+
+;; ---------------------------------------------------------------------------
+;; Phase 1 — confirmed asymptotic / loop-invariant fixes
+;; ---------------------------------------------------------------------------
+
+(given task-resolve-pages-index)
+(meta task-resolve-pages-index
+  (priority "P1")
+  (description "Replace `resolve_page_name` linear Vec scans (src/main.rs:215 and the historical-pipeline equivalent at src/main.rs:341) with a pre-built HashMap<lowercased_page_name, String>. Today every link pays an O(N) scan. On a 10k-page vault with 12 links per page that is roughly 1.2e9 string comparisons before render even begins.")
+  (acceptance "`run_pipeline` resolve_pages step on the 10k-page fixture drops by at least 20× wall time. Existing tests in tests/graph_resolution.rs (or equivalent) still pass. No behavioural change for collisions or case sensitivity."))
+
+(given task-folder-index-quadratic)
+(meta task-folder-index-quadratic
+  (priority "P1")
+  (description "Rewrite the folder-index emission loop in src/web/build.rs:1489 so the membership check is O(1) per folder instead of `data.files.iter().any(...)`. Build a single HashMap<folder_slug, Vec<&ParsedFile>> in one pass, then iterate once per folder.")
+  (acceptance "Per-folder loop wall time drops measurably on a 10k-page vault with deep folder nesting. Folder index pages still emitted with identical content (diff vs baseline is empty)."))
+
+(given task-hoist-git-repo)
+(meta task-hoist-git-repo
+  (priority "P1")
+  (description "Hoist `git2::Repository::discover(vault_root)` out of the per-page loop in src/web/build.rs:1420 (and the analogous call in src/web/git_commit.rs if it sits inside another loop). Open once before the page loop and pass &Repository down to file_log. Consider also batching `file_log` for all pages in one walk of the git history rather than one walk per page.")
+  (acceptance "Per-page _history.html emission is functionally identical and wall time for the per-page loop on a 1k-page git-backed vault drops measurably. Flamegraph no longer shows Repository::discover dominating the loop body."))
+
+;; ---------------------------------------------------------------------------
+;; Phase 2 — parallelism (rayon)
+;; ---------------------------------------------------------------------------
+
+(given task-add-rayon-dep)
+(meta task-add-rayon-dep
+  (priority "P1")
+  (description "Add the rayon crate (version 1.x) to Cargo.toml. Confirm no MSRV or feature regressions and that the existing test suite still passes with the dep present but unused.")
+  (acceptance "Cargo.lock updated. `cargo build --all-features` and `cargo test` both green. No other dependency churn."))
+
+(given task-parallel-scanner)
+(meta task-parallel-scanner
+  (priority "P1")
+  (description "Replace WalkBuilder::build() in src/scanner.rs:142 with build_parallel() (the ignore crate's parallel walker) feeding a thread-safe collector, OR collect file paths via the parallel walker then `par_iter().map(parse_file)` with rayon. parse_file plus Merkle leaf hashing is pure CPU and benefits linearly from cores. Care: preserve deterministic ordering of parsed_files (sort at the end) so downstream graph and slug map are stable.")
+  (acceptance "Cold-cache scan_vault on the 10k-page fixture is at least 4× faster on an 8-core machine. Output Vec<ParsedFile> is identical (sorted) to the sequential implementation. `cargo test scanner` green."))
+
+(given task-parallel-page-render)
+(meta task-parallel-page-render
+  (priority "P1")
+  (description "Convert the per-page loop in src/web/build.rs:1310 to `data.files.par_iter().for_each(...)` using rayon. Per-page work (markdown render, page_ctx build, history context, page HTML render, source copy, OG PNG, _history.html) is independent. Mind: TemplateEngine and shared state must be Send+Sync (or cloned per worker). Use atomics or DashMap for og_count and count. Disk writes are fine concurrently since each page writes to its own slug directory.")
+  (acceptance "Per-page render phase wall time on the 10k-page fixture drops at least 4× on 8 cores. Output directory diff vs sequential build is empty (byte-identical HTML, OG, source copies). Error propagation preserved (any per-page Err still aborts the build with a useful message)."))
+
+(given task-parallel-og)
+(meta task-parallel-og
+  (priority "P2")
+  (description "If task-parallel-page-render did not already cover OG PNG rendering (e.g. because OG was extracted into its own pass for locality), parallelise OG generation independently with rayon. OG composition is the heaviest single per-page CPU cost. Consider a small content-addressed cache keyed on (page_name, vault_name, og_bg_hash) so warm builds skip OG re-encode entirely.")
+  (acceptance "OG render wall time on 10k pages either disappears (covered by parallel-page-render) or drops at least 4× standalone. Warm builds skip OG re-encode for unchanged pages."))
+
+;; ---------------------------------------------------------------------------
+;; Phase 3 — verification & reporting
+;; ---------------------------------------------------------------------------
+
+(given task-bytewise-diff)
+(meta task-bytewise-diff
+  (priority "P0")
+  (description "Add a CI / local script that builds the 1k-page fixture twice (once with the pre-perf-pass binary, once with the post) and asserts the dist/ trees are byte-identical (modulo timestamps in sitemap.xml). Catches accidental nondeterminism introduced by parallelism or HashMap iteration order.")
+  (acceptance "Script `scripts/perf-diff.sh` exits 0 on clean builds. CI invokes it on every PR touching src/scanner.rs, the src/main.rs pipeline, or src/web/build.rs."))
+
+(given task-final-bench)
+(meta task-final-bench
+  (priority "P0")
+  (description "Re-run the baseline measurement matrix from task-baseline-measurement and append a 'post' column to the table in research/perf-build-2026-05-12.md. Compute speedup factors per stage. If wall-time speedup on the 10k-page cold-cache build is below 3×, open follow-up tasks for the remaining hot spots. Do not declare the pass complete.")
+  (acceptance "Updated research doc with before/after table and speedup factors. At least 3× cold-cache speedup on the 10k-page vault, OR a documented set of follow-up tasks explaining what blocks it."))
+
+;; ---------------------------------------------------------------------------
+;; Readiness rules — Phase 0 unblocks Phase 1; Phase 1 unblocks Phase 2.
+;; ---------------------------------------------------------------------------
+
+(normally r-ready-bench-fixture
+  task-bench-fixture
+  ready-bench-fixture)
+
+(normally r-ready-baseline
+  (and task-baseline-measurement completed-bench-fixture)
+  ready-baseline-measurement)
+
+(normally r-ready-flamegraph
+  (and task-flamegraph completed-baseline-measurement)
+  ready-flamegraph)
+
+;; Phase 1 fixes need a baseline so we can prove they help.
+(normally r-ready-resolve-pages
+  (and task-resolve-pages-index completed-baseline-measurement)
+  ready-resolve-pages-index)
+
+(normally r-ready-folder-index
+  (and task-folder-index-quadratic completed-baseline-measurement)
+  ready-folder-index-quadratic)
+
+(normally r-ready-hoist-git
+  (and task-hoist-git-repo completed-baseline-measurement)
+  ready-hoist-git-repo)
+
+;; Rayon dep is a prerequisite for both parallel tasks.
+(normally r-ready-rayon-dep
+  (and task-add-rayon-dep completed-baseline-measurement)
+  ready-add-rayon-dep)
+
+(normally r-ready-parallel-scanner
+  (and task-parallel-scanner completed-add-rayon-dep)
+  ready-parallel-scanner)
+
+(normally r-ready-parallel-page-render
+  (and task-parallel-page-render
+       completed-add-rayon-dep
+       completed-hoist-git-repo)
+  ready-parallel-page-render)
+
+(normally r-ready-parallel-og
+  (and task-parallel-og completed-parallel-page-render)
+  ready-parallel-og)
+
+;; Verification gates — bytewise diff must be wired before parallel
+;; tasks land so we can prove they're safe.
+(normally r-ready-bytewise-diff
+  (and task-bytewise-diff completed-baseline-measurement)
+  ready-bytewise-diff)
+
+(normally r-ready-final-bench
+  (and task-final-bench
+       completed-parallel-scanner
+       completed-parallel-page-render
+       completed-resolve-pages-index
+       completed-folder-index-quadratic
+       completed-hoist-git-repo
+       completed-bytewise-diff)
+  ready-final-bench)
+
+;; ---------------------------------------------------------------------------
+;; Assignment rules — single agent for now (HENCE_AGENT=claude).
+;; ---------------------------------------------------------------------------
+
+(normally r-assign-bench-fixture
+  (and ready-bench-fixture agent-claude-available)
+  assign-to-bench-fixture-claude)
+
+(normally r-assign-baseline
+  (and ready-baseline-measurement agent-claude-available)
+  assign-to-baseline-measurement-claude)
+
+(normally r-assign-flamegraph
+  (and ready-flamegraph agent-claude-available)
+  assign-to-flamegraph-claude)
+
+(normally r-assign-resolve-pages
+  (and ready-resolve-pages-index agent-claude-available)
+  assign-to-resolve-pages-index-claude)
+
+(normally r-assign-folder-index
+  (and ready-folder-index-quadratic agent-claude-available)
+  assign-to-folder-index-quadratic-claude)
+
+(normally r-assign-hoist-git
+  (and ready-hoist-git-repo agent-claude-available)
+  assign-to-hoist-git-repo-claude)
+
+(normally r-assign-rayon-dep
+  (and ready-add-rayon-dep agent-claude-available)
+  assign-to-add-rayon-dep-claude)
+
+(normally r-assign-parallel-scanner
+  (and ready-parallel-scanner agent-claude-available)
+  assign-to-parallel-scanner-claude)
+
+(normally r-assign-parallel-page-render
+  (and ready-parallel-page-render agent-claude-available)
+  assign-to-parallel-page-render-claude)
+
+(normally r-assign-parallel-og
+  (and ready-parallel-og agent-claude-available)
+  assign-to-parallel-og-claude)
+
+(normally r-assign-bytewise-diff
+  (and ready-bytewise-diff agent-claude-available)
+  assign-to-bytewise-diff-claude)
+
+(normally r-assign-final-bench
+  (and ready-final-bench agent-claude-available)
+  assign-to-final-bench-claude)
+
+;; ---------------------------------------------------------------------------
+;; Rule-level metadata — justify the readiness ordering.
+;; ---------------------------------------------------------------------------
+
+(meta r-ready-resolve-pages
+  (description "Resolve-pages fix gated on baseline.")
+  (justification "We need before/after numbers to prove the algorithmic change matters. Landing it without a baseline would be a flying-blind micro-optimisation."))
+
+(meta r-ready-parallel-page-render
+  (description "Parallel render gated on hoist-git-repo.")
+  (justification "Calling Repository::discover from N rayon workers concurrently is wasteful and may even contend on libgit2 internals. Hoisting to one shared repo is a pre-req for safe parallel render."))
+
+(meta r-ready-final-bench
+  (description "Final bench gates the whole pass.")
+  (justification "Without bytewise-diff and a measured speedup we cannot claim the pass is done. This is the closure rule for the plan."))
