@@ -128,12 +128,11 @@ fn p2_content_island_csp_admits_inline_style() {
     let (ok, log) = build(v);
     assert!(ok, "build failed: {log}");
     let html = page(v, "p");
-    // P2-5: the theme ships inline <style>; the CSP must admit it by hash, not block it
-    assert!(
-        html.contains("style-src 'self' 'sha256-"),
-        "style-src must carry inline-asset hashes: {}",
-        html.lines().find(|l| l.contains("style-src")).unwrap_or("")
-    );
+    // P2-5: the theme ships inline <script> (hashed) and inline styles + a data: favicon;
+    // the CSP must admit them so it doesn't block the theme's own assets.
+    assert!(html.contains("script-src 'self' 'sha256-"), "inline scripts hashed");
+    assert!(html.contains("style-src 'self' 'unsafe-inline'"), "inline styles admitted");
+    assert!(html.contains("img-src 'self' data:"), "data: images admitted");
 }
 
 #[test]

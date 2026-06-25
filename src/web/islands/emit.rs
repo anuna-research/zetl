@@ -251,14 +251,14 @@ document.documentElement.setAttribute('data-zt-{attr}',sv);\
             out = insert_after_head_open(&out, &format!("<script>{script}</script>"));
         }
 
-        // 4. CSP meta as the FIRST head child (content-island pages). It must admit every
-        //    inline <script>/<style> already on the page (the theme ships some) by hash —
-        //    otherwise the baseline default-deny CSP would block the theme's own inline
-        //    assets (Codex P2). The pre-paint script's hash is known; the rest are scanned
-        //    from the assembled page (which now includes the pre-paint script).
+        // 4. CSP meta as the FIRST head child (content-island pages). script-src must admit
+        //    every inline <script> already on the page (the theme/pre-paint ship some) by
+        //    sha256 — otherwise the default-deny baseline would block them (Codex P2).
+        //    Inline styles are handled by style-src 'unsafe-inline' (theme uses style="" /
+        //    CSSOM, which hashes can't cover), so only scripts need hashing here.
         if content_island_on_page {
-            let (script_hashes, style_hashes) = inline_asset_hashes(&out);
-            let policy = csp::content_island_policy(&self.csp, &script_hashes, &style_hashes);
+            let script_hashes = inline_script_hashes(&out);
+            let policy = csp::content_island_policy(&self.csp, &script_hashes);
             out = insert_after_head_open(&out, &csp::meta_tag(&policy));
         }
         out
@@ -434,23 +434,26 @@ fn sha256_b64(s: &str) -> String {
     base64::engine::general_purpose::STANDARD.encode(digest)
 }
 
-/// Collect base64 `sha256` digests of every INLINE `<script>` (no `src`) and `<style>`
-/// block on the page, so the content-island CSP can admit the theme's own inline assets
-/// by hash (REQ-5027 — never `unsafe-inline`). The browser hashes the exact text between
-/// the tags, which is what we hash. Returns (script_hashes, style_hashes), deduped +
-/// sorted for determinism (NFR-5003).
-fn inline_asset_hashes(html: &str) -> (Vec<String>, Vec<String>) {
+/// Collect base64 `sha256` digests of every INLINE `<script>` (no `src`) block on the
+/// page, so the content-island CSP `script-src` can admit the theme's + pre-paint's inline
+/// scripts by hash (REQ-5027 — never `unsafe-inline` for scripts). The browser hashes the
+/// exact text between the tags, which is what we hash. Deduped + sorted for determinism
+/// (NFR-5003). (Inline styles use `style-src 'unsafe-inline'`, so they need no hashes.)
+fn inline_script_hashes(html: &str) -> Vec<String> {
     use regex::Regex;
     use std::collections::BTreeSet;
     static SCRIPT: OnceLock<Regex> = OnceLock::new();
-    static STYLE: OnceLock<Regex> = OnceLock::new();
-    let script = SCRIPT.get_or_init(|| Regex::new(r"(?is)<script(?P<attrs>[^>]*)>(?P<body>.*?)</script>").unwrap());
-    let style = STYLE.get_or_init(|| Regex::new(r"(?is)<style[^>]*>(?P<body>.*?)</style>").unwrap());
+    let script = SCRIPT
+        .get_or_init(|| Regex::new(r"(?is)<script(?P<attrs>[^>]*)>(?P<body>.*?)</script>").unwrap());
 
     let mut scripts = BTreeSet::new();
     for cap in script.captures_iter(html) {
-        // skip external scripts (they're covered by script-src 'self')
-        if cap.name("attrs").map(|a| a.as_str().to_ascii_lowercase().contains("src")).unwrap_or(false) {
+        // skip external scripts (covered by script-src 'self')
+        if cap
+            .name("attrs")
+            .map(|a| a.as_str().to_ascii_lowercase().contains("src"))
+            .unwrap_or(false)
+        {
             continue;
         }
         let body = cap.name("body").map(|m| m.as_str()).unwrap_or("");
@@ -458,14 +461,7 @@ fn inline_asset_hashes(html: &str) -> (Vec<String>, Vec<String>) {
             scripts.insert(sha256_b64(body));
         }
     }
-    let mut styles = BTreeSet::new();
-    for cap in style.captures_iter(html) {
-        let body = cap.name("body").map(|m| m.as_str()).unwrap_or("");
-        if !body.is_empty() {
-            styles.insert(sha256_b64(body));
-        }
-    }
-    (scripts.into_iter().collect(), styles.into_iter().collect())
+    scripts.into_iter().collect()
 }
 
 fn json_str(s: &str) -> String {

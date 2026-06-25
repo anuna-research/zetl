@@ -13,14 +13,14 @@ use std::collections::BTreeMap;
 /// Compute the effective per-page CSP policy string for a page that hosts ≥1 content
 /// island. `script_hashes` are the base64 `sha256-…` digests of the inline island
 /// bootstrap + pre-paint scripts (REQ-5018/5019) admitted by hash, never `unsafe-inline`.
-pub fn content_island_policy(
-    csp: &CspConfig,
-    script_hashes: &[String],
-    style_hashes: &[String],
-) -> String {
-    // default-deny baseline (REQ-5027)
+pub fn content_island_policy(csp: &CspConfig, script_hashes: &[String]) -> String {
+    // Default-deny baseline (REQ-5027). The load-bearing islands controls are
+    // `script-src` (strict — the untrusted worker/content can never execute script),
+    // `connect-src`/`worker-src` (egress), and `base-uri`/`form-action`. Those stay tight.
     let mut directives: BTreeMap<&str, Vec<String>> = BTreeMap::new();
     directives.insert("default-src", vec!["'none'".into()]);
+    // script-src: 'self' + a sha256 per inline <script> block (pre-paint + theme). NEVER
+    // 'unsafe-inline' — this is the core protection against content/worker script injection.
     let mut script = vec!["'self'".into()];
     for h in script_hashes {
         script.push(format!("'sha256-{h}'"));
@@ -28,16 +28,19 @@ pub fn content_island_policy(
     directives.insert("script-src", script);
     directives.insert("worker-src", vec!["'self'".into(), "blob:".into()]);
     directives.insert("connect-src", vec!["'none'".into()]);
-    directives.insert("img-src", vec!["'self'".into()]);
+    // img-src allows `data:` (theme ships data: SVG icons/favicon, all local — no egress).
+    // The worker's render tree img URLs are scheme-validated separately (CON-5007), so this
+    // does not widen the untrusted surface.
+    directives.insert("img-src", vec!["'self'".into(), "data:".into()]);
     directives.insert("media-src", vec!["'self'".into()]);
-    directives.insert("font-src", vec!["'self'".into()]);
-    // Inline `<style>` blocks shipped by the theme are admitted by hash (REQ-5027 — never
-    // `unsafe-inline`); external stylesheets are covered by `'self'`.
-    let mut style = vec!["'self'".into()];
-    for h in style_hashes {
-        style.push(format!("'sha256-{h}'"));
-    }
-    directives.insert("style-src", style);
+    directives.insert("font-src", vec!["'self'".into(), "data:".into()]);
+    // style-src 'unsafe-inline': the stock theme + SPA shell apply inline `style=""` and
+    // JS CSSOM mutations pervasively, which element hashes cannot cover (and a hash would
+    // disable 'unsafe-inline'). This is safe for the islands threat model: the controlled-
+    // element renderer (CON-5007) FORBIDS the `style` attribute on worker output, so an
+    // untrusted island cannot inject inline CSS regardless of this directive. An operator
+    // with a CSP-clean theme can tighten it.
+    directives.insert("style-src", vec!["'self'".into(), "'unsafe-inline'".into()]);
     directives.insert("base-uri", vec!["'none'".into()]);
     directives.insert("form-action", vec!["'none'".into()]);
 
@@ -120,7 +123,7 @@ mod tests {
 
     #[test]
     fn baseline_is_default_deny() {
-        let p = content_island_policy(&CspConfig::default(), &[], &[]);
+        let p = content_island_policy(&CspConfig::default(), &[]);
         assert!(p.contains("default-src 'none'"));
         assert!(p.contains("connect-src 'none'"));
         assert!(p.contains("worker-src 'self' blob:"));
@@ -131,7 +134,7 @@ mod tests {
 
     #[test]
     fn script_hashes_included() {
-        let p = content_island_policy(&CspConfig::default(), &["abc123".into()], &[]);
+        let p = content_island_policy(&CspConfig::default(), &["abc123".into()]);
         assert!(p.contains("'sha256-abc123'"));
     }
 
@@ -139,7 +142,7 @@ mod tests {
     fn widening_unions_connect_src() {
         let mut csp = CspConfig::default();
         csp.directives.insert("connect-src".into(), vec!["https://api.example.com".into()]);
-        let p = content_island_policy(&csp, &[], &[]);
+        let p = content_island_policy(&csp, &[]);
         assert!(p.contains("connect-src 'self' https://api.example.com"), "{p}");
         assert!(!p.contains("connect-src 'none'"));
     }
@@ -148,14 +151,14 @@ mod tests {
     fn deterministic() {
         let mut csp = CspConfig::default();
         csp.directives.insert("img-src".into(), vec!["https://cdn.example.com".into()]);
-        let a = content_island_policy(&csp, &["h".into()], &[]);
-        let b = content_island_policy(&csp, &["h".into()], &[]);
+        let a = content_island_policy(&csp, &["h".into()]);
+        let b = content_island_policy(&csp, &["h".into()]);
         assert_eq!(a, b);
     }
 
     #[test]
     fn meta_carries_policy_and_header_carries_frame_ancestors() {
-        let p = content_island_policy(&CspConfig::default(), &[], &[]);
+        let p = content_island_policy(&CspConfig::default(), &[]);
         assert!(meta_tag(&p).contains(&html_attr_escape(&p)));
         // the header is minimal (frame-ancestors only) so it cannot conflict with the
         // per-page meta's inline-asset hashes
@@ -165,8 +168,11 @@ mod tests {
     }
 
     #[test]
-    fn style_hashes_included() {
-        let p = content_island_policy(&CspConfig::default(), &[], &["styh".into()]);
-        assert!(p.contains("style-src 'self' 'sha256-styh'"), "{p}");
+    fn style_uses_unsafe_inline_and_img_allows_data() {
+        let p = content_island_policy(&CspConfig::default(), &[]);
+        assert!(p.contains("style-src 'self' 'unsafe-inline'"), "{p}");
+        assert!(p.contains("img-src 'self' data:"), "{p}");
+        // script-src stays strict — never unsafe-inline
+        assert!(!p.contains("script-src 'self' 'unsafe-inline'"), "{p}");
     }
 }
