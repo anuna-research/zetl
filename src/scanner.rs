@@ -39,6 +39,16 @@ pub fn scan_vault(root: &Path, opts: &ScanOptions) -> Result<Vec<ParsedFile>> {
     let mut builder = WalkBuilder::new(root);
     builder
         .hidden(false) // dotfile/dotdir handling is delegated to filter_entry below
+        // `.zetlignore` is the sole file-based authority. Disable every other
+        // ignore source the `ignore` crate consults so the scan cannot be
+        // perturbed by files outside the vault. In particular `.parents(false)`
+        // stops the walker climbing above `root`: without it, a vault nested
+        // inside an unrelated repo whose ancestor carries an ignore-everything
+        // rule (`*` in a parent `.gitignore`/`.ignore`) would scan to zero
+        // pages. `.ignore(false)` likewise drops generic `.ignore` files so
+        // only `.zetlignore` (registered below) governs exclusions.
+        .parents(false)
+        .ignore(false) // generic `.ignore` files are never consulted
         .git_ignore(false) // .gitignore is never consulted; .zetlignore is the sole file-based authority
         .git_global(false)
         .git_exclude(false);
