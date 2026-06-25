@@ -29,6 +29,31 @@ fn slugify_heading(text: &str) -> String {
     out
 }
 
+/// Compute the URL fragment for a wikilink/transclusion target's `#section` part so a
+/// `[[page#Section]]` link lands on the section, not the page top. The fragment is the
+/// slugified heading id emitted by [`inject_heading_ids`], so the two always agree.
+///
+/// Returns `""` when the target has no `#section`, an empty section, or a `#^block-id`
+/// reference (the page-body render emits no anchor for block refs, so a fragment there
+/// would be a dead link — left page-level instead).
+fn link_fragment(target: &str) -> String {
+    match target.split_once('#') {
+        Some((_, section)) => {
+            let section = section.trim();
+            if section.is_empty() || section.starts_with('^') {
+                return String::new();
+            }
+            let slug = slugify_heading(section);
+            if slug.is_empty() {
+                String::new()
+            } else {
+                format!("#{slug}")
+            }
+        }
+        None => String::new(),
+    }
+}
+
 /// Walk `events` and populate `id` on every `Tag::Heading` whose id is
 /// currently `None`. The id is a slugified form of the heading's visible
 /// text (concatenating `Event::Text`, `Event::Code`, and `Event::Html`
@@ -532,8 +557,9 @@ fn replace_wikilinks_in_segment(
         } else {
             (inner, inner)
         };
-        // Strip heading/block refs for page resolution
+        // Strip heading/block refs for page resolution; keep the `#section` for the href.
         let page = target.split('#').next().unwrap_or(target).trim();
+        let fragment = link_fragment(target);
         let display = html_escape(display.trim());
         // Look up slug by case-insensitive page name match
         let slug = slug_map
@@ -543,18 +569,20 @@ fn replace_wikilinks_in_segment(
 
         if let Some(slug) = slug {
             format!(
-                r#"<a href="{root_path}{href}/{index_file}" class="link link-primary wikilink">{display}</a>"#,
+                r#"<a href="{root_path}{href}/{index_file}{fragment}" class="link link-primary wikilink">{display}</a>"#,
                 root_path = root_path,
                 href = urlencoding(slug),
                 index_file = index_file,
+                fragment = fragment,
                 display = display,
             )
         } else {
             format!(
-                r#"<a href="{root_path}{href}/{index_file}" class="link-error wikilink wikilink-dead">{display}</a>"#,
+                r#"<a href="{root_path}{href}/{index_file}{fragment}" class="link-error wikilink wikilink-dead">{display}</a>"#,
                 root_path = root_path,
                 href = urlencoding(page),
                 index_file = index_file,
+                fragment = fragment,
                 display = display,
             )
         }
@@ -724,6 +752,7 @@ fn replace_wikilinks_visibility_segment(
             (inner, inner)
         };
         let page = target.split('#').next().unwrap_or(target).trim();
+        let fragment = link_fragment(target);
         let display = html_escape(display.trim());
 
         // Check if page is denied (case-insensitive lookup)
@@ -773,10 +802,11 @@ fn replace_wikilinks_visibility_segment(
             }
         } else if let Some(slug) = slug {
             format!(
-                r#"<a href="{root_path}{href}/{index_file}" class="link link-primary wikilink">{display}</a>"#,
+                r#"<a href="{root_path}{href}/{index_file}{fragment}" class="link link-primary wikilink">{display}</a>"#,
                 root_path = root_path,
                 href = urlencoding(slug),
                 index_file = index_file,
+                fragment = fragment,
                 display = display,
             )
         } else {
@@ -1229,6 +1259,39 @@ mod tests {
         );
         // Unicode letters stay (URL-safe in modern browsers).
         assert_eq!(slugify_heading("Schrödinger's cat"), "schrödinger-s-cat");
+    }
+
+    #[test]
+    fn section_wikilinks_carry_slugified_fragment() {
+        // Regression: `[[page#Section]]` must link to the page's slugified heading id
+        // (matching inject_heading_ids), not just the page top.
+        let mut slug_map = HashMap::new();
+        slug_map.insert("Handbook".to_string(), "handbook".to_string());
+        let html = render_to_html(
+            "See [[Handbook#Mission Statement]] and [[Handbook]].",
+            &slug_map,
+            "../",
+            "index.html",
+        );
+        assert!(
+            html.contains(r#"href="../handbook/index.html#mission-statement""#),
+            "section link should carry the slugified fragment; got: {html}"
+        );
+        // a plain page link (no section) carries no fragment
+        assert!(
+            html.contains(r#"href="../handbook/index.html" class="link link-primary wikilink">Handbook</a>"#),
+            "plain page link should have no fragment; got: {html}"
+        );
+    }
+
+    #[test]
+    fn link_fragment_rules() {
+        assert_eq!(link_fragment("page#Mission"), "#mission");
+        assert_eq!(link_fragment("page#Two Words"), "#two-words");
+        assert_eq!(link_fragment("page"), "");
+        assert_eq!(link_fragment("page#"), "");
+        // block refs get no body anchor → no fragment (avoids a dead link)
+        assert_eq!(link_fragment("page#^block-1"), "");
     }
 
     #[test]
