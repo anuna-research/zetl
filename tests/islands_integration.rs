@@ -58,6 +58,84 @@ type = "enum(\"yes\",\"no\")"
     write(v, ".zetl/components/poll/poll.js", "self.onmessage=function(){};\n");
 }
 
+/// A persisted-topic island (regression for Codex P2-2/P2-3).
+fn write_themed_poll(v: &Path) {
+    write(
+        v,
+        ".zetl/components/poll/poll.html",
+        "<div data-z=\"{{ _name }}\" class=\"poll\">{{ caller() }}</div>",
+    );
+    write(
+        v,
+        ".zetl/components/poll/poll.toml",
+        r#"name = "poll"
+requires = ["site"]
+content_invocable = true
+content_props = []
+publishes = ["content:theme"]
+render = "worker"
+paints = true
+hydrate = "load"
+[props]
+[island.topics."content:theme"]
+type = "enum(\"light\",\"dark\")"
+persisted = true
+default = "light"
+"#,
+    );
+    write(v, ".zetl/components/poll/poll.js", "self.onmessage=function(){};\n");
+}
+
+#[test]
+fn p2_persisted_topic_emits_persist_marker_and_raw_localstorage_key() {
+    let dir = TempDir::new().unwrap();
+    let v = dir.path();
+    write_themed_poll(v);
+    write(v, "p.md", ":::poll{}\npick\n:::\n");
+    let (ok, log) = build(v);
+    assert!(ok, "build failed: {log}");
+    let html = page(v, "p");
+    // P2-3: the runtime needs data-island-persist to register persisted topics
+    assert!(html.contains("data-island-persist"), "persist marker emitted: {html}");
+    // P2-2: pre-paint reads the RAW colon key the runtime writes, not a sanitised one
+    assert!(html.contains("zetl:topic:content:theme"), "pre-paint reads raw key");
+    assert!(!html.contains("zetl:topic:content-theme"), "must not use sanitised key");
+}
+
+#[test]
+fn p2_island_manifest_without_script_fails_build() {
+    let dir = TempDir::new().unwrap();
+    let v = dir.path();
+    // island fields present, but no poll.js → hydration would always fail
+    write(v, ".zetl/components/poll/poll.html", "<div data-z=\"{{ _name }}\"></div>");
+    write(
+        v,
+        ".zetl/components/poll/poll.toml",
+        "name = \"poll\"\ncontent_invocable = true\ncontent_props = []\npublishes = [\"content:x\"]\nrender = \"worker\"\npaints = true\n[props]\n[island.topics.\"content:x\"]\ntype = \"int\"\n",
+    );
+    write(v, "p.md", "# x\n");
+    let (ok, log) = build(v);
+    assert!(!ok, "island manifest without a client script must fail the build");
+    assert!(log.contains("island-script-missing") || log.contains("island error"), "log: {log}");
+}
+
+#[test]
+fn p2_content_island_csp_admits_inline_style() {
+    let dir = TempDir::new().unwrap();
+    let v = dir.path();
+    write_poll(v);
+    write(v, "p.md", ":::poll{}\nvote\n:::\n");
+    let (ok, log) = build(v);
+    assert!(ok, "build failed: {log}");
+    let html = page(v, "p");
+    // P2-5: the theme ships inline <style>; the CSP must admit it by hash, not block it
+    assert!(
+        html.contains("style-src 'self' 'sha256-"),
+        "style-src must carry inline-asset hashes: {}",
+        html.lines().find(|l| l.contains("style-src")).unwrap_or("")
+    );
+}
+
 #[test]
 fn req5001_emits_island_assets_once() {
     let dir = TempDir::new().unwrap();

@@ -289,9 +289,13 @@ impl<'a> Scanner<'a> {
                 continue;
             }
 
-            // Otherwise a normal text line — but it may contain inline directives.
+            // Otherwise a normal text line, appended verbatim. The inline form
+            // (`:name[label]{attrs}`) is DEFERRED in v1 (CON-4901 Q2): expanding it
+            // requires inline-level Markdown rendering within a paragraph, which the
+            // block-segment expansion model cannot do without splitting the paragraph
+            // into separate <p> blocks. Until that lands, `:name[…]` stays literal text.
             self.idx += 1;
-            push_line_with_inline(&mut nodes, &mut text_buf, line, self.idx);
+            text_buf.push_str(line);
         }
 
         flush_text(&mut nodes, &mut text_buf);
@@ -431,130 +435,6 @@ fn flush_text(nodes: &mut Vec<Node>, buf: &mut String) {
     }
 }
 
-/// Recognise inline directives `:name[label]{attrs}` within a text line, splitting the
-/// line into text and inline-directive nodes. Inline code spans (backtick runs) are
-/// skipped (their content is literal). Anything not a well-formed inline directive stays
-/// text (fail closed).
-fn push_line_with_inline(nodes: &mut Vec<Node>, text_buf: &mut String, line: &str, line_no: usize) {
-    let bytes = line.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        let c = bytes[i];
-        if c == b'`' {
-            // copy through an inline code span verbatim
-            let run = bytes[i..].iter().take_while(|&&b| b == b'`').count();
-            text_buf.push_str(&line[i..i + run]);
-            i += run;
-            // find the closing run of the same length
-            if let Some(end) = find_code_span_close(line, i, run) {
-                text_buf.push_str(&line[i..end + run]);
-                i = end + run;
-            }
-            continue;
-        }
-        if c == b':' {
-            // potential inline directive — but NOT if part of `::`/`:::` (block forms),
-            // i.e. require exactly one leading colon here.
-            let colons = line[i..].bytes().take_while(|&b| b == b':').count();
-            if colons == 1 {
-                if let Some((dir, consumed)) = try_inline(&line[i..], line_no) {
-                    flush_text(nodes, text_buf);
-                    nodes.push(Node::Directive(dir));
-                    i += consumed;
-                    continue;
-                }
-            } else {
-                // copy the whole colon run so we don't re-trigger on each colon
-                text_buf.push_str(&line[i..i + colons]);
-                i += colons;
-                continue;
-            }
-        }
-        // default: copy one char (handle UTF-8 boundaries)
-        let ch_len = utf8_len(c);
-        text_buf.push_str(&line[i..i + ch_len]);
-        i += ch_len;
-    }
-    let _ = line_no;
-}
-
-/// Try to parse an inline directive at the start of `s` (which begins with a single
-/// `:`). Inline form REQUIRES a `[label]` (CON-4901: `:name[label]{attrs}`). Returns the
-/// directive and the number of bytes consumed.
-fn try_inline(s: &str, line_no: usize) -> Option<(Directive, usize)> {
-    debug_assert!(s.starts_with(':'));
-    let after_colon = &s[1..];
-    let name_end = after_colon
-        .find(|c: char| c == '[' || c == '{' || c.is_whitespace())
-        .unwrap_or(after_colon.len());
-    let name = &after_colon[..name_end];
-    if !is_valid_directive_name(name) {
-        return None;
-    }
-    let mut cursor = &after_colon[name_end..];
-    let mut consumed = 1 + name_end;
-
-    // label is REQUIRED for inline
-    let label = if let Some(stripped) = cursor.strip_prefix('[') {
-        let close = stripped.find(']')?;
-        let lbl = stripped[..close].to_string();
-        consumed += 1 + close + 1;
-        cursor = &stripped[close + 1..];
-        lbl
-    } else {
-        return None;
-    };
-
-    // optional {attrs}
-    let mut attrs = Vec::new();
-    if let Some(stripped) = cursor.strip_prefix('{') {
-        let close = stripped.find('}')?;
-        let inner = &stripped[..close];
-        attrs = parse_attr_block(inner).ok()?;
-        consumed += 1 + close + 1;
-    }
-
-    Some((
-        Directive {
-            form: DirectiveForm::Inline,
-            name: name.to_string(),
-            attrs,
-            label: Some(label),
-            children: Vec::new(),
-            line: line_no,
-        },
-        consumed,
-    ))
-}
-
-/// Find the byte index of the start of a closing backtick run of length `run` at or
-/// after `from`.
-fn find_code_span_close(line: &str, from: usize, run: usize) -> Option<usize> {
-    let bytes = line.as_bytes();
-    let mut i = from;
-    while i < bytes.len() {
-        if bytes[i] == b'`' {
-            let n = bytes[i..].iter().take_while(|&&b| b == b'`').count();
-            if n == run {
-                return Some(i);
-            }
-            i += n;
-        } else {
-            i += 1;
-        }
-    }
-    None
-}
-
-fn utf8_len(first_byte: u8) -> usize {
-    match first_byte {
-        b if b < 0x80 => 1,
-        b if b >> 5 == 0b110 => 2,
-        b if b >> 4 == 0b1110 => 3,
-        _ => 4,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -612,16 +492,13 @@ mod tests {
     }
 
     #[test]
-    fn parses_inline() {
+    fn inline_form_is_deferred_to_literal_text() {
+        // Inline directives are DEFERRED in v1 (Q2): they stay literal text so they cannot
+        // break a paragraph into separate <p> blocks. Container/leaf are unaffected.
         let src = "see :abbr[HTML]{title=\"HyperText\"} here\n";
         let nodes = scan(src);
-        let ds = dirs(&nodes);
-        assert_eq!(ds.len(), 1);
-        let d = ds[0];
-        assert_eq!(d.form, DirectiveForm::Inline);
-        assert_eq!(d.name, "abbr");
-        assert_eq!(d.label.as_deref(), Some("HTML"));
-        assert_eq!(d.attrs, vec![Attr::KeyValue { key: "title".into(), value: "HyperText".into() }]);
+        assert!(dirs(&nodes).is_empty(), "inline directive must not be recognised in v1");
+        assert!(matches!(nodes.first(), Some(Node::Text(t)) if t.contains(":abbr[HTML]")));
     }
 
     #[test]

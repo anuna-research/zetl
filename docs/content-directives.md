@@ -50,7 +50,12 @@ Three forms, after the remark-directive / CommonMark generic-directive prior art
 |------|--------|------|
 | Container | `:::name{attrs}` … `:::` | a Markdown body → the default slot |
 | Leaf | `::name{attrs}` | none |
-| Inline | `:name[label]{attrs}` | the `[label]` text |
+| Inline | `:name[label]{attrs}` | **deferred in v1** — stays literal text (Q2) |
+
+> The inline form is recognised by the grammar but **not expanded in v1** (open question
+> Q2): expanding it correctly needs inline-level Markdown rendering within a paragraph,
+> which the current block-segment expansion cannot do without splitting the paragraph. So
+> `:name[…]` renders as literal text for now. Use container/leaf forms.
 
 - `name` is kebab-case. `{attrs}` accepts `#id`, `.class`, `key=value`, `key="quoted"`,
   and bare `key` flags (boolean true). Quoted values are single-line.

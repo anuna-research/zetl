@@ -3,6 +3,8 @@
 /demo-dist
 .zetl/
 .DS_Store
+# Local Wrangler state/cache — contains a personal account id/name, not build input.
+.wrangler/
 # Mobile build artifacts produced by `make mobile-android-build*`.
 *.apk
 *.aab

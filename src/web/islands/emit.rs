@@ -10,11 +10,12 @@
 use super::manifest::IslandManifest;
 use super::theme::CspConfig;
 use super::wiring::{self, WiringReport};
-use super::{csp, manifest as island_manifest, theme as island_theme, IResult};
+use super::{csp, manifest as island_manifest, theme as island_theme, IResult, IslandError};
 use crate::web::components::resolve::discover_components;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::OnceLock;
 
 /// The browser runtime, embedded at compile time and emitted once per island build.
 const ISLANDS_RUNTIME: &str = include_str!("../assets/islands.js");
@@ -38,8 +39,20 @@ impl IslandSet {
         let mut scripts = BTreeMap::new();
         for (name, c) in &comps {
             if let Some(im) = island_manifest::parse(&c.manifest)? {
-                if let Some(js) = &c.js {
-                    scripts.insert(name.clone(), js.clone());
+                // An island manifest declares runtime behaviour (publishes/subscribes/
+                // render/paints/hydrate) — it is meaningless without a client script. A
+                // missing `<name>.js` would emit a worker URL pointing at a file that is
+                // never written, so hydration always fails. Reject at build (Codex P2).
+                match &c.js {
+                    Some(js) => {
+                        scripts.insert(name.clone(), js.clone());
+                    }
+                    None => {
+                        return Err(IslandError::new(
+                            "island-script-missing",
+                            format!("component `{name}` declares island fields but ships no `{name}.js`"),
+                        ));
+                    }
                 }
                 islands.insert(name.clone(), im);
             }
@@ -94,15 +107,20 @@ impl IslandSet {
             // applied if it is a simple safe token (no control chars, no CSS-selector
             // breakout, bounded length); otherwise the declared default is used. All in
             // try/catch, default on any failure (BUG-8).
+            // The localStorage key uses the RAW topic (`zetl:topic:content:vote`) to match
+            // what the runtime writes (CON-5004); only the DOM attribute name is sanitised
+            // (`data-zt-content-vote`). Using the sanitised name for the key made pre-paint
+            // read a key the runtime never wrote, so stored values were ignored (Codex P2).
             entries.push_str(&format!(
-                "try{{var v=localStorage.getItem('zetl:topic:{t}');var d={def};\
+                "try{{var v=localStorage.getItem('zetl:topic:{key}');var d={def};\
 var val=(v==null||v==='')?d:JSON.parse(v);\
 if(typeof val==='object'){{val=d;}}\
 var sv=String(val);\
 if(!/^[A-Za-z0-9_.:-]{{0,64}}$/.test(sv)){{sv=String(d);}}\
-document.documentElement.setAttribute('data-zt-{t}',sv);\
-}}catch(e){{try{{document.documentElement.setAttribute('data-zt-{t}',String({def}));}}catch(_){{}}}}",
-                t = sanitise_attr_name(topic),
+document.documentElement.setAttribute('data-zt-{attr}',sv);\
+}}catch(e){{try{{document.documentElement.setAttribute('data-zt-{attr}',String({def}));}}catch(_){{}}}}",
+                key = js_single_quote_escape(topic),
+                attr = sanitise_attr_name(topic),
                 def = default_json,
             ));
         }
@@ -128,11 +146,15 @@ document.documentElement.setAttribute('data-zt-{t}',sv);\
                 std::fs::write(islands_dir.join(format!("{name}.js")), js)?;
             }
         }
-        // CSP headers artifact (served-deploy form) for content-island builds (REQ-5027)
+        // CSP headers artifact (served-deploy form) for content-island builds (REQ-5027).
+        // The per-page script/style restrictions (with inline-asset hashes) live in each
+        // page's <meta> CSP — those can't go in a single build-wide header without
+        // blocking the theme's own inline assets. The header therefore carries only the
+        // directives <meta> cannot express (frame-ancestors) plus the operator's declared
+        // egress widenings, leaving script/style enforcement to the authoritative meta so
+        // the two never conflict on inline assets (Codex P2).
         if self.has_content_island() {
-            let hashes = self.prepaint().map(|(_, h)| vec![h]).unwrap_or_default();
-            let policy = csp::content_island_policy(&self.csp, &hashes);
-            std::fs::write(out.join("_headers.csp"), csp::headers_artifact(&policy))?;
+            std::fs::write(out.join("_headers.csp"), csp::headers_artifact(&self.csp))?;
         }
         // wiring audit (deterministic) — REQ-5009 / OBS-4801 extension
         std::fs::write(static_dir.join("island-audit.json"), self.audit_json())?;
@@ -204,18 +226,8 @@ document.documentElement.setAttribute('data-zt-{t}',sv);\
                 .into_owned();
         }
 
-        // 2. assemble head assets
-        let mut head_top = String::new(); // inserted right after <head>
-        let mut head_end = String::new(); // inserted before </head>
-
-        if content_island_on_page {
-            let hashes = persisted.as_ref().map(|(_, h)| vec![h.clone()]).unwrap_or_default();
-            let policy = csp::content_island_policy(&self.csp, &hashes);
-            head_top.push_str(&csp::meta_tag(&policy));
-        }
-        if let Some((script, _hash)) = &persisted {
-            head_top.push_str(&format!("<script>{script}</script>"));
-        }
+        // 2. head-end: external island scripts (covered by script-src 'self', no hash).
+        let mut head_end = String::new();
         if !present.is_empty() {
             head_end.push_str(&format!(
                 "<script defer src=\"{root_path}_static/zetl-islands.js\"></script>"
@@ -230,12 +242,24 @@ document.documentElement.setAttribute('data-zt-{t}',sv);\
                 }
             }
         }
-
-        if !head_top.is_empty() {
-            out = insert_after_head_open(&out, &head_top);
-        }
         if !head_end.is_empty() {
             out = insert_before_head_close(&out, &head_end);
+        }
+
+        // 3. pre-paint inline script (render-blocking) right after <head>.
+        if let Some((script, _hash)) = &persisted {
+            out = insert_after_head_open(&out, &format!("<script>{script}</script>"));
+        }
+
+        // 4. CSP meta as the FIRST head child (content-island pages). It must admit every
+        //    inline <script>/<style> already on the page (the theme ships some) by hash —
+        //    otherwise the baseline default-deny CSP would block the theme's own inline
+        //    assets (Codex P2). The pre-paint script's hash is known; the rest are scanned
+        //    from the assembled page (which now includes the pre-paint script).
+        if content_island_on_page {
+            let (script_hashes, style_hashes) = inline_asset_hashes(&out);
+            let policy = csp::content_island_policy(&self.csp, &script_hashes, &style_hashes);
+            out = insert_after_head_open(&out, &csp::meta_tag(&policy));
         }
         out
     }
@@ -260,12 +284,36 @@ document.documentElement.setAttribute('data-zt-{t}',sv);\
                 " data-island-grants='{}'",
                 attr_escape(&self.grants_json(im))
             ));
+        }
+        // Declared topic types are needed by the runtime bus for EVERY island (trusted +
+        // content) so payloads recognise correctly; emit whenever any topic is declared.
+        if !im.topics.is_empty() {
             m.push_str(&format!(
                 " data-island-types='{}'",
                 attr_escape(&self.types_json(im))
             ));
         }
+        // Persisted-topic defaults: without this marker the runtime never calls
+        // seedPersisted/persistOnChange, so persisted topics are never written to
+        // localStorage and cross-tab reflection is dead (Codex P2).
+        let persist = self.persist_json(im);
+        if persist != "{}" {
+            m.push_str(&format!(" data-island-persist='{}'", attr_escape(&persist)));
+        }
         m
+    }
+
+    /// `{ "<topic>": <defaultJson> }` for the island's persisted topics (REQ-5006).
+    fn persist_json(&self, im: &IslandManifest) -> String {
+        let mut parts = Vec::new();
+        for (name, decl) in &im.topics {
+            if decl.persisted {
+                if let Some(def) = &decl.default {
+                    parts.push(format!("{}:{}", json_str(name), toml_to_json(def)));
+                }
+            }
+        }
+        format!("{{{}}}", parts.join(","))
     }
 
     fn grants_json(&self, im: &IslandManifest) -> String {
@@ -350,6 +398,12 @@ fn sanitise_attr_name(topic: &str) -> String {
     topic.replace(':', "-")
 }
 
+/// Escape a string for embedding inside a single-quoted JS string literal. Topic names
+/// are CON-5001-restricted (no quotes/backslashes), but escape defensively.
+fn js_single_quote_escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('\'', "\\'")
+}
+
 /// A regex matching a real `data-z="<name>"` attribute *inside a start tag* — i.e. with
 /// no `<`/`>` between the tag open and the attribute. This distinguishes a component's
 /// emitted root attribute from a literal `data-z="…"` occurrence in prose/code text
@@ -378,6 +432,40 @@ fn sha256_b64(s: &str) -> String {
     use base64::Engine;
     let digest = Sha256::digest(s.as_bytes());
     base64::engine::general_purpose::STANDARD.encode(digest)
+}
+
+/// Collect base64 `sha256` digests of every INLINE `<script>` (no `src`) and `<style>`
+/// block on the page, so the content-island CSP can admit the theme's own inline assets
+/// by hash (REQ-5027 — never `unsafe-inline`). The browser hashes the exact text between
+/// the tags, which is what we hash. Returns (script_hashes, style_hashes), deduped +
+/// sorted for determinism (NFR-5003).
+fn inline_asset_hashes(html: &str) -> (Vec<String>, Vec<String>) {
+    use regex::Regex;
+    use std::collections::BTreeSet;
+    static SCRIPT: OnceLock<Regex> = OnceLock::new();
+    static STYLE: OnceLock<Regex> = OnceLock::new();
+    let script = SCRIPT.get_or_init(|| Regex::new(r"(?is)<script(?P<attrs>[^>]*)>(?P<body>.*?)</script>").unwrap());
+    let style = STYLE.get_or_init(|| Regex::new(r"(?is)<style[^>]*>(?P<body>.*?)</style>").unwrap());
+
+    let mut scripts = BTreeSet::new();
+    for cap in script.captures_iter(html) {
+        // skip external scripts (they're covered by script-src 'self')
+        if cap.name("attrs").map(|a| a.as_str().to_ascii_lowercase().contains("src")).unwrap_or(false) {
+            continue;
+        }
+        let body = cap.name("body").map(|m| m.as_str()).unwrap_or("");
+        if !body.is_empty() {
+            scripts.insert(sha256_b64(body));
+        }
+    }
+    let mut styles = BTreeSet::new();
+    for cap in style.captures_iter(html) {
+        let body = cap.name("body").map(|m| m.as_str()).unwrap_or("");
+        if !body.is_empty() {
+            styles.insert(sha256_b64(body));
+        }
+    }
+    (scripts.into_iter().collect(), styles.into_iter().collect())
 }
 
 fn json_str(s: &str) -> String {

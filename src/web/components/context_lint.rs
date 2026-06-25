@@ -478,10 +478,12 @@ fn walk_stmt(
                 Some(true) => walk_body(&a.body, state, env, true)?,
                 Some(false) => walk_body(&a.body, state, env, false)?,
                 None => {
-                    // dynamic autoescape — cannot prove Html over taint
-                    walk_body(&a.body, state, env, escape_html)?;
-                    // if the body contains taint we cannot guarantee escaping
-                    // (handled inside via escape flag = current); conservative: leave as-is
+                    // Dynamic autoescape (e.g. `{% autoescape props.esc %}`): we cannot
+                    // prove Html-escaping is on, and a content author could turn it off at
+                    // render — so analyse the body as if escaping is DISABLED (fail
+                    // closed). Any tainted scalar/url emit inside then trips
+                    // content-context-unsafe via check_emit's escape_html guard (Codex P1).
+                    walk_body(&a.body, state, env, false)?;
                 }
             }
         }
@@ -991,6 +993,15 @@ mod tests {
     #[test]
     fn autoescape_false_over_taint_unsafe() {
         let e = lint(r#"{% autoescape false %}<p>{{ props.msg }}</p>{% endautoescape %}"#)
+            .unwrap_err();
+        assert_eq!(e.code, "content-context-unsafe");
+    }
+
+    #[test]
+    fn dynamic_autoescape_over_taint_unsafe() {
+        // A non-const autoescape expr could be turned off at render; the body is analysed
+        // as if escaping is disabled, so a tainted scalar in text is rejected (Codex P1).
+        let e = lint(r#"{% autoescape props.n %}<p>{{ props.msg }}</p>{% endautoescape %}"#)
             .unwrap_err();
         assert_eq!(e.code, "content-context-unsafe");
     }

@@ -690,18 +690,32 @@
   // vbscript:/file: and protocol-relative //.
   function isSafeUrl(url) {
     if (typeof url !== "string") { return false; }
-    var u = url.trim();
-    if (u === "") { return true; } // empty is harmless
-    // Reject protocol-relative //evil.com (would inherit page scheme, off-origin).
-    if (u.indexOf("//") === 0) { return false; }
-    // Strip leading control/whitespace already trimmed; check for a scheme.
-    // A scheme is [a-z][a-z0-9+.-]* followed by ':'. Decode-resistant: also reject
-    // schemes hidden behind embedded controls (already control-checked by recogniser).
-    var m = /^([a-zA-Z][a-zA-Z0-9+.\-]*):/.exec(u);
+    if (url.length > 4096) { return false; }
+    // CANONICALISE first (Codex P1): a render-tree URL reaches us as a raw string, so
+    // strip ALL ASCII control chars AND whitespace and lowercase before the scheme check
+    // — the browser canonicalises `Java\tscript:` → `javascript:`, so a tab/newline
+    // inside the scheme MUST NOT make us treat it as relative. Mirrors the Rust
+    // sanitiser's is_safe_url.
+    var canon = "";
+    for (var i = 0; i < url.length; i++) {
+      var ch = url.charCodeAt(i);
+      // drop C0 controls (incl. \t \n \r), space (0x20), and DEL (0x7f)
+      if (ch <= 0x20 || ch === 0x7f) { continue; }
+      canon += url[i];
+    }
+    canon = canon.toLowerCase();
+    if (canon === "") { return true; } // empty / whitespace-only is a harmless reference
+    // Reject scheme-relative //host and \\host (resolve off-origin).
+    if (canon.indexOf("//") === 0 || canon.indexOf("\\\\") === 0) { return false; }
+    // A scheme is [a-z][a-z0-9+.-]* ':' appearing before any '/', '?', '#'.
+    var m = /^([a-z][a-z0-9+.\-]*):/.exec(canon);
     if (m) {
-      var scheme = m[1].toLowerCase();
-      if (scheme === "https" || scheme === "http" || scheme === "mailto") { return true; }
-      return false; // javascript:, data:, blob:, vbscript:, file:, etc. => reject
+      var before = canon.slice(0, m[1].length);
+      var hasPathSep = before.indexOf("/") >= 0 || before.indexOf("?") >= 0 || before.indexOf("#") >= 0;
+      if (!hasPathSep) {
+        var scheme = m[1];
+        return scheme === "https" || scheme === "http" || scheme === "mailto";
+      }
     }
     // No scheme => relative URL (path, query, fragment, or bare). Allowed.
     return true;
