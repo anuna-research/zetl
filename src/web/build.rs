@@ -1386,14 +1386,15 @@ pub fn build_static(
                         });
                         match expanded {
                             Some(exp) => {
+                                // REQ-4911: content-directive failures are author-visible
+                                // build diagnostics — always surfaced, not just verbose.
                                 for d in &exp.diagnostics {
-                                    if verbose || d.fatal {
-                                        eprintln!(
-                                            "[zetl] {} ({}:{}): {}",
-                                            d.code, file.page_name, d.line, d.message
-                                        );
-                                    }
+                                    eprintln!(
+                                        "[zetl] {} ({}:{}): {}",
+                                        d.code, file.page_name, d.line, d.message
+                                    );
                                 }
+                                let _ = verbose;
                                 if let Some(fatal) = exp.diagnostics.iter().find(|d| d.fatal) {
                                     anyhow::bail!(
                                         "SPEC-049 {} in {} at line {}: {}",
