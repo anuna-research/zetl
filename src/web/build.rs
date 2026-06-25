@@ -1160,6 +1160,18 @@ pub fn build_static(
         .with_context(|| format!("Cannot create output directory: {out_dir}"))?;
 
     let engine = TemplateEngine::new(vault_root, theme, false, verbose);
+
+    // SPEC-049: build-scoped content-directive expander. Discovers components and runs
+    // the CON-4904 context lint on every content-invocable one (a lint failure is a
+    // fatal build error). `None` when no component is content-invocable, so pages render
+    // through the byte-identical plain markdown path (REQ-4912).
+    #[cfg(feature = "content-components")]
+    let content_expander: Option<crate::web::engine::ContentExpander> = {
+        let ce = crate::web::engine::ContentExpander::new(vault_root, theme)
+            .map_err(|e| anyhow::anyhow!("SPEC-049 content-component error: {e}"))?;
+        ce.has_content_invocable().then_some(ce)
+    };
+
     let vault_name = vault_root
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -1364,12 +1376,52 @@ pub fn build_static(
                         html_escape(&body)
                     )
                 } else {
-                    markdown::render_to_html(
-                        &content,
-                        &data.page_slug_map,
-                        &root_path,
-                        "index.html",
-                    )
+                    // SPEC-049: expand content directives when a content-invocable
+                    // component exists AND the page actually uses a directive; otherwise
+                    // fall through to the byte-identical plain renderer (REQ-4912).
+                    #[cfg(feature = "content-components")]
+                    {
+                        let expanded = content_expander.as_ref().and_then(|ce| {
+                            ce.try_expand(&content, &data.page_slug_map, &root_path, "index.html")
+                        });
+                        match expanded {
+                            Some(exp) => {
+                                for d in &exp.diagnostics {
+                                    if verbose || d.fatal {
+                                        eprintln!(
+                                            "[zetl] {} ({}:{}): {}",
+                                            d.code, file.page_name, d.line, d.message
+                                        );
+                                    }
+                                }
+                                if let Some(fatal) = exp.diagnostics.iter().find(|d| d.fatal) {
+                                    anyhow::bail!(
+                                        "SPEC-049 {} in {} at line {}: {}",
+                                        fatal.code,
+                                        file.page_name,
+                                        fatal.line,
+                                        fatal.message
+                                    );
+                                }
+                                exp.html
+                            }
+                            None => markdown::render_to_html(
+                                &content,
+                                &data.page_slug_map,
+                                &root_path,
+                                "index.html",
+                            ),
+                        }
+                    }
+                    #[cfg(not(feature = "content-components"))]
+                    {
+                        markdown::render_to_html(
+                            &content,
+                            &data.page_slug_map,
+                            &root_path,
+                            "index.html",
+                        )
+                    }
                 };
                 let mut page_ctx =
                     build_page_context(data, &file.page_name, &slug, &rendered, &content);

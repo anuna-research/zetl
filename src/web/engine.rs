@@ -848,6 +848,9 @@ impl TemplateEngine {
             .map_err(TemplateError::from_minijinja)
     }
 
+    // (content-directive expansion lives in the module-level `ContentExpander` below,
+    // which uses a *restricted* env — see SPEC-049 REQ-4907.)
+
     /// Render the help page.
     /// SPEC-040: render a `/_mobile/*` template against an arbitrary
     /// JSON-shaped context. Used by the mobile handlers in
@@ -1676,6 +1679,161 @@ fn json_escape(s: &str) -> String {
         .replace('\n', "\\n")
         .replace('\r', "\\r")
         .replace('\t', "\\t")
+}
+
+// ── SPEC-049 content-directive expansion (restricted env) ────────────────────
+
+/// Build the **restricted** minijinja environment for rendering content-invocable
+/// components (SPEC-049 REQ-4907). Unlike the page env it deliberately registers **no**
+/// `transclude`, no `site`/`page` globals, and no vault-graph helpers — a content
+/// component (and any trusted sub-component it reaches) sees only what is passed in its
+/// context (`props` + the sanitised slot). `strict_undefined` makes any out-of-context
+/// access a render error (REQ-4808 render-time layer), and autoescape is forced `Html`
+/// over every render (CON-4904(0) precondition).
+#[cfg(feature = "content-components")]
+fn build_content_env(vault_root: &Path, theme: &str) -> Environment<'static> {
+    let mut env = Environment::new();
+    env.set_undefined_behavior(minijinja::UndefinedBehavior::Strict);
+    env.set_auto_escape_callback(|_name| minijinja::AutoEscape::Html);
+    let components = build_components(vault_root, theme);
+    let vr = vault_root.to_path_buf();
+    let t = theme.to_string();
+    env.set_loader(move |name: &str| {
+        if name == COMPONENTS_TEMPLATE {
+            return Ok(Some(components.synthetic.clone()));
+        }
+        let source: Option<String> = {
+            let from_disk = if t != "default" {
+                std::fs::read_to_string(vr.join(".zetl/themes").join(&t).join(name)).ok()
+            } else {
+                None
+            };
+            from_disk
+                .or_else(|| bundled_template(&t, name).map(|s| s.to_string()))
+                .or_else(|| bundled_template("default", name).map(|s| s.to_string()))
+        };
+        match source {
+            Some(src) => lower_template(&src, &components).map(Some).map_err(|e| {
+                minijinja::Error::new(minijinja::ErrorKind::SyntaxError, e.to_string())
+            }),
+            None => Ok(None),
+        }
+    });
+    env
+}
+
+/// Build-scoped expander for SPEC-049 content directives. Constructed once per build: it
+/// discovers components, runs the CON-4904 context lint on every content-invocable one
+/// (a lint failure is a fatal build error), and holds the restricted render env. Pages
+/// then expand their directives through [`ContentExpander::try_expand`].
+#[cfg(feature = "content-components")]
+pub struct ContentExpander {
+    env: Environment<'static>,
+    manifests: BTreeMap<String, Manifest>,
+    any_content_invocable: bool,
+}
+
+#[cfg(feature = "content-components")]
+impl ContentExpander {
+    /// Discover + lint content-invocable components and build the restricted env.
+    pub fn new(
+        vault_root: &Path,
+        theme: &str,
+    ) -> Result<Self, super::components::ComponentError> {
+        let comps = discover_components(vault_root, theme)?;
+        let mut manifests = BTreeMap::new();
+        let mut any = false;
+        for (name, c) in &comps {
+            if c.manifest.content_invocable {
+                any = true;
+                // CON-4904: fatal build error if the trusted template can leak taint.
+                super::components::context_lint::lint_component(&c.template, &c.manifest)?;
+            }
+            manifests.insert(name.clone(), c.manifest.clone());
+        }
+        Ok(Self {
+            env: build_content_env(vault_root, theme),
+            manifests,
+            any_content_invocable: any,
+        })
+    }
+
+    /// True when at least one component is content-invocable. When false, the build path
+    /// SHALL use the plain markdown renderer (REQ-4912 byte-identical default).
+    pub fn has_content_invocable(&self) -> bool {
+        self.any_content_invocable
+    }
+
+    /// Expand content directives in `content`. Returns `None` when the content has no
+    /// directive at all, so the caller uses the byte-identical plain renderer.
+    pub fn try_expand(
+        &self,
+        content: &str,
+        slug_map: &std::collections::HashMap<String, String>,
+        root_path: &str,
+        index_file: &str,
+    ) -> Option<super::components::expand::Expansion> {
+        use super::components::directive::{scan, Node};
+        let nodes = scan(content);
+        if !nodes.iter().any(|n| matches!(n, Node::Directive(_))) {
+            return None;
+        }
+        let renderer = PageContentRenderer {
+            env: &self.env,
+            manifests: &self.manifests,
+            slug_map,
+            root_path: root_path.to_string(),
+            index_file: index_file.to_string(),
+        };
+        Some(super::components::expand::expand_nodes(&nodes, &renderer))
+    }
+}
+
+/// Per-page [`ContentRenderer`](super::components::expand::ContentRenderer) binding the
+/// restricted env to a page's link base.
+#[cfg(feature = "content-components")]
+struct PageContentRenderer<'a> {
+    env: &'a Environment<'static>,
+    manifests: &'a BTreeMap<String, Manifest>,
+    slug_map: &'a std::collections::HashMap<String, String>,
+    root_path: String,
+    index_file: String,
+}
+
+#[cfg(feature = "content-components")]
+impl super::components::expand::ContentRenderer for PageContentRenderer<'_> {
+    fn render_markdown(&self, md: &str) -> String {
+        super::markdown::render_to_html(md, self.slug_map, &self.root_path, &self.index_file)
+    }
+
+    fn render_component(
+        &self,
+        name: &str,
+        props: &BTreeMap<String, minijinja::Value>,
+        slot_html: &str,
+    ) -> Result<String, super::components::ComponentError> {
+        let ident = super::components::lower::macro_ident(name);
+        // Trusted zetl glue: import the synthetic macro module and call the component
+        // macro with the recognised props and the pre-sanitised slot (marked safe so it
+        // is not double-escaped). The component template was CON-4904-linted; this
+        // wrapper is not author-controlled.
+        let wrapper = format!(
+            "{{% import \"{COMPONENTS_TEMPLATE}\" as __zc %}}{{% call __zc.{ident}(props=props, _name=\"{name}\") %}}{{{{ __slot | safe }}}}{{% endcall %}}"
+        );
+        let ctx = context! {
+            props => minijinja::Value::from_serialize(props),
+            __slot => minijinja::Value::from_safe_string(slot_html.to_string()),
+        };
+        self.env
+            .render_named_str("__zetl_content__.html", &wrapper, ctx)
+            .map_err(|e| {
+                super::components::ComponentError::new("content-render-error", e.to_string())
+            })
+    }
+
+    fn manifest(&self, name: &str) -> Option<&Manifest> {
+        self.manifests.get(name)
+    }
 }
 
 #[cfg(test)]
