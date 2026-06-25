@@ -348,3 +348,83 @@
 (claims agent:claude
   :at "2026-06-25T13:40:10Z"
   (given completed-49-tests))
+
+(claims agent:claude
+  :at "2026-06-25T13:47:39Z"
+  (given claim-v1-50-manifest)
+  (normally r-cl-state-v1-50-manifest claim-v1-50-manifest state-claimed-v1-50-manifest)
+  (normally r-cl-chain-v1-50-manifest state-claimed-v1-50-manifest claimed-50-manifest)
+)
+
+;; Propagation rules: failures in '50-manifest' block downstream tasks
+(normally r-propagate-50-emit-from-50-manifest-failed failed-50-manifest upstream-blocked-50-emit)
+(normally r-propagate-50-emit-from-50-manifest-permanently-failed permanently-failed-50-manifest upstream-blocked-50-emit)
+(normally r-propagate-50-emit-from-50-manifest-stale-v1 stale-v1-50-manifest upstream-blocked-50-emit)
+(normally r-propagate-50-emit-from-50-manifest-timeout-v1 timeout-v1-50-manifest upstream-blocked-50-emit)
+(normally r-propagate-50-prepaint-from-50-manifest-failed failed-50-manifest upstream-blocked-50-prepaint)
+(normally r-propagate-50-prepaint-from-50-manifest-permanently-failed permanently-failed-50-manifest upstream-blocked-50-prepaint)
+(normally r-propagate-50-prepaint-from-50-manifest-stale-v1 stale-v1-50-manifest upstream-blocked-50-prepaint)
+(normally r-propagate-50-prepaint-from-50-manifest-timeout-v1 timeout-v1-50-manifest upstream-blocked-50-prepaint)
+(normally r-propagate-50-theme-from-50-manifest-failed failed-50-manifest upstream-blocked-50-theme)
+(normally r-propagate-50-theme-from-50-manifest-permanently-failed permanently-failed-50-manifest upstream-blocked-50-theme)
+(normally r-propagate-50-theme-from-50-manifest-stale-v1 stale-v1-50-manifest upstream-blocked-50-theme)
+(normally r-propagate-50-theme-from-50-manifest-timeout-v1 timeout-v1-50-manifest upstream-blocked-50-theme)
+(normally r-propagate-50-wiring-from-50-manifest-failed failed-50-manifest upstream-blocked-50-wiring)
+(normally r-propagate-50-wiring-from-50-manifest-permanently-failed permanently-failed-50-manifest upstream-blocked-50-wiring)
+(normally r-propagate-50-wiring-from-50-manifest-stale-v1 stale-v1-50-manifest upstream-blocked-50-wiring)
+(normally r-propagate-50-wiring-from-50-manifest-timeout-v1 timeout-v1-50-manifest upstream-blocked-50-wiring)
+
+(claims agent:claude
+  :at "2026-06-25T13:47:39Z"
+  (given completed-50-manifest))
+
+(claims agent:claude
+  :at "2026-06-25T13:47:39Z"
+  (given claim-v1-50-theme)
+  (normally r-cl-state-v1-50-theme claim-v1-50-theme state-claimed-v1-50-theme)
+  (normally r-cl-chain-v1-50-theme state-claimed-v1-50-theme claimed-50-theme)
+)
+
+;; Propagation rules: failures in '50-theme' block downstream tasks
+(normally r-propagate-50-csp-from-50-theme-failed failed-50-theme upstream-blocked-50-csp)
+(normally r-propagate-50-csp-from-50-theme-permanently-failed permanently-failed-50-theme upstream-blocked-50-csp)
+(normally r-propagate-50-csp-from-50-theme-stale-v1 stale-v1-50-theme upstream-blocked-50-csp)
+(normally r-propagate-50-csp-from-50-theme-timeout-v1 timeout-v1-50-theme upstream-blocked-50-csp)
+
+(claims agent:claude
+  :at "2026-06-25T13:47:39Z"
+  (given completed-50-theme))
+
+(claims agent:claude
+  :at "2026-06-25T13:47:39Z"
+  (given claim-v1-50-wiring)
+  (normally r-cl-state-v1-50-wiring claim-v1-50-wiring state-claimed-v1-50-wiring)
+  (normally r-cl-chain-v1-50-wiring state-claimed-v1-50-wiring claimed-50-wiring)
+)
+
+;; Propagation rules: failures in '50-wiring' block downstream tasks
+(normally r-propagate-50-wire-from-50-wiring-failed failed-50-wiring upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-wiring-permanently-failed permanently-failed-50-wiring upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-wiring-stale-v1 stale-v1-50-wiring upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-wiring-timeout-v1 timeout-v1-50-wiring upstream-blocked-50-wire)
+
+(claims agent:claude
+  :at "2026-06-25T13:47:39Z"
+  (given completed-50-wiring))
+
+(claims agent:claude
+  :at "2026-06-25T13:47:39Z"
+  (given claim-v1-50-csp)
+  (normally r-cl-state-v1-50-csp claim-v1-50-csp state-claimed-v1-50-csp)
+  (normally r-cl-chain-v1-50-csp state-claimed-v1-50-csp claimed-50-csp)
+)
+
+;; Propagation rules: failures in '50-csp' block downstream tasks
+(normally r-propagate-50-wire-from-50-csp-failed failed-50-csp upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-csp-permanently-failed permanently-failed-50-csp upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-csp-stale-v1 stale-v1-50-csp upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-csp-timeout-v1 timeout-v1-50-csp upstream-blocked-50-wire)
+
+(claims agent:claude
+  :at "2026-06-25T13:47:39Z"
+  (given completed-50-csp))
