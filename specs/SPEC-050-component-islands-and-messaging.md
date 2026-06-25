@@ -2,7 +2,7 @@
 id: SPEC-050
 title: "Component Islands & Inter-Island Messaging"
 status: draft
-version: 0.13.0-strawman
+version: 0.14.0-strawman
 last-updated: 2026-06-25
 audience: agent, human
 ---
@@ -90,7 +90,7 @@ Q6 iframe cost — now largely moot under the default Worker model, Q8 controlle
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | [[SPEC-050-component-islands-and-messaging\|SPEC-050]]                                  |
 | Title        | Component Islands & Inter-Island Messaging                                              |
-| Version      | 0.13.0-strawman                                                                         |
+| Version      | 0.14.0-strawman                                                                         |
 | Status       | Draft (strawman; NOT converged — pending Phase 1 + Phase 2 gates)                       |
 | Author       | Agent (Claude Opus 4.8 [1M], [[PROTO-001\|USDD Agent Protocol]] v1.11.0)                |
 | Date         | 2026-06-24                                                                              |
@@ -456,9 +456,11 @@ plus any `island-topic-unpublished`/`island-topic-undeclared` findings, so runti
 coordination is auditable at build time. For each page it SHALL also record the **effective
 egress CSP** ([[SPEC-050-component-islands-and-messaging#REQ-5027]]) — the computed policy and,
 per directive, which `[security.csp]`/theme declaration widened it beyond the default-deny
-baseline — and each content island's render mode + `paints` grant, so a reviewer can diff
-exactly what network egress and rendering authority each page permits. This extends
-[[SPEC-048]] OBS-4801.
+baseline — and each content island's render mode, `paints` grant, and **`[island.requests]`
+entries with their `approved`/`unapproved` status + `reason`**
+([[SPEC-050-component-islands-and-messaging#REQ-5028]]), so a reviewer can diff exactly what each
+island *asked for*, what was *approved*, and what network egress and rendering authority each
+page actually permits. This extends [[SPEC-048]] OBS-4801.
 
 **Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5008]], [[SPEC-050-component-islands-and-messaging#TEST-5027]], [[SPEC-050-component-islands-and-messaging#OBS-5001]].
 
@@ -695,6 +697,76 @@ content island unconfined.
 Storage egress (IndexedDB/Cache) remains outside CSP (Q10).
 
 **Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5027]], [[SPEC-050-component-islands-and-messaging#REQ-5026]], [[SPEC-050-component-islands-and-messaging#REQ-5009]], [[SPEC-048]]; [[SPEC-050-component-islands-and-messaging#Threat N]].
+
+### REQ-5028: Author Capability Requests (Request → Approve → Audit)
+The egress policy is operator-owned (REQ-5026/5027), but a **content-island author needs a way
+to *express* what their island needs** — otherwise the operator must learn it out-of-band. This
+REQ adds the author-side half, mirroring the existing topic flow (`subscribes` request →
+`[[theme.island-grants]]` approve) and the browser-extension / [[MetaMask Snaps]] permission
+pattern. **Requests are declarations of intent, never authority** — fail-closed.
+
+- **Declaration site (untrusted author).** A content island MAY declare an `[island.requests]`
+  table in its own manifest:
+  ```
+  [island.requests]                              # content-island manifest — REQUESTS, not grants
+  connect-src = ["https://api.example.com"]      # hosts the island would like to reach
+  bundles     = ["chart.js@4"]                   # libraries it vendors in (see "Libraries" below)
+  reason      = "renders a live price chart"     # human rationale, shown to the operator
+  ```
+- **Inert until approved (fail-closed).** An `[island.requests]` entry confers **nothing** on its
+  own. A requested `connect-src` host takes effect **only if** the operator independently lists it
+  in `[security.csp]` (REQ-5027); an unapproved request is a **no-op** at runtime (the baseline
+  `connect-src 'none'` still holds). The build SHALL NOT let a request widen any policy.
+- **Surfaced for review.** The build SHALL list, per island in the audit graph (REQ-5009),
+  every `[island.requests]` entry and its **approval status** (`approved` if a matching
+  `[security.csp]`/grant exists, else `unapproved`), with the author's `reason`, so the operator
+  sees exactly what each island asked for and can approve by editing `[security.csp]`. An
+  `unapproved` request MAY be surfaced as an `island-request-unapproved` **info/warning** (never
+  an error — the island still runs, just without the requested capability).
+- **Libraries are bundled, not fetched.** A `bundles` entry documents a library the author
+  **vendors into the island's own script at build time**; it becomes part of the
+  integrity-pinned worker/script bytes (REQ-5019/5026). Runtime remote `importScripts`/`<script>`
+  loading remains blocked by the page CSP — there is **no runtime CDN path**. `bundles` is thus
+  documentation + an audit signal (what third-party code is inside the pinned bytes), not a
+  fetch permission.
+- **Honest enforcement-granularity caveat.** Approval is recorded per island, but **CSP
+  enforcement is page-wide** — `connect-src` cannot be scoped to one worker (REQ-5026). So
+  approving island A's host technically lets island B's worker reach it too. `[island.requests]`
+  improves **governance and auditability**, NOT enforcement isolation; true per-island egress
+  isolation requires separate origins (Q10). The spec states this rather than implying per-island
+  enforcement.
+
+**Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5028]], [[SPEC-050-component-islands-and-messaging#REQ-5027]], [[SPEC-050-component-islands-and-messaging#REQ-5009]], [[SPEC-050-component-islands-and-messaging#REQ-5019]]; [[SPEC-050-component-islands-and-messaging#Threat N]].
+
+### REQ-5029: Dynamic Updates via Host Reconciliation (No VDOM Framework)
+A content island needs to **update its UI over time** (re-render on state change), but zetl
+SHALL NOT ship a VDOM/reactivity **framework** (that would violate NFR-5002's no-framework-
+runtime rule and the once-per-type model). The resolution, after [[Shopify Remote DOM]]: the
+host ships a **tiny keyed reconciler** (the *only* diffing zetl provides — not a framework), and
+islands drive updates by **re-emitting**:
+- **Update model.** To change its UI, a worker re-emits a `render` (CON-5006) carrying the **new
+  full element tree**. The host **reconciles** it against the currently-painted subtree with a
+  **keyed diff**, applying the **minimal DOM mutations** (not a teardown + repaint), so **focus,
+  text selection, scroll position, and uncontrolled input state are preserved** on nodes whose
+  identity is stable across the update.
+- **Keys for stable identity.** An element node MAY carry a stable **`key`** (string) — a
+  reserved CON-5007 tree field, not a rendered attribute — used as its reconciliation identity;
+  keyed siblings are matched by `key` across re-renders (move/update, not destroy+recreate),
+  keyless siblings by position. This is what lets a list re-order or an input survive a re-render.
+- **The framework, if any, lives in the worker.** An author MAY use any local VDOM/templating
+  library (Preact, lit-html, etc.) **bundled** into their worker (REQ-5028 `bundles`) to *produce*
+  the tree; it runs **off the main thread** and zetl never sees it. The wire protocol (`render` +
+  the host reconcile) is framework-agnostic — the worker's choice of library is invisible to zetl
+  and to other islands.
+- **Bounded + coalesced.** Every update is still bounded by CON-5007 (depth/breadth/node/byte,
+  cycle-rejecting) and **rate-coalesced** to ≤ one paint per frame (REQ-5026), so a worker that
+  re-renders on every keystroke is naturally throttled and cannot saturate the main thread.
+- **(v2, deferred — Q11.)** A finer **mutation/patch** protocol (`op:"patch"` carrying
+  insert/remove/set-attr/set-text ops keyed by node path) would avoid re-sending a full tree for
+  a large surface. v1 uses full-tree-re-render + keyed reconcile (simpler, one message shape, and
+  adequate for the bounded trees CON-5007 permits); the patch protocol is `[Blocked: Q11]`.
+
+**Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5029]], [[SPEC-050-component-islands-and-messaging#REQ-5025]], [[SPEC-050-component-islands-and-messaging#CON-5007]], [[SPEC-050-component-islands-and-messaging#REQ-5026]], [[SPEC-050-component-islands-and-messaging#NFR-5002]].
 
 ### REQ-5015: Content-Island iframe Sandbox (Opt-In Full-DOM Mode)
 A content-author island that opts into **full-DOM mode** ([[SPEC-050-component-islands-and-messaging#REQ-5010]],
@@ -1138,9 +1210,14 @@ render-mode = "worker" | "iframe" ;         (* "worker" = controlled-element def
 sandbox     = "sandbox" "=" bool ;          (* ONLY meaningful for render="iframe" (MUST be true); forbidden/ignored for render="worker" *)
 paints      = "paints" "=" bool ;           (* worker mode: grants the `render` capability (CON-5006/CON-5007); default false = headless *)
 hydrate     = "hydrate" "=" '"' strategy '"' ;   (* default "load" — REQ-5024 *)
-(* NOTE: worker egress is a host-document CSP (REQ-5026), set by the TRUSTED theme/operator —
-   NOT a content-island manifest field. An untrusted author cannot widen their own egress. *)
 strategy    = "load" | "idle" | "visible" | "visible(" rootmargin ")" | "media(" css-query ")" ;
+requests    = "[island.requests]" ,             (* author REQUESTS — inert until operator approves; REQ-5028 *)
+              [ "connect-src" "=" "[" { '"' host '"' } "]" ]   (* hosts the island would like to reach *)
+              [ "bundles" "=" "[" { '"' lib '"' } "]" ]        (* libraries vendored into the pinned bytes *)
+              [ "reason" "=" '"' text '"' ] ;                  (* rationale shown to the operator *)
+(* NOTE: worker egress is enforced ONLY by the TRUSTED operator's host-document CSP (REQ-5026/5027).
+   [island.requests] is a fail-closed *request* an author writes; it confers nothing until the
+   operator approves it in [security.csp]. An untrusted author cannot widen their own egress. *)
 topics      = "[island.topics]" , { topic-decl } ;
 topic-decl  = quoted-topic "=" inline-table ;               (* e.g. "search:open" = { type = "bool" } *)
 inline-table= "{" "type" "=" '"' type-expr '"'             (* type-expr text per CON-5005, quoted *)
@@ -1369,10 +1446,11 @@ specified here).
 **Grammar (HTML namespace only — SVG/MathML/foreign content rejected):**
 ```
 tree   = elem | text-string ;
-elem   = { tag, props, children } ;
+elem   = { tag, props, children, key? } ;
 tag    ∈ ELEM-ALLOWLIST                 (* closed default-DENY set; see below *)
 props  = { (attr → attr-value) }        (* attr ∈ ATTR-ALLOWLIST(tag); value per attr-grammar *)
 children = [ tree ]                     (* recursive *)
+key    = string                         (* OPTIONAL reconciliation identity (REQ-5029); NOT rendered as an attribute *)
 ```
 **Element allowlist (`ELEM-ALLOWLIST`)** is a **closed, default-deny** set the theme declares;
 it MUST exclude (hard, non-overridable) every script-/embed-/form-/foreign-content element:
@@ -1648,6 +1726,12 @@ island imports.
 ### TEST-5027: CSP Declaration, Computation & Emission
 **Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5027]]. Positive: a page with a content island emits a `<meta http-equiv="Content-Security-Policy">` as the **first `<head>` child** whose policy equals the build-computed baseline ∪ `[security.csp]` widenings, and a byte-equal `csp-headers` artifact; the effective policy + each widening's source appear in the audit graph. Negative-input: **no `[security.csp]` declared** → the page still emits the **default-deny baseline** (`connect-src 'none'`, etc.), NOT an absent CSP (fail-closed); a `[security.csp]` value of `"*"` → build error `csp-wildcard`; a **content-island page with CSP emission somehow suppressed** → build error (mandatory). Negative-output: a content-author manifest cannot set any CSP directive (B2); the `<meta>` and headers artifact never drift (same computed source).
 
+### TEST-5028: Author Capability Requests (Request → Approve → Audit)
+**Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5028]], [[SPEC-050-component-islands-and-messaging#REQ-5027]]. Positive: an island's `[island.requests]` `connect-src` host **with** a matching `[security.csp]` entry → the host is reachable and the audit graph shows the request `approved` (with `reason`); a `bundles` lib is vendored into the integrity-pinned worker bytes. **Negative-input — the key fail-closed case:** an `[island.requests]` `connect-src` host with **no** matching `[security.csp]` approval → runtime egress still **blocked** (baseline `connect-src 'none'` holds), audit shows `unapproved` + `island-request-unapproved` warning (not an error; island still runs). Negative-output: an `[island.requests]` entry **never** widens the computed CSP on its own (assert the emitted policy is identical with and without an unapproved request); no runtime CDN `importScripts` path exists even for a `bundles`-listed lib.
+
+### TEST-5029: Dynamic Update via Host Reconciliation
+**Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5029]], [[SPEC-050-component-islands-and-messaging#CON-5007]]. Positive: a worker re-emits a `render` with a changed tree → the host applies **minimal DOM mutations** (assert unchanged keyed nodes are not recreated); a keyed list re-order **moves** nodes (preserves their DOM identity); **focus and uncontrolled input value survive** a re-render of a keyed `<input>`. Negative-input: a re-render that exceeds CON-5007 bounds or includes a non-allowlisted node → that node dropped (`denied:render`), rest reconciles; `key` is **never** emitted as a DOM attribute. Negative-output: re-rendering on every keystroke is coalesced to ≤ one paint/frame (REQ-5026), main thread not saturated; zetl ships **no** VDOM framework runtime (assert no framework global, NFR-5002).
+
 ### TEST-5023: Session-Persistent Bus Across SPA Nav
 **Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5023]], [[SPEC-050-component-islands-and-messaging#REQ-5007]]. Positive: navigating from an island page to a no-island page keeps the **same** `window.zetl` instance (not torn down, not duplicated); a persisted topic still live-reflects in that session. Negative-input: a session that loads **only** no-island pages never creates `window.zetl` (only per-page pre-paint applies). Negative-output: across N navigations there is never a second bus instance, and the **emitted HTML** of each page still matches its build-time marker gate (REQ-5012) regardless of runtime bus presence.
 
@@ -1679,7 +1763,7 @@ instances), and a stable hash of each, to detect nondeterminism regressions.
 Emit counts of the **build** errors `island-topic-malformed`, `island-topic-unpublished`,
 `island-topic-undeclared`, `island-persisted-no-default`, `island-topic-type-conflict`,
 `island-topic-type-invalid`, `island-content-unsandboxed`, `island-content-value-type`, `island-render-invalid`, `island-hydrate-invalid`, `csp-wildcard`,
-`island-capability-ungranted`, and the `island-focus-trap` warning; plus **runtime** counters (dev console / optional debug
+`island-capability-ungranted`, and the `island-focus-trap` / `island-request-unapproved` warnings; plus **runtime** counters (dev console / optional debug
 channel) for `island-payload-type`, `island-capability-denied` (by `denied` reason), and
 `island-port-closed`, so fail-closed events are auditable. The audit wiring graph (OBS-5001)
 additionally lists, per content island, its iframe-sandbox status and its granted
@@ -1772,6 +1856,11 @@ everything else composes [[SPEC-048]] and [[SPEC-028]].
   context that has egress. Options for v2: serve untrusted content from a **separate origin** (the
   only real storage partition the platform offers), a storage-clearing teardown, or accept-and-
   document. Ground against the operator-deployment profile in Phase 1. (`[Blocked: Q10]`.)
+- **Q11 — Mutation/patch render protocol.** v1 dynamic updates re-send the **full** element tree
+  per change and the host keyed-reconciles (REQ-5029) — simple, one message shape, adequate for
+  CON-5007-bounded trees. A v2 `op:"patch"` protocol (insert/remove/set-attr/set-text ops keyed
+  by node path) would avoid re-sending a large unchanged surface. Worth it only if profiling shows
+  full-tree re-send is a bottleneck for real islands. (`[Blocked: Q11]`.)
 
 ---
 
@@ -1877,7 +1966,22 @@ pass.
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.13.0</summary>
+<summary>Revision history — 0.1.0 → 0.14.0</summary>
+
+- **0.14.0** (2026-06-25) — *the author's side of the permission model + the dynamic-update
+  model.* **REQ-5028 + TEST-5028 + `[island.requests]`:** a content-island author can now
+  *declare* the capabilities they want — `connect-src` hosts, vendored `bundles`, a `reason` —
+  but the request is **inert until the operator approves** it in `[security.csp]` (fail-closed,
+  mirrors the topic `subscribes`→grant flow and extension/Snaps permission manifests); the build
+  surfaces each request + `approved`/`unapproved` status in the audit graph (REQ-5009); libraries
+  are **bundled into the integrity-pinned bytes**, not fetched at runtime (no CDN path). Honest
+  caveat recorded: CSP enforcement is page-wide, so requests improve *governance/auditability*,
+  not per-island *enforcement* isolation (that needs separate origins, Q10). **REQ-5029 +
+  TEST-5029 + `key`:** the dynamic-update model — zetl ships **no VDOM framework** (NFR-5002);
+  instead the host runs a **tiny keyed reconciler** and islands update by **re-emitting a full
+  `render` tree**, which the host keyed-diffs to minimal DOM mutations (preserving focus/input/
+  scroll on keyed nodes). Any VDOM lib the author wants lives **in the worker** (bundled). Added a
+  `key` field to the CON-5007 tree; a v2 mutation/patch protocol is deferred (Q11).
 
 - **0.13.0** (2026-06-25) — *closes the "where is the egress policy defined?" gap.* v0.12.0 said
   "the operator ships a host-document CSP" but never defined the declaration site, computation, or
