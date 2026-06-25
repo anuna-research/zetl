@@ -263,3 +263,20 @@
 (claims agent:claude
   :at "2026-06-25T13:14:57Z"
   (given completed-49-sanitize))
+
+(claims agent:claude
+  :at "2026-06-25T13:16:56Z"
+  (given claim-v1-49-props)
+  (normally r-cl-state-v1-49-props claim-v1-49-props state-claimed-v1-49-props)
+  (normally r-cl-chain-v1-49-props state-claimed-v1-49-props claimed-49-props)
+)
+
+;; Propagation rules: failures in '49-props' block downstream tasks
+(normally r-propagate-49-expand-from-49-props-failed failed-49-props upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-props-permanently-failed permanently-failed-49-props upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-props-stale-v1 stale-v1-49-props upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-props-timeout-v1 timeout-v1-49-props upstream-blocked-49-expand)
+
+(claims agent:claude
+  :at "2026-06-25T13:16:56Z"
+  (given completed-49-props))
