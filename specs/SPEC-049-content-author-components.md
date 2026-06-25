@@ -2,7 +2,7 @@
 id: SPEC-049
 title: "Content-Author Components & Directives"
 status: draft
-version: 0.2.0-strawman
+version: 0.3.0-strawman
 last-updated: 2026-06-25
 audience: agent, human
 ---
@@ -88,7 +88,7 @@ allowlist scope.
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | [[SPEC-049-content-author-components\|SPEC-049]]                                        |
 | Title        | Content-Author Components & Directives                                                  |
-| Version      | 0.2.0-strawman                                                                          |
+| Version      | 0.3.0-strawman                                                                          |
 | Status       | Draft (strawman; NOT converged — no adversarial pass; sanitiser policy unsettled)      |
 | Author       | Agent (Claude Opus 4.8 [1M], [[PROTO-001\|USDD Agent Protocol]])                        |
 | Date         | 2026-06-25                                                                              |
@@ -142,13 +142,14 @@ sanitiser must un-mix):
    reads page-tier context). A theme MUST explicitly mark a component **content-invocable**
    (REQ-4903). Everything else is unreachable from content.
 2. **The attribute values (props)** — recognised against the component's `[props]` schema
-   (REQ-4904) and made safe by **context-correct escaping *at each interpolation site***, not by
-   a downstream HTML sanitiser (a sanitiser cannot fix a prop that already broke out of a
-   `href`/`style`/`on*` context — it has no way to know the bytes came from a prop). v1 therefore
-   **restricts where a content-settable prop may be interpolated** in a content-invocable
-   template (HTML text + double-quoted non-URL attribute; URL-context props require a `url`
-   ptype routed through scheme validation; CSS/JS-context interpolation of a content prop is a
-   build error). This is a real LangSec discipline, not "autoescape everywhere."
+   (REQ-4904) and made safe by **ingestion validation + HTML autoescape**, not by a downstream
+   sanitiser. A `url`-typed prop is **scheme-validated when parsed** (context-independent, so safe
+   wherever it lands); `string`/scalar props rely on minijinja HTML autoescape (sound in element
+   text + double-quoted attribute); a **tainted-value tripwire** aborts a `|safe` raw-emit of an
+   untrusted value. **Honest limit:** minijinja exposes no template AST ([[SPEC-048]] REQ-4808),
+   so v1 *cannot statically prevent* a trusted theme author from placing a content prop in a
+   CSS/JS/unquoted-attribute context — that is a documented trusted-author contract + the
+   `[Blocked: Q6]` restricted-template-language candidate, not a closed guarantee.
 3. **The body and any raw HTML** — the body is the author's Markdown, rendered and **sanitised
    *in isolation* (CON-4902) before being slotted into the trusted template**. The sanitiser
    sees only untrusted body HTML, never the composite, so it can be a closed default-deny
@@ -266,24 +267,33 @@ A directive's `{attrs}` SHALL be recognised against the component's `[props]` sc
 [[SPEC-048]] CON-4801 — so a content prop's *type* is one of `string`/`bool`/`int`/`number`/
 `url`; `list`/`map` are **not** content-settable in v1, `content-prop-unsupported`.)
 
-**Prop safety is context-correct escaping at interpolation, not the output sanitiser** (the
-sanitiser CON-4902 guards only the body, in isolation; it cannot attribute or fix a prop that
-already reached a dangerous context). Therefore, for a **content-invocable** component, the
-build SHALL **lint the template's interpolation sites** of content-settable props and permit
-only safe contexts:
-- **HTML text** and **double-quoted, non-URL attribute** → minijinja HTML autoescape (correct here).
-- **URL attribute** (`href`/`src`/`poster`/`action`/`formaction`) → the prop MUST be declared
-  ptype **`url`** (a new ptype this spec adds to [[SPEC-048]] CON-4801, owned here — CON-4903),
-  and its value is **scheme-validated** (CON-4902: `https`/`http`/`mailto`/relative only;
-  `javascript:`/`data:`/`blob:`/`vbscript:`/`file:` rejected). A non-`url` prop interpolated in
-  a URL context → build error `content-prop-context`.
-- **CSS context** (`style="…{{ }}…"` or inside `<style>`) and **JS/event context**
-  (`on*="…{{ }}…"`) → **forbidden** for content-settable props (`content-prop-context`, build
-  error). HTML autoescape is not CSS- or JS-escaping; v1 simply does not allow an untrusted prop
-  to reach those contexts.
-A content prop interpolated in an unrecognised/dynamic context (the linter cannot prove safe) →
-`content-prop-context` (fail-closed). This linter runs only on **content-invocable** templates;
-trusted template-only props are unaffected.
+**Prop safety is achieved where the substrate allows it — and the residual is stated, not
+hidden.** [[SPEC-048]] REQ-4808 is explicit that **minijinja exposes no template AST**, so a
+*static* "lint every interpolation site" guarantee (an earlier draft's claim) is **not
+buildable** on this engine. v1 therefore uses **context-independent ingestion validation + HTML
+autoescape + a tainted-value tripwire**, and is honest about the one context it cannot enforce:
+
+- **`url` ptype → validated at *ingestion* (CON-4902), context-independently.** When a `url`-typed
+  prop is parsed from the directive, its scheme is canonicalised + allowlist-checked *then*
+  (`https`/`http`/`mailto`/origin-relative; `//host`, `javascript:`, `data:`, `blob:`, `vbscript:`,
+  `file:` rejected). Because the value is validated when ingested, it is safe **wherever** the
+  template later places it — no interpolation-site analysis needed. A URL-context prop SHOULD be
+  declared `url`-typed (CON-4903 adds the ptype to [[SPEC-048]] CON-4801).
+- **`string`/`int`/`number`/`bool` props → HTML autoescape at interpolation.** minijinja's default
+  HTML autoescape is **sound in both element-content and double-quoted-attribute contexts** (the
+  only contexts v1 sanctions for these props), neutralising `<`/`>`/`"`/`&`.
+- **Tainted-value tripwire.** A content-settable prop value is a distinct **tainted** `Value`;
+  `{{ x | safe }}` / raw emission of a tainted value is a **render abort** (`content-unsafe-emit`),
+  so a trusted template cannot accidentally bypass autoescape on untrusted data.
+- **Honest residual — CSS/JS/unquoted-attribute contexts cannot be statically prevented on
+  minijinja.** Autoescape does not neutralise CSS-internal (`}`, `url(...)`) or JS-string
+  injection, and there is no AST to forbid those sites at build. v1's position: a trusted theme
+  author **MUST NOT** interpolate a content-settable prop into a `style`/`on*`/`<script>`/
+  unquoted-attribute context — a **documented trusted-author contract** (the same posture
+  [[SPEC-048]] REQ-4808 takes for token/prop escaping), backed by the tripwire for the `|safe`
+  case. The *real* fix — a restricted, context-aware template language for content-invocable
+  components — is `[Blocked: Q6]`; until then this residual is a known limitation, not a closed
+  guarantee, and it gates with Q1 on the human-expert + fuzzing review.
 
 **Trace:** [[SPEC-049-content-author-components#TEST-4904]], [[SPEC-048]]; [[SPEC-049-content-author-components#Threat A]], [[SPEC-049-content-author-components#Threat C]].
 
@@ -303,6 +313,18 @@ untrusted content SHALL be sanitised, **never passed through**
 may legitimately use `<form>`/`<svg>`/`<button>`/etc.); only the untrusted body slot is. Prop
 safety is REQ-4904's concern, not this sanitiser's.
 
+**Slot landing context (the dual of REQ-4904's prop rule).** The sanitised body is **safe HTML**,
+which is correct only in **element-content** position. The same minijinja limit applies: there is
+no AST to statically prove *where* a template interpolates the slot. So v1 binds the sanitised
+body as a **tainted SafeHtml** fragment and: (a) emitting it in element-content context is its
+intended use; (b) a content-invocable template **MUST NOT** interpolate the slot
+(`caller()` / a named content slot) into an attribute / URL / CSS / JS position — the **documented
+trusted-author contract**, since sanitised *HTML* in an attribute or `href` is the wrong language
+(e.g. body text `javascript:alert(1)` slotted into `<a href="{{ slot }}">` is an injection the
+body sanitiser never saw as a URL). The tripwire (`content-unsafe-emit`) catches a `|safe`-of-prop
+bypass; the slot-in-attribute case is the same `[Blocked: Q6]` residual as REQ-4904 (a restricted
+template language is the real fix). v1 states this rather than implying the slot is safe anywhere.
+
 **Trace:** [[SPEC-049-content-author-components#TEST-4905]], [[SPEC-049-content-author-components#CON-4902]]; [[SPEC-049-content-author-components#Threat A]], [[SPEC-049-content-author-components#Threat E]].
 
 ### REQ-4906: Transform-Stage Expansion (the seam)
@@ -312,30 +334,41 @@ is pinned as **recognise → sanitise-body-in-isolation → compose → render**
    node type is a **[[SPEC-032]] schema amendment this spec depends on** (the AST uses
    `deny_unknown_fields` typed node enums; a new node is a substrate change, not a footnote) —
    tracked as a SPEC-032 dependency.
-2. **Transform** renders the directive **body** Markdown to HTML and **sanitises it in isolation**
-   (REQ-4905/CON-4902), producing a safe HTML fragment.
-3. **Compose**: the sanitised body fragment is bound as the component's default-slot value and
-   the directive's props (REQ-4904) as keyword args; the SPEC-048 invocation
-   ([[SPEC-048]] REQ-4805) renders the **trusted** template with those bound values.
-This sanitises the **untrusted body alone**, never the mixed-provenance composite — closing the
-transform-vs-render ambiguity SPEC-048 flagged without the provenance hole of sanitising the
-rendered whole.
+2. **Transform — bottom-up, with a per-provenance sanitisation barrier (closes the nesting
+   hole).** Expansion proceeds **innermost-directive-first**. For each directive: its **own
+   untrusted body** — the Markdown/HTML text **excluding** any nested `Directive` node's *already-
+   composed* output — is rendered and **sanitised in isolation** (REQ-4905/CON-4902); each nested
+   directive has *already* been expanded to a **trusted, already-safe composed fragment** that is
+   slotted in as an **opaque subtree the enclosing body sanitiser does NOT re-sanitise** (it is
+   tagged trusted-composed). So a nested component's legitimate `<form>`/`<button>` is **never
+   stripped** by an outer body pass, *and* every directive's own untrusted text **is** sanitised
+   exactly once. (This is the one place provenance is genuinely needed — but it is a *clean*
+   wholesale tag on composed fragments, not the impossible "un-mix a flat string" of the rejected
+   composite-sanitiser model.)
+3. **Compose**: the sanitised own-body + the trusted nested fragments are bound as the component's
+   slot value, and the directive's props (REQ-4904) as keyword args; the SPEC-048 invocation
+   ([[SPEC-048]] REQ-4805) renders the **trusted** template.
+This sanitises each level's **untrusted text alone**, never a mixed-provenance string and never a
+nested component's trusted output — closing the transform-vs-render ambiguity *and* the depth-≥2
+relocation of it.
 
 **Trace:** [[SPEC-049-content-author-components#TEST-4906]], [[SPEC-032]]; [[SPEC-049-content-author-components#ADR-4905]].
 
-### REQ-4907: Restricted Content Context (No Over-Reach)
-A component rendered from the **content** path SHALL receive a **restricted context**: it SHALL
-NOT receive page-tier fields (raw frontmatter, backlinks, edges) or any capability beyond what a
-content author may already see. v1 forbids transclusion from content **by mechanism, not policy,
-and transitively**: the content render context SHALL **NOT bind the `transclude` global at all**
-([[SPEC-048]] REQ-4818) — so neither the directly-invoked component nor any trusted sub-component
-it reaches can call it (closing the transitive-leak path where a content directive invokes a
-trusted component whose template transcludes an unpublished page). `transclude` being absent, a
-`transclude(...)` call on the content path is an **undefined-global render error**, not a
-draft-leak. (If Q4 later re-enables content transclusion, it MUST bind a *restricted*
-`transclude` that applies the closed page-tier set [[SPEC-048]] CON-4806 **and** rejects
-draft/unpublished targets `content-transclude-forbidden` — that machinery is deferred with Q4,
-not live in v1.)
+### REQ-4907: Restricted Content Context (Deny-by-Default Allowlist)
+A component rendered from the **content** path SHALL receive a **deny-by-default, explicitly
+enumerated** context — an **allowlist**, not "everything minus `transclude`" (a denylist at a
+trust boundary is the wrong posture, [[SPEC-049-content-author-components#ADR-4902]]). The content
+render context SHALL bind **only**: the validated `props` (REQ-4904), the sanitised slot
+(REQ-4905), and a **named, draft-filtered** subset of safe site-tier helpers. It SHALL NOT bind
+**anything else**, in particular: `transclude` ([[SPEC-048]] REQ-4818 — omitted entirely, so a
+call is an undefined-global error for the directly-invoked component **and** any trusted
+sub-component it reaches transitively); page-tier fields (raw frontmatter, backlinks, edges); and
+any site-tier helper that exposes the **full vault graph** (e.g. an unfiltered `site.nav`, search,
+or edge walk that would reveal draft/unlisted page titles or paths). Any site-tier helper the
+content context *does* bind SHALL be **draft/visibility-filtered** at the binding. The bound set
+is the spec's allowlist; IMPL-049 enumerates it exhaustively and a reviewer can diff it. (If Q4
+later re-enables content transclusion, it MUST bind a *restricted* `transclude` applying the closed
+page-tier set [[SPEC-048]] CON-4806 **and** rejecting draft targets — deferred with Q4.)
 
 **Trace:** [[SPEC-049-content-author-components#TEST-4907]], [[SPEC-048]]; [[SPEC-049-content-author-components#Threat F]].
 
@@ -346,10 +379,11 @@ Directive expansion SHALL be **bounded**, with a single, well-defined re-entranc
   (legitimate nesting) — not via a second scan. The nesting **depth** so produced SHALL be
   bounded by a **maximum content-directive nesting depth** (`[Provisional]`, Q3);
   over-depth → `content-directive-too-deep` (fail closed).
-- **Component template output is NEVER re-scanned for directives.** Once a directive expands to a
-  component invocation, the rendered template HTML is not parsed for further directives — so
-  expansion cannot recurse through templates, only through the (single-parse, depth-bounded)
-  author body.
+- **Component template output is NEVER re-scanned for directives**, and a nested directive's
+  **composed output is never re-sanitised** by an enclosing body pass (REQ-4906 per-provenance
+  barrier). Once a directive expands, its rendered HTML is neither re-parsed for directives nor
+  re-fed to the sanitiser — so expansion cannot recurse through templates, and trusted nested
+  output is not stripped, only through the (single-parse, depth-bounded) author body.
 - **Component invocation graph cycles** (a component invoking itself transitively) reuse
   [[SPEC-048]] REQ-4807 cycle detection (Kahn topo-sort, [[SPEC-032]] algorithm) →
   `content-directive-cycle`.
@@ -372,10 +406,15 @@ tier** (vs the trusted in-realm tier): SPEC-050 distinguishes the tiers "by auth
 ([[SPEC-050]] REQ-5010) but the only build-time signal is this flag — so a JS-bearing
 `content_invocable` component MUST be mounted under SPEC-050's content-island enforcement
 (Worker sandbox, `content:`-only publish, CON-5007 renderer), and a JS-bearing non-invocable
-component is a trusted in-realm island. The element set the SPEC-050 content island may render
-(CON-5007) and the set this spec's static fallback permits (CON-4902) SHALL be **reconciled** so
-the no-JS fallback is not stripped of elements the hydrated UI shows (REQ-5020 a11y parity) —
-their intersection is the safe content-component element vocabulary.
+component is a trusted in-realm island. **A11y-parity is achieved by *who renders the static
+fallback*, not by intersecting allowlists** (CON-4902 is a fixed prose set that forbids
+`<form>`/`<input>`/`<button>`; CON-5007 is a per-render theme set that *needs* them — their
+intersection is uncomputable and would strip exactly the interactive controls a `poll` fallback
+needs): the static fallback is produced by the **trusted component template**, which is **NOT**
+sanitised (REQ-4905) and MAY legitimately contain `<form>`/`<button>`/etc.; only the **untrusted
+author body slotted into it** is CON-4902-sanitised. So the no-JS fallback can carry the same
+interactive elements the hydrated CON-5007 render shows — parity holds because both come from the
+trusted template, and the author-body slot is the only sanitised part in either mode.
 
 **Trace:** [[SPEC-049-content-author-components#TEST-4910]], [[SPEC-050]]; [[SPEC-049-content-author-components#ADR-4901]].
 
@@ -392,7 +431,7 @@ removed.
 ### REQ-4912: Backward-Compatible Default
 With the `content-components` feature gate **off**: `:::name{…}` sequences SHALL pass through as
 today (literal text / existing Markdown behaviour); and the new manifest keys
-(`content_invocable`/`content_slots`/`content_props`, CON-4903) SHALL be **reserved —
+(`content_invocable`/`content_props`, CON-4903) SHALL be **reserved —
 accepted-and-ignored**, NOT rejected as unknown (this spec amends [[SPEC-048]] CON-4801's
 unknown-key rule to reserve them, exactly as [[SPEC-050]] does for `publishes`/`subscribes`), so
 a theme already annotated for content-invocability still builds under a gate-off (SPEC-048-only)
@@ -433,11 +472,18 @@ grammar above describes a recognised directive's *shape*; it is subordinate to t
 **Post-conditions:** a typed `Directive { form, name, attrs: map<key,value>, body? , pos }`
 AST node — **a [[SPEC-032]] schema amendment this spec depends on** (REQ-4906), not an assumed
 node; `body` is the **unparsed** Markdown source span (parsed once, in the same parse — REQ-4908).
-**Pre-conditions:** ASCII-or-UTF-8 text input; `name`/`key` ASCII kebab; an unterminated
-container, a directive in a code context, or a `<`/`>` in a `bare` value → not a directive /
-reject (`content-directive-malformed`). **Note:** the `bare` value grammar admits `:`/`/`, so a
-`bare` value MAY carry a `javascript:`/`data:` URI string — the grammar is **NOT** relied on for
-scheme safety; URL safety is REQ-4904's `url`-ptype scheme validation, never the directive grammar.
+**Pre-conditions:** ASCII-or-UTF-8 text input; `name`/`key` ASCII kebab; a `quoted` value is
+**single-line** (an unterminated quote / a newline inside a quote → `content-directive-malformed`,
+never swallow-to-EOL); an unterminated container, a directive in a code context, or a `<`/`>` in a
+`bare` value → not a directive / reject. **One ptype coercion recogniser:** a `bare`/`quoted`
+lexeme is coerced to the prop's declared ptype by a single recogniser (an `int`/`number` lexeme
+that is not a valid numeral → `content-prop-type`, fail-closed; no ambiguous `1.2.3`-as-number).
+**`#id`/`.class` shorthand:** maps to a declared `id`/`class` prop; mapping to an **undeclared**
+prop is a **diagnostic** (`content-prop-unknown`), **not** a silent drop — same failure mode as
+an equivalent `key=` (consistency with REQ-4904; no silent loss per REQ-4911). **Note:** the
+`bare` value grammar admits `:`/`/`, so a `bare` value MAY carry a `javascript:`/`data:` URI
+string — the grammar is **NOT** relied on for scheme safety; URL safety is REQ-4904's `url`-ptype
+**ingestion** validation (CON-4902), never the directive grammar.
 **Error model:** malformed → `content-directive-malformed` (inert text + diagnostic).
 **Implements:** [[SPEC-049-content-author-components#REQ-4901]], [[SPEC-049-content-author-components#REQ-4906]].
 **Verified by:** [[SPEC-049-content-author-components#TEST-4901]].
@@ -455,14 +501,23 @@ tbody tr th td hr br span div`. **Hard-forbidden, non-overridable:** `script sty
 embed applet form input button template noscript svg math foreignObject base meta link` + **all**
 `on*`, `style`, `is`, `srcdoc`, `name`, `xlink:*` + **HTML comments / processing instructions /
 CDATA** (classic mXSS pivots).
-**URL schemes:** URL attributes (`href`/`src`/`poster`) → `https`/`http`/`mailto`/relative only;
-`javascript:`/`data:`/`blob:`/`vbscript:`/`file:` rejected. **`srcset`** (a descriptor-delimited
-list with its own micro-grammar) → parsed per its sub-grammar, each candidate URL scheme-checked;
+**URL validation (scheme *allowlist* after canonicalisation, not a denylist).** A URL attribute
+value (`href`/`src`/`poster`) and a `url`-typed prop (REQ-4904, validated at ingestion) SHALL be
+**canonicalised** (lowercase scheme, strip leading/embedded control chars + whitespace —
+`Java\tscript:` ≡ `javascript:`) then accepted **only** if it is `https`/`http`/`mailto` **or** a
+relative reference that is **path-absolute or path-relative**. It SHALL be **rejected** if it is
+**scheme-relative** (begins `//` or `\\` after canonicalisation → resolves off-origin) or any
+non-allowlisted scheme (`javascript:`/`data:`/`blob:`/`vbscript:`/`file:`/…). Relative URLs
+resolve against the **page origin**; a content-invocable template (and the body) SHALL NOT emit a
+`<base>` element (it would redirect every relative URL) — `<base>` is build-rejected in the body
+(allowlist) and a content-invocable template emitting `<base>` is a build error. **`srcset`** (a
+descriptor-delimited list) → parsed per its sub-grammar, each candidate URL validated as above;
 unparseable → dropped.
-**mXSS / parser-differential discipline:** the sanitiser SHALL be **serialise→reparse fixed-point
-stable** — re-sanitising its own serialised output yields byte-identical output (so a
-browser-vs-server reparse cannot reveal a hidden node). A single HTML namespace; no second
-divergent parser. (This is the hardest part and the reason Q1 needs executable fuzzing + human
+**mXSS / parser-differential discipline:** the sanitiser SHALL emit a **canonical serialisation**
+(stable/sorted attribute order, fixed quoting + entity policy, explicit void-element form) and be
+**serialise→reparse fixed-point stable** — re-sanitising its own serialised output yields
+byte-identical output (so a browser-vs-server reparse cannot reveal a hidden node, and so output
+is deterministic per NFR-4901). A single HTML namespace; no second divergent parser. (This is the hardest part and the reason Q1 needs executable fuzzing + human
 review before any Phase 2 gate.)
 **Egress note:** an allowlisted body `<img src="https://…">`/`<a href>` causes the *reader's
 browser* to fetch a remote URL (a tracking/exfil egress). Confining that is the **operator's
@@ -490,27 +545,30 @@ ptype.
 **(b) The content-authoring gate:**
 ```
 content-invocable = "content_invocable" "=" bool ;   (* default false — REQ-4903 *)
-content-slots     = "content_slots" "=" "[" { quoted-ident } "]" ;  (* OPTIONAL: named slots a
-                     content author may fill; default = the default slot only *)
-content-props     = "content_props" "=" "[" { quoted-ident } "]" ;  (* OPTIONAL: subset of [props]
-                     settable from content; default = all scalar/url props *)
+content-props     = "content_props" "=" "[" { quoted-ident } "]" ;  (* the EXACT props settable
+                     from content; default = [] (NONE — narrowest surface, m-2) *)
 ```
-**Forward-compat (amends CON-4801's unknown-key rule):** `content_invocable`/`content_slots`/
-`content_props` SHALL be **reserved** — when the `content-components` gate is **off** they are
+**v1 fills the *default slot only*.** Named content slots (`content_slots`) are **deferred**
+(`[Blocked: Q8]`): they would re-open the slot-landing-context problem (REQ-4905/B-2) per named
+slot and need an author syntax CON-4901 does not yet define. v1 content authors fill only the
+container body → the default slot.
+**Forward-compat (amends CON-4801's unknown-key rule):** `content_invocable`/`content_props`
+SHALL be **reserved** — when the `content-components` gate is **off** they are
 **accepted-and-ignored**, never `component-malformed`-rejected (mirrors how [[SPEC-050]] activates
 the reserved `publishes`/`subscribes`). So a manifest annotated for content-invocability builds
 under a SPEC-048-only build (REQ-4912).
-**Pre-conditions:** these are **theme-author** (trusted) keys; a `content_slots`/`content_props`
-entry MUST name a declared slot/prop; a content-settable prop MUST be `string`/`bool`/`int`/
-`number`/`url` (REQ-4904; `list`/`map` not content-settable). The SPEC-048-reserved
-`publishes`/`subscribes` and the [[SPEC-050]] island fields remain owned by [[SPEC-050]].
-**Post-conditions:** a per-component content-invocable flag + optional narrowing of the
-content-settable slot/prop surface + the `url` ptype, consumed by REQ-4903/4904 and OBS-4901.
-**Error model:** `content_slots`/`content_props` naming an undeclared slot/prop →
-`content-manifest-unknown-ref`; `content_invocable = true` on a component with a required
-non-content-settable prop and no settable alternative → `content-invocable-unfulfillable`;
-a content-settable prop interpolated in a forbidden context (REQ-4904) → `content-prop-context`
-(all build errors).
+**Pre-conditions:** these are **theme-author** (trusted) keys; a `content_props` entry MUST name a
+declared prop; a content-settable prop MUST be `string`/`bool`/`int`/`number`/`url` (REQ-4904;
+`list`/`map` not content-settable). The **default `content_props` is `[]` (none)** — the
+narrowest surface; a component exposes a prop to content only by explicitly listing it (m-2: no
+silent widening to "all scalars"). The SPEC-048-reserved `publishes`/`subscribes` and the
+[[SPEC-050]] island fields remain owned by [[SPEC-050]].
+**Post-conditions:** a per-component content-invocable flag + the explicit content-settable prop
+set + the `url` ptype, consumed by REQ-4903/4904 and OBS-4901.
+**Error model:** `content_props` naming an undeclared prop → `content-manifest-unknown-ref`;
+`content_invocable = true` with a required prop that is neither content-settable nor defaulted →
+`content-invocable-unfulfillable`; a tainted content value raw-emitted (`|safe`) → render abort
+`content-unsafe-emit` (REQ-4904) — all fail-closed.
 **Implements:** [[SPEC-049-content-author-components#REQ-4903]], [[SPEC-049-content-author-components#REQ-4904]], [[SPEC-049-content-author-components#REQ-4912]].
 **Verified by:** [[SPEC-049-content-author-components#TEST-4903]].
 
@@ -602,19 +660,21 @@ align with [[SPEC-048]] for cross-spec parity; this spec **owns Threat A**, whic
 deferred here.)
 
 ### Threat A: Script Injection via a Content Directive *(the deferred SPEC-048 threat)*
-An author injects script on **two independent paths**: the **body** (`<script>`, `<img
-onerror>`, an mXSS `<svg>`) and the **props** (attribute-breakout `title="\" onload=\"…`, or a
-dangerous value reaching a URL/CSS/JS context like `href="{{ props.x }}"` with
-`x=javascript:…`). **Mitigation — both paths, kept separate:** (1) **body** rendered then
-**sanitised in isolation** (REQ-4905/CON-4902, a closed fixed-point-stable allowlist; raw HTML
-sanitised not passed through, ADR-4906); (2) **props** made safe by **context-correct escaping +
-a restricted set of allowed interpolation contexts + the `url` ptype scheme check** (REQ-4904) —
-a content prop cannot reach a CSS/JS context (build error) and a URL-context prop must be `url`-
-typed. **Closure is *pending*, not asserted:** it holds **iff** CON-4902 converges (Q1 — engine,
-complete grammar, fixed-point reparse, fuzzing) **and** the REQ-4904 prop linter is sound. An
-incomplete allowlist or a missed prop context re-admits XSS — same posture as [[SPEC-050]]
-CON-5007. (Note: this is *injection*; **outbound egress** from an allowlisted body `<img>`/`<a>`
-is the operator's CSP, not this threat — CON-4902.)
+An author injects script on **three paths**: the **body** (`<script>`, `<img onerror>`, an mXSS
+`<svg>`); the **props** (attribute-breakout `title="\" onload=\"…`, or a dangerous value in a
+URL/CSS/JS context); and the **slot landing site** — sanitised body *text* (e.g.
+`javascript:alert(1)`) slotted by a trusted template into an attribute/URL context like
+`<a href="{{ slot }}">` (the body sanitiser only validated it as element content, B-2). **Mitigation — three paths, kept separate:** (1) **body** rendered then **sanitised in isolation**
+(REQ-4905/CON-4902, a closed fixed-point-stable allowlist; raw HTML sanitised not passed through,
+ADR-4906); (2) **props** by **ingestion validation (`url` scheme) + HTML autoescape + tainted-value
+tripwire** (REQ-4904); (3) **slot landing** restricted to element-content position by the
+trusted-author contract (REQ-4905). **Closure is *pending*, not asserted:** it holds **iff**
+CON-4902 converges (Q1 — engine, complete grammar, fixed-point reparse, fuzzing) **and** the
+CSS/JS/unquoted **prop+slot residual** (Q6 — a restricted template language; minijinja has no
+AST to enforce it, [[SPEC-048]] REQ-4808) is closed. An incomplete allowlist, or a content
+value/slot a trusted template places in a CSS/JS/unquoted context, re-admits XSS — same honest
+posture as [[SPEC-050]] CON-5007. (Note: this is *injection*; **outbound egress** from an
+allowlisted body `<img>`/`<a>` is the operator's CSP, not this threat — CON-4902.)
 
 ### Threat B: Capability Leak via an Over-Exposed Component
 An author invokes a component that was not meant for content — one that transcludes arbitrary
@@ -652,7 +712,7 @@ content** pending Q4.
 ### OBS-4901: Content-Directive Audit
 Per build, the system SHALL record, for each page: the content directives expanded (component
 name + source location), every refusal (`content-directive-unknown`/`-malformed`, prop errors
-incl. `content-prop-context`, cycle/depth), and **sanitiser drops** as **kinds + counts** (e.g.
+incl. `content-unsafe-emit`, cycle/depth), and **sanitiser drops** as **kinds + counts** (e.g.
 "3 `<script>` dropped, 1 `on*` attr dropped") so an author can see *what kind* was removed and an
 operator can audit content reachability — but it SHALL **NOT echo the rejected markup/payload
 verbatim** (that would be a sanitiser-probing oracle for the untrusted author). This composes
@@ -676,7 +736,7 @@ wiring graph (REQ-5009).
 **Validates:** [[SPEC-049-content-author-components#REQ-4903]], [[SPEC-049-content-author-components#CON-4903]]. Positive: a `content_invocable = true` component expands from content. Negative-input: a directive naming a non-existent component, or an existing component **without** `content_invocable` → `content-directive-unknown`, rendered inert (never expanded). Negative-output: trusted template invocation of the same (non-invocable) component still works (the flag gates only the content path); `content_invocable` cannot be set from content.
 
 ### TEST-4904: Untrusted Prop Recognition + Context Escaping
-**Validates:** [[SPEC-049-content-author-components#REQ-4904]], [[SPEC-049-content-author-components#Threat A]], [[SPEC-049-content-author-components#Threat C]]. Positive: typed props (incl. `url`) validate; a content prop in HTML-text/quoted-attr context interpolates HTML-escaped. Negative-input: unknown/wrong-type/missing-required/out-of-`enum` → matching `content-prop-*`; a `list`/`map` from content → `content-prop-unsupported`; a content prop interpolated in a **URL context that is not `url`-typed**, or in **any CSS/`<style>`/`on*`/JS context** → `content-prop-context` (build error); a `url`-typed prop with a `javascript:` value → rejected. Negative-output: `" onload="alert(1)` cannot break out of a quoted attribute; **no content prop reaches a CSS/JS/un-validated-URL context** (the linter, not the sanitiser, guarantees this).
+**Validates:** [[SPEC-049-content-author-components#REQ-4904]], [[SPEC-049-content-author-components#Threat A]], [[SPEC-049-content-author-components#Threat C]]. Positive: a `url`-typed prop is **scheme-validated at ingestion** and is safe wherever placed; a scalar prop in text/quoted-attr context HTML-autoescapes. Negative-input: unknown/wrong-type/missing-required/out-of-`enum` → matching `content-prop-*`; a `list`/`map` from content → `content-prop-unsupported`; a `url`-typed prop with `javascript:`/`data:`/`//evil.com`/`Java\tscript:` → rejected at ingestion (canonicalised). Negative-output: `" onload="alert(1)` cannot break out of a quoted attribute (autoescape); a `|safe` raw-emit of a tainted content value → render abort `content-unsafe-emit`. **Residual (asserted, not a pass):** a scalar content prop placed by a trusted template into a CSS/JS/unquoted context is *not* statically caught (Q6) — the test documents this limit rather than claiming closure.
 
 ### TEST-4905: Isolated Body Sanitisation
 **Validates:** [[SPEC-049-content-author-components#REQ-4905]], [[SPEC-049-content-author-components#CON-4902]], [[SPEC-049-content-author-components#Threat A]], [[SPEC-049-content-author-components#Threat E]]. **Provenance:** the sanitiser is invoked on the **body fragment alone**, before composition — assert a trusted template's legitimate `<form>`/`<svg>`/`<button>` is **NOT** stripped (it never reaches the sanitiser), while the same elements in the **body** ARE stripped. Positive: a body with allowlisted Markdown renders intact. Negative-input — **vector matrix**: `<script>`, `<img onerror>`, `<a href="javascript:">`, `<iframe>`, `<style>`, `data:`/`blob:` URL, `on*`, an HTML comment/PI, a `srcset` with a hidden `javascript:` descriptor, an mXSS/`<svg>`-foreign-content probe → each dropped to inert text, kind+count surfaced (OBS-4901, never the payload verbatim). **Fixed-point:** re-sanitising the sanitiser's own output is byte-identical (mXSS guard). Negative-output: no script/handler/dangerous-URL/comment/non-allowlisted node survives — **closure is conditional on CON-4902 converging (Q1)**; a missing allowlist → `sanitiser-policy-missing` (fail-closed).
@@ -697,7 +757,7 @@ wiring graph (REQ-5009).
 **Validates:** [[SPEC-049-content-author-components#REQ-4911]], [[SPEC-049-content-author-components#OBS-4901]]. Positive: each failure surfaces a `HookDiagnostic` at the author's source location and renders inert text there; sanitiser drops are summarised per page. Negative-output: no failure is silent and none emits raw HTML.
 
 ### TEST-4912: Backward-Compatible Default
-**Validates:** [[SPEC-049-content-author-components#REQ-4912]], [[SPEC-049-content-author-components#CON-4903]], [[SPEC-049-content-author-components#NFR-4901]]. Positive: with the gate off, `:::name` is literal text and output is byte-identical to a no-SPEC-049 build. **Reserved keys:** a manifest carrying `content_invocable`/`content_slots`/`content_props` **builds** under a gate-off (SPEC-048-only) build (accepted-and-ignored, NOT `component-malformed`). Negative-input: the gate on with no `content_invocable` component changes nothing. Negative-output: two builds are byte-identical (determinism) for any vault with no directive expanded.
+**Validates:** [[SPEC-049-content-author-components#REQ-4912]], [[SPEC-049-content-author-components#CON-4903]], [[SPEC-049-content-author-components#NFR-4901]]. Positive: with the gate off, `:::name` is literal text and output is byte-identical to a no-SPEC-049 build. **Reserved keys:** a manifest carrying `content_invocable`/`content_props` **builds** under a gate-off (SPEC-048-only) build (accepted-and-ignored, NOT `component-malformed`). Negative-input: the gate on with no `content_invocable` component changes nothing. Negative-output: two builds are byte-identical (determinism) for any vault with no directive expanded.
 
 ---
 
@@ -749,13 +809,49 @@ wiring graph (REQ-5009).
 - **Q5 — Allowlist scope.** Is `content_invocable` strictly per-component, or should a theme be
   able to declare a content-component *namespace*/folder allowlist? Per-component (explicit) is
   the v1 default.
+- **Q6 — Prop/slot context enforcement (the load-bearing residual).** minijinja exposes no
+  template AST ([[SPEC-048]] REQ-4808), so v1 cannot *statically* prevent a trusted theme author
+  from interpolating a content prop or the sanitised slot into a CSS/JS/unquoted-attribute context
+  (REQ-4904/4905). v1 relies on ingestion-validation (`url`), autoescape, a tainted-value tripwire,
+  and a documented trusted-author contract. The **real** fix is a **restricted, context-aware
+  template language** for content-invocable components (a recogniser, not full minijinja) — should
+  v2 adopt one, or accept the documented residual? This + Q1 is the human-expert + executable-fuzz
+  gate. (`[Blocked: Q6]`.)
+- **Q8 — Named content slots.** `content_slots` is deferred (CON-4903): it re-opens the
+  slot-landing-context problem per named slot and needs an author syntax. v1 fills only the default
+  slot (container body). Revisit if multi-slot content components are needed. (`[Blocked: Q8]`.)
 
 ---
 
 <details>
 <summary>Changelog</summary>
 
-<summary>Revision history — 0.1.0 → 0.2.0</summary>
+<summary>Revision history — 0.1.0 → 0.3.0</summary>
+
+- **0.3.0** (2026-06-25) — *second adversarial pass (Opus, fresh): 3 Blocking / 5 Major / 4 Minor;
+  verdict "NOT converging — round-N fixes resurfacing as round-N+1 defects" (the SPEC-050
+  pattern). All applied.* Root cause: v0.2.0 specified **static template guarantees on minijinja,
+  which exposes no template AST** ([[SPEC-048]] REQ-4808 — the reviewer's decisive cite). **B-1
+  (RELOCATED):** the prop-context *linter* is unbuildable → re-grounded REQ-4904 on
+  **ingestion-validation (`url` scheme, context-independent) + HTML autoescape + a tainted-value
+  tripwire**, with the CSS/JS/unquoted context stated as an **honest residual** (Q6 — a restricted
+  template language is the real fix), not a closed guarantee. **B-2 (PARTIAL):** the **slot
+  landing context** was unguarded (sanitised HTML in `<a href="{{ slot }}">` = XSS) → REQ-4905 now
+  states the element-content-only contract + the same Q6 residual. **B-3 (most dangerous):**
+  nested directives re-introduced the v1 composite-sanitiser flaw → REQ-4906 now specifies
+  **bottom-up expansion with a per-provenance barrier** (each level's own untrusted text sanitised
+  once; nested composed fragments are trusted-safe and never re-sanitised). **M-1:** REQ-4907 is
+  now a **deny-by-default context allowlist** (not just `transclude` removed — other site-tier
+  reach plugged). **M-2:** dropped the incoherent "allowlist intersection" — the **trusted
+  template** produces the static fallback (unsanitised), only the slot is sanitised, so a11y
+  parity holds. **M-3:** URL validator is a **scheme allowlist after canonicalisation**, rejecting
+  scheme-relative `//evil` + obfuscation + `<base>`. **M-4:** ptype-coercion recogniser,
+  single-line quoted values, `#id`/`.class`→unknown-prop diagnostic. **M-5:** `content_slots`
+  deferred (Q8). Minors: canonical serialiser (determinism + fixed-point), narrowest
+  `content_props` default `[]`, anti-oracle diagnostics, Threat-A slot sub-vector. **Still NOT
+  converged:** the Q6 prop/slot context residual + Q1 sanitiser are the substrate-level limits;
+  the honest path is a restricted template language + executable fuzzing + a human security expert,
+  and v0.3.0's own fixes are unreviewed.
 
 - **0.2.0** (2026-06-25) — *first adversarial pass (Opus, fresh context): 5 Blocking / 4 Major /
   4 Minor, all applied.* The pass found the **architecture** was wrong, not just the deferred
