@@ -2,7 +2,7 @@
 id: SPEC-050
 title: "Component Islands & Inter-Island Messaging"
 status: draft
-version: 0.8.0-strawman
+version: 0.9.0-strawman
 last-updated: 2026-06-25
 audience: agent, human
 ---
@@ -87,7 +87,7 @@ author, to ground in Phase 1). *(Q1 FOUC, Q2 sandbox, Q3 typed-payloads — reso
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | [[SPEC-050-component-islands-and-messaging\|SPEC-050]]                                  |
 | Title        | Component Islands & Inter-Island Messaging                                              |
-| Version      | 0.8.0-strawman                                                                          |
+| Version      | 0.9.0-strawman                                                                          |
 | Status       | Draft (strawman; NOT converged — pending Phase 1 + Phase 2 gates)                       |
 | Author       | Agent (Claude Opus 4.8 [1M], [[PROTO-001\|USDD Agent Protocol]] v1.11.0)                |
 | Date         | 2026-06-24                                                                              |
@@ -454,19 +454,30 @@ There SHALL be two island trust tiers, distinguished by author trust:
 - **Trusted islands** (theme/component authors) run **in the page realm** with direct
   access to `window.zetl` ([[SPEC-050-component-islands-and-messaging#REQ-5004]]), as
   they ship code that already controls the page.
-- **Content-author islands** ([[SPEC-049]]) SHALL run **only inside a sandboxed iframe**
-  ([[SPEC-050-component-islands-and-messaging#REQ-5015]]) with an **opaque origin** (the
-  `sandbox` attribute carries `allow-scripts` but NOT `allow-same-origin`), so the island
-  has **no access to the parent realm, the parent DOM, or `window.zetl`**. Such an island
-  SHALL reach the bus only through the capability-scoped bridge
-  ([[SPEC-050-component-islands-and-messaging#REQ-5016]]). A content island SHALL NOT
-  obtain a publish capability for a trusted (non-content-namespace) topic; it MAY be
-  granted a **read-only** (subscribe) capability for a trusted topic only when the theme
-  explicitly declares the grant.
+- **Content-author islands** ([[SPEC-049]]) run in an isolated realm with **no access to the
+  parent realm, the parent DOM, or `window.zetl`**, reaching the bus only through the
+  capability-scoped bridge ([[SPEC-050-component-islands-and-messaging#REQ-5016]]). There are
+  **two render modes**, and (drawing on production prior art) the **Worker mode is the
+  default** ([[SPEC-050-component-islands-and-messaging#ADR-5010]]):
+  - **Controlled-element mode (DEFAULT, [[SPEC-050-component-islands-and-messaging#REQ-5025]]):**
+    the island runs in a **Web Worker** (no DOM, no `window`, no storage) and emits a
+    **host-approved declarative element tree** that the trusted host paints into the page —
+    the [[Shopify Remote DOM]] / [[worker-dom]] model. Untrusted code never produces HTML, so
+    [[SPEC-050-component-islands-and-messaging#Threat M]] is closed *by construction*; the
+    widget renders inline with page CSS; and identity is trivial (the parent holds the `Worker`
+    object).
+  - **Full-DOM mode (opt-in escape hatch, [[SPEC-050-component-islands-and-messaging#REQ-5015]]):**
+    for an island that genuinely needs arbitrary DOM / a DOM-manipulating library, a sandboxed
+    `<iframe>` (opaque origin, no `allow-same-origin`) with the capability bridge of
+    REQ-5016/CON-5006. This is the heavier, `null`-origin path that REQ-5022's producer
+    restriction guards.
+  A content island (either mode) SHALL NOT obtain a publish capability for a trusted topic; it
+  MAY be granted a **read-only** subscribe capability for one only when the theme explicitly
+  declares the grant.
 
-This is the enforcement boundary that the v0.1.0 strawman lacked: realm isolation (not
-topic-string namespacing) is what prevents a markdown author from reading, forging, or
-overwriting a trusted topic such as `theme`
+This is the enforcement boundary the v0.1.0 strawman lacked: **realm isolation** (a Worker or
+an opaque-origin iframe, not topic-string namespacing) is what prevents a markdown author from
+reading, forging, or overwriting a trusted topic such as `theme`
 ([[SPEC-050-component-islands-and-messaging#ADR-5003]],
 [[SPEC-050-component-islands-and-messaging#Threat A]]).
 
@@ -552,8 +563,33 @@ Two publishers declaring **incompatible** types for the same topic SHALL be a bu
 
 **Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5013]], [[SPEC-050-component-islands-and-messaging#CON-5005]], [[SPEC-050-component-islands-and-messaging#CON-5006]]; [[SPEC-050-component-islands-and-messaging#Threat C]], [[SPEC-050-component-islands-and-messaging#Threat H]].
 
-### REQ-5015: Content-Island iframe Sandbox
-A content-author island SHALL be mounted inside a `<iframe sandbox>` whose token set
+### REQ-5025: Controlled-Element Content Islands (Default Mode)
+A content-author island's **default** render mode SHALL run its code in a **Web Worker** —
+which has no DOM, no `window`, no `localStorage`, and no network beyond what the host grants —
+and SHALL render UI **only** by emitting a **declarative element tree** over the bus that the
+**trusted host** paints into the page, after the [[Shopify Remote DOM]] / [[worker-dom]]
+model. The host SHALL render that tree using a **host-approved element + attribute allowlist**
+(a small vocabulary of safe elements and props the theme defines), applying text via
+`textContent` and attributes via an allowlist — **never** `innerHTML` and never an attacker-
+controlled tag/handler/URL scheme. Therefore the untrusted island **never produces HTML or
+script**, and [[SPEC-050-component-islands-and-messaging#Threat M]] is closed **by
+construction** (not merely by the REQ-5022 producer restriction, which governs the opt-in
+full-DOM mode). Identity and the bridge are **simpler than the iframe path**: the parent
+creates the `Worker` and holds the only reference, so there is no opaque `"null"` origin, no
+`event.source` ambiguity, no bootstrap-ready race, and no `contentWindow` routing map — the
+parent `postMessage`s the worker directly and the worker's grant is keyed on that `Worker`
+object (the v0.6.0 REQ-5016 bootstrap/`WindowProxy` machinery applies **only** to the
+opt-in iframe escape hatch, REQ-5015). The element-tree messages are typed/recognised like any
+bridge message ([[SPEC-050-component-islands-and-messaging#CON-5006]], extended with the
+element-tree shape) before the host renders them. The static (no-JS) component HTML remains the
+parent-document fallback ([[SPEC-050-component-islands-and-messaging#REQ-5002]]).
+
+**Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5025]], [[SPEC-050-component-islands-and-messaging#REQ-5010]], [[SPEC-050-component-islands-and-messaging#ADR-5010]], [[SPEC-050-component-islands-and-messaging#REQ-5016]]; [[SPEC-050-component-islands-and-messaging#Threat M]], [[SPEC-050-component-islands-and-messaging#Threat I]].
+
+### REQ-5015: Content-Island iframe Sandbox (Opt-In Full-DOM Mode)
+A content-author island that opts into **full-DOM mode** ([[SPEC-050-component-islands-and-messaging#REQ-5010]],
+[[SPEC-050-component-islands-and-messaging#ADR-5010]] — because it needs arbitrary DOM or a
+DOM-manipulating library) SHALL instead be mounted inside a `<iframe sandbox>` whose token set
 includes `allow-scripts` and **excludes `allow-same-origin`**, giving the iframe an opaque
 origin and a separate realm; the iframe SHALL NOT be granted `allow-top-navigation`,
 `allow-popups`, `allow-modals`, or form/pointer-lock escalations beyond what the component
@@ -901,6 +937,29 @@ islands, pays the iframe cost for never-seen widgets); `client:only` (skip serve
 out of scope, since SPEC-050 mandates a static no-JS rendering (REQ-5002). Astro's broader
 prior art (Nano Stores for state, partial hydration) also grounds ADR-5001/5002.
 
+### ADR-5010: Content Islands Default to a Worker + Controlled-Element Model (Remote DOM), iframe as Escape Hatch
+Drawing on the prior art the `ar-crawl` research surfaced ([[Shopify Remote DOM]],
+[[amp-script]]/[[worker-dom]], [[SES]]/[[CapTP]]), the **default** content-island surface is a
+**Web Worker that emits a host-rendered controlled element tree** (REQ-5025), not a sandboxed
+iframe rendering its own DOM. The sandboxed iframe (REQ-5015) is retained only as an **opt-in
+escape hatch** for islands needing arbitrary DOM. (+) **Closes Threat M by construction** —
+untrusted code never emits HTML/script, only a declarative tree the host paints with safe
+primitives (the single strongest reason; Remote DOM ships exactly this for untrusted merchant
+extensions). (+) **Dissolves the hardest bridge problems** — a `Worker` has no `"null"`
+origin, no `event.source` ambiguity, no port-transfer race, and no `contentWindow` routing
+map; the parent holds the `Worker` reference and `postMessage`s it directly, so the four
+review passes' iframe-identity machinery (REQ-5016 bootstrap/`WindowProxy`) becomes
+escape-hatch-only. (+) Stronger isolation (a Worker has no DOM/`window`/storage at all) and
+**inline rendering with page CSS** (no iframe layout/sizing pain — Q6). (−) The default mode
+cannot run arbitrary DOM or DOM-manipulating third-party libraries — those need the iframe
+escape hatch; and the host must ship a small renderer + element/attribute allowlist. Rejected:
+iframe-only (the model SPEC-050 carried through v0.8.0 — heavier, weaker against Threat M, and
+the source of the bridge complexity); a same-realm Worker proxy of `window.zetl` (defeats the
+isolation point). This is the most consequential design change the prior-art study produced;
+it **supersedes the iframe-default** of ADR-5003. **Consolidation debt:** the iframe-specific
+clauses (REQ-5015/5016, CON-5006, Threats I/J/K) are now *escape-hatch* scoped; a follow-up
+revision SHOULD make every content-island clause explicitly mode-aware (tracked in §13).
+
 ---
 
 ## 7. Contracts (LangSec)
@@ -1234,13 +1293,16 @@ that residual is [[SPEC-050-component-islands-and-messaging#Threat M]], not this
 An untrusted content island publishes a **type-valid** value on its granted `content:` topic
 that a trusted subscriber then injects into a DOM/HTML/URL sink (e.g. `innerHTML`) — markup
 authored in markdown reaching the trusted realm *through* the bridge, defeating the sandbox.
-**Mitigation (defense in depth, REQ-5022):** (1) **producer restriction** — a content island
-may publish only `bool`/`int`/`number`/`enum(...)` topics, **never** free `string` or a
-`string`-bearing record, so the one channel where an untrusted author picks the value cannot
-carry free text (`island-content-value-type`, build error); (2) **subscriber obligation** —
-all subscribers treat delivered values as untrusted text (`textContent`, never `innerHTML`;
-no raw `javascript:`/`data:` URLs). Recognition (Threat H) checks type, not output safety;
-these two close the value-flow path it does not.
+**Mitigation:** in the **default controlled-element mode** (REQ-5025/ADR-5010) this is closed
+**by construction** — an untrusted island never produces HTML or a free-text value rendered as
+markup; it emits a declarative element tree the host paints with an allowlist (`textContent`,
+allowlisted attrs), the [[Shopify Remote DOM]] guarantee. In the **opt-in iframe full-DOM
+mode**, defense in depth (REQ-5022): (1) **producer restriction** — a content island may
+publish only `bool`/`int`/`number`/`enum(...)` topics, never free `string`/`string`-record
+(`island-content-value-type`, build error); (2) **subscriber obligation** — subscribers treat
+delivered values as untrusted text (`textContent`, never `innerHTML`; no raw `javascript:`/
+`data:` URLs). Recognition (Threat H) checks type, not output safety; the controlled-element
+model (default) or these two (escape hatch) close the value-flow path it does not.
 
 ### Threat I: iframe Sandbox Escape / Escalation
 A content island tries to break out of the sandbox — navigating the top frame, opening
@@ -1354,6 +1416,9 @@ island imports.
 ### TEST-5022: Recognition ≠ Output Safety
 **Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5022]], [[SPEC-050-component-islands-and-messaging#Threat M]]. Positive: a content island manifest publishing only `bool`/`int`/`number`/`enum` content topics builds. Negative-input: a content island declaring a `string`-typed (or string-bearing record) **published** topic → `island-content-value-type` build error. Negative-output: a conformant `string` value (e.g. `"<img onerror=…>"`) delivered to a subscriber is inert when the subscriber follows the obligation (assert `textContent` rendering, not `innerHTML`); the producer-restriction means no untrusted-authored value can be free text.
 
+### TEST-5025: Controlled-Element Content Island (Default Worker Mode)
+**Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5025]], [[SPEC-050-component-islands-and-messaging#ADR-5010]], [[SPEC-050-component-islands-and-messaging#Threat M]]. Positive: a default content island runs in a Worker and renders via an emitted element tree painted by the host with the allowlist (renders inline with page CSS). Negative-input: an element tree referencing a non-allowlisted tag/attribute/URL scheme is rejected by the host renderer (dropped, never painted); the worker has no `document`/`window`/`localStorage` (assert undefined). Negative-output: **no path produces HTML from untrusted code** — fuzz the element-tree messages (script tags, `onerror`, `javascript:` hrefs, `__proto__`) and assert the host renders inert text/allowlisted nodes only (Threat M closed by construction); identity needs no `event.source`/bootstrap (the parent holds the `Worker`).
+
 ### TEST-5023: Session-Persistent Bus Across SPA Nav
 **Validates:** [[SPEC-050-component-islands-and-messaging#REQ-5023]], [[SPEC-050-component-islands-and-messaging#REQ-5007]]. Positive: navigating from an island page to a no-island page keeps the **same** `window.zetl` instance (not torn down, not duplicated); a persisted topic still live-reflects in that session. Negative-input: a session that loads **only** no-island pages never creates `window.zetl` (only per-page pre-paint applies). Negative-output: across N navigations there is never a second bus instance, and the **emitted HTML** of each page still matches its build-time marker gate (REQ-5012) regardless of runtime bus presence.
 
@@ -1433,10 +1498,9 @@ everything else composes [[SPEC-048]] and [[SPEC-028]].
   [[SPEC-050-component-islands-and-messaging#REQ-5015]],
   [[SPEC-050-component-islands-and-messaging#REQ-5016]],
   [[SPEC-050-component-islands-and-messaging#ADR-5003]]), superseding the strawman's
-  forbid-only stance. *Still open:* whether a Worker-based variant is also offered for
-  non-DOM content islands — prior art exists ([[amp-script]]/[[worker-dom]] runs author JS in
-  a Web Worker with a sanitized DOM bridge) — and the exact iframe layout/auto-resize
-  ergonomics.
+  forbid-only stance. *Further resolved (v0.9.0):* the **Worker variant is now the default**
+  (REQ-5025/ADR-5010, after [[amp-script]]/[[worker-dom]]); the iframe is the opt-in full-DOM
+  escape hatch. *Left to IMPL-050:* iframe auto-resize ergonomics for the escape-hatch path.
 - **Q3 — Typed topic payloads.** *Resolved (v0.2.0):* topics are **typed**; the bus, the
   persisted-read path, and the bridge recognise every payload against a small declared type
   ([[SPEC-050-component-islands-and-messaging#REQ-5013]],
@@ -1456,15 +1520,19 @@ everything else composes [[SPEC-048]] and [[SPEC-028]].
   best-effort literal-string lint (REQ-5008). Should v2 add a generated per-island wrapper
   (`zetl.island("name").store(...)`) or a required metadata export so the check becomes
   exact for trusted islands too? (`[Blocked: Q7]`.)
-- **Q8 — Controlled-element content islands (a stronger Threat-M defense).** [[Shopify Remote
-  DOM]] lets untrusted sandboxed code render only a **host-approved set of UI elements** (a
-  declarative element tree the *host* paints), so untrusted code never emits raw HTML — which
-  would close [[SPEC-050-component-islands-and-messaging#Threat M]] *by construction*, a
-  stronger guarantee than v1's producer-restriction + subscriber-obligation
-  ([[SPEC-050-component-islands-and-messaging#REQ-5022]]). Should v2 offer content islands a
-  Remote-DOM-style controlled vocabulary instead of (or alongside) arbitrary DOM inside the
-  iframe? Evaluate the ergonomics/expressiveness trade-off against the current raw-iframe model
-  in IMPL-050.
+- **Q8 — Controlled-element content islands.** *Resolved (v0.9.0):* **adopted as the default**
+  content-island mode ([[SPEC-050-component-islands-and-messaging#REQ-5025]],
+  [[SPEC-050-component-islands-and-messaging#ADR-5010]]) — a Worker emitting a host-rendered
+  element tree, closing Threat M by construction; the iframe is the opt-in escape hatch. *Left
+  to IMPL-050:* the exact element/attribute allowlist vocabulary and the element-tree wire
+  shape (extend CON-5006).
+- **Q9 — Consolidation pass (v0.9.0 debt).** v0.9.0 introduced the dual render-mode model
+  (Worker default / iframe escape hatch) via ADR-5010/REQ-5025 but did **not** re-thread every
+  iframe-specific clause (REQ-5015/5016, CON-5006, Threats I/J/K, NFR-5002 caps, REQ-5017
+  lifecycle) to be explicitly mode-aware. A follow-up revision SHOULD make the worker-mode
+  bridge/lifecycle/bounds first-class (most simplify — no `null` origin, no bootstrap), and
+  scope the iframe machinery as escape-hatch-only throughout, to avoid the layering debt the
+  reviews repeatedly flagged.
 
 ---
 
@@ -1503,12 +1571,36 @@ and the bridge against the [[SPEC-028]] shell; and IMPL-050 to pin the grammars,
 token set + `sha256` CSP, the data-island pre-paint encoding, and the lifecycle. It depends on
 [[SPEC-048]] and [[SPEC-049]] and gates independently of both.
 
+**v0.9.0 changes the recommended direction** (ADR-5010): the default content-island surface is
+now the [[Shopify Remote DOM]]-style Worker + controlled-element model, which *removes* most of
+the bridge surface the four reviews hardened (no `null` origin, no bootstrap race) and closes
+Threat M by construction. That is a net simplification — but it also means a **consolidation
+pass (Q9) is owed** before convergence: the iframe-specific clauses must be re-scoped as the
+escape-hatch path and the worker-mode bridge/lifecycle/bounds made first-class. Until that pass
+lands, the spec carries two partly-overlapping models, so it is **further** from text-convergence
+than v0.8.0 even though it is closer to the *right* architecture. The terminal gate is unchanged
+(human security review + PoC), now benchmarked primarily against Remote DOM.
+
 ---
 
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.8.0</summary>
+<summary>Revision history — 0.1.0 → 0.9.0</summary>
+
+- **0.9.0** (2026-06-25) — *design change, drawn from the v0.8.0 prior art.* Adopted the
+  **[[Shopify Remote DOM]] / [[worker-dom]] model as the default content-island surface**
+  (ADR-5010, REQ-5025): a **Web Worker** that emits a **host-rendered controlled element tree**
+  rather than a sandboxed iframe rendering its own DOM. This (1) **closes Threat M by
+  construction** — untrusted code never emits HTML, only a declarative tree the host paints
+  with an allowlist; (2) **dissolves the hardest bridge problems** the four reviews fought —
+  a `Worker` has no `"null"` origin, no `event.source` ambiguity, no port-transfer race, no
+  `contentWindow` routing map (the REQ-5016 bootstrap machinery is now iframe-escape-hatch
+  only); (3) renders inline with page CSS (no iframe layout pain, Q6). The sandboxed `<iframe>`
+  (REQ-5015) is retained as an **opt-in full-DOM escape hatch**. REQ-5010 recharacterised
+  (two render modes); Threat M, Q2, Q8 updated; TEST-5025 added; **Q9 tracks the consolidation
+  debt** — the iframe-specific clauses still need to be made explicitly mode-aware. This is the
+  most consequential improvement the prior-art study produced.
 
 - **0.8.0** (2026-06-25) — *correction; prior-art research (`ar-crawl`).* **Retracts the v0.7.0
   "the untrusted content-island half has no prior art" claim** — it was wrong. The sandbox +
