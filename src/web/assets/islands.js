@@ -707,8 +707,11 @@
     if (url.length > 4096) { return false; }
     var canon = canonUrl(url);
     if (canon === "") { return true; } // empty / whitespace-only is a harmless reference
-    // Reject scheme-relative //host and \\host (resolve off-origin).
-    if (canon.indexOf("//") === 0 || canon.indexOf("\\\\") === 0) { return false; }
+    // Reject scheme-relative references in ANY slash mix — browsers normalise //, \\, /\
+    // and \/ all to a protocol-relative (off-origin) URL (Codex P1). Check the first two
+    // chars are both slashes of either kind.
+    var c0 = canon.charAt(0), c1 = canon.charAt(1);
+    if ((c0 === "/" || c0 === "\\") && (c1 === "/" || c1 === "\\")) { return false; }
     // A scheme is [a-z][a-z0-9+.-]* ':' appearing before any '/', '?', '#'.
     var m = /^([a-z][a-z0-9+.\-]*):/.exec(canon);
     if (m) {
@@ -1047,7 +1050,8 @@
       readGranted: built.readGranted,
       hostEl: hostEl,
       allowlist: descriptor.allowlist,
-      subs: [],                 // unsubscribe handles to release on teardown (REQ-5017)
+      subs: [],                 // all unsubscribe handles to release on teardown (REQ-5017)
+      subsByTopic: new Map(),   // topic -> [unsub] so unsubscribe can release them early
       relayLast: new Map(),     // topic -> last delivered value (value-change-only, REQ-5021)
       relayTimers: new Map(),   // topic -> debounce timer id (cancelled on teardown)
       torn: false
@@ -1160,17 +1164,29 @@
       rec.relayTimers.set(topic, tid);
     });
     rec.subs.push(unsub);
+    var list = rec.subsByTopic.get(topic) || [];
+    list.push(unsub);
+    rec.subsByTopic.set(topic, list);
   }
 
   function bridgeUnsubscribe(rec, msg) {
-    // v1: release ALL relays for the topic (we don't track per-topic unsub handles
-    // separately; teardown releases all — this is a best-effort early release).
     var topic = msg.topic;
-    if (typeof topic === "string") {
-      var t = rec.relayTimers.get(topic);
-      if (t) { clearTimeout(t); rec.relayTimers.delete(topic); }
-      rec.relayLast.delete(topic);
+    if (typeof topic !== "string") { return; }
+    // Actually RELEASE the store subscription(s) for this topic — clearing the debounce
+    // state alone left the subscription delivering forever and holding a subscriber-budget
+    // slot until full teardown (Codex P2).
+    var list = rec.subsByTopic.get(topic);
+    if (list) {
+      list.forEach(function (u) {
+        try { u(); } catch (_e) {}
+        var i = rec.subs.indexOf(u);
+        if (i >= 0) { rec.subs.splice(i, 1); }
+      });
+      rec.subsByTopic.delete(topic);
     }
+    var t = rec.relayTimers.get(topic);
+    if (t) { clearTimeout(t); rec.relayTimers.delete(topic); }
+    rec.relayLast.delete(topic);
   }
 
   // render: paint a controlled element tree (CON-5007). Requires the render grant.

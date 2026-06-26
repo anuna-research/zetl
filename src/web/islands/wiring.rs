@@ -72,8 +72,13 @@ impl WiringReport {
 pub fn verify(islands: &[IslandManifest], csp: &CspConfig) -> WiringReport {
     let mut report = WiringReport::default();
 
-    // index publishers per topic, with declared type (for conflict detection)
+    // index publishers per topic (for edge resolution / unpublished-subscriber detection)
     let mut publishers: BTreeMap<String, Vec<(String, ValueType)>> = BTreeMap::new();
+    // index EVERY topic declaration (publisher OR subscriber OR bare declarer) per topic,
+    // for type-conflict detection — the runtime registers data-island-types from every
+    // mounted island, so a publisher/subscriber type mismatch makes payload validation
+    // hydration-order-dependent (Codex P2).
+    let mut declarations: BTreeMap<String, Vec<(String, ValueType)>> = BTreeMap::new();
     // a topic that is declared persisted with a default needs no live publisher
     let mut persisted_defaulted: BTreeMap<String, bool> = BTreeMap::new();
 
@@ -86,21 +91,27 @@ pub fn verify(islands: &[IslandManifest], csp: &CspConfig) -> WiringReport {
             publishers.entry(t.clone()).or_default().push((im.component.clone(), ty));
         }
         for (name, decl) in &im.topics {
+            declarations
+                .entry(name.clone())
+                .or_default()
+                .push((im.component.clone(), decl.ty.clone()));
             if decl.persisted && decl.default.is_some() {
                 persisted_defaulted.insert(name.clone(), true);
             }
         }
     }
 
-    // type-conflict: two publishers of the same topic with incompatible types (error)
-    for (topic, pubs) in &publishers {
-        if pubs.len() > 1 {
-            let first = &pubs[0].1;
-            if let Some((who, _)) = pubs.iter().find(|(_, ty)| ty != first) {
+    // type-conflict: ANY two declarations of the same topic with incompatible types
+    // (publisher↔subscriber, subscriber↔subscriber, …) are a fatal error.
+    for (topic, decls) in &declarations {
+        if decls.len() > 1 {
+            let first = &decls[0].1;
+            if let Some((who, _)) = decls.iter().find(|(_, ty)| ty != first) {
                 report.findings.push(Finding {
                     code: "island-topic-type-conflict".into(),
                     message: format!(
-                        "topic `{topic}` published with incompatible types (e.g. by `{who}`)"
+                        "topic `{topic}` declared with incompatible types (e.g. {first:?} by `{}` vs `{who}`)",
+                        decls[0].0
                     ),
                     fatal: true,
                 });
@@ -239,5 +250,26 @@ mod tests {
         let r = verify(&[a, b], &CspConfig::default());
         assert!(r.findings.iter().any(|f| f.code == "island-topic-type-conflict" && f.fatal));
         assert!(r.has_fatal());
+    }
+
+    #[test]
+    fn publisher_subscriber_type_conflict_is_fatal() {
+        // A publisher declares `tx:val` as int while a SUBSCRIBER declares it bool — the
+        // runtime would register conflicting data-island-types by hydration order, so the
+        // build must reject it (Codex P2).
+        let pubr = island(
+            "name = \"a\"\npublishes = [\"tx:val\"]\n[island.topics.\"tx:val\"]\ntype = \"int\"\n",
+            "a",
+        );
+        let subr = island(
+            "name = \"b\"\nsubscribes = [\"tx:val\"]\n[island.topics.\"tx:val\"]\ntype = \"bool\"\n",
+            "b",
+        );
+        let r = verify(&[pubr, subr], &CspConfig::default());
+        assert!(
+            r.findings.iter().any(|f| f.code == "island-topic-type-conflict" && f.fatal),
+            "publisher↔subscriber type mismatch must be fatal: {:?}",
+            r.findings
+        );
     }
 }

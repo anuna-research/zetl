@@ -302,7 +302,12 @@ impl HtmlState {
         if a == "srcdoc" {
             return Ctx::Js;
         }
-        if is_url_attr(a) {
+        // A namespaced URL attribute (`xlink:href`, `xml:base`) is still a URL context;
+        // match on the local name (after the `:`) so a non-`url` scalar isn't waved through
+        // as an ordinary double-quoted attribute (Codex P2). A plain `href` has no `:`, so
+        // local == a.
+        let local = a.rsplit(':').next().unwrap_or(a);
+        if is_url_attr(local) {
             // a single-quoted URL attr is not a sanctioned context for a url prop
             return if double_quoted { Ctx::UrlAttrDq } else { Ctx::AttrValueSq };
         }
@@ -963,6 +968,15 @@ mod tests {
     #[test]
     fn url_prop_in_href_ok() {
         assert!(lint(r#"<a href="{{ props.link }}">x</a>"#).is_ok());
+    }
+
+    #[test]
+    fn non_url_prop_in_namespaced_href_unsafe() {
+        // xlink:href is a URL context (matched by local name) — a scalar isn't allowed,
+        // only a scheme-validated url prop (Codex P2).
+        let e = lint(r#"<svg><a xlink:href="{{ props.msg }}">x</a></svg>"#).unwrap_err();
+        assert_eq!(e.code, "content-context-unsafe");
+        assert!(lint(r#"<svg><a xlink:href="{{ props.link }}">x</a></svg>"#).is_ok());
     }
 
     #[test]
