@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="default">
+<head><script>(function(){try{var v=localStorage.getItem('zetl:topic:content:count');var d=0;var val=(v==null||v==='')?d:JSON.parse(v);if(typeof val==='object'){val=d;}var sv=String(val);if(!/^[A-Za-z0-9_.:-]{0,64}$/.test(sv)){sv=String(d);}document.documentElement.setAttribute('data-zt-content-count',sv);}catch(e){try{document.documentElement.setAttribute('data-zt-content-count',String(0));}catch(_){}}})();</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  
+  <style>
+    :root {
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+    }
+    body {
+      padding-top: var(--safe-top);
+      padding-right: var(--safe-right);
+      padding-bottom: var(--safe-bottom);
+      padding-left: var(--safe-left);
+    }
+  </style>
+  <title>about — zetl</title>
+  <meta name="description" content="Content directives (SPEC-049) â :::container{}, ::leaf{}; typed props (string&#x2f;bool&#x2f;int&#x2f;number&#x2f;url&#x2f;enum); body rendered + sanitised in isolation; nested…">
+  
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="about — zetl">
+  <meta property="og:description" content="Content directives (SPEC-049) â :::container{}, ::leaf{}; typed props (string&#x2f;bool&#x2f;int&#x2f;number&#x2f;url&#x2f;enum); body rendered + sanitised in isolation; nested…">
+  
+  <meta property="og:image" content="/about/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="about — zetl">
+  <meta name="twitter:description" content="Content directives (SPEC-049) â :::container{}, ::leaf{}; typed props (string&#x2f;bool&#x2f;int&#x2f;number&#x2f;url&#x2f;enum); body rendered + sanitised in isolation; nested…">
+  <meta name="twitter:image" content="/about/og.png">
+  
+  <link rel="prefetch" href="..&#x2f;pages.json">
+  <link rel="prefetch" href="..&#x2f;search-index.json">
+  
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23570df8'/%3E%3Cpath d='M4 4h8v1.5L6 11.5h6V13H4v-1.5L10 5.5H4z' fill='white'/%3E%3C/svg%3E">
+  
+  <link rel="preload" href="..&#x2f;_static/theme.css" as="style">
+  <link rel="stylesheet" href="..&#x2f;_static/theme.css">
+  
+  <script>
+  (function(){
+    try {
+      if (localStorage.getItem('zetl.graphWidget') === 'expanded') {
+        document.documentElement.setAttribute('data-graph', 'expanded');
+      }
+    } catch (_) { /* storage unavailable — keep default (collapsed) */ }
+  })();
+  </script>
+  
+  
+  
+  <link rel="preload" href="..&#x2f;_static/shell.css" as="style">
+  <link rel="stylesheet" href="..&#x2f;_static/shell.css">
+  
+  <style></style>
+</head>
+<body class="min-h-screen bg-base-100" data-placement="docked">
+
+  
+  
+  <div class="zetl-graph-widget"
+       id="zetl-graph-widget"
+       aria-label="Vault graph mini-map"
+       role="region">
+    <button type="button"
+            class="zetl-graph-widget__close"
+            id="zetl-graph-widget-close"
+            aria-label="Close graph overlay">×</button>
+    <a class="zetl-graph-widget__expand"
+       href="..&#x2f;_graph/index.html"
+       data-zetl-spa="off"
+       title="Open full graph">Expand ↗</a>
+    
+
+
+
+
+
+<noscript>
+  <div class="zetl-graph-fallback" role="note">
+    <p><strong>Graph view requires JavaScript.</strong>
+      Every page is listed below, and is reachable from the
+      <a href="../index.html">vault index</a>.</p>
+  </div>
+</noscript>
+
+
+
+<div id="zetl-graph"
+     class="zetl-graph-canvas"
+     role="img"
+     aria-label="Vault link graph (interactive canvas; a keyboard-accessible page list appears below)"></div>
+
+
+
+<details class="zetl-graph-fallback-list" data-zetl-graph-fallback>
+  <summary>Page list (3)</summary>
+  <ul class="zetl-graph-fallback-pages">
+    
+    <li>
+      <a href="../about/index.html">about</a>
+      
+    </li>
+    
+    <li>
+      <a href="../index/index.html">index</a>
+      
+    </li>
+    
+    <li>
+      <a href="../islands/index.html">islands</a>
+      
+    </li>
+    
+  </ul>
+</details>
+
+
+<style>
+  #zetl-graph { width: 100%; height: 100%; min-height: 100px; position: relative; }
+  [data-mode="off"] #zetl-graph { display: none; }
+  .zetl-graph-fallback,
+  .zetl-graph-empty { padding: 0.75rem 1rem; font-size: 0.85rem; opacity: 0.85; }
+  .zetl-graph-empty code {
+    padding: 0 0.25rem;
+    background: var(--zetl-shell-surface, rgba(0,0,0,0.05));
+    border-radius: 0.125rem;
+  }
+  .zetl-graph-fallback-list {
+    font-size: 0.85rem;
+    margin: 0.5rem 1rem;
+    border-top: 1px solid var(--zetl-shell-border, rgba(0,0,0,0.1));
+    padding-top: 0.5rem;
+  }
+  .zetl-graph-fallback-list > summary { cursor: pointer; opacity: 0.8; }
+  .zetl-graph-fallback-list > summary:focus-visible,
+  .zetl-graph-fallback-pages a:focus-visible {
+    outline: 2px solid var(--zetl-graph-node-active, #f59e0b);
+    outline-offset: 2px;
+  }
+  .zetl-graph-fallback-pages { margin: 0.25rem 0 0.5rem; padding-left: 1.25rem; }
+  .zetl-graph-fallback-slug { margin-left: 0.35rem; opacity: 0.6; }
+  /* Hide the keyboard/SR fallback when the canvas is actually rendering —
+     the accessibility tree keeps it reachable via the <details>/<summary>
+     toggle, and we avoid visual duplication for sighted users with JS on.
+     JS-disabled users still see the list (no-js defeats this rule). */
+  html.js [data-mode] .zetl-graph-fallback-list { margin-top: 0.25rem; }
+</style>
+
+
+
+
+
+<script>
+/* Inline config read by the external graph-boot.js. Keeping these three
+   strings in HTML (vs. hard-coding in JS) means the JS file stays template-
+   free and cacheable across all vaults / root paths. ~150 bytes of waste. */
+window.__zetlGraphConfig = {
+  root: "../",
+  indexFile: "index.html",
+  graphUrl: "../graph-index.json"
+};
+</script>
+<script src="..&#x2f;_static/graph-boot.js" defer></script>
+  </div>
+  
+  <button type="button"
+          class="zetl-graph-widget-launcher"
+          id="zetl-graph-widget-launcher"
+          aria-label="Show graph"
+          aria-controls="zetl-graph-widget"
+          aria-expanded="false">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+         fill="none" viewBox="0 0 24 24" stroke="currentColor"
+         stroke-width="2" aria-hidden="true">
+      <circle cx="5" cy="6" r="2"/>
+      <circle cx="19" cy="6" r="2"/>
+      <circle cx="12" cy="18" r="2"/>
+      <path d="M6.7 7.5 11 16.5M17.3 7.5 13 16.5M7 6h10"/>
+    </svg>
+    <span>Graph</span>
+  </button>
+  
+
+  <!-- Drawer layout for responsive sidebar -->
+  <div class="drawer lg:drawer-open">
+    <input id="sidebar-toggle" type="checkbox" class="drawer-toggle">
+
+    <!-- Main content -->
+    <div class="drawer-content flex flex-col">
+      <!-- Top bar (mobile) — persistent across SPA navigation. -->
+      <div class="navbar bg-base-200 lg:hidden">
+        <label for="sidebar-toggle" class="btn btn-ghost drawer-button">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none"
+               viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+        </label>
+        <span class="text-lg font-bold ml-2">zetl</span>
+        
+        <button type="button"
+                class="zetl-graph-toggle"
+                id="zetl-graph-toggle"
+                aria-label="Show graph"
+                aria-expanded="false"
+                aria-controls="zetl-graph-widget">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+               fill="none" viewBox="0 0 24 24" stroke="currentColor"
+               stroke-width="2" aria-hidden="true">
+            <circle cx="5" cy="6" r="2"/>
+            <circle cx="19" cy="6" r="2"/>
+            <circle cx="12" cy="18" r="2"/>
+            <path d="M6.7 7.5 11 16.5M17.3 7.5 13 16.5M7 6h10"/>
+          </svg>
+          <span>Graph</span>
+        </button>
+      </div>
+
+      
+      <main data-zetl-volatile>
+        
+<div class="page-with-panel flex-1">
+  <main class="flex-1 p-4 sm:p-6 min-w-0">
+
+    
+    <nav class="text-sm breadcrumbs mb-4">
+      <ul>
+        <li><a href="..&#x2f;index.html">demo</a></li>
+        <li>about</li>
+      </ul>
+    </nav>
+
+    
+    
+      <article class="prose prose-lg max-w-none"><h1 id="what-s-possible-and-what-s-next"><a id="line-1" class="line-anchor"></a>What’s possible (and what’s next)</h1>
+<h2 id="working-today"><a id="line-3" class="line-anchor"></a>Working today</h2>
+<p><a id="line-5" class="line-anchor"></a><strong>Content directives (SPEC-049)</strong> — <code>:::container{}</code>, <code>::leaf{}</code>; typed props
+(<code>string</code>/<code>bool</code>/<code>int</code>/<code>number</code>/<code>url</code>/<code>enum</code>); body rendered + sanitised in isolation;
+nested directives with a per-provenance barrier; default-deny invocability; a sound
+build-time HTML-context lint (a prop reaching a JS/CSS/URL context fails the build).</p>
+<p><a id="line-10" class="line-anchor"></a><strong>Component islands (SPEC-050)</strong> — sandboxed Web-Worker islands that paint via a controlled
+element renderer (Remote DOM); a retained, replay-on-subscribe message bus; inter-island
+messaging by topic with capability-scoped grants; typed payload recognition; persisted
+topics with pre-paint; lazy hydration (<code>load</code>/<code>idle</code>/<code>visible</code>/<code>media</code>); per-page CSP.</p>
+<h2 id="needs-more-work"><a id="line-15" class="line-anchor"></a>Needs more work</h2>
+<ul>
+<li><a id="line-17" class="line-anchor"></a><strong>Click/input interactivity in content islands</strong> — the Worker model is render-only today
+(worker → host paint, host → worker bus). Forwarding DOM events back to the Worker is a
+follow-up.</li>
+<li><a id="line-20" class="line-anchor"></a><strong>Trusted in-realm islands</strong> (direct <code>window.zetl</code> + DOM event handlers, e.g. a clickable
+theme toggle) work, but are invoked from theme templates rather than content directives,
+and need wiring into the serve path.</li>
+<li><a id="line-23" class="line-anchor"></a><strong><code>zetl serve</code></strong> uses a different render path that doesn’t yet inject island assets — the
+islands demo requires <code>zetl build</code> + a static host.</li>
+<li><a id="line-25" class="line-anchor"></a>Both specs are <strong>non-converged strawmen</strong>: the untrusted-content boundary wants a human
+security review + fuzzing before production use.</li>
+</ul>
+<p><a id="line-28" class="line-anchor"></a>See <a href="../index/index.html" class="link link-primary wikilink">index</a> for directives and <a href="../islands/index.html" class="link link-primary wikilink">islands</a> for the live island demos.</p>
+</article>
+      
+      
+    
+
+    
+    
+
+<script src="..&#x2f;_static/page-bridge.js" defer></script>
+  </main>
+
+  
+  <aside class="transclusion-panel">
+    <h3 class="tp-header">Linked Pages</h3>
+    <div class="transclusion-card" data-target-href="../islands/index.html" style="border-left-color: #f472b6;">
+  <a href="../islands/index.html" class="tc-title">islands</a>
+  <div class="tc-excerpt prose prose-sm max-w-none"><h3>Component islands (SPEC-050)</h3>
+<p>Everything below is rendered by <strong>untrusted code running in a dedicated Web Worker</strong>. A
+Worker has no DOM and no <code>window.zetl</code>; it posts a declarative element tree and the trusted
+host paints it through a closed allowlist renderer (CON-5007). Open devtools (Console +
+Application → Local Storage) to watch the runtime.</p>
+<h4>Live rendering (Worker → Remote DOM)</h4>
+<dl>
+<dt>The counter is re-painted by its Worker every second; the host reconciles the change:</dt>
+<dd>
+<p>::counter{}
+(static fallback shown when JS is off)</p>
+</dd>
+<dd>
+<p>::</p>
+</dd>
+</dl>
+<h4>Inter-island messaging (the shell bus)</h4>
+<dl>
+<dt>The <strong>mirror</strong> island is a <em>separate</em> Worker. It can’t reach the counter directly — it only
+hears <code>content:count</code> through the shell bus (<code>window.zetl</code>), with a monotonic <code>seq</code>:</dt>
+<dd>
+<p>::mirror{}
+(static fallback)</p>
+</dd>
+<dd>
+<p>::</p>
+</dd>
+</dl>
+<p>Two sandboxed workers, coordinating only through capability-checked topics. The
+<code>content:count</code> value is also <strong>persisted</strong> to <code>localStorage</code> (<code>zetl:topic:content:count</code>)
+and re-applied before first paint on reload (no flash).</p>
+<h4>Security — a hostile island, neutralised</h4>
+<dl>
+<dt>This island’s Worker deliberately tries to inject a <code>&lt;script&gt;</code>, an <code>&lt;iframe&gt;</code>, a
+<code>javascript:</code> link, a remote tracking <code>&lt;img&gt;</code>, and an <code>on*</code> handler — and tries to publish
+to a <strong>trusted</strong> topic it wasn’t granted, plus an out-of-type value. The host strips every
+dangerous node and the capability bridge denies the bad publishes (see the Console for
+<code>denied:…</code>):</dt>
+<dd>
+<p>::guard{}
+(static fallback)</p>
+</dd>
+<dd>
+<p>::</p>
+</div>
+</div><div class="transclusion-card" data-target-href="../index/index.html" style="border-left-color: #60a5fa;">
+  <a href="../index/index.html" class="tc-title">index</a>
+  <div class="tc-excerpt prose prose-sm max-w-none"><h3>zetl content components &amp; islands — demo</h3>
+<p>Two layered capabilities, both authored from plain Markdown, both opt-in:</p>
+<ul>
+<li><strong><a href="../content-directives/index.html" class="link-error">SPEC-049</a></strong> — content authors invoke theme components from prose
+with <code>:::name{…}</code> directives. Untrusted attributes and body are validated + sanitised.</li>
+<li><strong><a href="../islands/index.html" class="link link-primary">SPEC-050</a></strong> — components ship <code>&lt;name&gt;.js</code> that hydrates in the browser;
+untrusted code runs in a sandboxed Worker and paints through a controlled renderer.</li>
+</ul>
+<p>→ See the <a href="../islands/index.html" class="link link-primary">islands</a> page for the live, interactive island demos.</p>
+<h4>Content directives (SPEC-049)</h4>
+<dl>
+<dt>These are written as Markdown directives. The <strong>template is trusted</strong>; only the body and
+props are sanitised/validated.</dt>
+<dd>
+<p>::callout{tone=info title=“A callout component”}
+This whole block is <code>:::callout{tone=info title="…"}</code> in Markdown. The body is rendered
+Markdown — <strong>bold</strong>, <code>code</code>, <a href="https://anuna.io">links</a> — sanitised in isolation.</p>
+</dd>
+<dd>
+<p>::</p>
+</dd>
+</dl>
+<h5>Untrusted body is sanitised</h5>
+<dl>
+<dt>The next callout’s body tries to inject script and a <code>javascript:</code> link. Watch them vanish
+(view source to confirm):</dt>
+<dd>
+<p>::callout{tone=danger title=“Hostile body — neutralised”}
+Injecting a script: <script>document.title=‘PWNED’</script> ← gone.
+A bad link: <a href="javascript:alert(1)">click me</a> ← scheme stripped.
+A safe link survives: <a href="https://anuna.io">anuna.io</a>.</p>
+</dd>
+<dd>
+<p>::</p>
+</dd>
+</dl>
+<h5>Props are typed + validated</h5>
+<dl>
+<dt>The <code>card</code> component has a <strong><code>url</code>-typed</strong> prop (<code>href</code>) that is scheme-validated at
+ingestion, and a slot for its body:</dt>
+<dd>
+<p>::card{title=“A typed component” href=https://anuna.io}
+Props (<code>title</code>, <code>href</code>) are validated against the manifest. A bad <code>href</code> (e.g.
+<code>javascript:…</code>) makes the directive fail closed.</p>
+</div>
+</div>
+  </aside>
+  
+</div>
+
+      </main>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="drawer-side">
+      <label for="sidebar-toggle" aria-label="close sidebar" class="drawer-overlay"></label>
+      <aside class="bg-base-200 w-64 min-h-screen p-4">
+        <a href="..&#x2f;index.html" class="zetl-wordmark text-xl font-bold mb-4 block hover:underline" aria-label="Vault index">zetl</a>
+        <div class="divider my-1"></div>
+        <button class="search-btn" onclick="openSearch()">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          Search…
+          <kbd>⌘K</kbd>
+        </button>
+        <nav class="zetl-actions" aria-label="Vault actions">
+          <p class="zetl-actions-heading">Vault</p>
+          <a href="..&#x2f;help/index.html" class="zetl-action">
+            <span class="zetl-action-icon" aria-hidden="true">?</span>
+            <span>Help &amp; install</span>
+          </a>
+          
+          
+          <a href="..&#x2f;_graph/index.html" data-zetl-spa="off" class="zetl-action">
+            <span class="zetl-action-icon" aria-hidden="true">◈</span>
+            <span>Graph</span>
+          </a>
+        </nav>
+        <div class="divider my-2 opacity-50"></div>
+        
+        
+        
+        <ul class="menu menu-sm sidebar-tree">
+          <li><a href="..&#x2f;about/index.html"
+            class="active">about</a></li>
+          <li><a href="..&#x2f;index/index.html"
+            class="">index</a></li>
+          <li><a href="..&#x2f;islands/index.html"
+            class="">islands</a></li>
+        </ul>
+        
+        
+      </aside>
+    </div>
+  </div>
+
+  <!-- Search modal (Cmd+K) -->
+  <div class="search-overlay" id="search-overlay" onclick="if(event.target===this)closeSearch()">
+    <div class="search-dialog"
+         id="search-dialog"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="search-dialog-title"
+         tabindex="-1">
+      <h2 id="search-dialog-title" class="sr-only">Search pages</h2>
+      <input class="search-input" id="search-input" type="text" placeholder="Search pages…" autocomplete="off">
+      <div class="search-results" id="search-results"></div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    var MODE='build';
+    var ROOT='../';
+    var IDXFILE='index.html';
+    var overlay=document.getElementById('search-overlay');
+    var dialog=document.getElementById('search-dialog');
+    var input=document.getElementById('search-input');
+    var results=document.getElementById('search-results');
+    var active=-1;
+    var filtered=[];
+    /* Element focused immediately before openSearch — restored on close
+       so keyboard / SR users return to where they invoked the palette. */
+    var previouslyFocused=null;
+
+    /* Page list: inline in serve mode (instant); lazy-fetched from pages.json
+       in build mode (keeps HTML lean, single one-time cost on first Cmd+K). */
+    var pageList=(function(){
+      var el=document.getElementById('zetl-search-index');
+      if(!el)return null;
+      try{return JSON.parse(el.textContent||'[]');}
+      catch(e){return [];}
+    })();
+    var pageListPromise=null;
+    function ensurePageList(){
+      if(pageList)return Promise.resolve(pageList);
+      if(pageListPromise)return pageListPromise;
+      if(location.protocol==='file:'){pageList=[];return Promise.resolve(pageList);}
+      pageListPromise=fetch(ROOT+'pages.json').then(function(r){return r.ok?r.json():[];})
+        .then(function(data){pageList=data||[];return pageList;})
+        .catch(function(){pageList=[];return pageList;});
+      return pageListPromise;
+    }
+
+    function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+    /* BUG-504: body-match snippet highlighter. Escapes the source text
+       first, then locates case-insensitive occurrences of the query as a
+       literal substring (no regex interpretation) and wraps them in
+       <mark class="sr-match">. The escape pass runs before wrapping so
+       HTML injected via page content stays neutralised. */
+    function escAndMark(s, q){
+      var safe = esc(s || '');
+      if (!q) return safe;
+      var lc = safe.toLowerCase();
+      var ql = q.toLowerCase();
+      if (!ql) return safe;
+      var out = '';
+      var i = 0;
+      while (i < safe.length) {
+        var hit = lc.indexOf(ql, i);
+        if (hit < 0) { out += safe.slice(i); break; }
+        out += safe.slice(i, hit) + '<mark class="sr-match">' + safe.slice(hit, hit + ql.length) + '</mark>';
+        i = hit + ql.length;
+      }
+      return out;
+    }
+    function slugFromPath(path){return path.replace(/\.[^/.]+$/,'').toLowerCase().replace(/ /g,'-');}
+
+    /* ── Title matching (works in all modes, no fetch needed).
+       Try case-insensitive contiguous substring first; only fall back
+       to subsequence-fuzzy when nothing contains the query as a run,
+       so letters scattered across word boundaries don't match unless
+       there are no contiguous hits. */
+    function substringMatch(query,text){
+      var ql=query.length;
+      if(ql===0)return{score:0,indices:[]};
+      var qLow=query.toLowerCase(),tLow=text.toLowerCase();
+      var idx=tLow.indexOf(qLow);
+      if(idx<0)return null;
+      var indices=[];for(var i=0;i<ql;i++)indices.push(idx+i);
+      var score=100;
+      if(idx===0)score+=50;
+      else{var prev=text[idx-1];if(prev===' '||prev==='-'||prev==='_'||prev==='/'||prev==='.')score+=25;}
+      score-=Math.min(idx,20);
+      score-=Math.max(0,text.length-ql);
+      return{score:score,indices:indices};
+    }
+
+    function fuzzyMatch(query,text){
+      var ql=query.length,tl=text.length;
+      if(ql===0)return{score:0,indices:[]};
+      if(ql>tl)return null;
+      var qLow=query.toLowerCase(),tLow=text.toLowerCase();
+      var qi=0;
+      for(var ti=0;ti<tl&&qi<ql;ti++){if(tLow[ti]===qLow[qi])qi++;}
+      if(qi<ql)return null;
+      var bestScore=-Infinity,bestIndices=null;
+      function solve(qi2,ti2,indices,score,prevMatch){
+        if(qi2===ql){if(score>bestScore){bestScore=score;bestIndices=indices.slice();}return;}
+        var remaining=ql-qi2;
+        for(var t=ti2;t<=tl-remaining;t++){
+          if(tLow[t]===qLow[qi2]){
+            var s=0;
+            if(prevMatch===t-1)s+=5;
+            if(t===0)s+=8;
+            else{var prev=text[t-1];if(prev===' '||prev==='-'||prev==='_'||prev==='/'||prev==='.')s+=7;else if(text[t]===text[t].toUpperCase()&&prev===prev.toLowerCase()&&/[a-zA-Z]/.test(prev))s+=6;}
+            if(text[t]===query[qi2])s+=1;
+            s+=Math.max(0,3-Math.floor(t/4));
+            indices.push(t);solve(qi2+1,t+1,indices,score+s,t);indices.pop();
+          }
+        }
+      }
+      solve(0,0,[],0,-2);
+      if(!bestIndices)return null;
+      return{score:bestScore,indices:bestIndices};
+    }
+
+    function highlight(text,indices){
+      var set={};indices.forEach(function(i){set[i]=true;});
+      var out='';
+      for(var i=0;i<text.length;i++){var c=esc(text[i]);out+=set[i]?'<b>'+c+'</b>':c;}
+      return out;
+    }
+
+    function fuzzyFilter(q){
+      var list=pageList||[];
+      if(!q)return list.map(function(p){return{n:p.n,s:p.s,_indices:null};});
+      var scored=[];
+      list.forEach(function(p){
+        var m=substringMatch(q,p.n);
+        if(m)scored.push({n:p.n,s:p.s,score:m.score,_indices:m.indices});
+      });
+      if(scored.length===0){
+        list.forEach(function(p){
+          var m=fuzzyMatch(q,p.n);
+          if(m)scored.push({n:p.n,s:p.s,score:m.score,_indices:m.indices});
+        });
+      }
+      scored.sort(function(a,b){return b.score-a.score;});
+      return scored;
+    }
+
+    /* ── Render (two styles: fuzzy name results vs full-text) */
+    function renderFuzzy(items){
+      results.innerHTML='';
+      if(items.length===0){
+        results.innerHTML='<div class="search-hint">No results</div>';
+        active=-1;return;
+      }
+      items.forEach(function(item,i){
+        var a=document.createElement('a');
+        a.className='search-result'+(i===active?' sr-active':'');
+        a.href=ROOT+item.s+'/'+IDXFILE;
+        var nameHtml=item._indices?highlight(item.n,item._indices):esc(item.n);
+        a.innerHTML='<div class="sr-name">'+nameHtml+'</div><div class="sr-slug">'+esc(item.s)+'</div>';
+        a.addEventListener('mouseenter',function(){active=i;updateActive();});
+        results.appendChild(a);
+      });
+    }
+
+    function renderFullText(items){
+      results.innerHTML='';
+      if(!input.value){
+        results.innerHTML='<div class="search-hint">Type to search pages\u2026</div>';
+        active=-1;return;
+      }
+      if(items.length===0){
+        results.innerHTML='<div class="search-hint">No results</div>';
+        active=-1;return;
+      }
+      active=0;
+      var currentQuery = input.value || '';
+      items.forEach(function(item,i){
+        var a=document.createElement('a');
+        a.className='search-result'+(i===0?' sr-active':'');
+        a.href=ROOT+item.slug+'/'+IDXFILE+(item.line?'#line-'+item.line:'');
+        var html='<span class="page-name">'+escAndMark(item.page, currentQuery)+'</span>';
+        if(item.heading)html+='<span class="heading">'+escAndMark(item.heading, currentQuery)+'</span>';
+        if(item.context)html+='<span class="context">'+escAndMark(item.context, currentQuery)+'</span>';
+        if(item.score)html+='<span class="score">'+item.score.toFixed(2)+'</span>';
+        a.innerHTML=html;
+        a.addEventListener('mouseenter',function(){active=i;updateActive();});
+        results.appendChild(a);
+      });
+    }
+
+    function updateActive(){
+      var els=results.querySelectorAll('.search-result');
+      els.forEach(function(el,i){el.classList.toggle('sr-active',i===active);});
+      if(active>=0&&els[active])els[active].scrollIntoView({block:'nearest'});
+    }
+
+    /* ── BM25 scorer for build mode (client-side).
+       Inline script is only present on file:// / legacy pages; production
+       build mode lazy-fetches search-index.json on first search. */
+    var searchIndex=(function(){
+      var el=document.getElementById('zetl-bm25-index');
+      if(!el)return null;
+      try{return JSON.parse(el.textContent);}
+      catch(e){return null;}
+    })();
+    var searchIndexPromise=null;
+    function ensureSearchIndex(){
+      if(searchIndex)return Promise.resolve(searchIndex);
+      if(searchIndexPromise)return searchIndexPromise;
+      if(location.protocol==='file:')return Promise.resolve(null);
+      searchIndexPromise=fetch(ROOT+'search-index.json').then(function(r){return r.ok?r.json():null;})
+        .then(function(data){searchIndex=data;return searchIndex;})
+        .catch(function(){return null;});
+      return searchIndexPromise;
+    }
+
+    function findBestSection(doc,terms){
+      if(!doc.secs||!doc.secs.length)return null;
+      var best=null,bestCount=-1;
+      doc.secs.forEach(function(sec){
+        var text=(sec.h+' '+sec.t).toLowerCase();
+        var count=0;
+        terms.forEach(function(t){
+          var idx=0;
+          while((idx=text.indexOf(t,idx))!==-1){count++;idx+=t.length;}
+        });
+        if(count>bestCount){bestCount=count;best=sec;}
+      });
+      return bestCount>0?best:null;
+    }
+
+    function extractContext(text,terms){
+      if(!text)return null;
+      var lower=text.toLowerCase();
+      var bestPos=-1;
+      terms.forEach(function(t){
+        var idx=lower.indexOf(t);
+        if(idx!==-1&&(bestPos===-1||idx<bestPos))bestPos=idx;
+      });
+      if(bestPos===-1)bestPos=0;
+      var start=Math.max(0,bestPos-40);
+      var end=Math.min(text.length,start+120);
+      var snippet=text.substring(start,end);
+      if(start>0)snippet='\u2026'+snippet;
+      if(end<text.length)snippet+='\u2026';
+      return snippet;
+    }
+
+    function bm25Search(q,index){
+      var k1=1.2,b=0.75;
+      var terms=q.toLowerCase().split(/\W+/).filter(Boolean);
+      var n=index.docs.length;var avgDl=index.avgDl||1;var scores={};
+      terms.forEach(function(term){
+        var df=index.df[term]||0;if(df===0)return;
+        var idf=Math.log((n-df+0.5)/(df+0.5)+1);
+        index.docs.forEach(function(doc,i){
+          var tf=doc.tf[term]||0;if(tf===0)return;
+          var norm=1-b+b*(doc.dl/avgDl);
+          var sc=idf*(tf*(k1+1))/(tf+k1*norm);
+          scores[i]=(scores[i]||0)+sc;
+        });
+      });
+      return Object.keys(scores).map(function(i){
+        var doc=index.docs[parseInt(i)];
+        var sec=findBestSection(doc,terms);
+        return{
+          page:doc.n,slug:doc.s,score:scores[i],
+          heading:sec?sec.h||null:null,
+          context:sec?extractContext(sec.t,terms):null,
+          line:sec?sec.l||0:0
+        };
+      }).sort(function(a,b){return b.score-a.score;});
+    }
+
+    /* ── Serve mode: /api/search (Tantivy full-text) */
+    var currentCtrl=null;
+    var debounceTimer=null;
+    function serveSearch(q){
+      if(q.length<=2){
+        filtered=fuzzyFilter(q);
+        active=0;renderFuzzy(filtered);return;
+      }
+      results.innerHTML='<div class="search-hint">Searching\u2026</div>';
+      if(currentCtrl){currentCtrl.abort();}
+      currentCtrl=new AbortController();
+      fetch(ROOT+'api/search?q='+encodeURIComponent(q)+'&limit=20',{signal:currentCtrl.signal})
+        .then(function(r){return r.ok?r.json():Promise.reject(r.status);})
+        .then(function(data){
+          currentCtrl=null;
+          filtered=(data.results||[]).map(function(m){
+            return{page:m.page,slug:slugFromPath(m.path),heading:m.heading||null,context:m.context||null,score:m.score,line:m.line||0};
+          });
+          renderFullText(filtered);
+        })
+        .catch(function(err){
+          currentCtrl=null;
+          if(err&&err.name==='AbortError')return;
+          filtered=fuzzyFilter(q);
+          active=0;renderFuzzy(filtered);
+        });
+    }
+
+    /* ── Build mode: fuzzy + BM25 content search (indexes lazy-loaded) */
+    function buildSearchRun(){
+      var q=input.value;
+      if(!q){
+        filtered=fuzzyFilter('');
+        active=0;renderFuzzy(filtered);return;
+      }
+      if(q.length>2){
+        ensureSearchIndex().then(function(idx){
+          if(input.value!==q)return;
+          if(idx){
+            var bm25=bm25Search(q,idx).slice(0,20);
+            if(bm25.length>0){filtered=bm25;renderFullText(filtered);return;}
+          }
+          filtered=fuzzyFilter(q);
+          active=0;renderFuzzy(filtered);
+        });
+        return;
+      }
+      filtered=fuzzyFilter(q);
+      active=0;renderFuzzy(filtered);
+    }
+
+    function runSearch(){
+      var q=input.value;
+      if(MODE==='serve'){
+        if(!q){filtered=fuzzyFilter('');active=0;renderFuzzy(filtered);return;}
+        serveSearch(q);
+      }else{
+        buildSearchRun();
+      }
+    }
+
+    /* ── Open / close */
+    window.openSearch=function(initialQuery){
+      /* Capture invoking element so closeSearch can restore focus. Skip
+         when the dialog itself is already open (re-entry from deep-link
+         flow) so we don't latch onto an element inside the dialog. */
+      if(!overlay.classList.contains('open')){
+        previouslyFocused=document.activeElement;
+      }
+      overlay.classList.add('open');
+      input.value=initialQuery||'';
+      input.focus();
+      if(initialQuery)input.select();
+      if(!pageList){
+        results.innerHTML='<div class="search-hint">Loading\u2026</div>';
+        ensurePageList().then(function(){
+          if(!overlay.classList.contains('open'))return;
+          if(initialQuery){active=0;runSearch();}
+          else{filtered=fuzzyFilter('');active=0;renderFuzzy(filtered);}
+        });
+        /* Warm the BM25 index in the background too. */
+        ensureSearchIndex();
+        return;
+      }
+      if(initialQuery){active=0;runSearch();}
+      else{filtered=fuzzyFilter('');active=0;renderFuzzy(filtered);}
+    };
+
+    /* Deep-link support: ?q=foo on page load opens the search with that
+       query pre-populated. Also exposed via the hash form #search=foo for
+       cases where the query string is reserved for other uses. */
+    (function(){
+      try{
+        var params=new URLSearchParams(window.location.search);
+        var q=params.get('q')||params.get('search');
+        if(!q&&window.location.hash){
+          var m=window.location.hash.match(/(?:^#|&)(?:search|q)=([^&]+)/);
+          if(m)q=decodeURIComponent(m[1].replace(/\+/g,' '));
+        }
+        if(q)window.openSearch(q);
+      }catch(err){/* URLSearchParams unsupported — ignore */}
+    })();
+    window.closeSearch=function(){
+      overlay.classList.remove('open');
+      if(currentCtrl){currentCtrl.abort();currentCtrl=null;}
+      /* Restore focus to the element that opened the dialog (if it's
+         still in the DOM and focusable). Guard against stale refs from
+         SPA navigations that may have replaced the trigger. */
+      var prev=previouslyFocused;
+      previouslyFocused=null;
+      if(prev&&typeof prev.focus==='function'&&document.contains(prev)){
+        try{prev.focus();}catch(_){/* element no longer focusable */}
+      }
+    };
+
+    /* Focus trap: while the dialog is open, Tab / Shift+Tab cycles within
+       the dialog's focusable descendants instead of escaping to the rest
+       of the page (which is inert per aria-modal). */
+    function trapTab(e){
+      if(e.key!=='Tab')return;
+      var nodes=dialog.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]),'
+        +' select:not([disabled]), textarea:not([disabled]),'
+        +' [tabindex]:not([tabindex="-1"])');
+      if(!nodes.length){e.preventDefault();return;}
+      var first=nodes[0],last=nodes[nodes.length-1];
+      var act=document.activeElement;
+      if(e.shiftKey){
+        if(act===first||!dialog.contains(act)){e.preventDefault();last.focus();}
+      }else{
+        if(act===last){e.preventDefault();first.focus();}
+      }
+    }
+
+    /* ── Input / keyboard */
+    input.addEventListener('input',function(){
+      active=0;runSearch();
+    });
+
+    document.addEventListener('keydown',function(e){
+      if((e.metaKey||e.ctrlKey)&&e.key==='k'){
+        e.preventDefault();
+        if(overlay.classList.contains('open'))closeSearch();
+        else openSearch();
+        return;
+      }
+      if(!overlay.classList.contains('open'))return;
+      if(e.key==='Escape'){closeSearch();return;}
+      if(e.key==='Tab'){trapTab(e);return;}
+      if(e.key==='ArrowDown'){
+        e.preventDefault();
+        if(active<filtered.length-1)active++;
+        updateActive();
+      }else if(e.key==='ArrowUp'){
+        e.preventDefault();
+        if(active>0)active--;
+        updateActive();
+      }else if(e.key==='Enter'){
+        e.preventDefault();
+        if(active>=0&&active<filtered.length){
+          var s=filtered[active];
+          var href=s.slug||s.s;
+          var line=s.line;
+          window.location.href=ROOT+href+'/'+IDXFILE+(line?'#line-'+line:'');
+        }
+      }
+    });
+  })();
+  </script>
+
+  
+  
+  
+<script>
+window.__zetlEnsureGraph = (function(){
+  var promise = null;
+  var ROOT = "../";
+  var files = [
+    '_static/vendor/sigma/graphology.min.js',
+    '_static/vendor/sigma/graphology-layout-forceatlas2.min.js',
+    '_static/vendor/sigma/sigma.min.js'
+  ];
+  function load(src){
+    return new Promise(function(res, rej){
+      var existing = document.querySelector('script[src="'+src+'"]');
+      if (existing){ res(); return; }
+      var s = document.createElement('script');
+      s.src = src; s.async = false;
+      s.onload = function(){ res(); };
+      s.onerror = function(){ rej(new Error('failed: '+src)); };
+      document.head.appendChild(s);
+    });
+  }
+  return function(){
+    if (promise) return promise;
+    promise = files.reduce(function(p, f){
+      return p.then(function(){ return load(ROOT + f); });
+    }, Promise.resolve()).then(function(){
+      if (typeof window.__zetlBootGraph === 'function') window.__zetlBootGraph();
+    });
+    return promise;
+  };
+})();
+
+(function(){
+  var fullStage = document.querySelector('.zetl-graph-widget[data-placement="fullscreen"]');
+  if (fullStage && window.__zetlEnsureGraph) window.__zetlEnsureGraph();
+})();
+</script>
+
+  <script>
+  (function(){
+    var widget=document.getElementById('zetl-graph-widget');
+    var toggle=document.getElementById('zetl-graph-toggle');
+    var closeBtn=document.getElementById('zetl-graph-widget-close');
+    var launcher=document.getElementById('zetl-graph-widget-launcher');
+    if(!widget)return;
+    var OPEN='zetl-graph-widget--open';
+    var STORAGE_KEY='zetl.graphWidget';
+
+    /* If the reader previously expanded the widget, honour that immediately —
+       their persisted preference is load-the-graph. */
+    if (document.documentElement.getAttribute('data-graph') === 'expanded'
+        && window.__zetlEnsureGraph) {
+      window.__zetlEnsureGraph();
+    }
+
+    /* ── Desktop collapse/expand (persisted). */
+    function isExpanded(){
+      return document.documentElement.getAttribute('data-graph')==='expanded';
+    }
+    function setExpanded(expanded){
+      if(expanded){
+        document.documentElement.setAttribute('data-graph','expanded');
+      }else{
+        document.documentElement.removeAttribute('data-graph');
+      }
+      try{localStorage.setItem(STORAGE_KEY,expanded?'expanded':'collapsed');}
+      catch(_){/* storage unavailable — session-only toggle */}
+      if(launcher)launcher.setAttribute('aria-expanded',expanded?'true':'false');
+    }
+    /* Reconcile launcher aria with the state the head-script already
+       applied (e.g. restored-expanded), so screen readers see the correct
+       initial value without waiting for user interaction. */
+    if(launcher)launcher.setAttribute('aria-expanded',isExpanded()?'true':'false');
+    if(launcher){
+      launcher.addEventListener('click',function(){
+        setExpanded(true);
+        if (window.__zetlEnsureGraph) window.__zetlEnsureGraph();
+        /* Hand focus to the widget's close so keyboard users can dismiss
+           again without tabbing through the whole page. */
+        if(closeBtn)closeBtn.focus();
+      });
+    }
+
+    /* ── Mobile overlay (unchanged behaviour from REQ-117). */
+    function isOpen(){return widget.classList.contains(OPEN);}
+    function setOpen(open){
+      widget.classList.toggle(OPEN,open);
+      if(toggle)toggle.setAttribute('aria-expanded',open?'true':'false');
+      /* Prevent body scroll while the overlay covers the viewport. */
+      document.body.style.overflow=open?'hidden':'';
+      if(open){
+        /* Move focus inside the overlay so Escape/Tab are routed sensibly;
+           closeBtn is the primary dismiss affordance. */
+        if(closeBtn)closeBtn.focus();
+      }else if(toggle){
+        /* Return focus to the toggle so keyboard users don't lose context. */
+        toggle.focus();
+      }
+    }
+    if(toggle)toggle.addEventListener('click',function(){
+      var next=!isOpen();
+      setOpen(next);
+      if (next && window.__zetlEnsureGraph) window.__zetlEnsureGraph();
+    });
+
+    /* ── Close button is dual-role: dismisses the mobile overlay when
+       active, otherwise persists a desktop collapse. */
+    if(closeBtn){
+      closeBtn.addEventListener('click',function(){
+        if(isOpen()){
+          setOpen(false);
+        }else{
+          setExpanded(false);
+          if(launcher)launcher.focus();
+        }
+      });
+    }
+
+    document.addEventListener('keydown',function(e){
+      if(e.key==='Escape'&&isOpen()){e.preventDefault();setOpen(false);}
+    });
+    /* If the viewport grows past the breakpoint while the overlay is open
+       (desktop resize, orientation change), auto-dismiss — the docked widget
+       will render inline and the overlay is no longer meaningful. 900 px is
+       the default --zetl-graph-widget-breakpoint; themes that move the
+       breakpoint should pair with a matching media query override. */
+    window.addEventListener('resize',function(){
+      if(isOpen()&&window.innerWidth>=900)setOpen(false);
+    });
+
+    /* Mobile: tapping a sidebar link should collapse the drawer. On lg+
+       the checkbox has no visual effect (lg:drawer-open), so unchecking
+       unconditionally is safe. */
+    var sidebarRoot=document.querySelector('.drawer-side');
+    var sidebarToggle=document.getElementById('sidebar-toggle');
+    if(sidebarRoot&&sidebarToggle){
+      sidebarRoot.addEventListener('click',function(e){
+        if(e.target.closest('a[href]'))sidebarToggle.checked=false;
+      });
+    }
+  })();
+  </script>
+  
+  <script src="..&#x2f;_static/spa.js" defer></script>
+  
+
+
+
+  
+  
+
+</body>
+</html>

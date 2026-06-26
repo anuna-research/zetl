@@ -178,7 +178,7 @@ fn req5027_csp_emitted_for_content_island_page() {
     let html = page(v, "p");
     assert!(html.contains("Content-Security-Policy"), "CSP meta injected");
     assert!(html.contains("default-src 'none'"), "default-deny baseline");
-    assert!(html.contains("connect-src 'none'"), "egress denied by default");
+    assert!(html.contains("connect-src 'self'"), "cross-origin egress denied by default");
     assert!(v.join("dist/_headers.csp").is_file(), "headers artifact emitted");
 }
 

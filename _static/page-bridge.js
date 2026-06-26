@@ -1,0 +1,96 @@
+// Transclusion: SVG bridge lines + bidirectional hover
+(function() {
+  const COLORS = ["#f472b6","#60a5fa","#34d399","#fbbf24","#a78bfa","#fb923c","#2dd4bf","#f87171"];
+  const cards = document.querySelectorAll('.transclusion-card');
+  const colorMap = {};
+  cards.forEach((card, i) => {
+    colorMap[card.dataset.targetHref] = COLORS[i % COLORS.length];
+  });
+
+  document.querySelectorAll('a.wikilink:not(.wikilink-dead)').forEach(link => {
+    const color = colorMap[link.getAttribute('href')];
+    if (color) {
+      link.style.textDecorationColor = color;
+    }
+  });
+
+  // Remove any leftover SVG overlay from a previous SPA navigation.
+  document.querySelectorAll('svg[data-zetl-bridge]').forEach(function(el){ el.remove(); });
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('data-zetl-bridge', '');
+  svg.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:40;';
+  document.body.appendChild(svg);
+
+  // Clean up on SPA navigation away from this page.
+  document.addEventListener('zetl:before-navigate', function onNav() {
+    svg.remove();
+    document.removeEventListener('zetl:before-navigate', onNav);
+  });
+
+  function drawBridge(fromEl, toEl, color) {
+    svg.innerHTML = '';
+    const fr = fromEl.getBoundingClientRect();
+    const tr = toEl.getBoundingClientRect();
+    const x1 = fr.right + 4;
+    const y1 = fr.top + fr.height / 2;
+    const x2 = tr.left - 2;
+    const y2 = tr.top + 16;
+    const mx = (x1 + x2) / 2;
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d',
+      'M ' + x1 + ' ' + y1 + ' C ' + mx + ' ' + y1 + ', ' + mx + ' ' + y2 + ', ' + x2 + ' ' + y2);
+    path.setAttribute('stroke', color);
+    path.setAttribute('stroke-width', '2');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('opacity', '0.6');
+    svg.appendChild(path);
+
+    var d1 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    d1.setAttribute('cx', x1); d1.setAttribute('cy', y1);
+    d1.setAttribute('r', '3'); d1.setAttribute('fill', color);
+    d1.setAttribute('opacity', '0.6');
+    svg.appendChild(d1);
+
+    var d2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    d2.setAttribute('cx', x2); d2.setAttribute('cy', y2);
+    d2.setAttribute('r', '3'); d2.setAttribute('fill', color);
+    d2.setAttribute('opacity', '0.6');
+    svg.appendChild(d2);
+  }
+
+  function clearBridge() {
+    svg.innerHTML = '';
+  }
+
+  const isDesktop = () => window.matchMedia('(min-width: 1280px)').matches;
+
+  document.querySelectorAll('a.wikilink').forEach(link => {
+    const href = link.getAttribute('href');
+    const color = colorMap[href] || '#888';
+    link.addEventListener('mouseenter', () => {
+      const card = document.querySelector('.transclusion-card[data-target-href="' + href + '"]');
+      if (card) {
+        card.classList.add('tc-active');
+        if (isDesktop()) drawBridge(link, card, color);
+      }
+    });
+    link.addEventListener('mouseleave', () => {
+      document.querySelectorAll('.transclusion-card.tc-active').forEach(c => c.classList.remove('tc-active'));
+      clearBridge();
+    });
+  });
+
+  cards.forEach(card => {
+    const href = card.dataset.targetHref;
+    card.addEventListener('mouseenter', () => {
+      card.classList.add('tc-active');
+      document.querySelectorAll('a.wikilink[href="' + href + '"]').forEach(l => l.classList.add('wl-active'));
+    });
+    card.addEventListener('mouseleave', () => {
+      card.classList.remove('tc-active');
+      document.querySelectorAll('a.wl-active').forEach(l => l.classList.remove('wl-active'));
+    });
+  });
+})();

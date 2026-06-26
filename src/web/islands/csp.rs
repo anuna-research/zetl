@@ -27,7 +27,11 @@ pub fn content_island_policy(csp: &CspConfig, script_hashes: &[String]) -> Strin
     }
     directives.insert("script-src", script);
     directives.insert("worker-src", vec!["'self'".into(), "blob:".into()]);
-    directives.insert("connect-src", vec!["'none'".into()]);
+    // connect-src 'self': the exfil threat is CROSS-origin egress (which this blocks). The
+    // theme/SPA make legitimate SAME-origin fetches (search index, graph, page nav) and the
+    // worker inherits this CSP, so 'none' would break the site while same-origin fetches
+    // leak nothing not already public. Operators add cross-origin hosts via [security.csp].
+    directives.insert("connect-src", vec!["'self'".into()]);
     // img-src allows `data:` (theme ships data: SVG icons/favicon, all local — no egress).
     // The worker's render tree img URLs are scheme-validated separately (CON-5007), so this
     // does not widen the untrusted surface.
@@ -125,7 +129,8 @@ mod tests {
     fn baseline_is_default_deny() {
         let p = content_island_policy(&CspConfig::default(), &[]);
         assert!(p.contains("default-src 'none'"));
-        assert!(p.contains("connect-src 'none'"));
+        // connect-src is 'self' (blocks cross-origin egress; allows same-origin theme/SPA)
+        assert!(p.contains("connect-src 'self'"));
         assert!(p.contains("worker-src 'self' blob:"));
         assert!(p.contains("script-src 'self'"));
         assert!(p.contains("base-uri 'none'"));

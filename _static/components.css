@@ -1,0 +1,28 @@
+/* component: callout (vault) */
+.cc{border-left:5px solid #888;padding:.7rem 1rem;margin:1rem 0;border-radius:8px;background:#f6f6f6}
+.cc-info{border-left-color:#3b82f6;background:#eff6ff}
+.cc-warning{border-left-color:#e0a800;background:#fff8e1}
+.cc-danger{border-left-color:#dc2626;background:#fef2f2}
+.cc-t{font-weight:700;margin-bottom:.25rem}
+.cc-b>:first-child{margin-top:0}.cc-b>:last-child{margin-bottom:0}
+
+/* component: card (vault) */
+.card{border:1px solid #e5e7eb;border-radius:12px;padding:1rem 1.25rem;margin:1rem 0;box-shadow:0 1px 3px rgba(0,0,0,.06);max-width:34rem}
+.card-h{margin:.1rem 0 .4rem;font-size:1.1rem}
+.card-link{display:inline-block;margin-top:.5rem;color:#2563eb;font-weight:600;text-decoration:none}
+
+/* component: counter (vault) */
+.isl{margin:1rem 0}
+.ibox{border:2px solid #10b981;border-radius:12px;padding:1rem 1.25rem;background:#ecfdf5;display:inline-block;min-width:300px}
+.ibox.b2{border-color:#6366f1;background:#eef2ff}
+.ibox.b3{border-color:#dc2626;background:#fef2f2}
+.ibox.b4{border-color:#0891b2;background:#ecfeff}
+.ilabel{font-size:.8rem;color:#374151;margin:0 0 .25rem}
+.inum{font-size:2.6rem;font-weight:800;color:#047857;margin:.1rem 0;font-variant-numeric:tabular-nums}
+.iblocked{color:#b91c1c;font-size:.8rem;margin:.3rem 0 0}
+
+/* component: divider (vault) */
+.divider{display:flex;align-items:center;text-align:center;color:#9ca3af;margin:1.5rem 0;font-size:.8rem;text-transform:uppercase;letter-spacing:.08em}
+.divider::before,.divider::after{content:"";flex:1;border-bottom:1px solid #e5e7eb}
+.divider span{padding:0 .75rem}
+
