@@ -1,9 +1,0 @@
-# demo
-
-## Resources
-
-- [/search-index.json](/search-index.json): pre-built BM25 index. Schema: `{docs:[{n:title,s:slug,dl:length,tf:{term:count},secs:[{h:heading,t:text,l:line}]}], df:{term:count}, avgDl:number}`. Rank with BM25 (k1=1.2, b=0.75).
-- [/pages.json](/pages.json): list of pages as `[{n:title,s:slug}]`.
-- Per-page raw markdown: `GET /{slug}/index.md` (same URL shape as `/{slug}/index.html`).
-- [/graph-index.json](/graph-index.json): link graph (nodes + edges) for traversal and backlinks.
-- [/sitemap.xml](/sitemap.xml): standard sitemap of every page.

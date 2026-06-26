@@ -28,3 +28,5 @@ user-guide/site
 user-guide/.zetl/*
 !user-guide/.zetl/themes/
 .env
+# Local release artifacts (built by the release pipeline, not source).
+dist-release/
