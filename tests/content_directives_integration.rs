@@ -1,3 +1,4 @@
+#![cfg(feature = "content-components")]
 //! SPEC-049 — integration tests for content-author components & directives.
 //!
 //! Each test builds a fixture vault via `zetl build` and asserts on the emitted output,

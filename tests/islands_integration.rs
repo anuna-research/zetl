@@ -1,3 +1,4 @@
+#![cfg(feature = "component-islands")]
 //! SPEC-050 — integration tests for component islands & messaging (build-side).
 //!
 //! Builds fixture vaults via `zetl build` and asserts on emitted island assets, page
@@ -100,6 +101,25 @@ fn p2_persisted_topic_emits_persist_marker_and_raw_localstorage_key() {
     // P2-2: pre-paint reads the RAW colon key the runtime writes, not a sanitised one
     assert!(html.contains("zetl:topic:content:theme"), "pre-paint reads raw key");
     assert!(!html.contains("zetl:topic:content-theme"), "must not use sanitised key");
+}
+
+#[test]
+fn p1_content_island_subscribing_trusted_topic_needs_theme_grant() {
+    let dir = TempDir::new().unwrap();
+    let v = dir.path();
+    // a content island that subscribes a TRUSTED (non-content:) topic `theme`
+    write(v, ".zetl/components/reader/reader.html", "<div data-z=\"{{ _name }}\"></div>");
+    write(
+        v,
+        ".zetl/components/reader/reader.toml",
+        "name = \"reader\"\ncontent_invocable = true\ncontent_props = []\nsubscribes = [\"theme\"]\nrender = \"worker\"\npaints = true\n[props]\n[island.topics.theme]\ntype = \"enum(\\\"light\\\",\\\"dark\\\")\"\n",
+    );
+    write(v, ".zetl/components/reader/reader.js", "self.onmessage=function(){};\n");
+    write(v, "p.md", "# x\n");
+    // No [[theme.island-grants]] → build MUST fail (Codex P1).
+    let (ok, log) = build(v);
+    assert!(!ok, "ungranted trusted-topic subscribe must fail the build");
+    assert!(log.contains("island-capability-ungranted") || log.contains("island error"), "log: {log}");
 }
 
 #[test]

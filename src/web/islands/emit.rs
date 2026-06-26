@@ -9,6 +9,8 @@
 
 use super::manifest::IslandManifest;
 use super::theme::CspConfig;
+use super::theme::{Direction, IslandGrant};
+use super::topic::{recognise_topic, TopicKind};
 use super::wiring::{self, WiringReport};
 use super::{csp, manifest as island_manifest, theme as island_theme, IResult, IslandError};
 use crate::web::components::resolve::discover_components;
@@ -28,6 +30,9 @@ pub struct IslandSet {
     /// trusted islands).
     pub scripts: BTreeMap<String, String>,
     pub csp: CspConfig,
+    /// Theme-author grants ([[theme.island-grants]]) — a content island may read a
+    /// trusted topic only when one of these grants it.
+    pub grants: Vec<IslandGrant>,
     pub wiring: WiringReport,
 }
 
@@ -60,9 +65,39 @@ impl IslandSet {
         // theme grants + operator CSP live in theme.toml / site config; read theme.toml
         // (bundled or on-disk) and the vault config for `[security.csp]`.
         let csp = load_csp(vault_root, theme)?;
+        let grants = load_island_grants(vault_root, theme)?;
+
+        // CON-5002: a content island may SUBSCRIBE to a trusted (non-`content:`) topic
+        // ONLY when a matching [[theme.island-grants]] entry grants the read. Listing it
+        // in the component manifest is not enough — that would let untrusted worker code
+        // read trusted bus topics at will (Codex P1). Fail closed at build.
+        for im in islands.values() {
+            if !im.content_island {
+                continue;
+            }
+            for t in &im.subscribes {
+                if matches!(recognise_topic(t)?, TopicKind::Trusted) {
+                    let granted = grants.iter().any(|g| {
+                        g.component == im.component
+                            && &g.topic == t
+                            && g.direction == Direction::Subscribe
+                    });
+                    if !granted {
+                        return Err(IslandError::new(
+                            "island-capability-ungranted",
+                            format!(
+                                "content island `{}` subscribes trusted topic `{t}` without a matching [[theme.island-grants]] entry",
+                                im.component
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+
         let manifests: Vec<IslandManifest> = islands.values().cloned().collect();
         let wiring = wiring::verify(&manifests, &csp);
-        Ok(IslandSet { islands, scripts, csp, wiring })
+        Ok(IslandSet { islands, scripts, csp, grants, wiring })
     }
 
     /// True when the vault declares no island at all (REQ-5012 backward-compat path).
@@ -323,7 +358,18 @@ document.documentElement.setAttribute('data-zt-{attr}',sv);\
             parts.push(format!("{{\"topic\":{},\"direction\":\"emit\"}}", json_str(t)));
         }
         for t in &im.subscribes {
-            parts.push(format!("{{\"topic\":{},\"direction\":\"subscribe\"}}", json_str(t)));
+            // A content island's subscribe grant on a trusted topic is emitted ONLY when
+            // the theme granted it (discover already errors otherwise; this keeps an
+            // ungranted trusted topic out of the runtime grant table regardless). Content
+            // topics and trusted-island subscribes are always emitted.
+            let allowed = !im.content_island
+                || recognise_topic(t).map(|k| k == TopicKind::Content).unwrap_or(false)
+                || self.grants.iter().any(|g| {
+                    g.component == im.component && &g.topic == t && g.direction == Direction::Subscribe
+                });
+            if allowed {
+                parts.push(format!("{{\"topic\":{},\"direction\":\"subscribe\"}}", json_str(t)));
+            }
         }
         if im.paints {
             parts.push("{\"direction\":\"render\"}".to_string());
@@ -341,6 +387,21 @@ document.documentElement.setAttribute('data-zt-{attr}',sv);\
 }
 
 /// Read the operator `[security.csp]` from the vault config + theme.toml.
+/// Read `[[theme.island-grants]]` from the active theme's `theme.toml` (disk or bundled).
+fn load_island_grants(vault_root: &Path, theme: &str) -> IResult<Vec<IslandGrant>> {
+    let theme_toml = if theme != "default" {
+        std::fs::read_to_string(vault_root.join(format!(".zetl/themes/{theme}/theme.toml")))
+            .ok()
+            .or_else(|| crate::web::engine::bundled_template(theme, "theme.toml").map(str::to_string))
+    } else {
+        crate::web::engine::bundled_template("default", "theme.toml").map(str::to_string)
+    };
+    match theme_toml.and_then(|s| s.parse::<toml::Value>().ok()) {
+        Some(val) => island_theme::parse_island_grants(&val),
+        None => Ok(Vec::new()),
+    }
+}
+
 fn load_csp(vault_root: &Path, theme: &str) -> IResult<CspConfig> {
     // vault site config (`.zetl/config.toml`) takes precedence; fall back to theme.toml.
     for rel in [".zetl/config.toml", ".zetl/zetl.toml"] {

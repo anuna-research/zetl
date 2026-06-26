@@ -251,6 +251,18 @@ impl<'a> Scanner<'a> {
 
         while self.idx < self.lines.len() {
             let line = self.lines[self.idx];
+
+            // Indented code block (CommonMark: ≥4 columns of leading whitespace) — the
+            // line is literal code, NOT a directive. Without this, a 4-space-indented
+            // `:::callout{}` in a code sample would be recognised as a real directive
+            // (CON-4901 says directives are not recognised inside indented code). Append
+            // verbatim and skip all directive/fence recognition for this line (Codex P2).
+            if indent_columns(line) >= 4 {
+                self.idx += 1;
+                text_buf.push_str(line);
+                continue;
+            }
+
             let trimmed = line.trim_start();
 
             // Fenced code block: ``` or ~~~ — copy through verbatim, no directive
@@ -367,6 +379,20 @@ impl<'a> Scanner<'a> {
             line: self.idx + 1,
         })
     }
+}
+
+/// Columns of leading whitespace (a tab is a 4-column stop, per CommonMark). ≥4 marks an
+/// indented code block.
+fn indent_columns(line: &str) -> usize {
+    let mut col = 0;
+    for c in line.chars() {
+        match c {
+            ' ' => col += 1,
+            '\t' => col += 4,
+            _ => break,
+        }
+    }
+    col
 }
 
 /// Count leading `:` characters.
@@ -559,6 +585,15 @@ mod tests {
         let nodes = scan(src);
         assert!(dirs(&nodes).is_empty());
         assert!(matches!(nodes.first(), Some(Node::Text(t)) if t.contains(":::callout")));
+    }
+
+    #[test]
+    fn directive_in_indented_code_block_is_literal() {
+        // 4-space-indented lines are an indented code block (CommonMark) → not directives.
+        let src = "text\n\n    :::callout{}\n    body\n    :::\n";
+        let nodes = scan(src);
+        assert!(dirs(&nodes).is_empty(), "indented :::callout must not be a directive");
+        assert!(matches!(nodes.last(), Some(Node::Text(t)) if t.contains("    :::callout")));
     }
 
     #[test]

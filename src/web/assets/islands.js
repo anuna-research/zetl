@@ -688,22 +688,24 @@
 
   // Scheme allowlist: https/http/mailto/relative. Reject javascript:/data:/blob:/
   // vbscript:/file: and protocol-relative //.
-  function isSafeUrl(url) {
-    if (typeof url !== "string") { return false; }
-    if (url.length > 4096) { return false; }
-    // CANONICALISE first (Codex P1): a render-tree URL reaches us as a raw string, so
-    // strip ALL ASCII control chars AND whitespace and lowercase before the scheme check
-    // — the browser canonicalises `Java\tscript:` → `javascript:`, so a tab/newline
-    // inside the scheme MUST NOT make us treat it as relative. Mirrors the Rust
-    // sanitiser's is_safe_url.
+  // CANONICALISE a URL the way browsers do before scheme/origin checks: strip ALL ASCII
+  // control chars AND whitespace and lowercase. `Java\tscript:` ≡ `javascript:`. Used by
+  // BOTH isSafeUrl and isRemoteUrl so the scheme-allowlist and the egress-taint check see
+  // the same value the browser will resolve.
+  function canonUrl(url) {
     var canon = "";
     for (var i = 0; i < url.length; i++) {
       var ch = url.charCodeAt(i);
-      // drop C0 controls (incl. \t \n \r), space (0x20), and DEL (0x7f)
-      if (ch <= 0x20 || ch === 0x7f) { continue; }
+      if (ch <= 0x20 || ch === 0x7f) { continue; } // drop C0 controls, space, DEL
       canon += url[i];
     }
-    canon = canon.toLowerCase();
+    return canon.toLowerCase();
+  }
+
+  function isSafeUrl(url) {
+    if (typeof url !== "string") { return false; }
+    if (url.length > 4096) { return false; }
+    var canon = canonUrl(url);
     if (canon === "") { return true; } // empty / whitespace-only is a harmless reference
     // Reject scheme-relative //host and \\host (resolve off-origin).
     if (canon.indexOf("//") === 0 || canon.indexOf("\\\\") === 0) { return false; }
@@ -839,12 +841,15 @@
       }
       return false;
     }
-    var s = String(url).trim();
-    // mailto: is an EGRESS channel for a read-granted island (it can encode a subscribed
-    // value in the address/subject); the egress-taint rule (CON-5007) restricts such an
-    // island to same-origin/relative URLs only, so treat any non-http(s) scheme as remote.
-    if (/^mailto:/i.test(s) || /^[a-z][a-z0-9+.\-]*:/i.test(s) && !/^https?:/i.test(s)) { return true; }
-    if (!/^https?:/i.test(s)) { return false; } // relative => not remote
+    // CANONICALISE first (Codex P1): the browser strips control/whitespace before
+    // resolving, so `h\tttps://evil` is a cross-origin request — the egress check MUST see
+    // the canonical form, not the raw trim()med string, or it under-detects remote.
+    var s = canonUrl(String(url));
+    // Any non-http(s) scheme (mailto:, etc.) is an egress channel for a read-granted
+    // island (it can encode a subscribed value); the egress-taint rule (CON-5007)
+    // restricts such an island to same-origin/relative URLs only.
+    if (/^[a-z][a-z0-9+.\-]*:/.test(s) && !/^https?:/.test(s)) { return true; }
+    if (!/^https?:/.test(s)) { return false; } // relative => not remote
     try {
       var resolved = new URL(s, glob.location ? glob.location.href : "https://example.invalid/");
       return !!(glob.location && resolved.origin !== glob.location.origin);

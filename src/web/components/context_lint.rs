@@ -295,6 +295,13 @@ impl HtmlState {
         if a.starts_with("on") && a.len() > 2 {
             return Ctx::Js;
         }
+        // `srcdoc` (and `xlink:href`-style HTML/markup-valued attributes) are parsed as a
+        // *document* by the browser, which entity-decodes the value — so an HTML-autoescaped
+        // content string still becomes live markup there. Treat as an unsafe (HTML) context
+        // so any tainted value in it is rejected (Codex P1). `Js` is in no safe-context set.
+        if a == "srcdoc" {
+            return Ctx::Js;
+        }
         if is_url_attr(a) {
             // a single-quoted URL attr is not a sanctioned context for a url prop
             return if double_quoted { Ctx::UrlAttrDq } else { Ctx::AttrValueSq };
@@ -924,6 +931,14 @@ mod tests {
     #[test]
     fn scalar_in_script_js_unsafe() {
         let e = lint(r#"<script>var x = {{ props.msg }}</script>"#).unwrap_err();
+        assert_eq!(e.code, "content-context-unsafe");
+    }
+
+    #[test]
+    fn scalar_in_srcdoc_unsafe() {
+        // srcdoc is parsed as an HTML document (entity-decoded), so autoescape doesn't
+        // neutralise markup there (Codex P1).
+        let e = lint(r#"<iframe srcdoc="{{ props.msg }}"></iframe>"#).unwrap_err();
         assert_eq!(e.code, "content-context-unsafe");
     }
 

@@ -13,6 +13,8 @@
 //! fixed-point, no-executable-output — not functional correctness (that is the
 //! example-based integration suites).
 
+#![cfg(all(feature = "content-components", feature = "component-islands"))]
+
 use proptest::prelude::*;
 use zetl::web::components::context_lint::lint_component;
 use zetl::web::components::directive::{is_valid_directive_name, parse_attr_block, scan, Node};
