@@ -840,7 +840,11 @@
       return false;
     }
     var s = String(url).trim();
-    if (!/^https?:/i.test(s)) { return false; } // relative/mailto => not remote
+    // mailto: is an EGRESS channel for a read-granted island (it can encode a subscribed
+    // value in the address/subject); the egress-taint rule (CON-5007) restricts such an
+    // island to same-origin/relative URLs only, so treat any non-http(s) scheme as remote.
+    if (/^mailto:/i.test(s) || /^[a-z][a-z0-9+.\-]*:/i.test(s) && !/^https?:/i.test(s)) { return true; }
+    if (!/^https?:/i.test(s)) { return false; } // relative => not remote
     try {
       var resolved = new URL(s, glob.location ? glob.location.href : "https://example.invalid/");
       return !!(glob.location && resolved.origin !== glob.location.origin);

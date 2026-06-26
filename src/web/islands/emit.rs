@@ -147,12 +147,12 @@ document.documentElement.setAttribute('data-zt-{attr}',sv);\
             }
         }
         // CSP headers artifact (served-deploy form) for content-island builds (REQ-5027).
-        // The per-page script/style restrictions (with inline-asset hashes) live in each
-        // page's <meta> CSP — those can't go in a single build-wide header without
-        // blocking the theme's own inline assets. The header therefore carries only the
-        // directives <meta> cannot express (frame-ancestors) plus the operator's declared
-        // egress widenings, leaving script/style enforcement to the authoritative meta so
-        // the two never conflict on inline assets (Codex P2).
+        // ALL enforcement (script/style restrictions with per-page inline-asset hashes,
+        // and connect-src egress incl. operator widenings) lives in each page's
+        // authoritative <meta> CSP — none of it can go in a single build-wide header
+        // without either blocking the theme's own inline assets or overriding per-page
+        // egress. The header therefore carries ONLY `frame-ancestors` (which <meta>
+        // cannot express), so header and meta never conflict (Codex P2).
         if self.has_content_island() {
             std::fs::write(out.join("_headers.csp"), csp::headers_artifact(&self.csp))?;
         }

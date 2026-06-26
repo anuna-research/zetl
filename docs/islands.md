@@ -90,7 +90,7 @@ it via `[[theme.island-grants]]`.
   (excludes `script`/`style`/`iframe`/`form`/etc.), URL-scheme validation, `aria-*`/`role`
   allowed for a11y, `setAttribute`/`textContent` only (never `innerHTML`), depth/breadth/
   node/byte bounds, cycle rejection. This is what makes "untrusted code cannot inject
-  markup" hold — verified in a real browser playtest.
+  markup" hold — covered by `tests/js/islands_runtime.test.mjs` (run under `cargo test`).
 - **Network egress** (REQ-5026/5027): confined by the page **Content-Security-Policy**, not
   per-worker policy. Operators widen it in `[security.csp]`; content authors may only
   *request* widenings via `[island.requests]` (inert until approved — surfaced in the

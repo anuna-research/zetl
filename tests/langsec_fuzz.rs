@@ -4,18 +4,32 @@
 //! handler at a trust boundary, and roundtrip/property tests for formats the system both
 //! reads and writes. The SPEC-049/050 specs themselves call for executable fuzzing of the
 //! sanitiser, the context lint, the topic/type grammars, and the controlled-element
-//! renderer before shipping. These property tests are the Rust-side portion (the
-//! browser-side renderer/bridge are exercised by the Playwright playtest).
+//! renderer before shipping. These property tests are the Rust-side portion; the
+//! browser-side controlled-element renderer + value recogniser are tested by
+//! `tests/js/islands_runtime.test.mjs` (run under node via `tests/islands_js.rs`), and
+//! the capability bridge by the build-side wiring tests.
 //!
 //! The invariants asserted here are the *security* ones — fail-closed, no-panic,
 //! fixed-point, no-executable-output — not functional correctness (that is the
 //! example-based integration suites).
 
 use proptest::prelude::*;
+use zetl::web::components::context_lint::lint_component;
 use zetl::web::components::directive::{is_valid_directive_name, parse_attr_block, scan, Node};
+use zetl::web::components::manifest::{parse_manifest, Manifest};
 use zetl::web::components::sanitize::{is_fixed_point, is_safe_url, sanitise_body};
 use zetl::web::islands::topic::recognise_topic;
 use zetl::web::islands::value_type::parse_type_expr;
+
+/// A content-invocable manifest exposing a scalar (`msg`) and a `url` (`link`) content prop.
+fn lint_manifest() -> Manifest {
+    parse_manifest(
+        "name = \"c\"\ncontent_invocable = true\ncontent_props = [\"msg\", \"link\"]\n\
+         [props]\nmsg = { type = \"string\", default = \"\" }\nlink = { type = \"url\", required = false }\n",
+        "c",
+    )
+    .unwrap()
+}
 
 // ── CON-4902 body sanitiser ──────────────────────────────────────────────────
 
@@ -166,5 +180,46 @@ proptest! {
     fn scalar_type_exprs(kw in prop::sample::select(vec!["string", "bool", "int", "number"])) {
         prop_assert!(parse_type_expr(kw).is_ok());
         prop_assert!(parse_type_expr(&format!("{kw}x")).is_err(), "junk scalar accepted");
+    }
+}
+
+// ── CON-4904 static HTML-context lint (soundness: no tainted value in an unsafe context) ──
+
+proptest! {
+    /// A content prop placed in any unsafe HTML context (CSS / JS / on* / unquoted attr /
+    /// non-url URL-attr) MUST be rejected at build, regardless of surrounding text — the
+    /// lint's no-false-negative soundness claim. (Random `[a-z ]` filler cannot turn an
+    /// unsafe context safe.)
+    #[test]
+    fn lint_rejects_tainted_in_unsafe_context(
+        pre in "[a-z ]{0,16}",
+        suf in "[a-z ]{0,16}",
+        idx in 0usize..6,
+    ) {
+        let wrappers = [
+            "<div style=\"color:@V@\">y</div>",      // CSS (style attr)
+            "<style>p{color:@V@}</style>",            // CSS (<style>)
+            "<script>var a=@V@;</script>",            // JS (<script>)
+            "<button onclick=\"@V@\">y</button>",     // JS (on* attr)
+            "<div data-x=@V@>y</div>",                // unquoted attribute
+            "<a href=\"@V@\">y</a>",                  // non-url scalar in a URL attribute
+        ];
+        let body = wrappers[idx].replace("@V@", "{{ props.msg }}");
+        let tmpl = format!("{pre}{body}{suf}");
+        let m = lint_manifest();
+        prop_assert!(lint_component(&tmpl, &m).is_err(), "lint must reject: {tmpl}");
+    }
+
+    /// A content value in a sanctioned context (scalar in TEXT/double-quoted-attr; a
+    /// `url`-typed prop in a URL attribute) MUST pass — no false positives on safe code.
+    #[test]
+    fn lint_accepts_safe_placement(pre in "[a-z ]{0,16}", idx in 0usize..3) {
+        let m = lint_manifest();
+        let tmpl = match idx {
+            0 => format!("{pre}<p>{{{{ props.msg }}}}</p>"),                 // scalar in TEXT
+            1 => format!("{pre}<div title=\"{{{{ props.msg }}}}\">y</div>"), // scalar in dq-attr
+            _ => format!("{pre}<a href=\"{{{{ props.link }}}}\">y</a>"),     // url prop in href
+        };
+        prop_assert!(lint_component(&tmpl, &m).is_ok(), "lint must accept: {tmpl}");
     }
 }
