@@ -1,9 +1,9 @@
 ---
 id: SPEC-049
 title: "Content-Author Components & Directives"
-status: draft
-version: 0.6.0-strawman
-last-updated: 2026-06-25
+status: implemented
+version: 0.7.0
+last-updated: 2026-06-26
 audience: agent, human
 ---
 
@@ -65,11 +65,13 @@ before anything is rendered.
 [[SPEC-049-content-author-components#REQ-4910]] island handoff to SPEC-050 ·
 [[SPEC-049-content-author-components#REQ-4912]] backward-compatible default.
 
-**Open** (each blocks the Phase 2 gate — see
+**Resolved by the reference implementation** (see
 [[SPEC-049-content-author-components#12. Open Questions]]):
-Q1 sanitiser engine/policy baseline · Q2 inline-directive prop ergonomics · Q3 nesting-depth
-bound · Q4 whether content components may `transclude()` at all · Q5 per-theme vs global
-allowlist scope.
+Q1 sanitiser engine (`ammonia` 4 closed allowlist) · Q2 inline-directive form (deferred in v1) ·
+Q6 prop/slot context enforcement (sound static lint, CON-4904).
+**Remaining tunables** (non-blocking; the impl picked a defensible default each):
+Q3 nesting-depth bound (impl: 16) · Q4 `transclude()` from content (impl: disallowed,
+REQ-4907) · Q5 per-theme vs global allowlist scope (impl: per-component `content_invocable`).
 
 **Detail:** the full requirement, contract, and test nodes follow below.
 
@@ -77,26 +79,29 @@ allowlist scope.
 > SHOULD NOT, RECOMMENDED, MAY, and OPTIONAL in this document are to be interpreted as
 > described in BCP 14 (RFC 2119 + RFC 8174) when, and only when, they appear in all capitals.
 
-> **Strawman notice — NOT converged.** **Three adversarial passes**, each of which found the
-> security core *relocated* rather than solved: v0.2.0 (isolated-body architecture), v0.3.0
-> (context pushed to a contract+tripwire), v0.5.0 (a static lint) — and the **3rd pass (v0.6.0)
-> found the lint relocated the residual again** into a set of environment preconditions
-> (autoescape mode, whitespace, template inheritance, minijinja feature set). v0.6.0 states + tries
-> to discharge those (CON-4904(0)), but **prose cannot verify them — only an implementation +
-> fuzzing can.** Two unsettled axes remain: the **CON-4904 lint** (Q6 — possibly better served by a
-> dedicated restricted template language) and the **body-sanitiser policy** (Q1). The recurring
-> relocation across three passes is itself the signal: this untrusted-HTML boundary needs a
-> **running PoC + executable fuzzing + a human security expert** before any gate — do not treat it
-> as settled, and **v1 SHOULD NOT ship content-invocable components until Q1+Q6 land.**
+> **Implementation status — implemented, boundary not yet declared converged.** The three
+> pre-implementation design passes each relocated the security core rather than solving it
+> (v0.2.0 isolated-body, v0.3.0 contract+tripwire, v0.5.0 static lint, v0.6.0 environment
+> preconditions). A **reference implementation** (PR #65, behind `content-components`) has since
+> discharged those concretely: the CON-4904 lint runs over the real minijinja `unstable_machinery`
+> AST, the `ammonia` body sanitiser is fixed-point, and the suite includes LangSec property/fuzz
+> tests. It then passed **five post-implementation review rounds** (2 fresh-context adversarial +
+> 3 Codex) — **every round found a genuine boundary bug** (sanitiser/lint context gaps:
+> `srcdoc`, namespaced URL attrs, URL-scheme obfuscation), each fixed with a regression test.
+> That the *implementation* still surfaced five real bypasses is the same signal the design passes
+> gave: this untrusted-HTML boundary is hardened but **not exhausted**. The features are default-on
+> only because they are **byte-identical no-ops until a theme ships a `content_invocable` component**
+> (REQ-4912); **production reliance still REQUIRES a dedicated human security expert + sustained
+> executable fuzzing** before the boundary is treated as converged.
 
 | Field        | Value                                                                                  |
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | [[SPEC-049-content-author-components\|SPEC-049]]                                        |
 | Title        | Content-Author Components & Directives                                                  |
-| Version      | 0.6.0-strawman                                                                          |
-| Status       | Draft (strawman; NOT converged — no adversarial pass; sanitiser policy unsettled)      |
+| Version      | 0.7.0                                                                                   |
+| Status       | Implemented (reference impl, PR #65, behind `content-components`; untrusted-content boundary still pending dedicated human security review + executable fuzzing) |
 | Author       | Agent (Claude Opus 4.8 [1M], [[PROTO-001\|USDD Agent Protocol]])                        |
-| Date         | 2026-06-25                                                                              |
+| Date         | 2026-06-26                                                                              |
 | Audience     | Agent, Human                                                                            |
 | Trace        | [[PROTO-001]] §Phase 1, §Phase 2, §LangSec, §AI Trust Boundaries                        |
 | Source       | Deferred from [[SPEC-048]] (content-directive row, §Deferred Capabilities)              |
@@ -522,7 +527,13 @@ value (the **closed `URL_ATTR` set shared verbatim with CON-4904(1)**: `href`/`s
 `Java\tscript:` ≡ `javascript:`) then accepted **only** if it is `https`/`http`/`mailto` **or** a
 relative reference that is **path-absolute or path-relative**. It SHALL be **rejected** if it is
 **scheme-relative** (begins `//` or `\\` after canonicalisation → resolves off-origin) or any
-non-allowlisted scheme (`javascript:`/`data:`/`blob:`/`vbscript:`/`file:`/…). Relative URLs
+non-allowlisted scheme (`javascript:`/`data:`/`blob:`/`vbscript:`/`file:`/…).
+**Normative validation rule (parse, do not pattern-match — as implemented).** A URL value SHALL
+be validated by **parsing** it with the WHATWG `url` crate and **assessing the parsed scheme**
+against the allowlist (`http`/`https`/`mailto`) — **never** by pattern-matching the raw string:
+*no URL is trusted unless it properly parses.* An **unparseable** value ⇒ **reject**. A
+**protocol-relative** value — **any** slash mix (`//`, `\\`, `/\`, `\/`) ⇒ **reject** (it would
+resolve off-origin). Relative URLs
 resolve against the **page origin**; a content-invocable template (and the body) SHALL NOT emit a
 `<base>` element (it would redirect every relative URL) — `<base>` is build-rejected in the body
 (allowlist) and a content-invocable template emitting `<base>` is a build error. **`srcset`** (a
@@ -558,7 +569,11 @@ reparse) is `[Blocked: Q1]`.
 ### CON-4903: Content-Invocable Manifest Fields + the `url` ptype
 **Interface:** two amendments to the [[SPEC-048]] CON-4801 manifest, owned here.
 **(a) A new `url` ptype.** CON-4801's `ptype` is extended with **`url`** (a `string` whose value
-is scheme-validated per CON-4902 wherever used in a URL context). This closes REQ-4904's
+is scheme-validated per CON-4902 wherever used in a URL context). A `url` value is validated by
+**parsing** (the WHATWG `url` crate) and **assessing the parsed scheme** against the allowlist
+(`http`/`https`/`mailto`), **not** by pattern-matching the raw string — *no URL is trusted unless
+it properly parses*; an unparseable value ⇒ reject; a protocol-relative value (any slash mix
+`//`, `\\`, `/\`, `\/`) ⇒ reject (CON-4902). This closes REQ-4904's
 URL-context prop path; `enum` remains a **constraint** (`enum = [...]`) on a base ptype, not a
 ptype.
 **(b) The content-authoring gate:**
@@ -635,6 +650,17 @@ attribute the lint cannot positively classify → `content-context-indeterminate
 silently "plain text"). An **interpolated element or attribute *name*** (`<{{ t }}>` /
 `{{ a }}=`) → `content-template-unanalyzable` (the following context is unknowable). A literal HTML
 that does not tokenise to a single well-defined context at an interpolation → `content-context-indeterminate`.
+
+**Additional UNSAFE contexts for a content value (normative — each was a real review-round
+finding, since fixed with a regression test).** The classifier SHALL treat the following as
+unsafe for a content prop/slot value, *not* as a benign double-quoted attribute:
+- **`srcdoc`** — the browser **entity-decodes `srcdoc` as a full HTML document**, so HTML
+  autoescape does **not** neutralise its contents; a tainted value reaching a `srcdoc` attribute
+  → `content-context-unsafe`. (`srcdoc` is also hard-forbidden in the body sanitiser, CON-4902.)
+- **Namespaced URL attributes** (e.g. **`xlink:href`**) — URL attributes SHALL be matched **by
+  their local name** (the part *after* the `:`), so `xlink:href` is classified as `URL_ATTR` (and
+  thus a non-`url` tainted value in it → `content-context-unsafe`), exactly as bare `href` is. A
+  namespace prefix MUST NOT let a URL attribute escape `URL_ATTR` classification.
 
 **(2) Per-value-kind safe-context sets.** A *tainted* value (content prop / slot) is permitted
 ONLY in:
@@ -929,16 +955,30 @@ wiring graph (REQ-5009).
 | Directive recognition | remark-directive / CommonMark generic-directive grammar | **Compose (prior art)** — adopt the standard forms, not a bespoke syntax (ADR-4904) |
 | Output sanitisation | an allowlist HTML sanitiser (`ammonia`-class) | **New (bounded)** — the closed CON-4902 recogniser; the one genuinely new trust-boundary artifact (Q1) |
 
+**Post-implementation honesty (v0.7.0).** The untrusted-content boundary saw **five independent
+post-implementation review rounds** (2 fresh-context adversarial + 3 Codex), each of which found a
+real, exploitable bypass at the untrusted-content/island trust boundary — all since fixed with a
+regression test. Per this spec's own caution, production use still requires a **dedicated human
+security review + executable fuzzing** of this boundary before it can be relied upon.
+
 ---
 
 ## 12. Open Questions
 
-- **Q1 — Sanitiser engine + policy baseline.** Which sanitiser (an `ammonia`-class Rust
+- **Q1 — Sanitiser engine + policy baseline. *Resolved (v0.7.0).*** The reference
+  implementation uses **`ammonia` 4** as the closed-allowlist body sanitiser (CON-4902), with a
+  **fixed-point post-condition** (re-sanitising the sanitiser's own serialised output is a no-op,
+  the mXSS guard). *Original question:* Which sanitiser (an `ammonia`-class Rust
   allowlist sanitiser?) and what exact element/attribute/URL allowlist is the v1 default
   (CON-4902)? This is the **load-bearing** unknown (SPEC-048's "old Q2") and needs fuzzing +
-  human security review before any Phase 2 gate. (`[Blocked: Q1]`.)
-- **Q2 — Inline-directive prop ergonomics.** Is the `:name[label]{attrs}` inline form worth the
-  recogniser complexity in v1, or should v1 ship container/leaf only and defer inline?
+  human security review before any Phase 2 gate. *(The implementation passed LangSec
+  property/fuzz tests; a dedicated human security review of this boundary is still pending.)*
+- **Q2 — Inline-directive prop ergonomics. *Resolved (v0.7.0).*** The inline
+  `:name[label]{attrs}` form is **deferred in v1**: it is **recognised by the grammar but left
+  literal** (it needs inline-level Markdown rendering *inside* a paragraph, which the block-segment
+  expansion model cannot do without splitting the paragraph). *Original question:* Is the
+  `:name[label]{attrs}` inline form worth the recogniser complexity in v1, or should v1 ship
+  container/leaf only and defer inline?
 - **Q3 — Nesting-depth bound.** The exact max content-directive nesting depth (REQ-4908) — ground
   against real theme component trees in Phase 1.
 - **Q4 — Transclusion from content.** Should content components be allowed to `transclude()` at
@@ -947,7 +987,13 @@ wiring graph (REQ-5009).
 - **Q5 — Allowlist scope.** Is `content_invocable` strictly per-component, or should a theme be
   able to declare a content-component *namespace*/folder allowlist? Per-component (explicit) is
   the v1 default.
-- **Q6 — Prop/slot context enforcement. *NOT resolved* (re-opened after the 3rd review).** v0.5.0
+- **Q6 — Prop/slot context enforcement. *Resolved (v0.7.0) — option (a).*** The reference
+  implementation ships the **sound static HTML-context lint** (CON-4904) over the minijinja
+  `unstable_machinery` template AST: it fails the build if a content prop/slot value can reach a
+  JS / CSS / `on*` / unquoted-attribute / non-`url`-in-URL-attribute context, **transitively**
+  (set / with / for / filter / call / macro taint propagation, **fail-closed** on anything
+  unanalyzable). The (0) environment preconditions are enforced in the implementation. *Historical
+  note (the question as it stood before resolution):* v0.5.0
   proposed option (a) — a static context lint ([[SPEC-049-content-author-components#CON-4904]]) —
   and v0.6.0 hardened it (discharged the autoescape/whitespace/inheritance/feature-set
   preconditions as *stated* requirements). But the third pass showed the lint's soundness now rests
@@ -969,7 +1015,23 @@ wiring graph (REQ-5009).
 <details>
 <summary>Changelog</summary>
 
-<summary>Revision history — 0.1.0 → 0.6.0</summary>
+<summary>Revision history — 0.1.0 → 0.7.0</summary>
+
+- **0.7.0** (2026-06-26) — *reference implementation landed (PR #65).* A complete reference
+  implementation now exists on `feat/spec-049-050-content-islands`, behind the default-on
+  `content-components` cargo feature, with **byte-identical backward-compatible defaults**; it
+  passed clippy, ~2,535 lib tests, integration suites, and LangSec property/fuzz tests. **Resolved
+  Q1** (`ammonia` 4 closed-allowlist body sanitiser with a fixed-point post-condition, CON-4902),
+  **Q2** (inline `:name[label]{attrs}` deferred — recognised but left literal), and **Q6**
+  (sound static HTML-context lint over the minijinja `unstable_machinery` AST, CON-4904). After
+  **five post-implementation review rounds** (2 fresh-context adversarial + 3 Codex), each of
+  which found a genuine security-boundary bug since fixed with a regression test: **hardened
+  CON-4904** (`srcdoc` and namespaced URL attrs — `xlink:href`, matched by local name — added as
+  unsafe contexts) and **CON-4902/4903** (parse-and-assess URL validation via the WHATWG `url`
+  crate — no URL trusted unless it properly parses; unparseable ⇒ reject; protocol-relative, any
+  slash mix, ⇒ reject). **Status → implemented**; the untrusted-content boundary still requires a
+  dedicated **human security review + executable fuzzing** before production (see §7 Threat Model /
+  §11 Composition-First).
 
 - **0.6.0** (2026-06-25) — *third adversarial pass (Opus, fresh, source-grounded): 3 Blocking /
   3 Major / 3 Minor; verdict "CON-4904 RELOCATED — another relocation."* The reviewer verified

@@ -10,9 +10,18 @@ base — relative `../` in build, absolute `/` in serve).
 A vault that uses none of these features builds byte-identically to before — everything
 here is opt-in.
 
-> JavaScript islands and an inter-island message bus are **not** part of this feature —
-> they are deferred to [SPEC-050](../specs/SPEC-050-component-islands-and-messaging.md).
-> A component's `<name>.js` is ignored today.
+> **Successor features.** Untrusted **content-author directives** (`:::name{…}` invoked
+> from Markdown) are [SPEC-049](../specs/SPEC-049-content-author-components.md) — see
+> [content-directives.md](content-directives.md). JavaScript **islands** and the
+> inter-island message bus are [SPEC-050](../specs/SPEC-050-component-islands-and-messaging.md)
+> — see [islands.md](islands.md). A component's `<name>.js` is the island client script.
+>
+> Both are opt-in and gated behind the default-on cargo features `content-components`
+> and `component-islands`; a vault using neither still builds byte-identically.
+>
+> ⚠️ The untrusted-content trust boundary in SPEC-049/050 is implemented but the specs
+> remain non-converged strawmen: per their own text it should get a human security
+> review + executable fuzzing before being relied on in production.
 
 ## Components
 

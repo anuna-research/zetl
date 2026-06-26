@@ -8,6 +8,8 @@ pub mod fs_watch;
 pub mod git_commit;
 pub mod git_poll;
 pub mod html;
+#[cfg(feature = "component-islands")]
+pub mod islands;
 pub mod markdown;
 #[cfg(feature = "mobile")]
 pub mod mobile;

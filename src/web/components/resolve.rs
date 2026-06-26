@@ -19,6 +19,9 @@ pub struct ResolvedComponent {
     pub template: String,
     pub manifest: Manifest,
     pub css: Option<String>,
+    /// Optional island client script `<name>.js` (SPEC-050). Ignored by SPEC-048; emitted
+    /// as a worker asset by the islands pipeline when the component declares island fields.
+    pub js: Option<String>,
     pub layer: Layer,
 }
 
@@ -39,11 +42,13 @@ fn load_from_dir(dir: &Path, name: &str, layer: Layer) -> CResult<ResolvedCompon
     })?;
     let manifest = parse_manifest(&manifest_src, name)?;
     let css = std::fs::read_to_string(dir.join(format!("{name}.css"))).ok();
+    let js = std::fs::read_to_string(dir.join(format!("{name}.js"))).ok();
     Ok(ResolvedComponent {
         name: name.to_string(),
         template,
         manifest,
         css,
+        js,
         layer,
     })
 }
@@ -62,11 +67,13 @@ fn load_from_bundled(theme: &str, name: &str, layer: Layer) -> CResult<Option<Re
         })?;
     let manifest = parse_manifest(manifest_src, name)?;
     let css = crate::web::engine::bundled_template(theme, &rel("css")).map(|s| s.to_string());
+    let js = crate::web::engine::bundled_template(theme, &rel("js")).map(|s| s.to_string());
     Ok(Some(ResolvedComponent {
         name: name.to_string(),
         template: template.to_string(),
         manifest,
         css,
+        js,
         layer,
     }))
 }

@@ -87,6 +87,10 @@ fn check_type(manifest: &Manifest, name: &str, ty: PropType, v: &Value) -> CResu
         PropType::Int => v.kind() == ValueKind::Number && i64::try_from(v.clone()).is_ok(),
         PropType::List => v.kind() == ValueKind::Seq,
         PropType::Map => v.kind() == ValueKind::Map,
+        // SPEC-049 CON-4903: `url` is a string subtype. The trusted (SPEC-048) path
+        // only checks the value is a string; scheme validation happens at content
+        // ingestion (REQ-4904), where the value crosses the trust boundary.
+        PropType::Url => v.kind() == ValueKind::String,
     };
     if ok {
         Ok(())

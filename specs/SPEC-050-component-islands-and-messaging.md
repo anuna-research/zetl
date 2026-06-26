@@ -1,9 +1,9 @@
 ---
 id: SPEC-050
 title: "Component Islands & Inter-Island Messaging"
-status: draft
-version: 0.15.0-strawman
-last-updated: 2026-06-25
+status: implemented
+version: 0.16.0
+last-updated: 2026-06-26
 audience: agent, human
 ---
 
@@ -63,12 +63,12 @@ other directly; they pin to and read from named channels.
 [[SPEC-050-component-islands-and-messaging#REQ-5017]] island lifecycle under SPA nav ·
 [[SPEC-050-component-islands-and-messaging#REQ-5012]] backward-compatible default.
 
-**Open** (each blocks the Phase 2 gate — see
+**Remaining open** (non-blocking now that a reference implementation exists — see
 [[SPEC-050-component-islands-and-messaging#12. Open Questions]]):
-Q4 bus/bridge residence in the SPEC-028 shell · Q5 `postMessage` latency budget (ordering +
-sequencing now pinned, REQ-5030) · Q7 exact trusted-island topic declaration · Q9 mode-aware consolidation follow-through
-(owner: spec author, to ground in Phase 1). *(Q1 FOUC, Q2 sandbox/worker, Q3 typed-payloads,
-Q6 iframe cost — now largely moot under the default Worker model, Q8 controlled-element — resolved.)*
+Q4 bus/bridge residence in the SPEC-028 shell · Q7 exact trusted-island topic declaration ·
+Q9 mode-aware consolidation follow-through · Q10 same-origin Worker storage not CSP-gated.
+*(Q1 FOUC, Q2 sandbox/worker, Q3 typed-payloads, Q5 ordering/delivery, Q6 iframe cost,
+Q8 controlled-element, Q11 patch protocol [v1 = full-tree re-send] — resolved/implemented.)*
 
 **Detail:** the full requirement, contract, and test nodes follow below.
 
@@ -77,12 +77,20 @@ Q6 iframe cost — now largely moot under the default Worker model, Q8 controlle
 > described in BCP 14 (RFC 2119, RFC 8174) when, and only when, they appear in all
 > capitals ([[PROTO-001#Requirement-Level Keywords (BCP 14)]]).
 
-> **Strawman notice.** A *first* draft, extracted from the [[SPEC-048]] v0.1.1 island/bus
-> material that the v0.2.0 tightening deferred — **NOT** converged. No Phase 1 surveys,
-> no synthetic-user runs, no fresh-context adversarial review. Per [[PROTO-001]]
-> Principle 11 ([[Anti-Slop Bias]]), treat every clause as carrying hidden debt until
-> adversarial review proves otherwise. **`[Blocked: Qn]`** marks a clause depending on an
-> open question; **`[Provisional]`** marks a value still to be grounded in Phase 1.
+> **Implementation status — implemented, island boundary not yet declared converged.** A
+> **reference implementation** (PR #65, behind `component-islands`) now exists: gated/dedup/
+> deterministic emission, the `window.zetl` retained bus, the capability-scoped bridge
+> reference monitor, the CON-5007 controlled-element renderer, per-page CSP, persisted
+> topics + pre-paint, and the wiring verifier — with byte-identical defaults (REQ-5012) and
+> LangSec + node-runtime tests. It then passed **five post-implementation review rounds**
+> (2 fresh-context adversarial + 3 Codex); **every round found a genuine boundary bug** at the
+> untrusted-island trust boundary (egress via `mailto:` / obfuscated scheme / protocol-relative
+> slash-mix; an ungranted trusted-topic subscribe; an unsubscribe that leaked its store
+> subscription; publisher/subscriber type-conflict) — each fixed with a regression test. The
+> recurrence is the signal: the boundary is hardened but **not exhausted**. Per [[PROTO-001]]
+> Principle 11 ([[Anti-Slop Bias]]), production reliance on a content (untrusted) island still
+> REQUIRES a dedicated human security expert + sustained executable fuzzing before the boundary
+> is treated as converged. `[Blocked: Qn]` / `[Provisional]` markers below predate the impl.
 
 ## Information Table
 
@@ -90,10 +98,10 @@ Q6 iframe cost — now largely moot under the default Worker model, Q8 controlle
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | [[SPEC-050-component-islands-and-messaging\|SPEC-050]]                                  |
 | Title        | Component Islands & Inter-Island Messaging                                              |
-| Version      | 0.15.0-strawman                                                                         |
-| Status       | Draft (strawman; NOT converged — pending Phase 1 + Phase 2 gates)                       |
+| Version      | 0.16.0                                                                                  |
+| Status       | Implemented (reference impl, PR #65, behind `component-islands`; untrusted island boundary NOT declared converged — pending dedicated human security review + executable fuzzing) |
 | Author       | Agent (Claude Opus 4.8 [1M], [[PROTO-001\|USDD Agent Protocol]] v1.11.0)                |
-| Date         | 2026-06-24                                                                              |
+| Date         | 2026-06-26                                                                              |
 | Predecessor  | [[SPEC-048-components-and-static-overrides\|SPEC-048]] (islands/bus deferred here)      |
 | Related      | [[SPEC-028]] SPA shell, [[SPEC-049]] content-author components, [[SPEC-002]] search     |
 | Feature Gate | `component-islands` (island emission + hydration); `island-bus` (shell messaging)       |
@@ -585,7 +593,12 @@ to the input site's shape — before it is stored, replayed, or delivered. The r
   islands behind the bridge.
 
 Two publishers declaring **incompatible** types for the same topic SHALL be a build error
-(`island-topic-type-conflict`).
+(`island-topic-type-conflict`). **Type-conflict detection compares ALL declarations of a topic —
+publishers AND subscribers, not only publishers (normative, as implemented):** a publisher/
+subscriber type mismatch is equally fatal (`island-topic-type-conflict`). This is required for
+soundness because the runtime registers `data-island-types` from **every mounted island**, and a
+last-writer-wins registration would otherwise make payload validation **hydration-order-dependent**
+— so every declaration of a topic, whatever its direction, MUST agree on the type at build time.
 
 **Trace:** [[SPEC-050-component-islands-and-messaging#TEST-5013]], [[SPEC-050-component-islands-and-messaging#CON-5005]], [[SPEC-050-component-islands-and-messaging#CON-5006]]; [[SPEC-050-component-islands-and-messaging#Threat C]], [[SPEC-050-component-islands-and-messaging#Threat H]].
 
@@ -848,7 +861,11 @@ enumerate, widen, or forge grants — it holds only its end of the channel. Gran
 topics SHALL be **subscribe-only** and require an explicit `[[theme.island-grants]]` entry
 ([[SPEC-050-component-islands-and-messaging#CON-5002]]); a publish grant for a non-`content:`
 topic is unexpressible. Update relay is governed by
-[[SPEC-050-component-islands-and-messaging#REQ-5021]]. This holds identically for **both
+[[SPEC-050-component-islands-and-messaging#REQ-5021]]. An island `unsubscribe` SHALL **release the
+underlying store subscription** (so the bridge stops receiving `update`s) **and free the island's
+global subscriber-budget slot** (NFR-5002) — it MUST NOT merely clear debounce/last-delivered
+state and leave the real subscription live (a leak), per
+[[SPEC-050-component-islands-and-messaging#CON-5006]]. This holds identically for **both
 render modes** ([[SPEC-050-component-islands-and-messaging#REQ-5010]]); only the **transport
 and the island handle** differ:
 
@@ -1284,6 +1301,13 @@ is the trusted theme/operator's host-document CSP (REQ-5026), so an untrusted au
 their own network access; a content island's `subscribes` of a trusted topic requires a matching
 `[[theme.island-grants]]` entry; a `hydrate` value matches `strategy` (REQ-5024), defaulting to
 `"load"`.
+**Grant-gated trusted subscribe (normative — as implemented).** A content island MAY
+SUBSCRIBE to a **trusted (non-`content:`) topic ONLY when a matching `[[theme.island-grants]]`
+entry grants it.** Listing the trusted topic in the component's own `subscribes` manifest is
+**NOT sufficient** — the grant is the trusted theme author's, not the (untrusted) component
+author's. An ungranted trusted subscribe is a **fatal build error**
+(`island-capability-ungranted`), never a silent drop or a runtime-only check. Content
+(`content:`-prefixed) topics are the island's own domain and need no grant.
 **Post-conditions:** typed island metadata feeding wiring verification (REQ-5008), the
 audit graph (REQ-5009, incl. render mode + `paints` grant + the page's egress CSP), the bridge
 grant table (REQ-5016), payload typing (REQ-5013), and the hydration trigger (REQ-5024).
@@ -1467,7 +1491,11 @@ recognition above; size/rate within NFR-5002; the bridge's subscriptions count a
 global caps (NFR-5002) and are released on teardown (REQ-5017).
 **Post-conditions:** a conforming, granted request is forwarded to the real bus; a granted
 `subscribe` is answered `ack` then value-change-only `update`s (REQ-5021, each re-recognised);
-a `render` (default mode) is painted by the host via the allowlist (REQ-5025); a refusal is
+an **`unsubscribe` SHALL actually release the underlying store subscription** — it MUST call the
+real `store(topic).subscribe()` teardown (so the bridge stops receiving `update`s) **and free the
+island's global subscriber-budget slot** (NFR-5002), **not** merely clear debounce/last-delivered
+state; an `unsubscribe` that leaves the underlying subscription live (a leak) is non-conformant.
+A `render` (default mode) is painted by the host via the allowlist (REQ-5025); a refusal is
 answered `denied` + reason (so silence ≠ denial — closes the probe oracle); a torn-down island
 (terminated `Worker` / closed `port1`, REQ-5017) drops messages silently.
 **Error model:** message from an unknown/torn-down handle → ignored; ungranted topic/direction →
@@ -1505,15 +1533,21 @@ the allowlist → **node dropped** (`denied:render`), never coerced.
 **Attribute handling** — name allowlisting is **insufficient**; values are recognised:
 - `on*`, `is`, `srcdoc`, `name`, `style`, `xlink:*`, any event/`form*` attribute → **hard-forbidden**.
 - URL attributes (`href`, `src`, `srcset`, `poster`, `action`, `formaction`, `cite`) →
-  **scheme-allowlisted**: `https`, `http`, `mailto`, and relative URLs only; `javascript:`,
-  `data:`, `blob:`, `vbscript:`, `file:` → rejected.
+  **validated by parsing, not regex (normative, as implemented):** the renderer SHALL parse the
+  value with **`new URL(value, pageBase)`** and **assess `.protocol`/`.origin`**, never
+  pattern-match the raw string. `https`, `http`, `mailto`, and relative URLs only; **any** non-
+  `http(s)` scheme (`javascript:`, `data:`, `blob:`, `vbscript:`, `file:`, `mailto:` in a
+  fetch/`src` context) → rejected.
 - **Egress-taint rule (closes the renderer exfil channel, Threat N).** A remote `src`/`srcset`/
   `poster`/`href` the *host document* fetches is an egress path the worker's confinement cannot
   see. Therefore an island that holds **any granted trusted-topic read** ([[theme.island-grants]])
-  MAY emit only **same-origin / relative** URL attributes — a remote `http(s)` URL in its render
-  tree is **rejected** — so it cannot beacon a subscribed value out via `<img src>`. (A
-  *read-free* content island may use remote URLs, still bounded by the page `img-src`/`media-src`
-  CSP of REQ-5026.)
+  — a **read-granted** island, i.e. one that subscribes *any* trusted topic — MAY emit only
+  **same-origin / relative** URL attributes; **any** of the following in its render tree is
+  **rejected** so it cannot beacon a subscribed value out: a **non-`http(s)` scheme** (e.g.
+  `mailto:`); any **cross-origin** `http(s)` URL; and any **protocol-relative** URL (**all** slash
+  mixes — `//`, `\\`, `/\`, `\/`). Because validation is by parsing `.origin`, an obfuscated or
+  scheme-confused string cannot slip past. (A *read-free* content island may use remote URLs,
+  still bounded by the page `img-src`/`media-src` CSP of REQ-5026.)
 - `aria-*` and `role` → **allowlisted** (required for the REQ-5020 a11y contract).
 - all other attrs → only if in `ATTR-ALLOWLIST(tag)`, value rendered as a string via
   **`setAttribute`** (never DOM-property assignment, never string concatenation into markup).
@@ -1870,11 +1904,13 @@ everything else composes [[SPEC-048]] and [[SPEC-028]].
 - **Q4 — Bus residence.** Does the bus + bridge reference-monitor live inside the existing
   SPEC-028 shell module or a new sibling shell module? Determines load order vs the
   pre-paint script.
-- **Q5 — Delivery/ordering guarantees.** *Ordering half resolved (v0.15.0):* REQ-5030 pins
+- **Q5 — Delivery/ordering guarantees. *Resolved (v0.16.0) — implemented.*** The reference
+  implementation ships the **value-change-only relay** (REQ-5021) and **per-topic sequencing**
+  (host-assigned monotonic `seq`, REQ-5030). REQ-5030 pins
   per-island FIFO, a single host total order (linearizable + causality-preserving, atomic
   per-message + synchronous fan-out), a host-assigned monotonic `seq` for drop-detection and
   replay-idempotency, no cross-island ordering assumption, and LWW (not a logical clock) for
-  cross-tab. *Still open (Phase 1):* the `postMessage`-hop **latency** budget for sandboxed
+  cross-tab. *Left to profiling (Phase 1):* the `postMessage`-hop **latency** budget for sandboxed
   islands — a number to profile, not a semantic.
 - **Q6 — iframe cost at scale.** *Largely moot (v0.9.0):* the default content-island mode is a
   Worker, not an iframe (REQ-5025), so the per-iframe layout/memory cost only applies to the
@@ -1907,11 +1943,14 @@ everything else composes [[SPEC-048]] and [[SPEC-028]].
   context that has egress. Options for v2: serve untrusted content from a **separate origin** (the
   only real storage partition the platform offers), a storage-clearing teardown, or accept-and-
   document. Ground against the operator-deployment profile in Phase 1. (`[Blocked: Q10]`.)
-- **Q11 — Mutation/patch render protocol.** v1 dynamic updates re-send the **full** element tree
-  per change and the host keyed-reconciles (REQ-5029) — simple, one message shape, adequate for
-  CON-5007-bounded trees. A v2 `op:"patch"` protocol (insert/remove/set-attr/set-text ops keyed
-  by node path) would avoid re-sending a large unchanged surface. Worth it only if profiling shows
-  full-tree re-send is a bottleneck for real islands. (`[Blocked: Q11]`.)
+- **Q11 — Mutation/patch render protocol. *Resolved (v0.16.0) — v1 choice implemented.*** v1
+  dynamic updates **re-send the full element tree** per change and the host **keyed-reconciles**
+  it (REQ-5029) — simple, one message shape, adequate for
+  CON-5007-bounded trees, and this is the implemented v1 behaviour. A v2 `op:"patch"` protocol
+  (insert/remove/set-attr/set-text ops keyed
+  by node path) would avoid re-sending a large unchanged surface; it remains a deferred future
+  optimisation worth doing only if profiling shows full-tree re-send is a bottleneck for real
+  islands. (`[Deferred: v2]`.)
 
 ---
 
@@ -2012,12 +2051,50 @@ served and `file://` — which only the PoC + human expert can settle. So the sp
 *complete enough to build a PoC against*, which is the right next step rather than a seventh prose
 pass.
 
+**v0.16.0 — a reference implementation now exists, and the pattern held.** A complete reference
+implementation landed (PR #65, branch `feat/spec-049-050-content-islands`), behind the default-on
+`component-islands` feature with byte-identical defaults; it passed clippy, ~2,535 lib tests,
+integration suites, LangSec property/fuzz tests, and node-based runtime tests for the JS reference
+monitor. But the §13 lesson held one more time: **five further post-implementation review rounds**
+(2 fresh-context adversarial + 3 Codex) each surfaced a **real boundary bug**, all since fixed
+with a regression test — **egress via `mailto:` / an obfuscated scheme / a slash-mix
+protocol-relative URL through the renderer; an ungranted trusted subscribe accepted from a
+manifest; `srcdoc`/`xlink:href` gaps in the content-prop context lint (SPEC-049 CON-4904); an
+`unsubscribe` that leaked the underlying store subscription; and a publisher/subscriber topic
+type-conflict that was only checked publisher-side.** Conclusion: status is now **`implemented`**
+(behind flags, byte-identical default), but the untrusted-island boundary is **NOT declared
+converged** — the repeated post-implementation bypass pattern is itself the evidence — and
+production reliance still requires a **dedicated human security review + executable fuzzing** of
+the bridge, the CON-5007 renderer/egress-taint rule, and the type/grant model.
+
 ---
 
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.15.0</summary>
+<summary>Revision history — 0.1.0 → 0.16.0</summary>
+
+- **0.16.0** (2026-06-26) — *reference implementation landed (PR #65).* A complete reference
+  implementation now exists on `feat/spec-049-050-content-islands`, behind the default-on
+  `component-islands` cargo feature, with **byte-identical backward-compatible defaults**; it passed
+  clippy, ~2,535 lib tests, integration suites, LangSec property/fuzz tests, and node-based runtime
+  tests for the JS reference monitor. Normative hardening recorded after **five post-implementation
+  review rounds** (2 fresh-context adversarial + 3 Codex), each of which found a genuine boundary
+  bug since fixed with a regression test: **grant-gated trusted subscribes** (a content island may
+  subscribe a trusted topic ONLY with a matching `[[theme.island-grants]]` entry — a manifest
+  listing is not enough; ungranted ⇒ fatal `island-capability-ungranted`, CON-5002);
+  **all-declarations type-conflict** (publisher/subscriber type mismatch is fatal
+  `island-topic-type-conflict`, because the runtime registers `data-island-types` from every
+  mounted island and last-writer-wins would make validation hydration-order-dependent, REQ-5013);
+  **`unsubscribe` release** (MUST release the underlying store subscription and free the global
+  subscriber-budget slot, not merely clear debounce state, REQ-5016/CON-5006); **parse-and-assess
+  URL egress** (the CON-5007 renderer validates URLs by `new URL(value, pageBase)` + `.protocol`/
+  `.origin`, never regex; a read-granted island may emit only same-origin/relative URLs — any
+  non-`http(s)` scheme such as `mailto:`, any cross-origin or protocol-relative URL / all slash
+  mixes blocked). **Resolved Q5** (value-change-only relay + per-topic sequencing implemented) and
+  **Q11** (v1 re-sends the full element tree, host keyed-reconciles). **Status → implemented**
+  (behind flags, byte-identical default); the untrusted-island boundary is **NOT declared
+  converged** and still needs a dedicated **human security review + executable fuzzing** (see §13).
 
 - **0.15.0** (2026-06-25) — *message ordering + sequencing (resolves Q5's ordering half).* New
   **REQ-5030 + TEST-5030**: per-island FIFO; a **single host total order** (linearizable +
