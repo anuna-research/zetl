@@ -27,9 +27,35 @@ use std::sync::OnceLock;
 /// CON-4902 element allowlist: safe prose/structure. Everything else → inert text
 /// (element dropped, its text kept), except the content-stripped tags below.
 const ALLOWED_TAGS: &[&str] = &[
-    "p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "pre", "code",
-    "em", "strong", "a", "img", "figure", "figcaption", "table", "thead", "tbody", "tr", "th",
-    "td", "hr", "br", "span", "div",
+    "p",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "ul",
+    "ol",
+    "li",
+    "blockquote",
+    "pre",
+    "code",
+    "em",
+    "strong",
+    "a",
+    "img",
+    "figure",
+    "figcaption",
+    "table",
+    "thead",
+    "tbody",
+    "tr",
+    "th",
+    "td",
+    "hr",
+    "br",
+    "span",
+    "div",
 ];
 
 /// Hard-forbidden tags whose **content is also removed** (not left as inert text): code
@@ -70,7 +96,9 @@ fn per_tag_attributes() -> HashMap<&'static str, HashSet<&'static str>> {
     m.insert("a", ["href"].into_iter().collect());
     m.insert(
         "img",
-        ["src", "srcset", "alt", "width", "height"].into_iter().collect(),
+        ["src", "srcset", "alt", "width", "height"]
+            .into_iter()
+            .collect(),
     );
     m.insert("td", ["colspan", "rowspan"].into_iter().collect());
     m.insert("th", ["colspan", "rowspan", "scope"].into_iter().collect());
@@ -111,7 +139,9 @@ pub fn is_safe_url(value: &str) -> bool {
     }
     // Defense-in-depth: reject scheme-relative refs in ANY slash mix outright — they
     // resolve off-origin, and an author URL prop has no reason to be protocol-relative.
-    if canon.starts_with("//") || canon.starts_with("\\\\") || canon.starts_with("/\\")
+    if canon.starts_with("//")
+        || canon.starts_with("\\\\")
+        || canon.starts_with("/\\")
         || canon.starts_with("\\/")
     {
         return false;
@@ -319,7 +349,13 @@ mod tests {
 
     #[test]
     fn rejects_dangerous_schemes() {
-        for u in ["javascript:x", "data:text/html,x", "blob:x", "vbscript:x", "file:///etc"] {
+        for u in [
+            "javascript:x",
+            "data:text/html,x",
+            "blob:x",
+            "vbscript:x",
+            "file:///etc",
+        ] {
             assert!(!is_safe_url(u), "{u} must be rejected");
         }
     }

@@ -98,7 +98,10 @@ fn coerce(key: &str, ty: PropType, lexeme: &str, comp: &str) -> CResult<Value> {
         // Defensive: list/map are not content-settable (caught at manifest, CON-4903).
         PropType::List | PropType::Map => Err(ComponentError::new(
             "content-prop-unsupported",
-            format!("content prop `{key}` for `{comp}`: {} is not content-settable", ty.as_str()),
+            format!(
+                "content prop `{key}` for `{comp}`: {} is not content-settable",
+                ty.as_str()
+            ),
         )),
     }
 }
@@ -108,7 +111,10 @@ fn check_enum(key: &str, def: &super::manifest::PropDef, v: &Value, comp: &str) 
     let Some(allowed) = &def.enum_values else {
         return Ok(());
     };
-    let got = v.as_str().map(|s| s.to_string()).unwrap_or_else(|| v.to_string());
+    let got = v
+        .as_str()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| v.to_string());
     let ok = allowed.iter().any(|a| match a {
         toml::Value::String(s) => *s == got,
         other => other.to_string() == got,
@@ -194,7 +200,10 @@ mod tests {
     fn attrs(pairs: &[(&str, &str)]) -> Vec<Attr> {
         pairs
             .iter()
-            .map(|(k, v)| Attr::KeyValue { key: k.to_string(), value: v.to_string() })
+            .map(|(k, v)| Attr::KeyValue {
+                key: k.to_string(),
+                value: v.to_string(),
+            })
             .collect()
     }
 
@@ -277,7 +286,11 @@ mod tests {
         "#;
         let m = manifest(src, "box");
         let r = recognise(
-            &[Attr::Flag("open".into()), Attr::Class("a".into()), Attr::Class("b".into())],
+            &[
+                Attr::Flag("open".into()),
+                Attr::Class("a".into()),
+                Attr::Class("b".into()),
+            ],
             &m,
         )
         .unwrap();

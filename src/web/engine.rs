@@ -1736,10 +1736,7 @@ pub struct ContentExpander {
 #[cfg(feature = "content-components")]
 impl ContentExpander {
     /// Discover + lint content-invocable components and build the restricted env.
-    pub fn new(
-        vault_root: &Path,
-        theme: &str,
-    ) -> Result<Self, super::components::ComponentError> {
+    pub fn new(vault_root: &Path, theme: &str) -> Result<Self, super::components::ComponentError> {
         let comps = discover_components(vault_root, theme)?;
         let mut manifests = BTreeMap::new();
         let mut any = false;

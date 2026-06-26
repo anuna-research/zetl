@@ -12,11 +12,11 @@
 //! Wiring into the render engine and the build pipeline lives in `engine.rs` /
 //! `build.rs`.
 
-pub mod css;
 #[cfg(feature = "content-components")]
 pub mod content_props;
 #[cfg(feature = "content-components")]
 pub mod context_lint;
+pub mod css;
 #[cfg(feature = "content-components")]
 pub mod directive;
 #[cfg(feature = "content-components")]

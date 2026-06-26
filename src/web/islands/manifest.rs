@@ -83,12 +83,18 @@ fn err(code: &'static str, msg: impl Into<String>) -> IslandError {
 /// Read a `toml::Value` array-of-strings field.
 fn string_array(v: &toml::Value, field: &str) -> IResult<Vec<String>> {
     let arr = v.as_array().ok_or_else(|| {
-        err("island-topic-malformed", format!("`{field}` must be an array of topic strings"))
+        err(
+            "island-topic-malformed",
+            format!("`{field}` must be an array of topic strings"),
+        )
     })?;
     let mut out = Vec::new();
     for item in arr {
         let s = item.as_str().ok_or_else(|| {
-            err("island-topic-malformed", format!("`{field}` entries must be strings"))
+            err(
+                "island-topic-malformed",
+                format!("`{field}` entries must be strings"),
+            )
         })?;
         out.push(s.to_string());
     }
@@ -121,21 +127,33 @@ pub fn parse(manifest: &Manifest) -> IResult<Option<IslandManifest>> {
     // ---- topics (`[island.topics]`) + requests (`[island.requests]`) ----
     let island_tbl = raw.island.as_ref().and_then(|v| v.as_table());
     let mut topics = BTreeMap::new();
-    if let Some(topics_tbl) = island_tbl.and_then(|t| t.get("topics")).and_then(|v| v.as_table()) {
+    if let Some(topics_tbl) = island_tbl
+        .and_then(|t| t.get("topics"))
+        .and_then(|v| v.as_table())
+    {
         for (name, decl) in topics_tbl {
             recognise_topic(name)?; // CON-5001
             let decl_tbl = decl.as_table().ok_or_else(|| {
-                err("island-topic-malformed", format!("[island.topics.\"{name}\"] must be a table"))
+                err(
+                    "island-topic-malformed",
+                    format!("[island.topics.\"{name}\"] must be a table"),
+                )
             })?;
             let type_expr = decl_tbl
                 .get("type")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| {
-                    err("island-topic-type-invalid", format!("topic `{name}` missing `type`"))
+                    err(
+                        "island-topic-type-invalid",
+                        format!("topic `{name}` missing `type`"),
+                    )
                 })?
                 .to_string();
             let ty = parse_type_expr(&type_expr)?;
-            let persisted = decl_tbl.get("persisted").and_then(|v| v.as_bool()).unwrap_or(false);
+            let persisted = decl_tbl
+                .get("persisted")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             let default = decl_tbl.get("default").cloned();
             if persisted {
                 match &default {
@@ -153,7 +171,12 @@ pub fn parse(manifest: &Manifest) -> IResult<Option<IslandManifest>> {
             }
             topics.insert(
                 name.clone(),
-                TopicDecl { type_expr, ty, persisted, default },
+                TopicDecl {
+                    type_expr,
+                    ty,
+                    persisted,
+                    default,
+                },
             );
         }
     }
@@ -168,12 +191,24 @@ pub fn parse(manifest: &Manifest) -> IResult<Option<IslandManifest>> {
     let render = match raw.render.as_ref().and_then(|v| v.as_str()) {
         None | Some("worker") => RenderMode::Worker,
         Some("iframe") => RenderMode::Iframe,
-        Some(other) => return Err(err("island-render-invalid", format!("unknown render mode `{other}`"))),
+        Some(other) => {
+            return Err(err(
+                "island-render-invalid",
+                format!("unknown render mode `{other}`"),
+            ))
+        }
     };
-    let sandbox = raw.sandbox.as_ref().and_then(|v| v.as_bool()).unwrap_or(false);
+    let sandbox = raw
+        .sandbox
+        .as_ref()
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     match render {
         RenderMode::Worker if raw.sandbox.is_some() => {
-            return Err(err("island-render-invalid", "`sandbox` is meaningful only for render=\"iframe\""));
+            return Err(err(
+                "island-render-invalid",
+                "`sandbox` is meaningful only for render=\"iframe\"",
+            ));
         }
         RenderMode::Iframe if !sandbox => {
             return Err(err(
@@ -183,18 +218,33 @@ pub fn parse(manifest: &Manifest) -> IResult<Option<IslandManifest>> {
         }
         _ => {}
     }
-    let paints = raw.paints.as_ref().and_then(|v| v.as_bool()).unwrap_or(false);
+    let paints = raw
+        .paints
+        .as_ref()
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     if matches!(render, RenderMode::Iframe) && raw.paints.is_some() {
-        return Err(err("island-render-invalid", "`paints` is meaningful only for render=\"worker\""));
+        return Err(err(
+            "island-render-invalid",
+            "`paints` is meaningful only for render=\"worker\"",
+        ));
     }
-    let hydrate = parse_hydrate(raw.hydrate.as_ref().and_then(|v| v.as_str()).unwrap_or("load"))?;
+    let hydrate = parse_hydrate(
+        raw.hydrate
+            .as_ref()
+            .and_then(|v| v.as_str())
+            .unwrap_or("load"),
+    )?;
 
     // ---- trust-tier pre-conditions (REQ-5010/5011/5022) ----
     for t in &publishes {
         let kind = recognise_topic(t)?;
         // every published/subscribed topic must be declared
         if !topics.contains_key(t) {
-            return Err(err("island-topic-malformed", format!("published topic `{t}` has no [island.topics] declaration")));
+            return Err(err(
+                "island-topic-malformed",
+                format!("published topic `{t}` has no [island.topics] declaration"),
+            ));
         }
         if content_island {
             if kind == TopicKind::Trusted {
@@ -217,7 +267,10 @@ pub fn parse(manifest: &Manifest) -> IResult<Option<IslandManifest>> {
     for t in &subscribes {
         recognise_topic(t)?;
         if !topics.contains_key(t) {
-            return Err(err("island-topic-malformed", format!("subscribed topic `{t}` has no [island.topics] declaration")));
+            return Err(err(
+                "island-topic-malformed",
+                format!("subscribed topic `{t}` has no [island.topics] declaration"),
+            ));
         }
     }
 
@@ -241,12 +294,18 @@ fn parse_requests(tbl: &toml::map::Map<String, toml::Value>) -> IResult<Requests
             None => Ok(Vec::new()),
             Some(v) => {
                 let a = v.as_array().ok_or_else(|| {
-                    err("island-render-invalid", format!("[island.requests].{key} must be an array"))
+                    err(
+                        "island-render-invalid",
+                        format!("[island.requests].{key} must be an array"),
+                    )
                 })?;
                 a.iter()
                     .map(|x| {
                         x.as_str().map(|s| s.to_string()).ok_or_else(|| {
-                            err("island-render-invalid", format!("[island.requests].{key} entries must be strings"))
+                            err(
+                                "island-render-invalid",
+                                format!("[island.requests].{key} entries must be strings"),
+                            )
                         })
                     })
                     .collect()
@@ -256,7 +315,10 @@ fn parse_requests(tbl: &toml::map::Map<String, toml::Value>) -> IResult<Requests
     Ok(Requests {
         connect_src: arr("connect-src")?,
         bundles: arr("bundles")?,
-        reason: tbl.get("reason").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        reason: tbl
+            .get("reason")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
     })
 }
 
@@ -276,7 +338,10 @@ fn parse_hydrate(s: &str) -> IResult<HydrateStrategy> {
                     Ok(HydrateStrategy::Media(inner.trim().to_string()))
                 }
             } else {
-                Err(err("island-hydrate-invalid", format!("unknown hydrate strategy `{s}`")))
+                Err(err(
+                    "island-hydrate-invalid",
+                    format!("unknown hydrate strategy `{s}`"),
+                ))
             }
         }
     }

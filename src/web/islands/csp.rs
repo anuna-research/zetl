@@ -54,7 +54,9 @@ pub fn content_island_policy(csp: &CspConfig, script_hashes: &[String]) -> Strin
         if hosts.is_empty() {
             continue;
         }
-        let entry = directives.entry(dir.as_str()).or_insert_with(|| vec!["'self'".into()]);
+        let entry = directives
+            .entry(dir.as_str())
+            .or_insert_with(|| vec!["'self'".into()]);
         // a baseline of 'none' is dropped when the operator widens the directive
         if entry == &vec!["'none'".to_string()] {
             *entry = vec!["'self'".into()];
@@ -118,7 +120,10 @@ pub fn headers_artifact(_csp: &CspConfig) -> String {
 }
 
 fn html_attr_escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 #[cfg(test)]
@@ -146,16 +151,21 @@ mod tests {
     #[test]
     fn widening_unions_connect_src() {
         let mut csp = CspConfig::default();
-        csp.directives.insert("connect-src".into(), vec!["https://api.example.com".into()]);
+        csp.directives
+            .insert("connect-src".into(), vec!["https://api.example.com".into()]);
         let p = content_island_policy(&csp, &[]);
-        assert!(p.contains("connect-src 'self' https://api.example.com"), "{p}");
+        assert!(
+            p.contains("connect-src 'self' https://api.example.com"),
+            "{p}"
+        );
         assert!(!p.contains("connect-src 'none'"));
     }
 
     #[test]
     fn deterministic() {
         let mut csp = CspConfig::default();
-        csp.directives.insert("img-src".into(), vec!["https://cdn.example.com".into()]);
+        csp.directives
+            .insert("img-src".into(), vec!["https://cdn.example.com".into()]);
         let a = content_island_policy(&csp, &["h".into()]);
         let b = content_island_policy(&csp, &["h".into()]);
         assert_eq!(a, b);

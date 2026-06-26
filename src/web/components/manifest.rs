@@ -347,10 +347,7 @@ fn validate_content_gate(m: &Manifest) -> CResult<()> {
         // carry a default — else a content directive could never satisfy it
         // (`content-invocable-unfulfillable`).
         for (name, def) in &m.props {
-            if def.required
-                && def.default.is_none()
-                && !m.content_props.iter().any(|p| p == name)
-            {
+            if def.required && def.default.is_none() && !m.content_props.iter().any(|p| p == name) {
                 return Err(ComponentError::new(
                     "content-invocable-unfulfillable",
                     format!(

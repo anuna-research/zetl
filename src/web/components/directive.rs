@@ -128,7 +128,9 @@ pub fn parse_attr_block(inner: &str) -> Result<Vec<Attr>, DirectiveSyntaxError> 
                 // key, then optional `=value`
                 let key = take_key(&mut chars);
                 if key.is_empty() {
-                    return Err(DirectiveSyntaxError(format!("unexpected char `{c}` in attrs")));
+                    return Err(DirectiveSyntaxError(format!(
+                        "unexpected char `{c}` in attrs"
+                    )));
                 }
                 if !is_valid_directive_name(&key) {
                     return Err(DirectiveSyntaxError(format!("invalid attr key `{key}`")));
@@ -199,9 +201,7 @@ fn take_quoted(chars: &mut CharIter) -> Result<String, DirectiveSyntaxError> {
     while let Some((_, c)) = chars.next() {
         match c {
             '"' => return Ok(s),
-            '\n' | '\r' => {
-                return Err(DirectiveSyntaxError("newline inside quoted value".into()))
-            }
+            '\n' | '\r' => return Err(DirectiveSyntaxError("newline inside quoted value".into())),
             '\\' => match chars.next() {
                 Some((_, '"')) => s.push('"'),
                 Some((_, '\\')) => s.push('\\'),
@@ -499,8 +499,14 @@ mod tests {
         assert_eq!(
             d.attrs,
             vec![
-                Attr::KeyValue { key: "type".into(), value: "warning".into() },
-                Attr::KeyValue { key: "title".into(), value: "Heads up".into() },
+                Attr::KeyValue {
+                    key: "type".into(),
+                    value: "warning".into()
+                },
+                Attr::KeyValue {
+                    key: "title".into(),
+                    value: "Heads up".into()
+                },
             ]
         );
         // body text recognised as a Text child
@@ -523,7 +529,10 @@ mod tests {
         // break a paragraph into separate <p> blocks. Container/leaf are unaffected.
         let src = "see :abbr[HTML]{title=\"HyperText\"} here\n";
         let nodes = scan(src);
-        assert!(dirs(&nodes).is_empty(), "inline directive must not be recognised in v1");
+        assert!(
+            dirs(&nodes).is_empty(),
+            "inline directive must not be recognised in v1"
+        );
         assert!(matches!(nodes.first(), Some(Node::Text(t)) if t.contains(":abbr[HTML]")));
     }
 
@@ -536,7 +545,10 @@ mod tests {
                 Attr::Id("main".into()),
                 Attr::Class("a".into()),
                 Attr::Class("b".into()),
-                Attr::KeyValue { key: "key".into(), value: "val".into() },
+                Attr::KeyValue {
+                    key: "key".into(),
+                    value: "val".into()
+                },
                 Attr::Flag("flag".into()),
             ]
         );
@@ -550,12 +562,18 @@ mod tests {
         let attrs = parse_attr_block("href=https://example.com/x").unwrap();
         assert_eq!(
             attrs,
-            vec![Attr::KeyValue { key: "href".into(), value: "https://example.com/x".into() }]
+            vec![Attr::KeyValue {
+                key: "href".into(),
+                value: "https://example.com/x".into()
+            }]
         );
         let attrs = parse_attr_block("href=javascript:alert").unwrap();
         assert_eq!(
             attrs,
-            vec![Attr::KeyValue { key: "href".into(), value: "javascript:alert".into() }]
+            vec![Attr::KeyValue {
+                key: "href".into(),
+                value: "javascript:alert".into()
+            }]
         );
     }
 
@@ -592,7 +610,10 @@ mod tests {
         // 4-space-indented lines are an indented code block (CommonMark) → not directives.
         let src = "text\n\n    :::callout{}\n    body\n    :::\n";
         let nodes = scan(src);
-        assert!(dirs(&nodes).is_empty(), "indented :::callout must not be a directive");
+        assert!(
+            dirs(&nodes).is_empty(),
+            "indented :::callout must not be a directive"
+        );
         assert!(matches!(nodes.last(), Some(Node::Text(t)) if t.contains("    :::callout")));
     }
 
@@ -600,7 +621,10 @@ mod tests {
     fn directive_in_code_fence_is_literal() {
         let src = "```\n:::callout{}\nx\n:::\n```\n";
         let nodes = scan(src);
-        assert!(dirs(&nodes).is_empty(), "no directive recognised inside a code fence");
+        assert!(
+            dirs(&nodes).is_empty(),
+            "no directive recognised inside a code fence"
+        );
     }
 
     #[test]

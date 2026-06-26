@@ -68,11 +68,23 @@ fn hp1_directive_expands_with_sanitised_body() {
     let (ok, log) = build(v);
     assert!(ok, "build failed: {log}");
     let html = page_html(v, "post");
-    assert!(html.contains("data-z=\"callout\""), "component not expanded: {html}");
-    assert!(html.contains("callout-warning"), "tone prop not bound: {html}");
-    assert!(html.contains("<strong>bold</strong>"), "body markdown not rendered");
+    assert!(
+        html.contains("data-z=\"callout\""),
+        "component not expanded: {html}"
+    );
+    assert!(
+        html.contains("callout-warning"),
+        "tone prop not bound: {html}"
+    );
+    assert!(
+        html.contains("<strong>bold</strong>"),
+        "body markdown not rendered"
+    );
     // the script element is stripped from the rendered body (sanitised in isolation)
-    assert!(!html.contains("<script>alert(1)"), "script survived sanitiser: {html}");
+    assert!(
+        !html.contains("<script>alert(1)"),
+        "script survived sanitiser: {html}"
+    );
 }
 
 #[test]
@@ -89,9 +101,15 @@ fn hp2_non_invocable_directive_fails_closed_inert() {
     let (ok, log) = build(v);
     assert!(ok, "build should succeed (inert, not fatal): {log}");
     let html = page_html(v, "post");
-    assert!(!html.contains("data-z=\"raw-html\""), "must not expand unknown component");
+    assert!(
+        !html.contains("data-z=\"raw-html\""),
+        "must not expand unknown component"
+    );
     assert!(html.contains("plain body text"), "inert body preserved");
-    assert!(!html.contains("<script>alert(2)"), "inert body still sanitised");
+    assert!(
+        !html.contains("<script>alert(2)"),
+        "inert body still sanitised"
+    );
 }
 
 #[test]
@@ -115,7 +133,10 @@ fn test4903_default_deny_non_invocable_component() {
     let (ok, _log) = build(v);
     assert!(ok);
     let html = page_html(v, "post");
-    assert!(!html.contains("data-z=\"secret\""), "non-invocable component must not expand");
+    assert!(
+        !html.contains("data-z=\"secret\""),
+        "non-invocable component must not expand"
+    );
     assert!(html.contains("body"), "body preserved inert");
 }
 
@@ -127,9 +148,15 @@ fn test4904_prop_enum_violation_inert_with_diagnostic() {
     write(v, "post.md", ":::callout{tone=danger}\nbody\n:::\n");
     let (ok, log) = build(v);
     assert!(ok, "prop error is per-directive inert, not fatal: {log}");
-    assert!(log.contains("content-prop-enum"), "diagnostic surfaced: {log}");
+    assert!(
+        log.contains("content-prop-enum"),
+        "diagnostic surfaced: {log}"
+    );
     let html = page_html(v, "post");
-    assert!(!html.contains("data-z=\"callout\""), "no component on prop error");
+    assert!(
+        !html.contains("data-z=\"callout\""),
+        "no component on prop error"
+    );
 }
 
 #[test]
@@ -155,7 +182,10 @@ x = { type = "string", default = "" }
     );
     write(v, "post.md", "# hi\n");
     let (ok, log) = build(v);
-    assert!(!ok, "build must fail on an unsafe content-invocable template");
+    assert!(
+        !ok,
+        "build must fail on an unsafe content-invocable template"
+    );
     assert!(
         log.contains("content-context-unsafe") || log.contains("content-component error"),
         "CON-4904 lint error surfaced: {log}"
@@ -186,8 +216,14 @@ fn test4905_isolated_body_sanitisation_keeps_trusted_template_elements() {
     let (ok, log) = build(v);
     assert!(ok, "build failed: {log}");
     let html = page_html(v, "post");
-    assert!(html.contains("<button>trusted</button>"), "trusted template button kept: {html}");
-    assert!(!html.contains("<button>evil</button>"), "author-body button stripped: {html}");
+    assert!(
+        html.contains("<button>trusted</button>"),
+        "trusted template button kept: {html}"
+    );
+    assert!(
+        !html.contains("<button>evil</button>"),
+        "author-body button stripped: {html}"
+    );
 }
 
 #[test]
@@ -206,7 +242,10 @@ fn test4906_nested_directive_trusted_fragment_preserved() {
     assert!(ok, "build failed: {log}");
     let html = page_html(v, "post");
     assert!(html.contains("callout-info"), "outer expanded");
-    assert!(html.contains("callout-warning"), "inner expanded + preserved: {html}");
+    assert!(
+        html.contains("callout-warning"),
+        "inner expanded + preserved: {html}"
+    );
     assert!(html.contains("inner body"));
 }
 
@@ -233,7 +272,10 @@ fn test4907_restricted_context_no_transclude() {
     // build succeeds (per-directive inert on render error) but must not leak the secret.
     assert!(ok);
     let html = page_html(v, "post");
-    assert!(!html.contains("TOP SECRET"), "transclude must be unavailable in content: {html}");
+    assert!(
+        !html.contains("TOP SECRET"),
+        "transclude must be unavailable in content: {html}"
+    );
 }
 
 #[test]
@@ -246,7 +288,10 @@ fn test4912_backward_compatible_default_no_invocable() {
     assert!(ok, "build failed: {log}");
     let html = page_html(v, "post");
     // the directive source survives as literal markdown text (no expansion)
-    assert!(html.contains(":::callout"), "directive left literal when no invocable component: {html}");
+    assert!(
+        html.contains(":::callout"),
+        "directive left literal when no invocable component: {html}"
+    );
 }
 
 #[test]

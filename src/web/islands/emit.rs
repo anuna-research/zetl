@@ -97,7 +97,13 @@ impl IslandSet {
 
         let manifests: Vec<IslandManifest> = islands.values().cloned().collect();
         let wiring = wiring::verify(&manifests, &csp);
-        Ok(IslandSet { islands, scripts, csp, grants, wiring })
+        Ok(IslandSet {
+            islands,
+            scripts,
+            csp,
+            grants,
+            wiring,
+        })
     }
 
     /// True when the vault declares no island at all (REQ-5012 backward-compat path).
@@ -303,7 +309,10 @@ document.documentElement.setAttribute('data-zt-{attr}',sv);\
     /// matched by islands.js).
     fn node_markers(&self, im: &IslandManifest, root_path: &str) -> String {
         let mut m = format!("data-island=\"{}\"", im.component);
-        m.push_str(&format!(" data-island-hydrate=\"{}\"", im.hydrate.as_attr()));
+        m.push_str(&format!(
+            " data-island-hydrate=\"{}\"",
+            im.hydrate.as_attr()
+        ));
         if im.content_island {
             // content islands run in a Worker via the capability bridge
             m.push_str(&format!(
@@ -354,8 +363,14 @@ document.documentElement.setAttribute('data-zt-{attr}',sv);\
     fn grants_json(&self, im: &IslandManifest) -> String {
         let mut parts = Vec::new();
         for t in &im.publishes {
-            parts.push(format!("{{\"topic\":{},\"direction\":\"publish\"}}", json_str(t)));
-            parts.push(format!("{{\"topic\":{},\"direction\":\"emit\"}}", json_str(t)));
+            parts.push(format!(
+                "{{\"topic\":{},\"direction\":\"publish\"}}",
+                json_str(t)
+            ));
+            parts.push(format!(
+                "{{\"topic\":{},\"direction\":\"emit\"}}",
+                json_str(t)
+            ));
         }
         for t in &im.subscribes {
             // A content island's subscribe grant on a trusted topic is emitted ONLY when
@@ -363,12 +378,19 @@ document.documentElement.setAttribute('data-zt-{attr}',sv);\
             // ungranted trusted topic out of the runtime grant table regardless). Content
             // topics and trusted-island subscribes are always emitted.
             let allowed = !im.content_island
-                || recognise_topic(t).map(|k| k == TopicKind::Content).unwrap_or(false)
+                || recognise_topic(t)
+                    .map(|k| k == TopicKind::Content)
+                    .unwrap_or(false)
                 || self.grants.iter().any(|g| {
-                    g.component == im.component && &g.topic == t && g.direction == Direction::Subscribe
+                    g.component == im.component
+                        && &g.topic == t
+                        && g.direction == Direction::Subscribe
                 });
             if allowed {
-                parts.push(format!("{{\"topic\":{},\"direction\":\"subscribe\"}}", json_str(t)));
+                parts.push(format!(
+                    "{{\"topic\":{},\"direction\":\"subscribe\"}}",
+                    json_str(t)
+                ));
             }
         }
         if im.paints {
@@ -392,7 +414,9 @@ fn load_island_grants(vault_root: &Path, theme: &str) -> IResult<Vec<IslandGrant
     let theme_toml = if theme != "default" {
         std::fs::read_to_string(vault_root.join(format!(".zetl/themes/{theme}/theme.toml")))
             .ok()
-            .or_else(|| crate::web::engine::bundled_template(theme, "theme.toml").map(str::to_string))
+            .or_else(|| {
+                crate::web::engine::bundled_template(theme, "theme.toml").map(str::to_string)
+            })
     } else {
         crate::web::engine::bundled_template("default", "theme.toml").map(str::to_string)
     };
@@ -417,7 +441,9 @@ fn load_csp(vault_root: &Path, theme: &str) -> IResult<CspConfig> {
     let theme_toml = if theme != "default" {
         std::fs::read_to_string(vault_root.join(format!(".zetl/themes/{theme}/theme.toml")))
             .ok()
-            .or_else(|| crate::web::engine::bundled_template(theme, "theme.toml").map(str::to_string))
+            .or_else(|| {
+                crate::web::engine::bundled_template(theme, "theme.toml").map(str::to_string)
+            })
     } else {
         crate::web::engine::bundled_template("default", "theme.toml").map(str::to_string)
     };
@@ -504,8 +530,9 @@ fn inline_script_hashes(html: &str) -> Vec<String> {
     use regex::Regex;
     use std::collections::BTreeSet;
     static SCRIPT: OnceLock<Regex> = OnceLock::new();
-    let script = SCRIPT
-        .get_or_init(|| Regex::new(r"(?is)<script(?P<attrs>[^>]*)>(?P<body>.*?)</script>").unwrap());
+    let script = SCRIPT.get_or_init(|| {
+        Regex::new(r"(?is)<script(?P<attrs>[^>]*)>(?P<body>.*?)</script>").unwrap()
+    });
 
     let mut scripts = BTreeSet::new();
     for cap in script.captures_iter(html) {
@@ -552,7 +579,10 @@ fn toml_to_json(v: &toml::Value) -> String {
         toml::Value::Boolean(b) => b.to_string(),
         toml::Value::Datetime(d) => json_str(&d.to_string()),
         toml::Value::Array(a) => {
-            format!("[{}]", a.iter().map(toml_to_json).collect::<Vec<_>>().join(","))
+            format!(
+                "[{}]",
+                a.iter().map(toml_to_json).collect::<Vec<_>>().join(",")
+            )
         }
         toml::Value::Table(t) => {
             let parts: Vec<String> = t
@@ -624,12 +654,21 @@ type = "enum(\"yes\",\"no\")"
         let set = IslandSet::discover(d.path(), "default").unwrap();
         let page = "<html><head><title>x</title></head><body><div data-z=\"poll\">poll</div></body></html>";
         let out = set.inject_into_page(page, "./");
-        assert!(out.contains("data-island=\"poll\""), "marker injected: {out}");
+        assert!(
+            out.contains("data-island=\"poll\""),
+            "marker injected: {out}"
+        );
         assert!(out.contains("data-island-worker=\"./_static/islands/poll.js\""));
         assert!(out.contains("data-island-paints=\"true\""));
         assert!(out.contains("content:vote"), "grants/types present");
-        assert!(out.contains("zetl-islands.js"), "runtime bootstrap injected");
-        assert!(out.contains("Content-Security-Policy"), "CSP meta injected for content island");
+        assert!(
+            out.contains("zetl-islands.js"),
+            "runtime bootstrap injected"
+        );
+        assert!(
+            out.contains("Content-Security-Policy"),
+            "CSP meta injected for content island"
+        );
     }
 
     #[test]
@@ -638,6 +677,9 @@ type = "enum(\"yes\",\"no\")"
         let set = IslandSet::discover(d.path(), "default").unwrap();
         let page = "<html><head></head><body><p>no islands here</p></body></html>";
         let out = set.inject_into_page(page, "./");
-        assert_eq!(out, page, "page without islands must be untouched (REQ-5012)");
+        assert_eq!(
+            out, page,
+            "page without islands must be untouched (REQ-5012)"
+        );
     }
 }

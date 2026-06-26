@@ -162,7 +162,12 @@ fn split_top_level(s: &str, delim: char) -> Vec<String> {
 /// Recognise a TOML `default` value against a value type (build-time check, CON-5005).
 /// The runtime recogniser (JS bus) shares these semantics.
 pub fn recognise_default(value: &toml::Value, ty: &ValueType) -> Result<(), IslandError> {
-    let bad = || IslandError::new("island-payload-type", format!("default does not conform to {ty:?}"));
+    let bad = || {
+        IslandError::new(
+            "island-payload-type",
+            format!("default does not conform to {ty:?}"),
+        )
+    };
     match ty {
         ValueType::String => value.as_str().map(|_| ()).ok_or_else(bad),
         ValueType::Bool => value.as_bool().map(|_| ()).ok_or_else(bad),
@@ -237,7 +242,15 @@ mod tests {
 
     #[test]
     fn rejects_invalid() {
-        for s in ["", "widget", "enum()", "{}", "{x}", "{x:int,x:bool}", r#"enum("a","a")"#] {
+        for s in [
+            "",
+            "widget",
+            "enum()",
+            "{}",
+            "{x}",
+            "{x:int,x:bool}",
+            r#"enum("a","a")"#,
+        ] {
             assert!(parse_type_expr(s).is_err(), "{s} should be invalid");
         }
     }

@@ -5,11 +5,11 @@ pub mod context;
 pub mod engine;
 pub mod flush;
 pub mod fs_watch;
-#[cfg(feature = "component-islands")]
-pub mod islands;
 pub mod git_commit;
 pub mod git_poll;
 pub mod html;
+#[cfg(feature = "component-islands")]
+pub mod islands;
 pub mod markdown;
 #[cfg(feature = "mobile")]
 pub mod mobile;

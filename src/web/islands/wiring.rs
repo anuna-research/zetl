@@ -2,7 +2,8 @@
 //!
 //! Given the recognised island manifests for a build, this resolves publisher→subscriber
 //! edges, flags an **unpublished subscriber** (`island-topic-unpublished`, warning), an
-//! **incompatible co-publisher type** (`island-topic-type-conflict`, error), and an
+//! **incompatible co-declared type** across any publishers/subscribers of a topic
+//! (`island-topic-type-conflict`, error), and an
 //! **unapproved author request** (`island-request-unapproved`, warning, vs `[security.csp]`).
 //! It emits a deterministic audit (REQ-5009) extending SPEC-048 OBS-4801.
 //!
@@ -87,8 +88,15 @@ pub fn verify(islands: &[IslandManifest], csp: &CspConfig) -> WiringReport {
 
     for im in &sorted {
         for t in &im.publishes {
-            let ty = im.topics.get(t).map(|d| d.ty.clone()).unwrap_or(ValueType::String);
-            publishers.entry(t.clone()).or_default().push((im.component.clone(), ty));
+            let ty = im
+                .topics
+                .get(t)
+                .map(|d| d.ty.clone())
+                .unwrap_or(ValueType::String);
+            publishers
+                .entry(t.clone())
+                .or_default()
+                .push((im.component.clone(), ty));
         }
         for (name, decl) in &im.topics {
             declarations
@@ -193,9 +201,12 @@ pub fn verify(islands: &[IslandManifest], csp: &CspConfig) -> WiringReport {
         });
     }
 
-    report.findings.sort_by(|a, b| (&a.code, &a.message).cmp(&(&b.code, &b.message)));
+    report
+        .findings
+        .sort_by(|a, b| (&a.code, &a.message).cmp(&(&b.code, &b.message)));
     report.notes.push(
-        "trusted-island `island-topic-undeclared` AST lint not run in v1 (needs a JS parser)".into(),
+        "trusted-island `island-topic-undeclared` AST lint not run in v1 (needs a JS parser)"
+            .into(),
     );
     report
 }
@@ -234,7 +245,10 @@ mod tests {
             "b",
         );
         let r = verify(&[subr], &CspConfig::default());
-        assert!(r.findings.iter().any(|f| f.code == "island-topic-unpublished" && !f.fatal));
+        assert!(r
+            .findings
+            .iter()
+            .any(|f| f.code == "island-topic-unpublished" && !f.fatal));
     }
 
     #[test]
@@ -248,7 +262,10 @@ mod tests {
             "b",
         );
         let r = verify(&[a, b], &CspConfig::default());
-        assert!(r.findings.iter().any(|f| f.code == "island-topic-type-conflict" && f.fatal));
+        assert!(r
+            .findings
+            .iter()
+            .any(|f| f.code == "island-topic-type-conflict" && f.fatal));
         assert!(r.has_fatal());
     }
 
@@ -267,7 +284,9 @@ mod tests {
         );
         let r = verify(&[pubr, subr], &CspConfig::default());
         assert!(
-            r.findings.iter().any(|f| f.code == "island-topic-type-conflict" && f.fatal),
+            r.findings
+                .iter()
+                .any(|f| f.code == "island-topic-type-conflict" && f.fatal),
             "publisher↔subscriber type mismatch must be fatal: {:?}",
             r.findings
         );

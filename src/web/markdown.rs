@@ -1279,7 +1279,9 @@ mod tests {
         );
         // a plain page link (no section) carries no fragment
         assert!(
-            html.contains(r#"href="../handbook/index.html" class="link link-primary wikilink">Handbook</a>"#),
+            html.contains(
+                r#"href="../handbook/index.html" class="link link-primary wikilink">Handbook</a>"#
+            ),
             "plain page link should have no fragment; got: {html}"
         );
     }

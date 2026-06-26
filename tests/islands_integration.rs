@@ -56,7 +56,11 @@ question = { type = "string", default = "?" }
 type = "enum(\"yes\",\"no\")"
 "#,
     );
-    write(v, ".zetl/components/poll/poll.js", "self.onmessage=function(){};\n");
+    write(
+        v,
+        ".zetl/components/poll/poll.js",
+        "self.onmessage=function(){};\n",
+    );
 }
 
 /// A persisted-topic island (regression for Codex P2-2/P2-3).
@@ -84,7 +88,11 @@ persisted = true
 default = "light"
 "#,
     );
-    write(v, ".zetl/components/poll/poll.js", "self.onmessage=function(){};\n");
+    write(
+        v,
+        ".zetl/components/poll/poll.js",
+        "self.onmessage=function(){};\n",
+    );
 }
 
 #[test]
@@ -97,10 +105,19 @@ fn p2_persisted_topic_emits_persist_marker_and_raw_localstorage_key() {
     assert!(ok, "build failed: {log}");
     let html = page(v, "p");
     // P2-3: the runtime needs data-island-persist to register persisted topics
-    assert!(html.contains("data-island-persist"), "persist marker emitted: {html}");
+    assert!(
+        html.contains("data-island-persist"),
+        "persist marker emitted: {html}"
+    );
     // P2-2: pre-paint reads the RAW colon key the runtime writes, not a sanitised one
-    assert!(html.contains("zetl:topic:content:theme"), "pre-paint reads raw key");
-    assert!(!html.contains("zetl:topic:content-theme"), "must not use sanitised key");
+    assert!(
+        html.contains("zetl:topic:content:theme"),
+        "pre-paint reads raw key"
+    );
+    assert!(
+        !html.contains("zetl:topic:content-theme"),
+        "must not use sanitised key"
+    );
 }
 
 #[test]
@@ -108,18 +125,29 @@ fn p1_content_island_subscribing_trusted_topic_needs_theme_grant() {
     let dir = TempDir::new().unwrap();
     let v = dir.path();
     // a content island that subscribes a TRUSTED (non-content:) topic `theme`
-    write(v, ".zetl/components/reader/reader.html", "<div data-z=\"{{ _name }}\"></div>");
+    write(
+        v,
+        ".zetl/components/reader/reader.html",
+        "<div data-z=\"{{ _name }}\"></div>",
+    );
     write(
         v,
         ".zetl/components/reader/reader.toml",
         "name = \"reader\"\ncontent_invocable = true\ncontent_props = []\nsubscribes = [\"theme\"]\nrender = \"worker\"\npaints = true\n[props]\n[island.topics.theme]\ntype = \"enum(\\\"light\\\",\\\"dark\\\")\"\n",
     );
-    write(v, ".zetl/components/reader/reader.js", "self.onmessage=function(){};\n");
+    write(
+        v,
+        ".zetl/components/reader/reader.js",
+        "self.onmessage=function(){};\n",
+    );
     write(v, "p.md", "# x\n");
     // No [[theme.island-grants]] → build MUST fail (Codex P1).
     let (ok, log) = build(v);
     assert!(!ok, "ungranted trusted-topic subscribe must fail the build");
-    assert!(log.contains("island-capability-ungranted") || log.contains("island error"), "log: {log}");
+    assert!(
+        log.contains("island-capability-ungranted") || log.contains("island error"),
+        "log: {log}"
+    );
 }
 
 #[test]
@@ -127,7 +155,11 @@ fn p2_island_manifest_without_script_fails_build() {
     let dir = TempDir::new().unwrap();
     let v = dir.path();
     // island fields present, but no poll.js → hydration would always fail
-    write(v, ".zetl/components/poll/poll.html", "<div data-z=\"{{ _name }}\"></div>");
+    write(
+        v,
+        ".zetl/components/poll/poll.html",
+        "<div data-z=\"{{ _name }}\"></div>",
+    );
     write(
         v,
         ".zetl/components/poll/poll.toml",
@@ -135,8 +167,14 @@ fn p2_island_manifest_without_script_fails_build() {
     );
     write(v, "p.md", "# x\n");
     let (ok, log) = build(v);
-    assert!(!ok, "island manifest without a client script must fail the build");
-    assert!(log.contains("island-script-missing") || log.contains("island error"), "log: {log}");
+    assert!(
+        !ok,
+        "island manifest without a client script must fail the build"
+    );
+    assert!(
+        log.contains("island-script-missing") || log.contains("island error"),
+        "log: {log}"
+    );
 }
 
 #[test]
@@ -150,9 +188,18 @@ fn p2_content_island_csp_admits_inline_style() {
     let html = page(v, "p");
     // P2-5: the theme ships inline <script> (hashed) and inline styles + a data: favicon;
     // the CSP must admit them so it doesn't block the theme's own assets.
-    assert!(html.contains("script-src 'self' 'sha256-"), "inline scripts hashed");
-    assert!(html.contains("style-src 'self' 'unsafe-inline'"), "inline styles admitted");
-    assert!(html.contains("img-src 'self' data:"), "data: images admitted");
+    assert!(
+        html.contains("script-src 'self' 'sha256-"),
+        "inline scripts hashed"
+    );
+    assert!(
+        html.contains("style-src 'self' 'unsafe-inline'"),
+        "inline styles admitted"
+    );
+    assert!(
+        html.contains("img-src 'self' data:"),
+        "data: images admitted"
+    );
 }
 
 #[test]
@@ -163,9 +210,18 @@ fn req5001_emits_island_assets_once() {
     write(v, "p.md", ":::poll{question=\"Ship it?\"}\nvote\n:::\n");
     let (ok, log) = build(v);
     assert!(ok, "build failed: {log}");
-    assert!(v.join("dist/_static/zetl-islands.js").is_file(), "bus runtime emitted");
-    assert!(v.join("dist/_static/islands/poll.js").is_file(), "worker script emitted");
-    assert!(v.join("dist/_static/island-audit.json").is_file(), "wiring audit emitted");
+    assert!(
+        v.join("dist/_static/zetl-islands.js").is_file(),
+        "bus runtime emitted"
+    );
+    assert!(
+        v.join("dist/_static/islands/poll.js").is_file(),
+        "worker script emitted"
+    );
+    assert!(
+        v.join("dist/_static/island-audit.json").is_file(),
+        "wiring audit emitted"
+    );
 }
 
 #[test]
@@ -179,12 +235,24 @@ fn req4910_content_island_handoff_markers() {
     let html = page(v, "p");
     // SPEC-049 expanded the directive, SPEC-050 stamped island markers on the data-z node
     assert!(html.contains("data-z=\"poll\""), "directive expanded");
-    assert!(html.contains("data-island=\"poll\""), "island marker stamped");
+    assert!(
+        html.contains("data-island=\"poll\""),
+        "island marker stamped"
+    );
     assert!(html.contains("data-island-worker="), "worker URL present");
-    assert!(html.contains("data-island-paints=\"true\""), "paints grant present");
+    assert!(
+        html.contains("data-island-paints=\"true\""),
+        "paints grant present"
+    );
     assert!(html.contains("content:vote"), "grants/types present");
-    assert!(html.contains("data-island-hydrate=\"visible\""), "hydrate strategy present");
-    assert!(html.contains("zetl-islands.js"), "runtime bootstrap injected");
+    assert!(
+        html.contains("data-island-hydrate=\"visible\""),
+        "hydrate strategy present"
+    );
+    assert!(
+        html.contains("zetl-islands.js"),
+        "runtime bootstrap injected"
+    );
 }
 
 #[test]
@@ -196,10 +264,19 @@ fn req5027_csp_emitted_for_content_island_page() {
     let (ok, log) = build(v);
     assert!(ok, "build failed: {log}");
     let html = page(v, "p");
-    assert!(html.contains("Content-Security-Policy"), "CSP meta injected");
+    assert!(
+        html.contains("Content-Security-Policy"),
+        "CSP meta injected"
+    );
     assert!(html.contains("default-src 'none'"), "default-deny baseline");
-    assert!(html.contains("connect-src 'self'"), "cross-origin egress denied by default");
-    assert!(v.join("dist/_headers.csp").is_file(), "headers artifact emitted");
+    assert!(
+        html.contains("connect-src 'self'"),
+        "cross-origin egress denied by default"
+    );
+    assert!(
+        v.join("dist/_headers.csp").is_file(),
+        "headers artifact emitted"
+    );
 }
 
 #[test]
@@ -240,7 +317,10 @@ fn req5012_backward_compatible_no_island() {
     write(v, "p.md", "# plain\n\nNo islands.\n");
     let (ok, log) = build(v);
     assert!(ok, "build failed: {log}");
-    assert!(!v.join("dist/_static/zetl-islands.js").exists(), "no bus runtime when no island");
+    assert!(
+        !v.join("dist/_static/zetl-islands.js").exists(),
+        "no bus runtime when no island"
+    );
     let html = page(v, "p");
     assert!(!html.contains("data-island="), "no island markers");
     assert!(!html.contains("zetl-islands.js"), "no bootstrap");
@@ -264,7 +344,10 @@ fn malformed_island_manifest_fails_build() {
     write(v, "p.md", "# x\n");
     let (ok, log) = build(v);
     assert!(!ok, "malformed island manifest must fail the build");
-    assert!(log.contains("island-topic-malformed") || log.contains("island error"), "log: {log}");
+    assert!(
+        log.contains("island-topic-malformed") || log.contains("island error"),
+        "log: {log}"
+    );
 }
 
 #[test]
@@ -285,9 +368,24 @@ fn determinism_island_assets_byte_identical() {
     // rebuild
     let (ok2, _) = build(v);
     assert!(ok2);
-    assert_eq!(a1, read("dist/_static/island-audit.json"), "audit byte-identical (NFR-5003)");
-    assert_eq!(r1, read("dist/_static/zetl-islands.js"), "runtime byte-identical");
-    assert_eq!(w1, read("dist/_static/islands/poll.js"), "worker byte-identical");
+    assert_eq!(
+        a1,
+        read("dist/_static/island-audit.json"),
+        "audit byte-identical (NFR-5003)"
+    );
+    assert_eq!(
+        r1,
+        read("dist/_static/zetl-islands.js"),
+        "runtime byte-identical"
+    );
+    assert_eq!(
+        w1,
+        read("dist/_static/islands/poll.js"),
+        "worker byte-identical"
+    );
     assert_eq!(h1, read("dist/_headers.csp"), "CSP headers byte-identical");
-    assert!(markers1 && page(v, "p").contains("data-island=\"poll\""), "markers stable");
+    assert!(
+        markers1 && page(v, "p").contains("data-island=\"poll\""),
+        "markers stable"
+    );
 }

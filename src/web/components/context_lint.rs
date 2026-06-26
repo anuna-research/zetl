@@ -188,7 +188,9 @@ impl HtmlState {
                     // ignore the end-tag name
                 }
                 St::TagName => match c {
-                    c if c.is_ascii_alphanumeric() || c == '-' => self.tag.push(c.to_ascii_lowercase()),
+                    c if c.is_ascii_alphanumeric() || c == '-' => {
+                        self.tag.push(c.to_ascii_lowercase())
+                    }
                     c if c.is_whitespace() => self.st = St::BeforeAttrName,
                     '>' => self.st = self.enter_content(),
                     '/' => {} // self-closing solidus
@@ -276,7 +278,11 @@ impl HtmlState {
             St::RawJs => Ctx::Js,
             St::RawCss => Ctx::Css,
             // interpolating a tag/attr name or in the middle of tag structure
-            St::TagOpen | St::EndTagOpen | St::TagName | St::BeforeAttrName | St::AttrName
+            St::TagOpen
+            | St::EndTagOpen
+            | St::TagName
+            | St::BeforeAttrName
+            | St::AttrName
             | St::AfterAttrName => Ctx::Unanalyzable,
             // An interpolation right after `=` is the whole unquoted attribute value
             // (had it been quoted, the opening quote would already be in an EmitRaw).
@@ -309,7 +315,11 @@ impl HtmlState {
         let local = a.rsplit(':').next().unwrap_or(a);
         if is_url_attr(local) {
             // a single-quoted URL attr is not a sanctioned context for a url prop
-            return if double_quoted { Ctx::UrlAttrDq } else { Ctx::AttrValueSq };
+            return if double_quoted {
+                Ctx::UrlAttrDq
+            } else {
+                Ctx::AttrValueSq
+            };
         }
         if double_quoted {
             Ctx::AttrValueDq
@@ -349,7 +359,10 @@ struct ExprTaint {
 
 impl ExprTaint {
     fn none() -> Self {
-        ExprTaint { taint: Taint::None, unsafe_emit: false }
+        ExprTaint {
+            taint: Taint::None,
+            unsafe_emit: false,
+        }
     }
 }
 
@@ -378,7 +391,12 @@ pub fn lint_component(template_src: &str, manifest: &Manifest) -> CResult<()> {
         SyntaxConfig,
         WhitespaceConfig::default(),
     )
-    .map_err(|e| err("content-template-unanalyzable", format!("template parse error: {e}")))?;
+    .map_err(|e| {
+        err(
+            "content-template-unanalyzable",
+            format!("template parse error: {e}"),
+        )
+    })?;
 
     let mut env = Env {
         manifest,
@@ -414,7 +432,10 @@ fn walk_stmt(
             // taint of the loop variable follows the iterable's taint (conservative)
             let iter_t = analyse_expr(&f.iter, env)?;
             if iter_t.unsafe_emit {
-                return Err(err("content-unsafe-emit", "`safe`/`raw` on tainted loop iterable"));
+                return Err(err(
+                    "content-unsafe-emit",
+                    "`safe`/`raw` on tainted loop iterable",
+                ));
             }
             bind_target(&f.target, iter_t.taint, env);
             // body must be context-loop-invariant (CON-4904(3))
@@ -431,7 +452,10 @@ fn walk_stmt(
         ast::Stmt::IfCond(c) => {
             let cond_t = analyse_expr(&c.expr, env)?;
             if cond_t.unsafe_emit {
-                return Err(err("content-unsafe-emit", "`safe`/`raw` on tainted condition"));
+                return Err(err(
+                    "content-unsafe-emit",
+                    "`safe`/`raw` on tainted condition",
+                ));
             }
             // branches must merge to the same context (CON-4904(3))
             let entry = state.clone();
@@ -452,7 +476,10 @@ fn walk_stmt(
             for (target, expr) in &w.assignments {
                 let t = analyse_expr(expr, env)?;
                 if t.unsafe_emit {
-                    return Err(err("content-unsafe-emit", "`safe`/`raw` on tainted `with` value"));
+                    return Err(err(
+                        "content-unsafe-emit",
+                        "`safe`/`raw` on tainted `with` value",
+                    ));
                 }
                 bind_target(target, t.taint, env);
             }
@@ -462,7 +489,10 @@ fn walk_stmt(
         ast::Stmt::Set(s) => {
             let t = analyse_expr(&s.expr, env)?;
             if t.unsafe_emit {
-                return Err(err("content-unsafe-emit", "`safe`/`raw` on tainted `set` value"));
+                return Err(err(
+                    "content-unsafe-emit",
+                    "`safe`/`raw` on tainted `set` value",
+                ));
             }
             bind_target(&s.target, t.taint, env);
         }
@@ -506,7 +536,10 @@ fn walk_stmt(
             let taint = body_capture_taint(&f.body, &mut probe, env)?;
             if taint != Taint::None {
                 if filter_is_raw(&f.filter) {
-                    return Err(err("content-unsafe-emit", "`safe`/`raw` filter block over tainted body"));
+                    return Err(err(
+                        "content-unsafe-emit",
+                        "`safe`/`raw` filter block over tainted body",
+                    ));
                 }
                 return Err(err(
                     "content-template-unanalyzable",
@@ -603,7 +636,10 @@ fn stmt_capture_taint(stmt: &ast::Stmt, probe: &mut HtmlState, env: &mut Env) ->
         ast::Stmt::EmitExpr(e) => {
             let et = analyse_expr(&e.expr, env)?;
             if et.unsafe_emit {
-                return Err(err("content-unsafe-emit", "`safe`/`raw` on tainted captured value"));
+                return Err(err(
+                    "content-unsafe-emit",
+                    "`safe`/`raw` on tainted captured value",
+                ));
             }
             Ok(et.taint)
         }
@@ -710,7 +746,10 @@ fn analyse_expr(expr: &ast::Expr, env: &Env) -> CResult<ExprTaint> {
             // props.<name>
             if let ast::Expr::Var(v) = &g.expr {
                 if v.id == "props" {
-                    return Ok(ExprTaint { taint: env.prop_taint(g.name), unsafe_emit: false });
+                    return Ok(ExprTaint {
+                        taint: env.prop_taint(g.name),
+                        unsafe_emit: false,
+                    });
                 }
             }
             analyse_expr(&g.expr, env)
@@ -728,7 +767,10 @@ fn analyse_expr(expr: &ast::Expr, env: &Env) -> CResult<ExprTaint> {
                         }
                     }
                     // dynamic subscript into props → conservatively tainted scalar
-                    return Ok(ExprTaint { taint: Taint::Scalar, unsafe_emit: false });
+                    return Ok(ExprTaint {
+                        taint: Taint::Scalar,
+                        unsafe_emit: false,
+                    });
                 }
             }
             let base = analyse_expr(&g.expr, env)?;
@@ -777,7 +819,10 @@ fn analyse_expr(expr: &ast::Expr, env: &Env) -> CResult<ExprTaint> {
             // caller() → the slot (SafeHtml)
             if let ast::Expr::Var(v) = &c.expr {
                 if v.id == "caller" {
-                    return Ok(ExprTaint { taint: Taint::Slot, unsafe_emit: false });
+                    return Ok(ExprTaint {
+                        taint: Taint::Slot,
+                        unsafe_emit: false,
+                    });
                 }
             }
             // Any other call: if a content-tainted value flows in as an argument or the
@@ -796,7 +841,10 @@ fn analyse_expr(expr: &ast::Expr, env: &Env) -> CResult<ExprTaint> {
                     "a content-tainted value is passed into a call whose body the lint cannot analyse",
                 ));
             }
-            Ok(ExprTaint { taint: Taint::None, unsafe_emit: recv.unsafe_emit })
+            Ok(ExprTaint {
+                taint: Taint::None,
+                unsafe_emit: recv.unsafe_emit,
+            })
         }
         ast::Expr::List(l) => {
             let mut taint = Taint::None;
@@ -806,7 +854,10 @@ fn analyse_expr(expr: &ast::Expr, env: &Env) -> CResult<ExprTaint> {
                 taint = taint.join(t.taint);
                 bypass |= t.unsafe_emit;
             }
-            Ok(ExprTaint { taint, unsafe_emit: bypass })
+            Ok(ExprTaint {
+                taint,
+                unsafe_emit: bypass,
+            })
         }
         ast::Expr::Map(m) => {
             let mut taint = Taint::None;
@@ -816,7 +867,10 @@ fn analyse_expr(expr: &ast::Expr, env: &Env) -> CResult<ExprTaint> {
                 taint = taint.join(t.taint);
                 bypass |= t.unsafe_emit;
             }
-            Ok(ExprTaint { taint, unsafe_emit: bypass })
+            Ok(ExprTaint {
+                taint,
+                unsafe_emit: bypass,
+            })
         }
     }
 }
@@ -1021,8 +1075,8 @@ mod tests {
 
     #[test]
     fn autoescape_false_over_taint_unsafe() {
-        let e = lint(r#"{% autoescape false %}<p>{{ props.msg }}</p>{% endautoescape %}"#)
-            .unwrap_err();
+        let e =
+            lint(r#"{% autoescape false %}<p>{{ props.msg }}</p>{% endautoescape %}"#).unwrap_err();
         assert_eq!(e.code, "content-context-unsafe");
     }
 

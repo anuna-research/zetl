@@ -145,7 +145,9 @@ fn expand_into(out: &mut Expansion, d: &Directive, r: &dyn ContentRenderer, dept
     };
 
     // Recognise props against the manifest (REQ-4904).
-    let manifest = r.manifest(&d.name).expect("invocable implies manifest present");
+    let manifest = r
+        .manifest(&d.name)
+        .expect("invocable implies manifest present");
     let recognised = match content_props::recognise(&d.attrs, manifest) {
         Ok(rec) => rec,
         Err(e) => {
@@ -256,10 +258,7 @@ mod tests {
             props: &BTreeMap<String, Value>,
             slot_html: &str,
         ) -> CResult<String> {
-            let propstr: Vec<String> = props
-                .iter()
-                .map(|(k, v)| format!("{k}={v}"))
-                .collect();
+            let propstr: Vec<String> = props.iter().map(|(k, v)| format!("{k}={v}")).collect();
             Ok(format!(
                 "<div data-z=\"{name}\" data-props=\"{}\">{slot_html}</div>",
                 propstr.join(",")
@@ -295,7 +294,11 @@ mod tests {
         let nodes = scan(":::raw-html{}\nhello world\n:::\n");
         let out = expand_nodes(&nodes, &mock);
         assert!(!out.html.contains("data-z"));
-        assert!(out.html.contains("hello world"), "body preserved inert: {}", out.html);
+        assert!(
+            out.html.contains("hello world"),
+            "body preserved inert: {}",
+            out.html
+        );
         assert_eq!(out.diagnostics[0].code, "content-directive-unknown");
     }
 
@@ -365,7 +368,11 @@ mod tests {
         let bm = ButtonMock(std::mem::replace(&mut mock, Mock::new(&[])));
         let nodes = scan("::::wrapper{}\nintro\n:::widget{}\n:::\n::::\n");
         let out = expand_nodes(&nodes, &bm);
-        assert!(out.html.contains("<button>click</button>"), "nested trusted output survives: {}", out.html);
+        assert!(
+            out.html.contains("<button>click</button>"),
+            "nested trusted output survives: {}",
+            out.html
+        );
         assert!(out.html.contains("<section>"));
     }
 
@@ -393,7 +400,9 @@ mod tests {
         let nodes = scan(&src);
         let out = expand_nodes(&nodes, &mock);
         assert!(
-            out.diagnostics.iter().any(|d| d.code == "content-directive-too-deep" && d.fatal),
+            out.diagnostics
+                .iter()
+                .any(|d| d.code == "content-directive-too-deep" && d.fatal),
             "depth bound triggers a fatal diagnostic: {:?}",
             out.diagnostics
         );

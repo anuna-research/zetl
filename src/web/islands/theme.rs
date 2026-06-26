@@ -33,8 +33,15 @@ pub struct CspConfig {
 }
 
 /// The CSP directives an operator may widen (closed set; values are host sources).
-const WIDENABLE_DIRECTIVES: &[&str] =
-    &["connect-src", "img-src", "media-src", "font-src", "style-src", "worker-src", "script-src"];
+const WIDENABLE_DIRECTIVES: &[&str] = &[
+    "connect-src",
+    "img-src",
+    "media-src",
+    "font-src",
+    "style-src",
+    "worker-src",
+    "script-src",
+];
 
 fn err(code: &'static str, msg: impl Into<String>) -> IslandError {
     IslandError::new(code, msg.into())
@@ -51,9 +58,12 @@ pub fn parse_island_grants(theme_toml: &toml::Value) -> IResult<Vec<IslandGrant>
     };
     let mut out = Vec::new();
     for entry in arr {
-        let tbl = entry
-            .as_table()
-            .ok_or_else(|| err("island-grant-malformed", "[[theme.island-grants]] must be a table"))?;
+        let tbl = entry.as_table().ok_or_else(|| {
+            err(
+                "island-grant-malformed",
+                "[[theme.island-grants]] must be a table",
+            )
+        })?;
         let component = tbl
             .get("component")
             .and_then(|v| v.as_str())
@@ -74,7 +84,11 @@ pub fn parse_island_grants(theme_toml: &toml::Value) -> IResult<Vec<IslandGrant>
                 ))
             }
         };
-        out.push(IslandGrant { component, topic, direction });
+        out.push(IslandGrant {
+            component,
+            topic,
+            direction,
+        });
     }
     Ok(out)
 }
@@ -97,15 +111,24 @@ pub fn parse_csp(config: &toml::Value) -> IResult<CspConfig> {
             ));
         }
         let arr = val.as_array().ok_or_else(|| {
-            err("csp-directive-invalid", format!("[security.csp].{key} must be an array of host sources"))
+            err(
+                "csp-directive-invalid",
+                format!("[security.csp].{key} must be an array of host sources"),
+            )
         })?;
         let mut hosts = Vec::new();
         for h in arr {
             let s = h.as_str().ok_or_else(|| {
-                err("csp-directive-invalid", format!("[security.csp].{key} entries must be strings"))
+                err(
+                    "csp-directive-invalid",
+                    format!("[security.csp].{key} entries must be strings"),
+                )
             })?;
             if s == "*" || s.contains('*') {
-                return Err(err("csp-wildcard", format!("[security.csp].{key} may not contain `*`")));
+                return Err(err(
+                    "csp-wildcard",
+                    format!("[security.csp].{key} may not contain `*`"),
+                ));
             }
             hosts.push(s.to_string());
         }
@@ -151,7 +174,10 @@ mod tests {
             img-src = ["https://cdn.example.com"]
         "#);
         let c = parse_csp(&t).unwrap();
-        assert_eq!(c.directives["connect-src"], vec!["https://api.example.com".to_string()]);
+        assert_eq!(
+            c.directives["connect-src"],
+            vec!["https://api.example.com".to_string()]
+        );
         assert_eq!(c.directives["img-src"].len(), 1);
     }
 

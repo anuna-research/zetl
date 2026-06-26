@@ -85,8 +85,14 @@ mod tests {
 
     #[test]
     fn content_topics() {
-        assert_eq!(recognise_topic("content:filter").unwrap(), TopicKind::Content);
-        assert_eq!(recognise_topic("content:poll:vote").unwrap(), TopicKind::Content);
+        assert_eq!(
+            recognise_topic("content:filter").unwrap(),
+            TopicKind::Content
+        );
+        assert_eq!(
+            recognise_topic("content:poll:vote").unwrap(),
+            TopicKind::Content
+        );
     }
 
     #[test]
@@ -104,11 +110,11 @@ mod tests {
     fn malformed_rejected() {
         for t in [
             "",
-            "Theme",        // uppercase
-            "a",            // single char segment
-            "nav-",         // trailing hyphen
-            "1nav",         // leading digit
-            "nav::state",   // empty segment
+            "Theme",             // uppercase
+            "a",                 // single char segment
+            "nav-",              // trailing hyphen
+            "1nav",              // leading digit
+            "nav::state",        // empty segment
             "a:b:c:d:e:f:g:h:i", // >8 segments
         ] {
             assert!(recognise_topic(t).is_err(), "{t} should be malformed");
