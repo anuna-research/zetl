@@ -92,9 +92,24 @@ it via `[[theme.island-grants]]`.
   node/byte bounds, cycle rejection. This is what makes "untrusted code cannot inject
   markup" hold — verified in a real browser playtest.
 - **Network egress** (REQ-5026/5027): confined by the page **Content-Security-Policy**, not
-  per-worker policy. The default-deny baseline (`connect-src 'none'`, etc.) is widened only
-  by the trusted operator in `[security.csp]`; content authors may only *request* widenings
-  via `[island.requests]` (inert until approved — surfaced in the wiring audit).
+  per-worker policy. Operators widen it in `[security.csp]`; content authors may only
+  *request* widenings via `[island.requests]` (inert until approved — surfaced in the
+  wiring audit). The per-page baseline for content-island pages is:
+
+  ```
+  default-src 'none'; script-src 'self' 'sha256-…';   # inline scripts admitted by hash
+  worker-src 'self' blob:; connect-src 'self';          # cross-origin egress blocked
+  img-src 'self' data:; font-src 'self' data:;
+  style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'
+  ```
+
+  `script-src` is strict (per-inline-`<script>` `sha256`, never `unsafe-inline`) — that's
+  the load-bearing control. `connect-src 'self'`, `img-src 'self' data:` and
+  `style-src 'unsafe-inline'` are deliberate, theme-compatible relaxations that are safe
+  for the islands threat model: the worker emits no script, the CON-5007 renderer forbids
+  the `style` attribute and validates URL schemes, and cross-origin egress stays blocked.
+  An operator with a CSP-clean theme can tighten them. The `<meta>` CSP is the first
+  `<head>` child; `_headers.csp` carries only `frame-ancestors` (which `<meta>` can't set).
 
 ## Hydration strategies (REQ-5024)
 
