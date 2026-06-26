@@ -109,33 +109,24 @@ pub fn is_safe_url(value: &str) -> bool {
         // empty / whitespace-only → treat as a harmless empty reference
         return true;
     }
-    // scheme-relative resolves off-origin → reject
+    // Defense-in-depth: reject scheme-relative refs in ANY slash mix outright — they
+    // resolve off-origin, and an author URL prop has no reason to be protocol-relative.
     if canon.starts_with("//") || canon.starts_with("\\\\") || canon.starts_with("/\\")
         || canon.starts_with("\\/")
     {
         return false;
     }
-    // detect a scheme: `[a-z][a-z0-9+.-]* :` appearing before any '/', '?', '#'
-    if let Some(colon) = canon.find(':') {
-        let before = &canon[..colon];
-        let has_path_sep = canon[..colon].contains('/')
-            || canon[..colon].contains('?')
-            || canon[..colon].contains('#');
-        let looks_like_scheme = !before.is_empty()
-            && before
-                .bytes()
-                .next()
-                .map(|b| b.is_ascii_lowercase())
-                .unwrap_or(false)
-            && before
-                .bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'+' | b'.' | b'-'));
-        if !has_path_sep && looks_like_scheme {
-            return ALLOWED_SCHEMES.contains(&before);
-        }
+    // Parse-and-assess with the WHATWG URL parser (the `url` crate) rather than pattern-
+    // matching the raw string: resolving `value` against a fixed base mirrors the browser's
+    // `new URL(value, base)` — relative refs inherit the base's (safe) scheme, absolute
+    // refs keep theirs, and the parser canonicalises obfuscation (tab/newline, case,
+    // backslashes). "No URL is trusted unless it properly parses." Assess the parsed scheme.
+    static BASE: OnceLock<url::Url> = OnceLock::new();
+    let base = BASE.get_or_init(|| url::Url::parse("https://localhost.invalid/").unwrap());
+    match base.join(value) {
+        Ok(u) => ALLOWED_SCHEMES.contains(&u.scheme()),
+        Err(_) => false, // unparseable => reject
     }
-    // no scheme → a relative reference (path-absolute or path-relative) → accept
-    true
 }
 
 /// Validate a `srcset` value: comma-separated `url [descriptor]` candidates. Every

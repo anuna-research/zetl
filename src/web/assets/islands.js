@@ -702,28 +702,31 @@
     return canon.toLowerCase();
   }
 
+  // Parse a URL the way the browser will: the WHATWG parser strips ASCII tab/newline,
+  // folds backslashes for special schemes, canonicalises the scheme, and resolves a
+  // relative reference against the page origin. Returns a URL object, or null if it
+  // cannot be parsed. "No URL is trusted unless it properly parses" — assess the PARSED
+  // result (.protocol/.origin), never a regex over the raw string.
+  function parseUrlAbs(url) {
+    if (typeof url !== "string" || url.length > 4096) { return null; }
+    var base = (glob.location && glob.location.href) || "https://localhost.invalid/";
+    try { return new URL(url, base); } catch (_e) { return null; }
+  }
+
   function isSafeUrl(url) {
     if (typeof url !== "string") { return false; }
     if (url.length > 4096) { return false; }
     var canon = canonUrl(url);
     if (canon === "") { return true; } // empty / whitespace-only is a harmless reference
-    // Reject scheme-relative references in ANY slash mix — browsers normalise //, \\, /\
-    // and \/ all to a protocol-relative (off-origin) URL (Codex P1). Check the first two
-    // chars are both slashes of either kind.
+    // Defense-in-depth: reject scheme-relative references in ANY slash mix outright (//,
+    // \\, /\, \/ all normalise off-origin). A non-read-granted island has no reason to
+    // emit one, and read-granted egress is enforced below by origin.
     var c0 = canon.charAt(0), c1 = canon.charAt(1);
     if ((c0 === "/" || c0 === "\\") && (c1 === "/" || c1 === "\\")) { return false; }
-    // A scheme is [a-z][a-z0-9+.-]* ':' appearing before any '/', '?', '#'.
-    var m = /^([a-z][a-z0-9+.\-]*):/.exec(canon);
-    if (m) {
-      var before = canon.slice(0, m[1].length);
-      var hasPathSep = before.indexOf("/") >= 0 || before.indexOf("?") >= 0 || before.indexOf("#") >= 0;
-      if (!hasPathSep) {
-        var scheme = m[1];
-        return scheme === "https" || scheme === "http" || scheme === "mailto";
-      }
-    }
-    // No scheme => relative URL (path, query, fragment, or bare). Allowed.
-    return true;
+    // Assess the PARSED scheme — proper parsing, not pattern-matching.
+    var u = parseUrlAbs(url);
+    if (!u) { return false; } // unparseable => reject
+    return u.protocol === "https:" || u.protocol === "http:" || u.protocol === "mailto:";
   }
 
   // srcset is a comma-separated list of "url descriptor" — validate each URL.
@@ -839,24 +842,18 @@
     if (attr === "srcset") {
       var parts = String(url).split(",");
       for (var i = 0; i < parts.length; i++) {
-        var u = parts[i].trim().split(/\s+/)[0];
-        if (u && isRemoteUrl(u, "src")) { return true; }
+        var u0 = parts[i].trim().split(/\s+/)[0];
+        if (u0 && isRemoteUrl(u0, "src")) { return true; }
       }
       return false;
     }
-    // CANONICALISE first (Codex P1): the browser strips control/whitespace before
-    // resolving, so `h\tttps://evil` is a cross-origin request — the egress check MUST see
-    // the canonical form, not the raw trim()med string, or it under-detects remote.
-    var s = canonUrl(String(url));
-    // Any non-http(s) scheme (mailto:, etc.) is an egress channel for a read-granted
-    // island (it can encode a subscribed value); the egress-taint rule (CON-5007)
-    // restricts such an island to same-origin/relative URLs only.
-    if (/^[a-z][a-z0-9+.\-]*:/.test(s) && !/^https?:/.test(s)) { return true; }
-    if (!/^https?:/.test(s)) { return false; } // relative => not remote
-    try {
-      var resolved = new URL(s, glob.location ? glob.location.href : "https://example.invalid/");
-      return !!(glob.location && resolved.origin !== glob.location.origin);
-    } catch (_e) { return true; } // unparseable absolute => treat as remote (reject)
+    // Parse-and-assess (no regex on the raw string). Unparseable => remote (reject).
+    var u = parseUrlAbs(url);
+    if (!u) { return true; }
+    // mailto: / any non-http(s) scheme is an egress channel for a read-granted island.
+    if (u.protocol !== "http:" && u.protocol !== "https:") { return true; }
+    // http(s): remote iff it resolves to a different origin than the page.
+    return !(glob.location && u.origin === glob.location.origin);
   }
 
   // paintTree: build DOM ONLY from a declarative tree and replace hostEl's painted
