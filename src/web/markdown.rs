@@ -4,7 +4,24 @@ use std::sync::OnceLock;
 use pulldown_cmark::{CowStr, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use regex::Regex;
 
+use crate::scanner::normalize_page_name;
 use crate::web::html::{html_escape, urlencoding};
+
+/// Look up a wikilink target in a name-keyed map using the same equivalence
+/// the scanner / graph resolver uses: case-insensitive with hyphens,
+/// underscores and spaces treated as interchangeable (`normalize_page_name`).
+///
+/// The slug map (and denied-pages map) is keyed by the kebab file stem, e.g.
+/// `gender-based-violence`, while a prose link writes the natural title
+/// `[[Gender-Based Violence]]`. A bare `eq_ignore_ascii_case` compares `-`
+/// against ` ` and misses, dropping multi-word links into the dead-link
+/// branch even though `zetl check` and the nav resolve them (issue #66).
+fn lookup_normalized<'a, V>(map: &'a HashMap<String, V>, page: &str) -> Option<&'a V> {
+    let target = normalize_page_name(page);
+    map.iter()
+        .find(|(k, _)| normalize_page_name(k) == target)
+        .map(|(_, v)| v)
+}
 
 /// GitHub-style heading slug: lower-case, non-alphanumerics collapsed to
 /// `-`, edges trimmed. Unicode letters and digits are preserved; other
@@ -403,10 +420,7 @@ fn replace_wikilinks_in_segment_preview(
         };
         let page = target.split('#').next().unwrap_or(target).trim();
         let display = html_escape(display.trim());
-        let slug = slug_map
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(page))
-            .map(|(_, v)| v.as_str());
+        let slug = lookup_normalized(slug_map, page).map(|v| v.as_str());
 
         if let Some(slug) = slug {
             format!(
@@ -561,11 +575,10 @@ fn replace_wikilinks_in_segment(
         let page = target.split('#').next().unwrap_or(target).trim();
         let fragment = link_fragment(target);
         let display = html_escape(display.trim());
-        // Look up slug by case-insensitive page name match
-        let slug = slug_map
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(page))
-            .map(|(_, v)| v.as_str());
+        // Look up slug by normalized page-name match (case-insensitive, with
+        // hyphens/underscores/spaces equivalent) so multi-word targets resolve
+        // the same way the graph resolver / `zetl check` do (issue #66).
+        let slug = lookup_normalized(slug_map, page).map(|v| v.as_str());
 
         if let Some(slug) = slug {
             format!(
@@ -755,16 +768,10 @@ fn replace_wikilinks_visibility_segment(
         let fragment = link_fragment(target);
         let display = html_escape(display.trim());
 
-        // Check if page is denied (case-insensitive lookup)
-        let denied_style = denied_pages
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(page))
-            .map(|(_, v)| *v);
+        // Check if page is denied (normalized page-name lookup)
+        let denied_style = lookup_normalized(denied_pages, page).copied();
 
-        let slug = slug_map
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(page))
-            .map(|(_, v)| v.as_str());
+        let slug = lookup_normalized(slug_map, page).map(|v| v.as_str());
 
         if let Some(style) = denied_style {
             let href_slug = slug.unwrap_or(page);
@@ -1031,6 +1038,63 @@ mod tests {
         let html = render_to_html("See [[Target]] here", &slug_map, "/", "");
         assert!(html.contains(r#"href="/folder/target/""#));
         assert!(html.contains("link-primary"));
+    }
+
+    #[test]
+    fn issue66_multiword_target_resolves_against_kebab_slug_key() {
+        // Regression for issue #66: the slug_map is keyed by the kebab file
+        // stem (e.g. "gender-based-violence"), but prose writes the natural
+        // title "[[Gender-Based Violence]]". Normalized matching must resolve
+        // it to a live primary link, not the raw-title dead-link branch.
+        let mut slug_map = HashMap::new();
+        slug_map.insert(
+            "gender-based-violence".to_string(),
+            "concepts/gender-based-violence".to_string(),
+        );
+        let html = render_to_html(
+            "A study of [[Gender-Based Violence]] here.",
+            &slug_map,
+            "/",
+            "",
+        );
+        assert!(
+            html.contains(r#"href="/concepts/gender-based-violence/""#),
+            "expected resolved slug href, got: {html}"
+        );
+        assert!(html.contains("link link-primary wikilink"));
+        // Must NOT fall to the dead-link branch with a raw-title href.
+        assert!(!html.contains("wikilink-dead"));
+        assert!(!html.contains("Gender-Based%20Violence"));
+    }
+
+    #[test]
+    fn issue66_multiword_predicate_link_resolves() {
+        // The `predicate::[[Multi Word Title]]` form must resolve the same way.
+        let mut slug_map = HashMap::new();
+        slug_map.insert(
+            "gender-based-violence".to_string(),
+            "concepts/gender-based-violence".to_string(),
+        );
+        let html = render_to_html("- addresses::[[Gender-Based Violence]]", &slug_map, "/", "");
+        assert!(
+            html.contains(r#"class="link link-primary wikilink">Gender-Based Violence</a>"#),
+            "expected live primary link, got: {html}"
+        );
+        assert!(!html.contains("wikilink-dead"));
+    }
+
+    #[test]
+    fn issue66_multiword_aliased_link_resolves() {
+        // Pipe-aliased multi-word target must resolve too.
+        let mut slug_map = HashMap::new();
+        slug_map.insert(
+            "reporting-apps".to_string(),
+            "concepts/reporting-apps".to_string(),
+        );
+        let html = render_to_html("See [[Reporting Apps|the apps]] here", &slug_map, "/", "");
+        assert!(html.contains(r#"href="/concepts/reporting-apps/""#));
+        assert!(html.contains("link-primary"));
+        assert!(!html.contains("wikilink-dead"));
     }
 
     #[test]
