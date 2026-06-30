@@ -1,0 +1,156 @@
+; =============================================================================
+; Fix Issue #66 — multi-word inline/predicate wikilinks render as dead links
+; =============================================================================
+;
+; `zetl build` emits multi-word inline / predicate wikilinks as dead links
+; (`class="link-error wikilink wikilink-dead"`, href built from the raw page
+; title e.g. `Gender-Based%20Violence/index.html`) even though `zetl check`,
+; `zetl links` and the graph nav all resolve them correctly.
+;
+; ROOT CAUSE: `slug_map` lookups in src/web/markdown.rs match the *raw*
+; wikilink target against keys (file stems / page names) with only
+; `eq_ignore_ascii_case`. For a target like "Gender-Based Violence" vs key
+; "gender-based-violence" the comparison fails on '-' vs ' ', so control falls
+; to the dead-link branch. The scanner/graph resolver normalises via
+; `normalize_page_name` (lowercase + hyphen/underscore→space) before matching,
+; which is why the two paths disagree.
+;
+; FIX: make the three markdown slug_map lookups (and the denied-pages lookup)
+; use the same `normalize_page_name` equivalence the resolver uses.
+
+(meta plan
+  (title "Fix Issue #66 — multi-word wikilink dead links")
+  (status "active")
+  (created "2026-06-30"))
+
+; --- AGENTS ---
+(given agent-dev-available)
+
+; --- TASKS ---
+(given task-repro)
+(given task-fix)
+(given task-test)
+(given task-verify)
+
+; --- TASK METADATA ---
+(meta task-repro
+  (description "Confirm the root cause: slug_map lookup in src/web/markdown.rs uses eq_ignore_ascii_case on the raw, un-slugified wikilink target, while scanner::normalize_page_name (lowercase + hyphen/underscore->space) is the canonical equivalence used by the graph resolver and zetl check.")
+  (acceptance "All three slug_map lookup sites identified (preview ~408, main ~567, visibility-aware ~766) plus the denied-pages lookup ~761; normalize_page_name confirmed reachable from the web module."))
+(meta task-fix
+  (description "Replace the raw eq_ignore_ascii_case matches against slug_map keys with a normalized comparison using scanner::normalize_page_name, so multi-word / mixed-separator targets resolve to the same slug the graph nav uses. Apply consistently to the preview, main, and visibility-aware renderers (and denied-page lookup) to avoid divergence.")
+  (acceptance "Code compiles; multi-word target [[Gender-Based Violence]] resolves to class=\"link link-primary wikilink\" with href to the resolved slug path, not the raw title; cargo fmt clean."))
+(meta task-test
+  (description "Add regression unit tests alongside the existing wikilink_* tests in src/web/markdown.rs: a multi-word, space-containing target whose slug_map key is the kebab file stem must render as a live primary link; also cover the predicate:: form and the pipe-alias form.")
+  (acceptance "New tests fail before the fix and pass after; assert resolved href + link-primary class, not wikilink-dead."))
+(meta task-verify
+  (description "Run the full markdown/web test suite (cargo test, cargo fmt --check, cargo clippy) and confirm no regression in single-token / already-kebab links. Commit the fix on the new branch.")
+  (acceptance "cargo test passes, fmt + clippy clean, single-token wikilinks still resolve, change committed."))
+
+; --- DEPENDENCIES ---
+(given no-deps-repro)
+
+; --- READINESS RULES ---
+(normally r-ready-repro
+  (and task-repro no-deps-repro)
+  ready-repro)
+
+(normally r-ready-fix
+  completed-repro
+  ready-fix)
+
+(normally r-ready-test
+  completed-fix
+  ready-test)
+
+(normally r-ready-verify
+  (and completed-fix completed-test)
+  ready-verify)
+
+; --- ASSIGNMENT RULES ---
+(normally r-assign-repro
+  (and ready-repro agent-dev-available)
+  assign-to-repro-dev)
+
+(normally r-assign-fix
+  (and ready-fix agent-dev-available)
+  assign-to-fix-dev)
+
+(normally r-assign-test
+  (and ready-test agent-dev-available)
+  assign-to-test-dev)
+
+(normally r-assign-verify
+  (and ready-verify agent-dev-available)
+  assign-to-verify-dev)
+
+(claims agent:dev
+  :at "2026-06-30T07:37:29Z"
+  (given claim-v1-repro)
+  (normally r-cl-state-v1-repro claim-v1-repro state-claimed-v1-repro)
+  (normally r-cl-chain-v1-repro state-claimed-v1-repro claimed-repro)
+)
+
+;; Propagation rules: failures in 'repro' block downstream tasks
+(normally r-propagate-fix-from-repro-failed failed-repro upstream-blocked-fix)
+(normally r-propagate-fix-from-repro-permanently-failed permanently-failed-repro upstream-blocked-fix)
+(normally r-propagate-fix-from-repro-stale-v1 stale-v1-repro upstream-blocked-fix)
+(normally r-propagate-fix-from-repro-timeout-v1 timeout-v1-repro upstream-blocked-fix)
+(normally r-propagate-fix-from-repro-blocked upstream-blocked-repro upstream-blocked-fix)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-test-from-fix-blocked upstream-blocked-fix upstream-blocked-test)
+(normally r-propagate-verify-from-fix-blocked upstream-blocked-fix upstream-blocked-verify)
+(normally r-propagate-verify-from-test-blocked upstream-blocked-test upstream-blocked-verify)
+
+(claims agent:dev
+  :at "2026-06-30T07:37:29Z"
+  (given completed-repro))
+
+(claims agent:dev
+  :at "2026-06-30T07:37:33Z"
+  (given claim-v1-fix)
+  (normally r-cl-state-v1-fix claim-v1-fix state-claimed-v1-fix)
+  (normally r-cl-chain-v1-fix state-claimed-v1-fix claimed-fix)
+)
+
+;; Propagation rules: failures in 'fix' block downstream tasks
+(normally r-propagate-test-from-fix-failed failed-fix upstream-blocked-test)
+(normally r-propagate-test-from-fix-permanently-failed permanently-failed-fix upstream-blocked-test)
+(normally r-propagate-test-from-fix-stale-v1 stale-v1-fix upstream-blocked-test)
+(normally r-propagate-test-from-fix-timeout-v1 timeout-v1-fix upstream-blocked-test)
+(normally r-propagate-verify-from-fix-failed failed-fix upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-permanently-failed permanently-failed-fix upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-stale-v1 stale-v1-fix upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-timeout-v1 timeout-v1-fix upstream-blocked-verify)
+
+(claims agent:dev
+  :at "2026-06-30T07:39:30Z"
+  (given completed-fix))
+
+(claims agent:dev
+  :at "2026-06-30T07:39:30Z"
+  (given claim-v1-test)
+  (normally r-cl-state-v1-test claim-v1-test state-claimed-v1-test)
+  (normally r-cl-chain-v1-test state-claimed-v1-test claimed-test)
+)
+
+;; Propagation rules: failures in 'test' block downstream tasks
+(normally r-propagate-verify-from-test-failed failed-test upstream-blocked-verify)
+(normally r-propagate-verify-from-test-permanently-failed permanently-failed-test upstream-blocked-verify)
+(normally r-propagate-verify-from-test-stale-v1 stale-v1-test upstream-blocked-verify)
+(normally r-propagate-verify-from-test-timeout-v1 timeout-v1-test upstream-blocked-verify)
+
+(claims agent:dev
+  :at "2026-06-30T07:41:08Z"
+  (given completed-test))
+
+(claims agent:dev
+  :at "2026-06-30T07:41:08Z"
+  (given claim-v1-verify)
+  (normally r-cl-state-v1-verify claim-v1-verify state-claimed-v1-verify)
+  (normally r-cl-chain-v1-verify state-claimed-v1-verify claimed-verify)
+)
+
+(claims agent:dev
+  :at "2026-06-30T07:42:07Z"
+  (given completed-verify))
