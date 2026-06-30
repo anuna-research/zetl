@@ -461,9 +461,18 @@ fn replace_wikilinks_in_segment_preview(
 fn render_predicate_chips(html: String) -> String {
     static CHIP_RE: OnceLock<Regex> = OnceLock::new();
     let re = CHIP_RE.get_or_init(|| {
-        // (>) ( 1*( (snake|curie) "::" ) ) ( <a … wikilink … > )
+        // (>) ( 1*( (snake|curie) "::" ) ) ( <a … (wikilink|link-primary|link-error) … > )
+        //
+        // The anchor class is matched as `wikilink` OR the daisyUI link
+        // classes `link-primary` / `link-error`. First-class page links carry
+        // `wikilink`; transclusion-preview links (replace_wikilinks_in_segment_preview)
+        // deliberately omit `wikilink` to stay out of the transclusion-panel JS,
+        // so without the preview classes the chip pass would never match inside
+        // transclusion-card excerpts (#68). These daisyUI classes only ever
+        // appear on rewritten wikilinks — plain markdown links are emitted
+        // class-less — so this stays as precise as the wikilink-only anchor.
         Regex::new(
-            r#"(?P<b>>)(?P<run>(?:[a-z][a-z0-9_]*::|[a-z][a-z0-9]*:[A-Za-z][A-Za-z0-9_-]*::)+)(?P<a><a\b[^>]*\bwikilink\b)"#,
+            r#"(?P<b>>)(?P<run>(?:[a-z][a-z0-9_]*::|[a-z][a-z0-9]*:[A-Za-z][A-Za-z0-9_-]*::)+)(?P<a><a\b[^>]*\b(?:wikilink|link-primary|link-error)\b)"#,
         )
         .expect("invalid predicate-chip regex")
     });
@@ -1131,6 +1140,25 @@ mod tests {
         let html = render_to_html("- derived from::[[X]]", &slug_map, "/", "");
         assert!(!html.contains("zetl-edge-predicate"));
         assert!(html.contains("derived from::"));
+    }
+
+    #[test]
+    fn spec045_predicate_chip_renders_in_transclusion_preview() {
+        // #68: predicate runs must render as chips inside transclusion-card
+        // excerpts too. The preview rewriter emits links *without* the
+        // `wikilink` class (to keep them out of the transclusion-panel JS),
+        // so the chip pass must recognise the preview link classes as well.
+        let mut slug_map = HashMap::new();
+        slug_map.insert("Retro".to_string(), "retro".to_string());
+        let html = render_preview_html("- related_to::[[Retro]]", &slug_map, "/", "");
+        assert!(
+            html.contains(
+                r#"<span class="zetl-edge-predicate" data-predicate="related_to">Related to</span>"#
+            ),
+            "preview should chip the predicate, got: {html}"
+        );
+        // The raw `related_to::` text must NOT leak into the excerpt.
+        assert!(!html.contains("related_to::<a"));
     }
 
     #[test]

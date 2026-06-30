@@ -680,3 +680,58 @@ async fn sync_pull_against_non_git_dir_renders_error() {
         "expected sync error block for non-git directory; body={body}"
     );
 }
+
+// ── #69: static build must NOT emit the /_mobile/* sidebar drawer ───────────
+//
+// The mobile sidebar block is gated on the compile-time `mobile_mode` global
+// (cfg!(feature="mobile")). Before the fix it rendered into *every* output of a
+// mobile-feature binary — including `zetl build`, which bakes dead /_mobile/*
+// links into the static site where no such routes exist. The drawer is now also
+// gated on `mode != "build"`, so it appears only under the live embedded serve.
+
+#[test]
+fn build_mode_omits_mobile_drawer() {
+    use zetl::web::context::{StatsContext, VaultContext};
+    use zetl::web::engine::TemplateEngine;
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let vault_ctx = VaultContext {
+        predicates: Vec::new(),
+        name: "test".to_owned(),
+        pages: vec![],
+        sidebar_tree: vec![],
+        stats: StatsContext {
+            total_pages: 0,
+            total_links: 0,
+            dead_links: 0,
+            orphans: 0,
+        },
+        history: serde_json::Value::Null,
+        semantic_available: false,
+        site_url: String::new(),
+        feed_discovery: Vec::new(),
+        feed_json_enabled: false,
+        feed_paths: zetl::web::context::FeedPathsContext::default(),
+    };
+
+    let engine = TemplateEngine::new(tmp.path(), "default", false, false);
+
+    // Serve mode (the Tauri mobile shell): the drawer is meaningful and present.
+    let serve_html = engine
+        .render_index(&vault_ctx, "serve", "", "", "")
+        .unwrap();
+    assert!(
+        serve_html.contains("/_mobile/vaults"),
+        "serve mode should render the mobile drawer under feature=mobile"
+    );
+
+    // Build mode (static site): no live /_mobile/* routes exist, so the drawer
+    // must be omitted entirely.
+    let build_html = engine
+        .render_index(&vault_ctx, "build", "", "", "")
+        .unwrap();
+    assert!(
+        !build_html.contains("/_mobile/"),
+        "build mode must NOT emit /_mobile/* links; got: {build_html}"
+    );
+}
