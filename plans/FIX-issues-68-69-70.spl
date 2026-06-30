@@ -1,0 +1,129 @@
+;; Fix plan for Codeberg issues #68, #69, #70 (web/build defects)
+(meta plan
+  (id "FIX-issues-68-69-70")
+  (title "Fix web defects #68 (predicate chips in previews), #69 (dead mobile drawer in static build), #70 (sidebar URL compounding)")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-06-30")
+  (author "agent:claude")
+  (description "Three independent web-output bugs. #68: predicate `related_to::` runs show as raw text inside transclusion-card excerpts because render_predicate_chips anchors its regex on the `wikilink` class, but the preview rewriter deliberately omits that class — so the chip pass never matches preview links. #69: the mobile sidebar drawer (Vaults/Capture/Sync/Recovery → /_mobile/*) is gated only on the compile-time `mobile_mode` global (cfg!(feature=\"mobile\")), so a mobile-feature binary running `zetl build` emits dead /_mobile/* links into the static site. #70: spa.js keeps the sidebar persistent across pushState but the sidebar links use page-relative root_path hrefs; after navigation the document base is deeper, so those stale relative hrefs compound the path on the next click."))
+
+;; Single agent
+(given agent-claude-available)
+
+;; ============================================================
+;; #68 — predicate chips never render inside transclusion previews
+;; ============================================================
+(given task-fix-68-predicate-chips)
+(given no-deps-fix-68-predicate-chips)
+(meta task-fix-68-predicate-chips
+  (description "In src/web/markdown.rs, generalize the render_predicate_chips CHIP_RE anchor so it matches preview-style links (class=\"link link-primary\" / \"link-error\", emitted by replace_wikilinks_in_segment_preview without the `wikilink` class) in addition to first-class `wikilink` anchors. Keep it precise: only those daisyUI link classes appear on wikilinks, never on plain markdown links. Add a unit test in the markdown.rs test module that renders a list-item named edge through render_preview_html and asserts the output contains a zetl-edge-predicate chip span.")
+  (acceptance "New preview-chip unit test passes; existing spec045_* chip tests still pass; a `related_to:: [[Page]]` list item inside a transclusion preview renders a styled chip, not raw `related_to::` text."))
+
+;; ============================================================
+;; #69 — static build emits dead /_mobile/* drawer
+;; ============================================================
+(given task-fix-69-mobile-build)
+(given no-deps-fix-69-mobile-build)
+(meta task-fix-69-mobile-build
+  (description "In themes/default/base.html, gate the SPEC-040 mobile-mode sidebar block on `mobile_mode and mode != \"build\"` so the /_mobile/* drawer renders only under the embedded serve (Tauri mobile shell), never in static build output. The `mode` template global is already in every render context. Add a regression test (under cfg(feature=\"mobile\") in tests/mobile_integration.rs, or an equivalent build-output assertion) confirming a build-mode render omits /_mobile/ while a serve-mode render keeps it.")
+  (acceptance "Build-mode HTML contains no `/_mobile/` links even when compiled with --features mobile; serve-mode still renders the mobile drawer; cargo test passes in both feature flavours."))
+
+;; ============================================================
+;; #70 — sidebar relative links compound the URL across SPA nav
+;; ============================================================
+(given task-fix-70-spa-freeze)
+(given no-deps-fix-70-spa-freeze)
+(meta task-fix-70-spa-freeze
+  (description "In themes/default/static/spa.js, freeze persistent-shell links to absolute URLs on mount (before any pushState), while the document base still matches the page they were rendered for. Query a[href] outside [data-zetl-volatile], skip pure-hash links, and pin each to its browser-resolved absolute href so a later pushState to a deeper page can't shift their resolution. Links inside the volatile region are left untouched — they are re-rendered per navigation with the correct root_path. Add a node DOM-stub test (tests/js/spa_navigation.test.mjs + tests/spa_js.rs wrapper, mirroring islands_js.rs) proving frozen shell links resolve identically after a simulated deeper pushState while an un-frozen volatile link would compound.")
+  (acceptance "Node spa test passes: frozen shell-link resolution is invariant under a deeper pushState; volatile-region links are not frozen. cargo test --test spa_js passes (or skips cleanly when node is absent)."))
+
+;; ============================================================
+;; VERIFICATION
+;; ============================================================
+(given task-verify)
+(meta task-verify
+  (description "Run cargo build, cargo test, cargo test --features mobile (mobile regression), and the node JS suite to confirm all three fixes land with no regressions.")
+  (acceptance "cargo build + cargo test green; mobile-feature test green; node spa + islands tests green or cleanly skipped."))
+
+;; ── Readiness rules ────────────────────────────────────────────
+(normally r-ready-68 (and task-fix-68-predicate-chips no-deps-fix-68-predicate-chips) ready-fix-68-predicate-chips)
+(normally r-ready-69 (and task-fix-69-mobile-build no-deps-fix-69-mobile-build) ready-fix-69-mobile-build)
+(normally r-ready-70 (and task-fix-70-spa-freeze no-deps-fix-70-spa-freeze) ready-fix-70-spa-freeze)
+(normally r-ready-verify
+  (and task-verify
+       completed-fix-68-predicate-chips
+       completed-fix-69-mobile-build
+       completed-fix-70-spa-freeze)
+  ready-verify)
+
+;; ── Assignment rules ───────────────────────────────────────────
+(normally r-a1 (and ready-fix-68-predicate-chips agent-claude-available) assign-to-fix-68-predicate-chips-claude)
+(normally r-a2 (and ready-fix-69-mobile-build agent-claude-available) assign-to-fix-69-mobile-build-claude)
+(normally r-a3 (and ready-fix-70-spa-freeze agent-claude-available) assign-to-fix-70-spa-freeze-claude)
+(normally r-a4 (and ready-verify agent-claude-available) assign-to-verify-claude)
+
+(claims agent:claude
+  :at "2026-06-30T09:36:02Z"
+  (given claim-v1-fix-68-predicate-chips)
+  (normally r-cl-state-v1-fix-68-predicate-chips claim-v1-fix-68-predicate-chips state-claimed-v1-fix-68-predicate-chips)
+  (normally r-cl-chain-v1-fix-68-predicate-chips state-claimed-v1-fix-68-predicate-chips claimed-fix-68-predicate-chips)
+)
+
+;; Propagation rules: failures in 'fix-68-predicate-chips' block downstream tasks
+(normally r-propagate-verify-from-fix-68-predicate-chips-failed failed-fix-68-predicate-chips upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-68-predicate-chips-permanently-failed permanently-failed-fix-68-predicate-chips upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-68-predicate-chips-stale-v1 stale-v1-fix-68-predicate-chips upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-68-predicate-chips-timeout-v1 timeout-v1-fix-68-predicate-chips upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-68-predicate-chips-blocked upstream-blocked-fix-68-predicate-chips upstream-blocked-verify)
+
+(claims agent:claude
+  :at "2026-06-30T09:36:02Z"
+  (given completed-fix-68-predicate-chips))
+
+(claims agent:claude
+  :at "2026-06-30T09:38:59Z"
+  (given claim-v1-fix-69-mobile-build)
+  (normally r-cl-state-v1-fix-69-mobile-build claim-v1-fix-69-mobile-build state-claimed-v1-fix-69-mobile-build)
+  (normally r-cl-chain-v1-fix-69-mobile-build state-claimed-v1-fix-69-mobile-build claimed-fix-69-mobile-build)
+)
+
+;; Propagation rules: failures in 'fix-69-mobile-build' block downstream tasks
+(normally r-propagate-verify-from-fix-69-mobile-build-failed failed-fix-69-mobile-build upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-69-mobile-build-permanently-failed permanently-failed-fix-69-mobile-build upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-69-mobile-build-stale-v1 stale-v1-fix-69-mobile-build upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-69-mobile-build-timeout-v1 timeout-v1-fix-69-mobile-build upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-69-mobile-build-blocked upstream-blocked-fix-69-mobile-build upstream-blocked-verify)
+
+(claims agent:claude
+  :at "2026-06-30T09:38:59Z"
+  (given completed-fix-69-mobile-build))
+
+(claims agent:claude
+  :at "2026-06-30T09:41:43Z"
+  (given claim-v1-fix-70-spa-freeze)
+  (normally r-cl-state-v1-fix-70-spa-freeze claim-v1-fix-70-spa-freeze state-claimed-v1-fix-70-spa-freeze)
+  (normally r-cl-chain-v1-fix-70-spa-freeze state-claimed-v1-fix-70-spa-freeze claimed-fix-70-spa-freeze)
+)
+
+;; Propagation rules: failures in 'fix-70-spa-freeze' block downstream tasks
+(normally r-propagate-verify-from-fix-70-spa-freeze-failed failed-fix-70-spa-freeze upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-70-spa-freeze-permanently-failed permanently-failed-fix-70-spa-freeze upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-70-spa-freeze-stale-v1 stale-v1-fix-70-spa-freeze upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-70-spa-freeze-timeout-v1 timeout-v1-fix-70-spa-freeze upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-70-spa-freeze-blocked upstream-blocked-fix-70-spa-freeze upstream-blocked-verify)
+
+(claims agent:claude
+  :at "2026-06-30T09:41:43Z"
+  (given completed-fix-70-spa-freeze))
+
+(claims agent:claude
+  :at "2026-06-30T09:41:43Z"
+  (given claim-v1-verify)
+  (normally r-cl-state-v1-verify claim-v1-verify state-claimed-v1-verify)
+  (normally r-cl-chain-v1-verify state-claimed-v1-verify claimed-verify)
+)
+
+(claims agent:claude
+  :at "2026-06-30T09:55:47Z"
+  (given completed-verify))

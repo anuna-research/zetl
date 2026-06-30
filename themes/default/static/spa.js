@@ -38,6 +38,29 @@
     catch (e) { return false; }
   }
 
+  /* Persistent-shell links (sidebar, vault actions, wordmark) are rendered
+     once with page-relative root_path hrefs (build mode: `../`, `../../`, …).
+     SPA pushState changes the document location without re-rendering the shell,
+     so on the next click those stale relative hrefs would resolve against an
+     ever-deeper base and compound the path (#70). Pin them to absolute URLs
+     now — while the document base still matches the page they were rendered
+     for — so later pushState navigations can't shift their resolution.
+     Links inside [data-zetl-volatile] are left untouched: they are swapped per
+     navigation with markup built for the new page's correct root_path. */
+  function freezeShellLinks() {
+    var nodes = document.querySelectorAll('a[href]');
+    for (var i = 0; i < nodes.length; i++) {
+      var a = nodes[i];
+      if (a.closest && a.closest(VOLATILE)) continue;
+      var raw = a.getAttribute('href');
+      if (!raw || raw[0] === '#') continue;
+      /* a.href is the browser-resolved absolute against the still-correct
+         base; writing it back as the literal href pins it. */
+      a.setAttribute('href', a.href);
+    }
+  }
+  freezeShellLinks();
+
   function runScripts(root) {
     /* Inline + same-origin <script> tags in swapped content don't execute on
        innerHTML replace — clone + re-insert so the browser runs them. */

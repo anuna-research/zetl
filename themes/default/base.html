@@ -205,8 +205,14 @@
             embedded serve is part of the Tauri Mobile shell (the global
             `mobile_mode` is set by engine.rs gated on feature=mobile).
             `data-zetl-spa="off"` forces a full page load because the
-            `/_mobile/*` routes are outside the SPA shell. -#}
-        {%- if mobile_mode %}
+            `/_mobile/*` routes are outside the SPA shell.
+
+            Also gated on `mode != "build"`: `mobile_mode` is a compile-time
+            flag, so a mobile-feature binary running `zetl build` would
+            otherwise bake these `/_mobile/*` links into the *static* site,
+            where no such routes exist (#69). The drawer is meaningful only
+            under the live embedded serve. -#}
+        {%- if mobile_mode and mode != "build" %}
         <nav class="zetl-actions" aria-label="Mobile">
           <p class="zetl-actions-heading">Mobile</p>
           <a href="/_mobile/vaults" data-zetl-spa="off" class="zetl-action">
