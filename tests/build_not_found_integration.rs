@@ -114,8 +114,7 @@ fn built_documents_carry_body_data_slug() {
         "page document should claim its own slug on <body>"
     );
 
-    let nested =
-        fs::read_to_string(out.join("notes/world/index.html")).expect("nested page");
+    let nested = fs::read_to_string(out.join("notes/world/index.html")).expect("nested page");
     assert_eq!(
         body_data_slug(&nested),
         "notes/world",
@@ -147,8 +146,7 @@ fn shell_css_has_dark_scheme_tokens() {
     let dir = TempDir::new().expect("create temp dir");
     let out = build_vault(&dir);
 
-    let css =
-        fs::read_to_string(out.join("_static/shell.css")).expect("dist/_static/shell.css");
+    let css = fs::read_to_string(out.join("_static/shell.css")).expect("dist/_static/shell.css");
     assert!(
         css.contains("@media (prefers-color-scheme: dark)"),
         "shell.css must carry a dark-scheme override block"
