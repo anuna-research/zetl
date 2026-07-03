@@ -1,0 +1,126 @@
+;; Fix plan for Codeberg issues #72, #73 (web/build defects)
+(meta plan
+  (id "FIX-issues-72-73")
+  (title "Fix web defects #72 (dark-on-dark predicate chips + graph under OS dark mode), #73 (SPA host-404-fallback masking + missing 404.html)")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-07-03")
+  (author "agent:claude")
+  (description "Two independent web-output bugs. #72: the default theme's predicate chips (.zetl-edge-predicate) hardcode near-black rgba colours and the --zetl-graph-*/--zetl-shell-* tokens read by graph-boot.js are never defined, so under OS-enforced prefers-color-scheme: dark (which the compiled daisyUI base theme DOES follow for the page background) the chips and the graph labels/surfaces render dark-on-dark and illegible. #73: spa.js navigate() only checks r.ok, and zetl build emits no 404.html — on a static host with SPA-style 404 fallback (Cloudflare Pages without a 404.html serves /index.html with HTTP 200 for every unknown path) any broken link silently swaps the homepage in under the phantom URL, with pushState keeping the wrong address. The two zetl-side gaps compound: no per-document identity to verify against, and no file whose presence would keep the host honest."))
+
+;; Single agent
+(given agent-claude-available)
+
+;; ============================================================
+;; #72 — dark-on-dark chips and graph under prefers-color-scheme: dark
+;; ============================================================
+(given task-fix-72-dark-scheme)
+(given no-deps-fix-72-dark-scheme)
+(meta task-fix-72-dark-scheme
+  (description "In themes/default/static/shell.css: (1) derive .zetl-edge-predicate colours (and the a.wikilink.wl-active highlight, same root cause) from the theme's base-content variable — oklch(var(--bc) / alpha) — instead of literal rgba black, so the chip tracks whatever colour scheme the compiled base theme resolves to; (2) define the previously-undefined --zetl-shell-surface/--zetl-shell-border and --zetl-graph-node/-dead/-faded/-active/--zetl-graph-edge/-dead/-faded/--zetl-graph-label tokens at :root with light values mirroring the old JS/CSS fallbacks, plus a @media (prefers-color-scheme: dark) :root block carrying dark values. graph-boot.js already re-reads the palette on a prefers-color-scheme change, so a live graph restyles without reload. Sigma cannot parse oklch(var(--bc)) strings, hence literal colours for the graph tokens; themes pinning a light appearance can redeclare the vars (REQ-114 override mechanism).")
+  (acceptance "Built _static/shell.css contains a @media (prefers-color-scheme: dark) block defining each --zetl-graph-*/--zetl-shell-* token a second time; .zetl-edge-predicate colours reference var(--bc) and contain no hardcoded black; regression test shell_css_has_dark_scheme_tokens (tests/build_not_found_integration.rs) passes."))
+
+;; ============================================================
+;; #73 — SPA fallback masking + missing 404.html
+;; ============================================================
+(given task-fix-73-spa-verify)
+(given no-deps-fix-73-spa-verify)
+(meta task-fix-73-spa-verify
+  (description "Give every document rendered through base.html a self-identification marker (<body data-slug=\"{{ active_slug }}\">) and verify it in spa.js before swapping: derive the URL's path stem (pathname minus trailing /index.html, .html, slashes), require it to end with '/' + the claimed slug (optionally + /_history for the page-history route), and accept empty-slug claims only at the site root located at boot from the current known-correct document; on mismatch, location.href = url (hard navigation) so the host's real 404/redirect behaviour stays visible. Docs without the marker (custom vault templates) are exempt. Prerequisite context fixes in engine.rs: folder pages claim folder_ctx.slug and the vault-history page claims \"_history\" instead of \"\" — an empty claim would be indistinguishable from a host's homepage fallback and would force hard navigation on every folder click.")
+  (acceptance "Node DOM-stub test tests/js/spa_fallback.test.mjs (wrapper spa_js.rs::spa_js_fallback_host_masking_detected) passes: fallback homepage doc at a phantom URL hard-navigates without swapping; matching page, site-root, marker-less, and page-history navigations all still swap. Existing #70 spa test unaffected."))
+
+(given task-fix-73-build-404)
+(given no-deps-fix-73-build-404)
+(meta task-fix-73-build-404
+  (description "Emit dist/404.html from zetl build so static hosts don't switch to SPA-fallback mode. New themes/default/404.html template (extends base.html, overridable from .zetl/themes/<theme>/404.html) rendered by TemplateEngine::render_not_found with root_path=\"/\" — absolute asset/link URLs, because a 404 document is served at arbitrary path depths where page-relative ../ chains cannot resolve. Known ceiling: deployments under a sub-path get a correct 404 status but unstyled chrome (documented in the template header).")
+  (acceptance "zetl build writes dist/404.html containing the not-found message, an absolute /_static/shell.css reference, and an empty data-slug body claim; tests build_emits_404_html and built_documents_carry_body_data_slug (tests/build_not_found_integration.rs) pass."))
+
+;; ============================================================
+;; VERIFICATION
+;; ============================================================
+(given task-verify)
+(meta task-verify
+  (description "Run cargo test (full default-feature suite) plus the node JS suites (spa_fallback, spa_navigation) to confirm both fixes land with no regressions, and spot-check a scratch zetl build for 404.html content and per-document data-slug claims.")
+  (acceptance "cargo test green (3310 tests); both node spa suites green or cleanly skipped; scratch build inspection matches expectations."))
+
+;; ── Readiness rules ────────────────────────────────────────────
+(normally r-ready-72 (and task-fix-72-dark-scheme no-deps-fix-72-dark-scheme) ready-fix-72-dark-scheme)
+(normally r-ready-73-spa (and task-fix-73-spa-verify no-deps-fix-73-spa-verify) ready-fix-73-spa-verify)
+(normally r-ready-73-404 (and task-fix-73-build-404 no-deps-fix-73-build-404) ready-fix-73-build-404)
+(normally r-ready-verify
+  (and task-verify
+       completed-fix-72-dark-scheme
+       completed-fix-73-spa-verify
+       completed-fix-73-build-404)
+  ready-verify)
+
+;; ── Assignment rules ───────────────────────────────────────────
+(normally r-a1 (and ready-fix-72-dark-scheme agent-claude-available) assign-to-fix-72-dark-scheme-claude)
+(normally r-a2 (and ready-fix-73-spa-verify agent-claude-available) assign-to-fix-73-spa-verify-claude)
+(normally r-a3 (and ready-fix-73-build-404 agent-claude-available) assign-to-fix-73-build-404-claude)
+(normally r-a4 (and ready-verify agent-claude-available) assign-to-verify-claude)
+
+(claims agent:claude
+  :at "2026-07-03T01:01:41Z"
+  (given claim-v1-fix-72-dark-scheme)
+  (normally r-cl-state-v1-fix-72-dark-scheme claim-v1-fix-72-dark-scheme state-claimed-v1-fix-72-dark-scheme)
+  (normally r-cl-chain-v1-fix-72-dark-scheme state-claimed-v1-fix-72-dark-scheme claimed-fix-72-dark-scheme)
+)
+
+;; Propagation rules: failures in 'fix-72-dark-scheme' block downstream tasks
+(normally r-propagate-verify-from-fix-72-dark-scheme-failed failed-fix-72-dark-scheme upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-72-dark-scheme-permanently-failed permanently-failed-fix-72-dark-scheme upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-72-dark-scheme-stale-v1 stale-v1-fix-72-dark-scheme upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-72-dark-scheme-timeout-v1 timeout-v1-fix-72-dark-scheme upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-72-dark-scheme-blocked upstream-blocked-fix-72-dark-scheme upstream-blocked-verify)
+
+(claims agent:claude
+  :at "2026-07-03T01:01:41Z"
+  (given completed-fix-72-dark-scheme))
+
+(claims agent:claude
+  :at "2026-07-03T01:01:41Z"
+  (given claim-v1-fix-73-spa-verify)
+  (normally r-cl-state-v1-fix-73-spa-verify claim-v1-fix-73-spa-verify state-claimed-v1-fix-73-spa-verify)
+  (normally r-cl-chain-v1-fix-73-spa-verify state-claimed-v1-fix-73-spa-verify claimed-fix-73-spa-verify)
+)
+
+;; Propagation rules: failures in 'fix-73-spa-verify' block downstream tasks
+(normally r-propagate-verify-from-fix-73-spa-verify-failed failed-fix-73-spa-verify upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-73-spa-verify-permanently-failed permanently-failed-fix-73-spa-verify upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-73-spa-verify-stale-v1 stale-v1-fix-73-spa-verify upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-73-spa-verify-timeout-v1 timeout-v1-fix-73-spa-verify upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-73-spa-verify-blocked upstream-blocked-fix-73-spa-verify upstream-blocked-verify)
+
+(claims agent:claude
+  :at "2026-07-03T01:01:41Z"
+  (given completed-fix-73-spa-verify))
+
+(claims agent:claude
+  :at "2026-07-03T01:01:41Z"
+  (given claim-v1-fix-73-build-404)
+  (normally r-cl-state-v1-fix-73-build-404 claim-v1-fix-73-build-404 state-claimed-v1-fix-73-build-404)
+  (normally r-cl-chain-v1-fix-73-build-404 state-claimed-v1-fix-73-build-404 claimed-fix-73-build-404)
+)
+
+;; Propagation rules: failures in 'fix-73-build-404' block downstream tasks
+(normally r-propagate-verify-from-fix-73-build-404-failed failed-fix-73-build-404 upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-73-build-404-permanently-failed permanently-failed-fix-73-build-404 upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-73-build-404-stale-v1 stale-v1-fix-73-build-404 upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-73-build-404-timeout-v1 timeout-v1-fix-73-build-404 upstream-blocked-verify)
+(normally r-propagate-verify-from-fix-73-build-404-blocked upstream-blocked-fix-73-build-404 upstream-blocked-verify)
+
+(claims agent:claude
+  :at "2026-07-03T01:01:41Z"
+  (given completed-fix-73-build-404))
+
+(claims agent:claude
+  :at "2026-07-03T01:01:41Z"
+  (given claim-v1-verify)
+  (normally r-cl-state-v1-verify claim-v1-verify state-claimed-v1-verify)
+  (normally r-cl-chain-v1-verify state-claimed-v1-verify claimed-verify)
+)
+
+(claims agent:claude
+  :at "2026-07-03T01:01:41Z"
+  (given completed-verify))

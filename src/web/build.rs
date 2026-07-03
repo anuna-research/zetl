@@ -1335,6 +1335,16 @@ pub fn build_static(
     std::fs::create_dir_all(&help_dir)?;
     std::fs::write(help_dir.join("index.html"), help_html)?;
 
+    // ── 404.html (#73) ──────────────────────────────────────────────────
+    // Its presence keeps static hosts (Cloudflare Pages et al.) from
+    // switching to SPA-fallback mode, where every unknown path answers
+    // 200 + the homepage document and broken links are silently masked.
+    let not_found_html = engine.render_not_found(&vault_ctx, "build").map_err(|e| {
+        eprintln!("{}", e.stderr_line("404"));
+        anyhow::anyhow!("{e}")
+    })?;
+    std::fs::write(out.join("404.html"), not_found_html)?;
+
     // ── per-page HTML ───────────────────────────────────────────────────
     //
     // PERF-BUILD-2026-05-12 / task `parallel-page-render`:
