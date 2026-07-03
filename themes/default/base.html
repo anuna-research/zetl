@@ -76,7 +76,11 @@
   {# Child templates can still inject per-page CSS via the `styles` block. #}
   <style>{% block styles %}{% endblock %}</style>
 </head>
-<body class="min-h-screen bg-base-100" data-placement="{{ graph_placement | default('docked') }}">
+{# data-slug is the document's self-identification: graph-boot.js reads it to
+   highlight the active node, and spa.js compares it against the URL it
+   fetched so a host's SPA-style 404 fallback (200 + homepage HTML for any
+   unknown path) can't be swapped in as if it were the requested page (#73). #}
+<body class="min-h-screen bg-base-100" data-slug="{{ active_slug | default('') }}" data-placement="{{ graph_placement | default('docked') }}">
 
   {# SPEC-028 REQ-116: persistent graph widget. Lives outside <main> so that
      when the SPA navigation shell swaps content (REQ-113), the Sigma.js

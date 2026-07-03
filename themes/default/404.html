@@ -1,0 +1,35 @@
+{# themes/default/404.html — not-found page (#73).
+
+   `zetl build` emits this as dist/404.html so static hosts that key SPA
+   fallback off the file's absence (e.g. Cloudflare Pages serves
+   /index.html with HTTP 200 for every unknown path when no 404.html is
+   uploaded) return an honest 404 instead — which both full page loads and
+   spa.js's `r.ok` check can see.
+
+   Rendered with root_path = "/" (absolute), not the usual page-relative
+   ../ chain: a 404 page is served at arbitrary path depths, so relative
+   asset and link URLs cannot resolve. This assumes the site is deployed
+   at the domain root; deployments under a sub-path get a correct 404
+   status but unstyled chrome, and can override this template from
+   .zetl/themes/<theme>/404.html. #}
+{% extends "base.html" %}
+
+{% block title %}Page not found — {{ vault.name }}{% endblock %}
+
+{% block styles %}
+  .not-found { text-align: center; padding-top: 4rem; }
+  .not-found .nf-code { font-size: 4rem; font-weight: 800; opacity: 0.25; line-height: 1; }
+  .not-found h1 { font-size: 1.5rem; font-weight: 700; margin: 0.75rem 0 0.5rem; }
+  .not-found p { opacity: 0.8; line-height: 1.6; margin-bottom: 1.25rem; }
+  .not-found a { color: oklch(var(--p)); text-decoration: underline; }
+{% endblock %}
+
+{% block content %}
+<main class="not-found flex-1 p-4 sm:p-6 max-w-3xl mx-auto w-full">
+  <div class="nf-code" aria-hidden="true">404</div>
+  <h1>Page not found</h1>
+  <p>There is no page at this address — the link may be stale, or the page
+     may have been renamed or removed.</p>
+  <p><a href="{{ root_path }}{{ index_file }}">Back to the vault index</a></p>
+</main>
+{% endblock %}

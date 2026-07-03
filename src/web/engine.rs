@@ -910,6 +910,44 @@ impl TemplateEngine {
         Ok(html)
     }
 
+    /// Render the not-found page emitted as `dist/404.html` in build mode
+    /// (#73). Static hosts key SPA fallback off the file's absence —
+    /// without it, e.g. Cloudflare Pages answers every unknown path with
+    /// HTTP 200 + the homepage document, masking broken links from both
+    /// full page loads and spa.js. Rendered with an absolute root path
+    /// ("/") because the document is served at arbitrary path depths where
+    /// page-relative `../` chains cannot resolve.
+    pub fn render_not_found(
+        &self,
+        vault_ctx: &VaultContext,
+        mode: &str,
+    ) -> Result<String, TemplateError> {
+        let idx_file = index_file(mode);
+        let graph_url = graph_index_url("/");
+        let ctx = context! {
+            vault => vault_ctx,
+            mode => mode,
+            search_index => "",
+            theme => &self.theme,
+            active_slug => "",
+            root_path => "/",
+            index_file => idx_file,
+            bm25_index => "",
+            history_index => "",
+            graph_index_url => graph_url,
+            graph_index => "",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("404.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("404.html"));
+        }
+        Ok(html)
+    }
+
     /// Render the full-page graph view (/_graph).
     pub fn render_vault_graph(
         &self,
@@ -1386,7 +1424,9 @@ impl TemplateEngine {
             bm25_index => "",
             history_index => "",
             theme => &self.theme,
-            active_slug => "",
+            // Matches the /_history URL stem so spa.js's fetched-document
+            // identity check (#73) passes for the vault history page.
+            active_slug => "_history",
             root_path => root_path,
             index_file => index_file(mode),
             graph_index_url => graph_url,
@@ -1470,7 +1510,11 @@ impl TemplateEngine {
             mode => mode,
             search_index => search_index,
             theme => &self.theme,
-            active_slug => "",
+            // The folder's own slug (not ""): it opens the matching sidebar
+            // subtree, and spa.js verifies <body data-slug> against the URL
+            // it fetched — an empty slug would make folder pages
+            // indistinguishable from a host's homepage 404-fallback (#73).
+            active_slug => &folder_ctx.slug,
             root_path => root_path,
             index_file => idx_file,
             bm25_index => bm25_index,
