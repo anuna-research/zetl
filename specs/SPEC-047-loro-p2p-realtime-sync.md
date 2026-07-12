@@ -2,8 +2,8 @@
 id: SPEC-047
 title: "Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing"
 status: draft
-version: 0.9.0-strawman
-last-updated: 2026-06-22
+version: 0.10.0-strawman
+last-updated: 2026-07-12
 ---
 
 # SPEC-047: Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing
@@ -26,7 +26,8 @@ Intent:    Make a vault editable in realtime across a person's devices (and,
            and merge edits conflict-free using only the public BitTorrent DHT.
 Metaphor:  A CB radio with a secret call-sign. You speak a short phrase once
            (the call-sign); after that each radio knows the other's voice and
-           they talk directly, no operator, no switchboard.
+           they talk directly on a scrambled channel — no operator, no
+           switchboard.
 
            clients (CLI · zetl view · web · mobile)
                        │  CON-470  control: length-prefixed CBOR (LangSec)
@@ -45,6 +46,13 @@ Metaphor:  A CB radio with a secret call-sign. You speak a short phrase once
         pkarr ▶ Mainline DHT (discovery) ; QUIC ▶ peer zetld (sync)
    arrows point inward → core never imports shell (Purity Boundary Map §13)
 
+Legend:    CBCL = the Lean-verified control-message language (ADR-479), whose
+           deterministic pushdown recogniser (DPDA) accepts a decidable
+           context-free language (DCFL) — the LangSec warrant, §8; roster =
+           the per-vault list of admitted NodeIds (CON-477); CON-### =
+           interface contracts (§7); ─AST▶ = only typed, validated parse
+           output crosses into the pure core.
+
 Decisions:    [[#ADR-470 Loro as Canonical Store Markdown+Git as Export]] ·
               [[#ADR-472 iroh + pkarr for Transport and Discovery]] ·
               [[#ADR-473 Phrase-Derived DHT Rendezvous for SPAKE2]] (crypto · human-gated, not rejected) ·
@@ -57,7 +65,7 @@ Load-bearing: [[#REQ-491 SPAKE2 Channel Authentication]] (the pairing secret) ·
               [[#REQ-482 Roster-Gated Encrypted Transport]] ·
               [[#REQ-474 Conflict-Free Offline Merge]] ·
               [[#NFR-475 Pairing Secret Entropy Floor]]
-Open:         §H rendezvous enumeration vs phrase entropy (owner: HOC, gating
+Open:         threat-model §H rendezvous enumeration vs phrase entropy (owner: HOC, gating
               the Tier-1 crypto review) → [[#18. Open Questions]] Q1
 Detail:       this document — the nodes below are the room; this block is the door.
 ```
@@ -75,7 +83,7 @@ capitals.
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | SPEC-047                                                                                |
 | Title        | Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing         |
-| Version      | 0.9.0-strawman                                                                          |
+| Version      | 0.10.0-strawman                                                                          |
 | Status       | Draft (strawman; pending DESIGN-047 execution)                                          |
 | Author       | Agent (Claude Opus 4.8 [1M]) under [[PROTO-001]] v1.11.0                                |
 | Audience     | Agent, Human                                                                            |
@@ -180,7 +188,9 @@ with the CLI binary, peer-to-peer dialect propagation is deferred
 ### [[users/vault-owner/user|Vault Owner / Admin]]
 
 - **Role:** Controls vault [[Group Key]] membership.
-- **Goals:** Pair devices/peers; audit the roster; revoke so sync actually stops.
+- **Goals:** Pair devices/peers; audit the roster; revoke so sync actually stops
+  (enforceable among honest daemons — membership authority is local policy, not
+  cryptography, until the web-of-trust successor; [[#12. Threat Model]] §N).
 - **Constraints:** Owns the vault; drives `zetl collab pair`/`zetl collab revoke`.
 - **Daily workflow:** pair on demand → audit `zetl collab peers` → revoke on loss.
 
@@ -217,7 +227,8 @@ with the CLI binary, peer-to-peer dialect propagation is deferred
    keypair and resolves the record from the [[Mainline DHT]] → learns A's
    endpoint.
 4. B opens a [[QUIC]] stream to A → A and B run [[SPAKE2]] (phrase = password) →
-   shared session key; A confirms via [[HMAC]].
+   shared session key; mutual key confirmation ([[HMAC]] over the transcript,
+   both directions) completes before any key material is sealed (F41).
 5. A seals the vault [[Group Key]] to B and both exchange durable [[NodeId]]s →
    each writes the other into the roster.
 6. B initialises `notes`, pulls [[Loro]] state via [[Version Vector]] delta sync,
@@ -232,7 +243,10 @@ edits offline and merges on reconnect.
 ([[#REQ-479 Failure-Message Indistinguishability]]); rendezvous absent/expired →
 generic auth failure; symmetric NAT, no relay → reachability error distinct from
 auth ([[#ADR-474 Relay as Optional Fallback Not Requirement]]); phrase reused →
-generic auth failure ([[#REQ-478 Single-Use Phrase]]).
+generic auth failure ([[#REQ-478 Single-Use Phrase]]); third-party wrong-phrase
+attempt → phrase consumed (first-exchange-consumes,
+[[#REQ-478 Single-Use Phrase]]) → owner's `pair` reports failure and the owner
+re-pairs with a fresh phrase ([[#12. Threat Model]] §M).
 
 ### HP2: Realtime Co-Editing After Pairing
 
@@ -244,7 +258,8 @@ generic auth failure ([[#REQ-478 Single-Use Phrase]]).
 2. B opens the same note → each daemon publishes cursor via the
    [[Ephemeral Store]].
 3. A types → A's daemon appends [[Loro]] ops, streams the delta → B applies it,
-   renders A's text + cursor within the [[Doherty Threshold]].
+   renders A's text + cursor within the [[Doherty Threshold]]
+   ([[#NFR-477 Remote Edit Propagation Latency]]).
 4. Both edit concurrently → [[Loro]] [[Peritext]] merge, no conflict markers.
 5. On quiescence → each daemon materialises Markdown + runs the git/jj flush →
    identical content hashes
@@ -287,7 +302,9 @@ fallback ([[#18. Open Questions]] Q4).
 without a fresh phrase.
 
 **Failure modes:** revoke sole member → rejected (`last-member`); survivor
-offline → re-seal deferred ([[#NFR-474 Revocation Propagation]]).
+offline → re-seal deferred ([[#NFR-474 Revocation Propagation]]) — an unresealed
+survivor can still sync *new* content with the revoked peer until it contacts a
+resealed member ([[#12. Threat Model]] §O).
 
 ### HP5: External Markdown Edit (`git pull`, editor write)
 
@@ -303,7 +320,12 @@ offline → re-seal deferred ([[#NFR-474 Revocation Propagation]]).
 conflicts surfaced not hidden.
 
 **Failure modes:** binary/non-UTF-8 write → staged, never folded; rapid churn →
-coalesced per debounce window.
+coalesced per debounce window; NFD-encoded write → folded, then re-materialised
+in canonical NFC (on-disk bytes differ from what the editor wrote; the import
+diff compares under the canonical form so the fold→materialise→watch cycle
+terminates — [[#ADR-471 Guarded Import for External Markdown Edits]], F42);
+external delete/rename → guarded like a write
+([[#REQ-484 Guarded Import of External Markdown Edits]], F38).
 
 ---
 
@@ -339,9 +361,13 @@ invocation.
 
 The system SHALL persist each vault document as a [[Loro]] [[CRDT]] (snapshot +
 oplog) as the canonical representation, FOR all vault content, WITH causal
-history surviving daemon restart.
+history surviving daemon restart and crash — an op is **committed** once
+fsync-appended to the oplog (`[Provisional]` policy; committed ops survive
+`SIGKILL`/power loss, and "committed" in
+[[#REQ-490 Daemon Survives Client Disconnection]] and HP3 means exactly this;
+the [[WAL]]'s durability contract transfers here — F39).
 
-**Trace:** [[#TEST-472a]], [[#TEST-472c]], [[#CON-471 Loro Store and Materialisation]], [[#OBS-471 Materialisation]].
+**Trace:** [[#TEST-472a]], [[#TEST-472c]], [[#TEST-472d]], [[#CON-471 Loro Store and Materialisation]], [[#OBS-471 Materialisation]].
 
 ### REQ-473: Deterministic Materialisation
 
@@ -379,8 +405,8 @@ verification — [[#REQ-492 Roster Gate Before Vault Frame]]).
 ### REQ-476: DHT-Bootstrapped SPAKE2 Pairing
 
 The system SHALL discover a joining peer during pairing by deriving a
-[[Rendezvous]] locator from the `num` (routing) component of the [[Pairing
-Phrase]] and resolving the corresponding [[pkarr]] record, FOR the
+[[Rendezvous]] locator from the `num` (routing) component of the
+[[Pairing Phrase]] and resolving the corresponding [[pkarr]] record, FOR the
 [[users/vault-owner/user|Owner]] and a joining peer, WHEN both are online.
 
 > Atomicity (F6): this REQ is now *discovery only*. The channel-authentication
@@ -402,9 +428,15 @@ channel refused.
 
 ### REQ-478: Single-Use Phrase
 
-The system SHALL consume each [[Pairing Phrase]] at most once, FOR every pairing,
-WITH a second redemption (by any party) producing the generic failure of
-[[#REQ-479 Failure-Message Indistinguishability]].
+The system SHALL consume each [[Pairing Phrase]] on its first [[SPAKE2]]
+exchange, completed **or failed** — a *redemption* is any SPAKE2 exchange
+initiated against the phrase's rendezvous, regardless of outcome (F32) — FOR
+every pairing, WITH any subsequent redemption attempt producing the generic
+failure of [[#REQ-479 Failure-Message Indistinguishability]].
+First-exchange-consumption preserves the one-online-guess bound on the
+`word-word` secret ([[#NFR-475 Pairing Secret Entropy Floor]]); the pairing-burn
+DoS it admits is a documented residual, visible to the owner, who re-pairs with
+a fresh phrase ([[#12. Threat Model]] §M).
 
 **Trace:** [[#TEST-478a]], [[#TEST-478b]], [[#CON-474 Pairing Protocol]], [[#OBS-475 Pairing failure cause]].
 
@@ -458,10 +490,13 @@ rejected (fail-closed) and never repaired or partially acted upon
 
 ### REQ-484: Guarded Import of External Markdown Edits
 
-The system SHALL route each external (non-daemon) Markdown write per the
-guarded-import decision — folding it into the canonical [[Loro]] store when no
-unmaterialised daemon op exists for that document since `last_export`, and staging
-it to the conflict area otherwise — FOR every external write, WITH neither side
+The system SHALL route each external (non-daemon) Markdown write, delete, or
+rename per the guarded-import decision — folding it into the canonical [[Loro]]
+store when no unmaterialised daemon op exists for that document since
+`last_export` (a delete folds as a document tombstone; a rename is treated as
+delete + create pending identity-preserving refinement by DESIGN-047
+`adr-external-edits` — F38), and staging it to the conflict area otherwise —
+FOR every external write, delete, or rename, WITH neither side
 silently discarded. The predicate is defined over [[Loro]] *logical* time
 (presence of an unmaterialised op), NOT a wall-clock debounce window, so it is not
 a timing-controllable data-authority oracle (F16).
@@ -489,13 +524,16 @@ integrity alarm rather than silently tolerated.
 
 ### REQ-486: Merkle Anti-Entropy Reconciliation
 
-The system SHALL reconcile two peers by first comparing their [[Merkle Vault
-Root]]s and, on mismatch, descending the [[Merkle DAG]] (path-sorted file roots →
-block leaves) to localise the differing documents before exchanging [[Loro]] op
-deltas for only those documents, FOR every sync session, WITH an equal-root
-comparison completing the session without any op exchange.
+The system SHALL reconcile two peers by first comparing their
+[[Merkle Vault Root]]s and, on mismatch, descending the [[Merkle DAG]]
+(path-sorted file roots → block leaves) to localise the differing documents
+before exchanging [[Loro]] op deltas for only those documents, FOR every sync
+session, WITH a session completing without any op exchange only when both the
+roots and the peers' [[Loro]] [[Version Vector]]s are equal — a `vault_root` is
+computed at materialisation and may lag committed unmaterialised ops, so equal
+roots alone do not witness equal [[Loro]] state (F33).
 
-**Trace:** [[#TEST-486a]], [[#TEST-486b]], [[#CON-473 Peer Session]], [[#OBS-480 Convergence witness]].
+**Trace:** [[#TEST-486a]], [[#TEST-486b]], [[#TEST-486c]], [[#CON-473 Peer Session]], [[#OBS-480 Convergence witness]].
 
 ### REQ-487: Control-Plane Messages Recognised by the CBCL DPDA
 
@@ -503,10 +541,13 @@ The system SHALL recognise every control-plane message (daemon control verbs,
 pairing/reconcile choreography, presence, signed-root announcement) as a
 [[CBCL]] message parsed by the shared deterministic pushdown automaton
 ([[DCFL]], parser-equivalence) before any semantic action, FOR all control-plane
-inputs at a trust boundary, WITH every zetl protocol dialect carrying a [[CBCL]]
-**R4** Ed25519 signature verified against the roster [[NodeId]] and any `Invalid`
-dialect rejected at load (the dialect ships with the binary, loaded at startup —
-not installed from peers; [[#ADR-479 CBCL as the Control-Plane Message Language]]).
+inputs at a trust boundary, WITH every *network* control-plane message carrying
+a [[CBCL]] **R4** Ed25519 signature verified against the sending peer's roster
+[[NodeId]] (local control-socket messages authenticate by the socket's
+filesystem permissions instead — [[#CON-470 Daemon Control Channel]]) and the
+shipped dialects validated (R1–R5) at load with any `Invalid` dialect refused
+(dialects are release artefacts of the binary — not roster-signed, not installed
+from peers; F37; [[#ADR-479 CBCL as the Control-Plane Message Language]]).
 
 > Specialises [[#REQ-483 Full Recognition at Trust Boundaries]]: [[CBCL]] is the
 > *mechanism* — one Lean-verified recogniser for all control messages, so
@@ -535,8 +576,9 @@ The system SHALL expose the P2P verbs under the existing `zetl collab` group and
 `--format`/`--json` output selection, the `--vault` selector, positional ids, and
 the standard non-zero-exit-on-error convention, FOR all P2P CLI surface, WITH any
 not-yet-implemented verb exiting non-zero with a `not-yet-implemented` diagnostic
-([[#ADR-480 CLI Surface Follows Existing zetl Conventions]]; the [[Pairing
-Phrase]]'s TTY-only entry is carried by [[#REQ-477 Phrase OOB-Only Non-Leak]]).
+([[#ADR-480 CLI Surface Follows Existing zetl Conventions]]; the
+[[Pairing Phrase]]'s TTY-only entry is carried by
+[[#REQ-477 Phrase OOB-Only Non-Leak]]).
 
 **Trace:** [[#TEST-489a]], [[#TEST-489b]], [[#CON-470 Daemon Control Channel]], [[#CON-474 Pairing Protocol]], [[#CON-477 Group Key Roster and Revocation]].
 
@@ -554,10 +596,11 @@ continuing to run and no committed [[Loro]] op lost when a client exits.
 ### REQ-491: SPAKE2 Channel Authentication
 
 The system SHALL authenticate the pairing [[QUIC]] channel by a [[SPAKE2]]
-handshake whose password is the `word-word` (secret) component of the [[Pairing
-Phrase]], FOR every pairing, WITH key agreement failing closed when the words do
-not match (and the [[Group Key]] sealed only on success per
-[[#REQ-480 Group-Key Admission Gate]]).
+handshake whose password is the `word-word` (secret) component of the
+[[Pairing Phrase]], FOR every pairing, WITH key agreement failing closed when
+the words do not match (mutual key confirmation — both directions over the
+transcript — completes before the [[Group Key]] is sealed, and sealing occurs
+only on success per [[#REQ-480 Group-Key Admission Gate]]; F41).
 
 **Trace:** [[#TEST-491a]], [[#TEST-476b]], [[#TEST-476c]], [[#CON-474 Pairing Protocol]], [[#OBS-474 Pairing]].
 
@@ -600,6 +643,21 @@ non-witness (F29, threat §K) — complementing the epoch check of
 
 **Trace:** [[#TEST-495a]], [[#TEST-495b]], [[#CON-473 Peer Session]], [[#OBS-477 Roster audit]].
 
+### REQ-496: Pairing Attempt Rate Limit
+
+The system SHALL rate-limit inbound pairing at the daemon — at most one
+[[SPAKE2]] exchange per minted [[Pairing Phrase]]
+([[#REQ-478 Single-Use Phrase]]) and ≤ `[Provisional: 5]` connection attempts
+per minute at an open [[Rendezvous]], excess dropped pre-handshake — FOR every
+open pairing, WITH budget exhaustion aborting the pairing, tearing down the
+rendezvous record, and surfacing only the generic failure of
+[[#REQ-479 Failure-Message Indistinguishability]]. This is the "daemon-side
+rate-limiting" that [[#ADR-473 Phrase-Derived DHT Rendezvous for SPAKE2]] and
+[[#NFR-475 Pairing Secret Entropy Floor]] cite as load-bearing for the ~22-bit
+secret, previously unspecified (F31).
+
+**Trace:** [[#TEST-496a]], [[#TEST-496b]], [[#CON-474 Pairing Protocol]], [[#OBS-475 Pairing failure cause]].
+
 ---
 
 ## 5. Non-Functional Requirements
@@ -630,9 +688,15 @@ nominal connectivity WITH 95th percentile.
 
 ### NFR-473: Failure-Cause Timing Indistinguishability
 
-User-visible response time across the [[#REQ-479 Failure-Message Indistinguishability]]
-causes SHALL be indistinguishable to within `[Provisional: 50 ms]` UNDER LAN
-conditions WITH 95th percentile.
+User-visible response time across the *post-connection*
+[[#REQ-479 Failure-Message Indistinguishability]] causes (wrong phrase, replayed
+phrase, [[SPAKE2]] verification failure, rate-limited) SHALL be
+indistinguishable to within `[Provisional: 50 ms]` UNDER LAN conditions WITH
+95th percentile — implemented by padding to the slowest in-set cause. The
+rendezvous-absent/expired cause is excluded from the *timing* bound: it fails
+pre-connection at the DHT, whose records any DHT client can query anyway, so
+timing-hiding it buys nothing (F40); REQ-479's identical user-visible *text*
+still covers it.
 
 **Trace:** [[#TEST-NFR-473]]; [[#REQ-479 Failure-Message Indistinguishability]].
 
@@ -650,8 +714,8 @@ The [[SPAKE2]] **secret** component (`word-word`) of the [[Pairing Phrase]] SHAL
 carry ≥ `[Provisional: 22 bits]` of entropy (two BIP39 words) UNDER every
 generation path WITH 100% conformance — this is the *sole* security floor,
 adequate by [[SPAKE2]] online-single-guess + single-use
-([[#REQ-478 Single-Use Phrase]]), and stronger than [[Magic Wormhole]]'s shipped
-default (~16 bits). The **routing** component (`num`) is NOT a security parameter
+([[#REQ-478 Single-Use Phrase]]) + [[#REQ-496 Pairing Attempt Rate Limit]], and
+stronger than [[Magic Wormhole]]'s shipped default (~16 bits). The **routing** component (`num`) is NOT a security parameter
 and SHALL instead be sized so the probability of two concurrent serverless
 pairings colliding on one rendezvous stays ≤ `[Provisional: 1%]` (a birthday
 bound on expected concurrent pairings — `[Provisional: ~4–5 digits]`, refined by
@@ -667,6 +731,16 @@ edits, roster ≤ 8) SHALL be ≤ `[Provisional: 80 MB]` RSS AND ≤ `[Provision
 window.
 
 **Trace:** [[#TEST-NFR-476]]; [[#OBS-470 Daemon health]].
+
+### NFR-477: Remote Edit Propagation Latency
+
+Remote edit visibility (a committed op on one peer applied and rendered on a
+connected online peer) SHALL be ≤ `[Provisional: 400 ms]` (the
+[[Doherty Threshold]] default of [[PROTO-001]] §UX Heuristics) UNDER nominal
+LAN conditions WITH 95th percentile — the quantification of "realtime" that
+[[#NFR-470 Local Edit-to-Render Latency]] (local echo only) does not carry (F36).
+
+**Trace:** [[#TEST-NFR-477]]; [[#OBS-472 Sync convergence]].
 
 ---
 
@@ -690,7 +764,8 @@ offline edits collide at the text layer on git merge, defeating the [[CRDT]].
 a deterministic [[Materialization]] committed via the git/jj flush.
 
 **Consequences:** (+) True offline merge; causal history survives; git stays
-export/audit; the [[WAL]] becomes redundant. (−) Largest departure from current
+export/audit; the [[WAL]] is superseded — its durability contract moves to the
+oplog's fsync-on-commit append ([[#REQ-472 Loro Canonical Store]], F39). (−) Largest departure from current
 zetl; external edits need guarded import
 ([[#ADR-471 Guarded Import for External Markdown Edits]]); oplog growth (shallow
 snapshots — [[#18. Open Questions]] Q4).
@@ -711,6 +786,11 @@ window — [[#REQ-484 Guarded Import of External Markdown Edits]], F16), else st
 
 **Consequences:** (+) Markdown stays a git/editor surface. (−) The
 concurrent-edit predicate is security-relevant (covered by [[#TEST-484c]]).
+(−) An external write in non-canonical form (e.g. NFD) is folded, then
+re-materialised in canonical NFC — the on-disk bytes then differ from what the
+editor wrote (spurious editor/git diffs); the import diff MUST compare under
+the canonical form of [[#REQ-473 Deterministic Materialisation]] so the
+fold→materialise→watch cycle terminates (F42).
 
 ### ADR-472: iroh + pkarr for Transport and Discovery
 
@@ -758,8 +838,9 @@ This is the native idiom: the `spake2` crate already in `src/cap/pair.rs` is
 [[SPAKE2]]+[[HKDF]]. (+) **Enumerating the DHT reveals only routing, never the
 secret** — F8's offline-enumeration hole closes because there is no secret in the
 routing layer. The secret's resistance is [[SPAKE2]] online-single-guess over
-`word-word`, bounded by single-use ([[#REQ-478 Single-Use Phrase]]) and
-daemon-side rate-limiting (which, unlike DHT lookups, *is* throttleable). (−)
+`word-word`, bounded by single-use ([[#REQ-478 Single-Use Phrase]]) and the
+[[#REQ-496 Pairing Attempt Rate Limit]] (which, unlike DHT lookups, *is*
+enforceable at the daemon — F31). (−)
 `num` must be sized for *collision-avoidance* between concurrent serverless
 pairings (birthday bound), NOT for secrecy — see
 [[#NFR-475 Pairing Secret Entropy Floor]]. (−) An attacker can squat or
@@ -801,7 +882,12 @@ per-folder/role scoping ([[SPEC-036-spake2-onboarding]] style).
 **Decision:** (A). Membership = roster; revocation = rotate + re-seal. (B)
 deferred (heavier key management; YAGNI until demand).
 
-**Consequences:** (−) Any member reads the whole vault; revocation is coarse.
+**Consequences:** (−) Any member reads the whole vault; revocation is coarse;
+**admission authority is unenforceable against a malicious member** — any
+key-holder can seal the [[Group Key]] onward or fork the roster, so
+Owner-controlled membership binds honest daemons only
+([[#12. Threat Model]] §N, F34); the write/admission dual moves to the
+web-of-trust successor along with (B).
 
 ### ADR-478: Merkle DAG as Convergence Witness and Reconciliation Index
 
@@ -821,11 +907,13 @@ reconciliation index *layered on top of* [[Loro]]. (C) replace [[Loro]]'s sync
 with Merkle reconciliation (rejected — Merkle cannot merge; no conflict
 resolution).
 
-**Decision:** (B). Two peers compare `vault_root` first ([[#REQ-486 Merkle
-Anti-Entropy Reconciliation]]); equal → converged, no op exchange; mismatch →
+**Decision:** (B). Two peers compare `vault_root` first
+([[#REQ-486 Merkle Anti-Entropy Reconciliation]]); equal roots **and equal
+[[Version Vector]]s** → converged, no op exchange (equal roots alone may lag
+committed unmaterialised ops — F33); mismatch →
 descend the DAG to localise differing docs, then ship [[Loro]] op deltas for only
-those. Converged peers MUST match roots ([[#REQ-485 Merkle Convergence
-Witness]]); a mismatch under a [[Loro]]-reported convergence is an integrity
+those. Converged peers MUST match roots
+([[#REQ-485 Merkle Convergence Witness]]); a mismatch under a [[Loro]]-reported convergence is an integrity
 alarm. A peer MAY sign its `vault_root` with its [[NodeId]] and carry it in the
 [[pkarr]] record or a direct peer-to-peer announcement as an authenticated state hint
 ([[#8.8 Signed Vault Root]]).
@@ -889,7 +977,11 @@ dissolved); `no_std` suits the mobile daemon; reuses an existing dependency
 the Principle 14 §6 justification (decidable + parser-equivalent, far below the
 undecidable danger zone). (−) [[CBCL]]'s canonical encoding is S-expression text,
 so control messages are textual (acceptable at control-plane volume; bulk binary
-stays on the data plane — see [[#18. Open Questions]] Q9). (−) Adds a Tier-1
+stays on the data plane — see [[#18. Open Questions]] Q9). (−) Per-message R4
+signing on the presence path costs one ed25519 sign + verify per frame (~50 µs
+each on commodity hardware — well inside
+[[#NFR-477 Remote Edit Propagation Latency]]'s budget; recorded so the cost is
+a decision, not an accident — F37). (−) Adds a Tier-1
 dependency whose R4 path is auth-core and must be in the human-review package.
 
 ### ADR-480: CLI Surface Follows Existing zetl Conventions
@@ -987,7 +1079,7 @@ neither side.
 surfaces `Staged(path)` instead of erroring.
 
 **Implements:** [[#REQ-472 Loro Canonical Store]], [[#REQ-473 Deterministic Materialisation]], [[#REQ-484 Guarded Import of External Markdown Edits]].
-**Verified by:** [[#TEST-472a]], [[#TEST-472c]], [[#TEST-473a]], [[#TEST-473c]], [[#TEST-484a]], [[#TEST-484b]], [[#TEST-484c]].
+**Verified by:** [[#TEST-472a]], [[#TEST-472c]], [[#TEST-472d]], [[#TEST-473a]], [[#TEST-473c]], [[#TEST-484a]], [[#TEST-484b]], [[#TEST-484c]], [[#TEST-484d]].
 
 ### CON-473: Peer Session (iroh)
 
@@ -1008,8 +1100,9 @@ C2 (REQ-482) peer [[NodeId]] ∈ roster, verified before any frame; C3 (REQ-483)
 each frame fully recognised before apply.
 
 **Post-conditions:** C4 (REQ-482) content frames exchanged only after the roster
-check; C5 (REQ-486) `reconcile` runs before `sync` and equal roots skip op
-exchange; C6 (REQ-474) `sync` converges to identical [[Loro]] state; C7 (REQ-485)
+check; C5 (REQ-486) `reconcile` runs before `sync`; op exchange is skipped only
+on equal roots **and** equal [[Version Vector]]s; C6 (REQ-474) `sync` converges
+to identical [[Loro]] state; C7 (REQ-485)
 converged peers report equal [[Merkle Vault Root]] or raise an integrity alarm.
 
 **Error model:** `not-on-roster` (reject pre-frame); `malformed-frame` (drop +
@@ -1017,7 +1110,7 @@ log); `root-mismatch-after-converge` (integrity alarm); `reachability-failed`
 (distinct from auth).
 
 **Implements:** [[#REQ-474 Conflict-Free Offline Merge]], [[#REQ-475 Serverless Peer Discovery]], [[#REQ-482 Roster-Gated Encrypted Transport]], [[#REQ-483 Full Recognition at Trust Boundaries]], [[#REQ-485 Merkle Convergence Witness]], [[#REQ-486 Merkle Anti-Entropy Reconciliation]], [[#REQ-487 Control-Plane Messages Recognised by the CBCL DPDA]], [[#REQ-488 Choreographies as Verified R5 Causal-Protocol Contracts]], [[#REQ-492 Roster Gate Before Vault Frame]], [[#REQ-493 Signed-Root Epoch Binding]], [[#REQ-494 Control-to-Data Binding]], [[#REQ-495 Signed-Root Freshness]].
-**Verified by:** [[#TEST-474a]], [[#TEST-474c]], [[#TEST-475a]], [[#TEST-475b]], [[#TEST-482a]], [[#TEST-483a]], [[#TEST-483c]], [[#TEST-485a]], [[#TEST-485c]], [[#TEST-486a]], [[#TEST-486b]], [[#TEST-492a]], [[#TEST-492b]], [[#TEST-493a]], [[#TEST-493b]], [[#TEST-494a]], [[#TEST-494b]], [[#TEST-495a]], [[#TEST-495b]].
+**Verified by:** [[#TEST-474a]], [[#TEST-474c]], [[#TEST-475a]], [[#TEST-475b]], [[#TEST-482a]], [[#TEST-483a]], [[#TEST-483c]], [[#TEST-485a]], [[#TEST-485c]], [[#TEST-486a]], [[#TEST-486b]], [[#TEST-486c]], [[#TEST-492a]], [[#TEST-492b]], [[#TEST-493a]], [[#TEST-493b]], [[#TEST-494a]], [[#TEST-494b]], [[#TEST-495a]], [[#TEST-495b]].
 
 ### CON-474: Pairing Protocol (`zetl collab pair` / `zetl collab join`)
 
@@ -1040,13 +1133,14 @@ before use.
 **Post-conditions:** C4 (REQ-476) on success both rosters updated, key shared,
 rendezvous torn down; C5 (REQ-478) phrase consumed; C6 (REQ-479) all failures
 return one opaque `auth-failed`; C7 (REQ-480) membership granted only on
-[[SPAKE2]] success.
+[[SPAKE2]] success; C8 (REQ-496) the inbound attempt budget is enforced —
+exhaustion aborts the pairing and tears down the rendezvous record.
 
 **Error model:** single opaque `auth-failed`; distinct `reachability-failed`,
 `malformed-input`.
 
-**Implements:** [[#REQ-476 DHT-Bootstrapped SPAKE2 Pairing]], [[#REQ-477 Phrase OOB-Only Non-Leak]], [[#REQ-478 Single-Use Phrase]], [[#REQ-479 Failure-Message Indistinguishability]], [[#REQ-480 Group-Key Admission Gate]], [[#REQ-488 Choreographies as Verified R5 Causal-Protocol Contracts]], [[#REQ-491 SPAKE2 Channel Authentication]].
-**Verified by:** [[#TEST-476a]], [[#TEST-476b]], [[#TEST-476c]], [[#TEST-477a]], [[#TEST-477b]], [[#TEST-477c]], [[#TEST-478a]], [[#TEST-478b]], [[#TEST-479a]], [[#TEST-479c]], [[#TEST-480a]], [[#TEST-480b]], [[#TEST-491a]].
+**Implements:** [[#REQ-476 DHT-Bootstrapped SPAKE2 Pairing]], [[#REQ-477 Phrase OOB-Only Non-Leak]], [[#REQ-478 Single-Use Phrase]], [[#REQ-479 Failure-Message Indistinguishability]], [[#REQ-480 Group-Key Admission Gate]], [[#REQ-488 Choreographies as Verified R5 Causal-Protocol Contracts]], [[#REQ-491 SPAKE2 Channel Authentication]], [[#REQ-496 Pairing Attempt Rate Limit]].
+**Verified by:** [[#TEST-476a]], [[#TEST-476b]], [[#TEST-476c]], [[#TEST-477a]], [[#TEST-477b]], [[#TEST-477c]], [[#TEST-478a]], [[#TEST-478b]], [[#TEST-479a]], [[#TEST-479c]], [[#TEST-480a]], [[#TEST-480b]], [[#TEST-491a]], [[#TEST-496a]], [[#TEST-496b]].
 
 ### CON-477: Group Key Roster and Revocation
 
@@ -1223,6 +1317,7 @@ negative-output); each TEST records `Validates:`.
 | **TEST-471c** | neg-output | contract | `status` MUST NOT return stale/non-enum state | [[#REQ-471 Idempotent Control Lifecycle]] |
 | **TEST-472a** | positive | example | edit → restart → canonical state + history intact | [[#REQ-472 Loro Canonical Store]] |
 | **TEST-472c** | neg-output | property | restart MUST NOT drop committed ops | [[#REQ-472 Loro Canonical Store]] |
+| **TEST-472d** | neg-output | example | `SIGKILL` mid-edit MUST NOT lose fsync-committed ops | [[#REQ-472 Loro Canonical Store]] |
 | **TEST-473a** | positive | property | identical state → byte-identical Markdown (2 runs/2 devices) | [[#REQ-473 Deterministic Materialisation]] |
 | **TEST-473c** | neg-output | property | reject differing Merkle hash for identical state | [[#REQ-473 Deterministic Materialisation]] |
 | **TEST-474a** | positive | property(convergence) | two op-sets → identical state, no marker | [[#REQ-474 Conflict-Free Offline Merge]] |
@@ -1252,10 +1347,12 @@ negative-output); each TEST records `Validates:`.
 | **TEST-484a** | positive | property | external write, no concurrent edit → folded | [[#REQ-484 Guarded Import of External Markdown Edits]] |
 | **TEST-484b** | neg-input | property | binary/non-UTF-8 write → staged, never folded | [[#REQ-484 Guarded Import of External Markdown Edits]] |
 | **TEST-484c** | neg-output | property | concurrent external write MUST NOT overwrite [[Loro]] | [[#REQ-484 Guarded Import of External Markdown Edits]] |
+| **TEST-484d** | positive | property | external delete: no concurrent op → tombstoned; concurrent → staged | [[#REQ-484 Guarded Import of External Markdown Edits]] |
 | **TEST-485a** | positive | property | converged peers → equal [[Merkle Vault Root]] | [[#REQ-485 Merkle Convergence Witness]] |
 | **TEST-485c** | neg-output | property | root mismatch under reported convergence → alarm, not silent | [[#REQ-485 Merkle Convergence Witness]] |
 | **TEST-486a** | positive | example | equal roots → session completes with zero op exchange | [[#REQ-486 Merkle Anti-Entropy Reconciliation]] |
 | **TEST-486b** | neg-input | example | mismatch → DAG descent localises only differing docs | [[#REQ-486 Merkle Anti-Entropy Reconciliation]] |
+| **TEST-486c** | neg-output | property | equal roots + unequal [[Version Vector]]s MUST NOT skip op exchange | [[#REQ-486 Merkle Anti-Entropy Reconciliation]] |
 | **TEST-487a** | positive | example | valid [[CBCL]] control message accepted by the DPDA + R4 | [[#REQ-487 Control-Plane Messages Recognised by the CBCL DPDA]] |
 | **TEST-487b** | neg-input | fuzz+example | non-conformant / R4-`Invalid` message rejected, no action | [[#REQ-487 Control-Plane Messages Recognised by the CBCL DPDA]] |
 | **TEST-488a** | positive | example | in-order handshake satisfies the R5 causal-protocol contract | [[#REQ-488 Choreographies as Verified R5 Causal-Protocol Contracts]] |
@@ -1272,6 +1369,8 @@ negative-output); each TEST records `Validates:`.
 | **TEST-494b** | neg-input | property | substituted/replayed payload (hash mismatch) → rejected | [[#REQ-494 Control-to-Data Binding]] |
 | **TEST-495a** | positive | example | signed root with `root_seq` > last accepted → accepted | [[#REQ-495 Signed-Root Freshness]] |
 | **TEST-495b** | neg-input | example | replayed root with `root_seq` ≤ last accepted → rejected | [[#REQ-495 Signed-Root Freshness]] |
+| **TEST-496a** | positive | example | attempts within budget reach [[SPAKE2]] | [[#REQ-496 Pairing Attempt Rate Limit]] |
+| **TEST-496b** | neg-input | example | excess attempts dropped pre-handshake; exhaustion aborts pairing + tears down rendezvous | [[#REQ-496 Pairing Attempt Rate Limit]] |
 
 ### 10.3 Non-Functional & Robustness Tests
 
@@ -1284,6 +1383,7 @@ negative-output); each TEST records `Validates:`.
 | **TEST-NFR-474** | benchmark | revoke ≤ 60 s 99p to online survivors | [[#NFR-474 Revocation Propagation]] |
 | **TEST-NFR-475** | property | generated phrases meet the entropy floor | [[#NFR-475 Pairing Secret Entropy Floor]] |
 | **TEST-NFR-476** | benchmark | ≤ 80 MB RSS, ≤ 1% CPU idle | [[#NFR-476 Daemon Resource Footprint]] |
+| **TEST-NFR-477** | benchmark | remote apply+render ≤ 400 ms 95p | [[#NFR-477 Remote Edit Propagation Latency]] |
 | **TEST-fuzz-spake** | fuzz | [[SPAKE2]]/pairing decoder vs random bytes | [[#REQ-483 Full Recognition at Trust Boundaries]] |
 | **TEST-fuzz-loro** | fuzz | [[Loro]] update import vs hostile frames | [[#REQ-483 Full Recognition at Trust Boundaries]] |
 | **TEST-fuzz-markdown** | fuzz | restricted-CommonMark import recogniser vs hostile input (F13) | [[#REQ-483 Full Recognition at Trust Boundaries]], [[#REQ-484 Guarded Import of External Markdown Edits]] |
@@ -1299,10 +1399,10 @@ negative-output); each TEST records `Validates:`.
 | -- | ---- | ------ | ----- |
 | **OBS-470** Daemon health | metric | `zetld_uptime_seconds`, `zetld_attached_clients`, RSS/CPU | [[#REQ-470 Persistent Daemon Ownership]], [[#NFR-476 Daemon Resource Footprint]] |
 | **OBS-471** Materialisation | metric | `zetl_materialise_duration_seconds`; determinism-mismatch counter | [[#REQ-473 Deterministic Materialisation]] |
-| **OBS-472** Sync convergence | metric | `zetl_sync_converged_total`, `zetl_sync_lag_ops` | [[#REQ-474 Conflict-Free Offline Merge]] |
+| **OBS-472** Sync convergence | metric | `zetl_sync_converged_total`, `zetl_sync_lag_ops`, `zetl_remote_apply_latency_seconds` | [[#REQ-474 Conflict-Free Offline Merge]], [[#NFR-477 Remote Edit Propagation Latency]] |
 | **OBS-473** Discovery | metric | `zetl_pkarr_resolve_duration_seconds`, success/fail counters | [[#REQ-475 Serverless Peer Discovery]], [[#NFR-472 Reconnect Discovery Latency]] |
 | **OBS-474** Pairing | metric | `zetl_pairing_duration_seconds`, `zetl_pairing_started_total` | [[#REQ-476 DHT-Bootstrapped SPAKE2 Pairing]], [[#NFR-471 Pairing Completion Latency]] |
-| **OBS-475** Pairing failure cause | metric | `zetl_pairing_failed_total{cause}` — **operator-channel label only** | [[#REQ-477 Phrase OOB-Only Non-Leak]], [[#REQ-479 Failure-Message Indistinguishability]] |
+| **OBS-475** Pairing failure cause | metric | `zetl_pairing_failed_total{cause}` — **operator-channel label only** | [[#REQ-477 Phrase OOB-Only Non-Leak]], [[#REQ-479 Failure-Message Indistinguishability]], [[#REQ-496 Pairing Attempt Rate Limit]] |
 | **OBS-476** Pairing outcome log | log | operator-channel line per outcome with cause | [[#REQ-479 Failure-Message Indistinguishability]] |
 | **OBS-477** Roster audit | log | roster add/revoke + key-epoch rotation, [[NodeId]] + ts | [[#REQ-480 Group-Key Admission Gate]], [[#REQ-481 Revocation by Key Rotation]] |
 | **OBS-478** Off-roster rejections | metric | `zetl_offroster_rejections_total`, `zetl_malformed_frames_total` | [[#REQ-482 Roster-Gated Encrypted Transport]], [[#REQ-483 Full Recognition at Trust Boundaries]] |
@@ -1353,8 +1453,8 @@ negative-output); each TEST records `Validates:`.
   *Residual:* `num`-enumeration leaks the metadata "someone is pairing now," and
   pins a small routing space (§J). No longer the decisive blocker, but the split
   itself remains in the Tier-1 crypto-review scope.
-- **I. Forged / stale convergence witness** — a peer claims a [[Merkle Vault
-  Root]] it has not reached, or replays an old signed root. *Mitigation:* the
+- **I. Forged / stale convergence witness** — a peer claims a
+  [[Merkle Vault Root]] it has not reached, or replays an old signed root. *Mitigation:* the
   [[#8.8 Signed Vault Root]] frame is ed25519-signed and verified against the
   roster [[NodeId]] before trust (REQ-483); a root is only *trusted as converged*
   after the [[Loro]] state that produces it is actually applied — the witness
@@ -1384,6 +1484,35 @@ negative-output); each TEST records `Validates:`.
   is the write-side dual of ADR-477's "any member reads the whole vault"; a
   documented residual. Sub-vault write scoping is the
   [[#ADR-477 Single Per-Vault Group Key|web-of-trust]] successor's concern.
+- **M. Pairing-burn DoS** — rendezvous locators are enumerable (§H) and a
+  phrase is consumed by its *first* [[SPAKE2]] exchange regardless of outcome
+  ([[#REQ-478 Single-Use Phrase]], F32), so an attacker watching the DHT can
+  connect to each new rendezvous with a garbage password and burn the pairing.
+  *Deliberate trade:* first-exchange-consumption preserves the one-online-guess
+  bound on the ~22-bit secret; the alternative (success-only consumption) would
+  grant repeated guesses. *Mitigation:* [[#REQ-496 Pairing Attempt Rate Limit]]
+  drops excess pre-handshake; the burn is visible (the owner's `pair` fails)
+  and the owner re-pairs. *Residual:* availability nuisance under active
+  attack — accepted for v1 (pairing is rare and interactive).
+- **N. Malicious-member admission / roster fork** — any current member holds
+  the [[Group Key]] and can seal it onward to a third party, run `pair` on its
+  own replica, or fork the roster; the Owner-only pre-conditions
+  ([[#CON-474 Pairing Protocol]] C1, [[#CON-477 Group Key Roster and Revocation]] C1)
+  bind *honest* daemons only — membership authority is local policy, not
+  cryptography (F34). *Mitigation:* none at this layer — the write/admission
+  dual of §L and of [[#ADR-477 Single Per-Vault Group Key]]'s read-coarseness;
+  the [[users/vault-owner/user|Owner]] profile's "controls membership" goal is
+  scoped accordingly. *Residual:* documented; the web-of-trust successor's
+  concern.
+- **O. Revocation propagation window** — a survivor offline at revoke time
+  ([[#NFR-474 Revocation Propagation]] binds *online* survivors only) still
+  holds the old epoch and the revoked [[NodeId]] on its local roster, and will
+  sync **new** content with the revoked peer until it contacts a resealed
+  member (F35) — distinct from §D's past-content retention. *Mitigation:*
+  epoch precedence / anti-rollback — a peer that learns a higher `key_epoch`
+  MUST refuse older epochs; specified in the Q7 group-key package
+  ([[#18. Open Questions]] Q7). *Residual:* unbounded for indefinitely-offline
+  survivors.
 
 ---
 
@@ -1456,7 +1585,7 @@ REQ-### ←π→ TEST-### → CODE → OBS-###
 | --- | -------- | --- | --- | --- |
 | 470 | 470a | 470 | — | 470 |
 | 471 | 471a/b/c | 470 | — | 470 |
-| 472 | 472a/c | 471 | 470 | 471 |
+| 472 | 472a/c/d | 471 | 470 | 471 |
 | 473 | 473a/c | 471 | 470 | 471 |
 | 474 | 474a/c | 473 | 470 | 472 |
 | 475 | 475a/b | 473 | 472 | 473 |
@@ -1468,9 +1597,9 @@ REQ-### ←π→ TEST-### → CODE → OBS-###
 | 481 | 481a/b/c, mut-roster, NFR-474 | 477 | 477 | 477 |
 | 482 | 482a/b, mut-roster | 473 | 472,476 | 478 |
 | 483 | 483a/b/c, fuzz-spake, fuzz-loro | 470,473,474 | 472 | 478 |
-| 484 | 484a/b/c | 471 | 471 | 479 |
+| 484 | 484a/b/c/d | 471 | 471 | 479 |
 | 485 | 485a/c | 473 | 478 | 480 |
-| 486 | 486a/b | 473 | 478 | 480 |
+| 486 | 486a/b/c | 473 | 478 | 480 |
 | 487 | 487a/b | 470,473,474 | 479 | 481 |
 | 488 | 488a/b | 473,474 | 479 | 481 |
 | 489 | 489a/b | 470,474,477 | 480 | — |
@@ -1480,6 +1609,7 @@ REQ-### ←π→ TEST-### → CODE → OBS-###
 | 493 | 493a/b | 473 | 478 | 477 |
 | 494 | 494a/b | 473 | 479 | 478 |
 | 495 | 495a/b | 473 | 478 | 477 |
+| 496 | 496a/b | 474 | 473 | 475 |
 
 Every REQ links ≥ 1 TEST per applicable type and ≥ 1 OBS (post-release;
 REQ-489 is a build-time CLI-surface conformance REQ with no runtime signal —
@@ -1538,6 +1668,24 @@ Per [[PROTO-001]] §AI Trust Boundaries. Tier-1 ⇒ synthesis trajectory recorde
     (TEST-482b → cleartext obligation), F26 (ADR-471 logical-time), F27 + "(no-go)"
     label (Orientation), F28 (§8.1 recognised binding), F29 (REQ-495 + `root_seq`
     + §K), F30 (atomicity note). → 0.9.0.
+  - S₉ — third fresh-context adversarial pass (Claude Fable 5 — a different
+    model but the **same vendor family** as the generator, so it does NOT
+    discharge the Tier-1 cross-model gate) + the Orientation comprehension
+    gate run by a fresh-context subagent given only the Orientation block
+    (passed: intent restated, both behaviour predictions correct, all four
+    locate-the-artefact probes correct). Applied F31–F44: REQ-496 pairing
+    attempt rate limit (F31); REQ-478 first-exchange-consumes + threat §M
+    (F32); REQ-486/ADR-478/CON-473 version-vector guard on the equal-root
+    fast path (F33); ADR-477 + threat §N admission-authority residual (F34);
+    threat §O revocation window + Q7 anti-rollback (F35); NFR-477 remote
+    edit-propagation latency (F36); REQ-487 message-vs-dialect signature
+    rewording (F37); REQ-484 deletes/renames (F38); committed = fsync-appended
+    (REQ-472/ADR-470, F39); NFR-473 rescoped to post-connection causes with
+    padding (F40); mutual key confirmation (HP1/REQ-491, F41); ADR-471 NFC
+    re-materialisation consequence (F42); Q3 granularity dependency (F43);
+    five line-wrapped wikilinks unwrapped (F44); Orientation legend +
+    scrambled-channel metaphor + §H reference fixes (comprehension-gate
+    findings).
   - Adversarial tests: not yet generated (DESIGN-047 `test-strategy` +
     cross-model).
 - **Reviewer:** **PENDING** — Tier-1 requires cross-model adversarial review,
@@ -1582,6 +1730,7 @@ DESIGN-047 task lands.
 | 493 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | n/a | ✓ | ✓ | ✓ | ✓ | ✓ |
 | 494 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | n/a | ✓ | ✓ | ✓ | ✓ | ✓ |
 | 495 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | n/a | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 496 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 > **F18/F30 corrections.** The atomicity splits (F5/F6/F7 → REQ-490/491/492) make
 > REQ-470/476/482 genuinely single-obligation; their ✓Atomic now holds rather
@@ -1593,7 +1742,8 @@ DESIGN-047 task lands.
 > shows only `a`/`c` or `a`/`b`): each is the protocol-sanctioned omission for a
 > pure output-constraining or input-constraining obligation respectively; the
 > DESIGN-047 `test-strategy` task records the explicit justification per REQ
-> before any code (currently a known gap, not a silent one).
+> before any code (currently a known gap, not a silent one). REQ-496's ⚠ Precise
+> closes when DESIGN-047 `adr-rendezvous` fixes the provisional attempt budget.
 
 ---
 
@@ -1603,7 +1753,8 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
 
 | Vague | Where it would arise | Replaced with |
 | ----- | -------------------- | ------------- |
-| "fast" sync | realtime co-editing | ≤ 16 ms render 95p ([[#NFR-470 Local Edit-to-Render Latency]]) |
+| "fast" local echo | keystroke render | ≤ 16 ms 95p ([[#NFR-470 Local Edit-to-Render Latency]]) |
+| "realtime" co-editing | remote edit visibility | ≤ 400 ms 95p ([[#NFR-477 Remote Edit Propagation Latency]]) |
 | "quick" pairing | onboarding | ≤ 10 s / ≤ 30 s 95p ([[#NFR-471 Pairing Completion Latency]]) |
 | "secure" pairing | [[SPAKE2]] ceremony | online-single-guess + single-use + entropy floor + full recognition ([[#REQ-476 DHT-Bootstrapped SPAKE2 Pairing]], [[#REQ-478 Single-Use Phrase]], [[#NFR-475 Pairing Secret Entropy Floor]], [[#REQ-483 Full Recognition at Trust Boundaries]]) |
 | "reliable" merge | offline merge | conflict-free + zero loss + convergence ([[#REQ-474 Conflict-Free Offline Merge]]) |
@@ -1620,11 +1771,16 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
    hits only routing. DESIGN-047 `adr-rendezvous` + the human crypto review MUST
    confirm: (a) the split holds under an active DHT adversary; (b) `num` is sized
    for collision-avoidance ([[#NFR-475 Pairing Secret Entropy Floor]]); (c) ~22-bit
-   `word-word` is adequate given single-use + daemon rate-limiting. *(owner: HOC)*
+   `word-word` is adequate given first-exchange-consumption
+   ([[#REQ-478 Single-Use Phrase]]) + the
+   [[#REQ-496 Pairing Attempt Rate Limit]]. *(owner: HOC)*
 2. **Pairing phishing (§E).** Ship [[NodeId]]-fingerprint OOB confirmation in v1
    or defer? (Carries [[SPEC-036-spake2-onboarding]] §G.)
 3. **CRDT granularity.** One [[Loro]] doc per note, or one container tree per
-   vault? Affects sync chattiness, presence, snapshot cost.
+   vault? Affects sync chattiness, presence, snapshot cost. Note:
+   [[#REQ-486 Merkle Anti-Entropy Reconciliation]] and §8 word their
+   localisation unit as *documents* (doc-per-note); resolving Q3 to a single
+   container tree requires rewording that unit (F43).
 4. **Oplog growth / shallow snapshots.** Compaction aggressiveness vs
    offline-merge correctness (HP3 fallback).
 5. **Mobile daemon.** iOS/Android background limits ([[SPEC-040-zetl-mobile]])
@@ -1632,7 +1788,9 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
 6. **Migration from [[diamond-types]].** One-shot `from_markdown` → [[Loro]], or
    oplog-history migration?
 7. **Group-key cryptography.** Sealed-sender scheme, key epochs, forward-secrecy —
-   no-go-area decisions for human review.
+   no-go-area decisions for human review. Include epoch precedence /
+   anti-rollback: a peer that learns a higher `key_epoch` MUST refuse older
+   epochs, bounding the stale-survivor window of [[#12. Threat Model]] §O (F35).
 8. **Content-addressed block transfer (deferred).** Extend
    [[#ADR-478 Merkle DAG as Convergence Witness and Reconciliation Index]] so a
    joining/large-vault peer fetches only the [[Merkle DAG]] leaves it lacks
@@ -1675,8 +1833,34 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.9.0</summary>
+<summary>Revision history — 0.1.0 → 0.10.0</summary>
 
+- 0.10.0-strawman — third fresh-context review pass (on 0.9.0; Claude Fable 5,
+  same-vendor — the Tier-1 cross-model gate remains undischarged) → 4×S2, 6×S3,
+  4×S4, the first pass probing protocol *semantics* rather than document
+  structure (severity non-convergence vs 0.9.0's 0×S1/5×S2 noted; spec stays
+  strawman). **F31** [[#REQ-496 Pairing Attempt Rate Limit]] — the control
+  ADR-473/NFR-475 cited but never specified. **F32** REQ-478 defines redemption
+  as first-SPAKE2-exchange-consumes + threat §M pairing-burn DoS (deliberate
+  trade preserving the one-guess bound). **F33** REQ-486/ADR-478/CON-473 —
+  equal-root fast path now also requires equal version vectors (roots lag
+  unmaterialised ops). **F34** ADR-477 + threat §N — admission authority
+  unenforceable against a malicious member; Owner profile scoped. **F35**
+  threat §O revocation-propagation window + Q7 anti-rollback. **F36** NFR-477
+  remote edit-propagation latency (quantifies "realtime"; §17 row). **F37**
+  REQ-487 reworded — network messages roster-signed, dialects release
+  artefacts; ADR-479 records the per-frame signing cost. **F38** REQ-484
+  extended to deletes/renames + TEST-484d. **F39** committed = fsync-appended
+  (REQ-472, TEST-472d); ADR-470's WAL-redundancy claim now names the transfer
+  of the durability contract. **F40** NFR-473 rescoped to post-connection
+  causes, padding recorded, rendezvous-absent excluded from the timing bound.
+  **F41** mutual key confirmation before any seal (HP1 step 4, REQ-491).
+  **F42** ADR-471/HP5 NFC re-materialisation consequence. **F43** Q3
+  granularity dependency on REQ-486's document unit. **F44** five line-wrapped
+  wikilinks unwrapped. Orientation: Legend line added (CBCL/DPDA/DCFL, roster,
+  CON-###, ─AST▶), metaphor gains "scrambled channel", §H reference labelled
+  threat-model — from the fresh-context comprehension gate (passed on intent,
+  behaviour prediction, and artefact location).
 - 0.9.0-strawman — second fresh-context review pass (on 0.8.0) → 0×S1, 5×S2, 5×S3
   (down from 3×S1/10×S2). Fixed the regressions the batch introduced and the
   half-applied fixes: F21/F22/F25 (§14 traceability drift from the atomicity
