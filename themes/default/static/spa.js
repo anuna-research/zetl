@@ -38,6 +38,29 @@
     catch (e) { return false; }
   }
 
+  /* Persistent-shell links (sidebar, vault actions, wordmark) are rendered
+     once with page-relative root_path hrefs (build mode: `../`, `../../`, …).
+     SPA pushState changes the document location without re-rendering the shell,
+     so on the next click those stale relative hrefs would resolve against an
+     ever-deeper base and compound the path (#70). Pin them to absolute URLs
+     now — while the document base still matches the page they were rendered
+     for — so later pushState navigations can't shift their resolution.
+     Links inside [data-zetl-volatile] are left untouched: they are swapped per
+     navigation with markup built for the new page's correct root_path. */
+  function freezeShellLinks() {
+    var nodes = document.querySelectorAll('a[href]');
+    for (var i = 0; i < nodes.length; i++) {
+      var a = nodes[i];
+      if (a.closest && a.closest(VOLATILE)) continue;
+      var raw = a.getAttribute('href');
+      if (!raw || raw[0] === '#') continue;
+      /* a.href is the browser-resolved absolute against the still-correct
+         base; writing it back as the literal href pins it. */
+      a.setAttribute('href', a.href);
+    }
+  }
+  freezeShellLinks();
+
   function runScripts(root) {
     /* Inline + same-origin <script> tags in swapped content don't execute on
        innerHTML replace — clone + re-insert so the browser runs them. */
@@ -97,10 +120,62 @@
     try { performance.measure('zetl:navigate', 'zetl:navigate:start'); } catch (e) {}
   }
 
+  /* Hosts with SPA-style 404 fallback (e.g. Cloudflare Pages when the build
+     has no 404.html) answer ANY unknown path with 200 + the homepage
+     document, so `r.ok` alone can't detect a broken link — swap() would
+     silently render the homepage under the phantom URL (#73). Every page
+     rendered through base.html self-identifies via <body data-slug>; before
+     swapping, verify the fetched document actually claims to be the page the
+     URL points at, and hard-navigate on mismatch so the host's real
+     404/redirect behaviour stays visible.
+
+     URL → expected identity: the path stem (pathname minus a trailing
+     /index.html, .html, or slashes) must end with "/" + the claimed slug,
+     optionally followed by /_history (the page-history route renders with
+     its page's slug). Documents that claim the empty slug (vault index) are
+     only accepted at the site root, which is located at boot from the
+     current — known-correct — document. Docs without the attribute (custom
+     vault templates) are exempt: no claim, no verdict. */
+  function pathStem(url) {
+    var p = new URL(url, location.href).pathname;
+    try { p = decodeURIComponent(p); } catch (e) {}
+    return p.replace(/\/index\.html$/, '').replace(/\.html$/, '').replace(/\/+$/, '');
+  }
+  var ROOT_STEM = (function () {
+    var claimed = document.body ? document.body.getAttribute('data-slug') : null;
+    if (claimed === null) return null;
+    var stem;
+    try { stem = pathStem(location.href); } catch (e) { return null; }
+    if (claimed === '') return stem;
+    var tails = ['/' + claimed, '/' + claimed + '/_history'];
+    for (var i = 0; i < tails.length; i++) {
+      if (stem.slice(-tails[i].length) === tails[i]) {
+        return stem.slice(0, stem.length - tails[i].length);
+      }
+    }
+    return null; /* boot doc's own claim doesn't match its URL — no root fix */
+  })();
+  function docMatchesUrl(doc, url) {
+    var claimed = doc.body && doc.body.getAttribute('data-slug');
+    if (claimed === null || claimed === undefined) return true;
+    var stem;
+    try { stem = pathStem(url); } catch (e) { return true; }
+    if (claimed === '') return ROOT_STEM !== null && stem === ROOT_STEM;
+    var tails = ['/' + claimed, '/' + claimed + '/_history'];
+    for (var i = 0; i < tails.length; i++) {
+      if (stem.slice(-tails[i].length) === tails[i]) return true;
+    }
+    return false;
+  }
+
   function navigate(url, push) {
     fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'text/html' } })
       .then(function (r) { if (!r.ok) throw r.status; return r.text(); })
-      .then(function (html) { swap(new DOMParser().parseFromString(html, 'text/html'), url, push); })
+      .then(function (html) {
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        if (!docMatchesUrl(doc, url)) { location.href = url; return; }
+        swap(doc, url, push);
+      })
       .catch(function () { location.href = url; });
   }
 

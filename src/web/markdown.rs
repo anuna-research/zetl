@@ -4,7 +4,24 @@ use std::sync::OnceLock;
 use pulldown_cmark::{CowStr, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use regex::Regex;
 
+use crate::scanner::normalize_page_name;
 use crate::web::html::{html_escape, urlencoding};
+
+/// Look up a wikilink target in a name-keyed map using the same equivalence
+/// the scanner / graph resolver uses: case-insensitive with hyphens,
+/// underscores and spaces treated as interchangeable (`normalize_page_name`).
+///
+/// The slug map (and denied-pages map) is keyed by the kebab file stem, e.g.
+/// `gender-based-violence`, while a prose link writes the natural title
+/// `[[Gender-Based Violence]]`. A bare `eq_ignore_ascii_case` compares `-`
+/// against ` ` and misses, dropping multi-word links into the dead-link
+/// branch even though `zetl check` and the nav resolve them (issue #66).
+fn lookup_normalized<'a, V>(map: &'a HashMap<String, V>, page: &str) -> Option<&'a V> {
+    let target = normalize_page_name(page);
+    map.iter()
+        .find(|(k, _)| normalize_page_name(k) == target)
+        .map(|(_, v)| v)
+}
 
 /// GitHub-style heading slug: lower-case, non-alphanumerics collapsed to
 /// `-`, edges trimmed. Unicode letters and digits are preserved; other
@@ -27,6 +44,31 @@ fn slugify_heading(text: &str) -> String {
         out.pop();
     }
     out
+}
+
+/// Compute the URL fragment for a wikilink/transclusion target's `#section` part so a
+/// `[[page#Section]]` link lands on the section, not the page top. The fragment is the
+/// slugified heading id emitted by [`inject_heading_ids`], so the two always agree.
+///
+/// Returns `""` when the target has no `#section`, an empty section, or a `#^block-id`
+/// reference (the page-body render emits no anchor for block refs, so a fragment there
+/// would be a dead link — left page-level instead).
+fn link_fragment(target: &str) -> String {
+    match target.split_once('#') {
+        Some((_, section)) => {
+            let section = section.trim();
+            if section.is_empty() || section.starts_with('^') {
+                return String::new();
+            }
+            let slug = slugify_heading(section);
+            if slug.is_empty() {
+                String::new()
+            } else {
+                format!("#{slug}")
+            }
+        }
+        None => String::new(),
+    }
 }
 
 /// Walk `events` and populate `id` on every `Tag::Heading` whose id is
@@ -378,10 +420,7 @@ fn replace_wikilinks_in_segment_preview(
         };
         let page = target.split('#').next().unwrap_or(target).trim();
         let display = html_escape(display.trim());
-        let slug = slug_map
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(page))
-            .map(|(_, v)| v.as_str());
+        let slug = lookup_normalized(slug_map, page).map(|v| v.as_str());
 
         if let Some(slug) = slug {
             format!(
@@ -422,9 +461,18 @@ fn replace_wikilinks_in_segment_preview(
 fn render_predicate_chips(html: String) -> String {
     static CHIP_RE: OnceLock<Regex> = OnceLock::new();
     let re = CHIP_RE.get_or_init(|| {
-        // (>) ( 1*( (snake|curie) "::" ) ) ( <a … wikilink … > )
+        // (>) ( 1*( (snake|curie) "::" ) ) ( <a … (wikilink|link-primary|link-error) … > )
+        //
+        // The anchor class is matched as `wikilink` OR the daisyUI link
+        // classes `link-primary` / `link-error`. First-class page links carry
+        // `wikilink`; transclusion-preview links (replace_wikilinks_in_segment_preview)
+        // deliberately omit `wikilink` to stay out of the transclusion-panel JS,
+        // so without the preview classes the chip pass would never match inside
+        // transclusion-card excerpts (#68). These daisyUI classes only ever
+        // appear on rewritten wikilinks — plain markdown links are emitted
+        // class-less — so this stays as precise as the wikilink-only anchor.
         Regex::new(
-            r#"(?P<b>>)(?P<run>(?:[a-z][a-z0-9_]*::|[a-z][a-z0-9]*:[A-Za-z][A-Za-z0-9_-]*::)+)(?P<a><a\b[^>]*\bwikilink\b)"#,
+            r#"(?P<b>>)(?P<run>(?:[a-z][a-z0-9_]*::|[a-z][a-z0-9]*:[A-Za-z][A-Za-z0-9_-]*::)+)(?P<a><a\b[^>]*\b(?:wikilink|link-primary|link-error)\b)"#,
         )
         .expect("invalid predicate-chip regex")
     });
@@ -532,29 +580,31 @@ fn replace_wikilinks_in_segment(
         } else {
             (inner, inner)
         };
-        // Strip heading/block refs for page resolution
+        // Strip heading/block refs for page resolution; keep the `#section` for the href.
         let page = target.split('#').next().unwrap_or(target).trim();
+        let fragment = link_fragment(target);
         let display = html_escape(display.trim());
-        // Look up slug by case-insensitive page name match
-        let slug = slug_map
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(page))
-            .map(|(_, v)| v.as_str());
+        // Look up slug by normalized page-name match (case-insensitive, with
+        // hyphens/underscores/spaces equivalent) so multi-word targets resolve
+        // the same way the graph resolver / `zetl check` do (issue #66).
+        let slug = lookup_normalized(slug_map, page).map(|v| v.as_str());
 
         if let Some(slug) = slug {
             format!(
-                r#"<a href="{root_path}{href}/{index_file}" class="link link-primary wikilink">{display}</a>"#,
+                r#"<a href="{root_path}{href}/{index_file}{fragment}" class="link link-primary wikilink">{display}</a>"#,
                 root_path = root_path,
                 href = urlencoding(slug),
                 index_file = index_file,
+                fragment = fragment,
                 display = display,
             )
         } else {
             format!(
-                r#"<a href="{root_path}{href}/{index_file}" class="link-error wikilink wikilink-dead">{display}</a>"#,
+                r#"<a href="{root_path}{href}/{index_file}{fragment}" class="link-error wikilink wikilink-dead">{display}</a>"#,
                 root_path = root_path,
                 href = urlencoding(page),
                 index_file = index_file,
+                fragment = fragment,
                 display = display,
             )
         }
@@ -724,18 +774,13 @@ fn replace_wikilinks_visibility_segment(
             (inner, inner)
         };
         let page = target.split('#').next().unwrap_or(target).trim();
+        let fragment = link_fragment(target);
         let display = html_escape(display.trim());
 
-        // Check if page is denied (case-insensitive lookup)
-        let denied_style = denied_pages
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(page))
-            .map(|(_, v)| *v);
+        // Check if page is denied (normalized page-name lookup)
+        let denied_style = lookup_normalized(denied_pages, page).copied();
 
-        let slug = slug_map
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(page))
-            .map(|(_, v)| v.as_str());
+        let slug = lookup_normalized(slug_map, page).map(|v| v.as_str());
 
         if let Some(style) = denied_style {
             let href_slug = slug.unwrap_or(page);
@@ -773,10 +818,11 @@ fn replace_wikilinks_visibility_segment(
             }
         } else if let Some(slug) = slug {
             format!(
-                r#"<a href="{root_path}{href}/{index_file}" class="link link-primary wikilink">{display}</a>"#,
+                r#"<a href="{root_path}{href}/{index_file}{fragment}" class="link link-primary wikilink">{display}</a>"#,
                 root_path = root_path,
                 href = urlencoding(slug),
                 index_file = index_file,
+                fragment = fragment,
                 display = display,
             )
         } else {
@@ -1004,6 +1050,63 @@ mod tests {
     }
 
     #[test]
+    fn issue66_multiword_target_resolves_against_kebab_slug_key() {
+        // Regression for issue #66: the slug_map is keyed by the kebab file
+        // stem (e.g. "gender-based-violence"), but prose writes the natural
+        // title "[[Gender-Based Violence]]". Normalized matching must resolve
+        // it to a live primary link, not the raw-title dead-link branch.
+        let mut slug_map = HashMap::new();
+        slug_map.insert(
+            "gender-based-violence".to_string(),
+            "concepts/gender-based-violence".to_string(),
+        );
+        let html = render_to_html(
+            "A study of [[Gender-Based Violence]] here.",
+            &slug_map,
+            "/",
+            "",
+        );
+        assert!(
+            html.contains(r#"href="/concepts/gender-based-violence/""#),
+            "expected resolved slug href, got: {html}"
+        );
+        assert!(html.contains("link link-primary wikilink"));
+        // Must NOT fall to the dead-link branch with a raw-title href.
+        assert!(!html.contains("wikilink-dead"));
+        assert!(!html.contains("Gender-Based%20Violence"));
+    }
+
+    #[test]
+    fn issue66_multiword_predicate_link_resolves() {
+        // The `predicate::[[Multi Word Title]]` form must resolve the same way.
+        let mut slug_map = HashMap::new();
+        slug_map.insert(
+            "gender-based-violence".to_string(),
+            "concepts/gender-based-violence".to_string(),
+        );
+        let html = render_to_html("- addresses::[[Gender-Based Violence]]", &slug_map, "/", "");
+        assert!(
+            html.contains(r#"class="link link-primary wikilink">Gender-Based Violence</a>"#),
+            "expected live primary link, got: {html}"
+        );
+        assert!(!html.contains("wikilink-dead"));
+    }
+
+    #[test]
+    fn issue66_multiword_aliased_link_resolves() {
+        // Pipe-aliased multi-word target must resolve too.
+        let mut slug_map = HashMap::new();
+        slug_map.insert(
+            "reporting-apps".to_string(),
+            "concepts/reporting-apps".to_string(),
+        );
+        let html = render_to_html("See [[Reporting Apps|the apps]] here", &slug_map, "/", "");
+        assert!(html.contains(r#"href="/concepts/reporting-apps/""#));
+        assert!(html.contains("link-primary"));
+        assert!(!html.contains("wikilink-dead"));
+    }
+
+    #[test]
     fn spec045_predicate_renders_as_chip() {
         // A list-item named edge renders the predicate as a styled chip span
         // (auto-derived label) in front of a clean link — not raw `pred::` text.
@@ -1037,6 +1140,25 @@ mod tests {
         let html = render_to_html("- derived from::[[X]]", &slug_map, "/", "");
         assert!(!html.contains("zetl-edge-predicate"));
         assert!(html.contains("derived from::"));
+    }
+
+    #[test]
+    fn spec045_predicate_chip_renders_in_transclusion_preview() {
+        // #68: predicate runs must render as chips inside transclusion-card
+        // excerpts too. The preview rewriter emits links *without* the
+        // `wikilink` class (to keep them out of the transclusion-panel JS),
+        // so the chip pass must recognise the preview link classes as well.
+        let mut slug_map = HashMap::new();
+        slug_map.insert("Retro".to_string(), "retro".to_string());
+        let html = render_preview_html("- related_to::[[Retro]]", &slug_map, "/", "");
+        assert!(
+            html.contains(
+                r#"<span class="zetl-edge-predicate" data-predicate="related_to">Related to</span>"#
+            ),
+            "preview should chip the predicate, got: {html}"
+        );
+        // The raw `related_to::` text must NOT leak into the excerpt.
+        assert!(!html.contains("related_to::<a"));
     }
 
     #[test]
@@ -1229,6 +1351,41 @@ mod tests {
         );
         // Unicode letters stay (URL-safe in modern browsers).
         assert_eq!(slugify_heading("Schrödinger's cat"), "schrödinger-s-cat");
+    }
+
+    #[test]
+    fn section_wikilinks_carry_slugified_fragment() {
+        // Regression: `[[page#Section]]` must link to the page's slugified heading id
+        // (matching inject_heading_ids), not just the page top.
+        let mut slug_map = HashMap::new();
+        slug_map.insert("Handbook".to_string(), "handbook".to_string());
+        let html = render_to_html(
+            "See [[Handbook#Mission Statement]] and [[Handbook]].",
+            &slug_map,
+            "../",
+            "index.html",
+        );
+        assert!(
+            html.contains(r#"href="../handbook/index.html#mission-statement""#),
+            "section link should carry the slugified fragment; got: {html}"
+        );
+        // a plain page link (no section) carries no fragment
+        assert!(
+            html.contains(
+                r#"href="../handbook/index.html" class="link link-primary wikilink">Handbook</a>"#
+            ),
+            "plain page link should have no fragment; got: {html}"
+        );
+    }
+
+    #[test]
+    fn link_fragment_rules() {
+        assert_eq!(link_fragment("page#Mission"), "#mission");
+        assert_eq!(link_fragment("page#Two Words"), "#two-words");
+        assert_eq!(link_fragment("page"), "");
+        assert_eq!(link_fragment("page#"), "");
+        // block refs get no body anchor → no fragment (avoids a dead link)
+        assert_eq!(link_fragment("page#^block-1"), "");
     }
 
     #[test]

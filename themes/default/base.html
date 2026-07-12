@@ -76,7 +76,11 @@
   {# Child templates can still inject per-page CSS via the `styles` block. #}
   <style>{% block styles %}{% endblock %}</style>
 </head>
-<body class="min-h-screen bg-base-100" data-placement="{{ graph_placement | default('docked') }}">
+{# data-slug is the document's self-identification: graph-boot.js reads it to
+   highlight the active node, and spa.js compares it against the URL it
+   fetched so a host's SPA-style 404 fallback (200 + homepage HTML for any
+   unknown path) can't be swapped in as if it were the requested page (#73). #}
+<body class="min-h-screen bg-base-100" data-slug="{{ active_slug | default('') }}" data-placement="{{ graph_placement | default('docked') }}">
 
   {# SPEC-028 REQ-116: persistent graph widget. Lives outside <main> so that
      when the SPA navigation shell swaps content (REQ-113), the Sigma.js
@@ -205,8 +209,14 @@
             embedded serve is part of the Tauri Mobile shell (the global
             `mobile_mode` is set by engine.rs gated on feature=mobile).
             `data-zetl-spa="off"` forces a full page load because the
-            `/_mobile/*` routes are outside the SPA shell. -#}
-        {%- if mobile_mode %}
+            `/_mobile/*` routes are outside the SPA shell.
+
+            Also gated on `mode != "build"`: `mobile_mode` is a compile-time
+            flag, so a mobile-feature binary running `zetl build` would
+            otherwise bake these `/_mobile/*` links into the *static* site,
+            where no such routes exist (#69). The drawer is meaningful only
+            under the live embedded serve. -#}
+        {%- if mobile_mode and mode != "build" %}
         <nav class="zetl-actions" aria-label="Mobile">
           <p class="zetl-actions-heading">Mobile</p>
           <a href="/_mobile/vaults" data-zetl-spa="off" class="zetl-action">
@@ -269,7 +279,15 @@
   <script>
   (function(){
     var MODE='{{ mode }}';
-    var ROOT='{{ root_path | safe }}';
+    /* root_path is a page-relative prefix (build mode: `../`, `../../`, …).
+       This search script lives in the persistent shell and runs ONCE, so on
+       SPA navigation to a different-depth page its ROOT would otherwise resolve
+       against the new, deeper document base and compound result-link / fetch
+       URLs (the #70 family of bug). Resolve it to an absolute URL now — while
+       the document base still matches the page this script loaded on — so it
+       stays correct across every later pushState. (`|| './'` handles the empty
+       root_path at a depth-0 index so we keep the directory, not the file.) */
+    var ROOT=new URL('{{ root_path | safe }}' || './', location.href).href;
     var IDXFILE='{{ index_file }}';
     var overlay=document.getElementById('search-overlay');
     var dialog=document.getElementById('search-dialog');

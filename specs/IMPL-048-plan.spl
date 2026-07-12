@@ -1,0 +1,359 @@
+;; IMPL-048 — Implementation plan for SPEC-048 (Template Components & Templated Static Pages, v0.2.1)
+;; Dependency-ordered task DAG for the v1 core. Single implementer agent.
+
+(meta plan
+  (id "IMPL-048")
+  (title "Template Components & Templated Static Pages — v1 core implementation")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-06-24")
+  (author "agent:opus-impl")
+  (spec "SPEC-048")
+  (description "Implement the SPEC-048 v1 core in the zetl Rust codebase: new src/web/components/ module (manifest, validate, resolve, lower, nesting, tokens, css, transclude) wired into engine.rs and build.rs, plus integration tests."))
+
+;; ---- Agents ----
+(given agent-opus-impl-available)
+
+;; ---- Tasks ----
+(given task-manifest)      ; CON-4801 / REQ-4803
+(given task-validate)      ; REQ-4814
+(given task-resolve)       ; REQ-4804
+(given task-lower)         ; REQ-4805 / ADR-4803 / CON-4802
+(given task-nesting)       ; REQ-4807
+(given task-tokens)        ; REQ-4812 / CON-4804
+(given task-css-emit)      ; REQ-4809
+(given task-site-ctx)      ; REQ-4801 / REQ-4802
+(given task-transclude)    ; REQ-4818 / CON-4806 / ADR-4810
+(given task-engine-wire)   ; engine.rs integration
+(given task-build-wire)    ; REQ-4811 build integration + asset emission
+(given task-backcompat)    ; REQ-4813
+(given task-tests)         ; integration tests
+
+;; Foundation tasks have no dependencies.
+(given no-deps-manifest)
+(given no-deps-lower)
+(given no-deps-tokens)
+(given no-deps-site-ctx)
+
+;; ---- Task metadata ----
+(meta task-manifest
+  (description "src/web/components/manifest.rs: parse <name>.toml into Manifest{name,requires,slots,props}; strict TOML, reject unknown top-level keys (incl. reserved publishes/subscribes); prop schema type/required/default/enum; 64 KiB bound.")
+  (acceptance "Unit tests: well-formed manifest parses; name/dir mismatch, non-kebab name, unknown key -> component-malformed."))
+(meta task-validate
+  (description "src/web/components/validate.rs: validate invocation kwargs against [props] schema; unknown/type/enum/missing-required errors; defaults fill omitted optionals.")
+  (acceptance "Unit tests: valid props bind+defaults; each of unknown/type/enum/missing -> distinct error."))
+(meta task-resolve
+  (description "src/web/components/resolve.rs: three-tier whole-directory resolution vault/.zetl/components -> theme -> bundled default; unknown name -> component-not-found; record source layer for OBS-4801.")
+  (acceptance "Unit tests: vault shadows theme whole-dir; unknown -> error; source layer reported."))
+(meta task-lower
+  (description "src/web/components/lower.rs: pre-parse source-lowering of {% component \"x\" k=v %}...{% slot \"s\" %}...{% endslot %}...{% endcomponent %} into native {% import %}+{% set _slot_s %}+{% call x(k=v, s=_slot_s) %}; recogniser per CON-4802; no custom minijinja tag.")
+  (acceptance "Unit tests: default-slot lowering == caller(); named-slot via set capture; self-closing form; idempotent on no-component source."))
+(meta task-nesting
+  (description "src/web/components/nesting.rs: static cycle detection over component-invocation graph (Kahn) -> component-cycle naming path; render-time depth counter bound (<=16) -> component-depth-bound.")
+  (acceptance "Unit tests: a->b->a cycle detected with path; depth-17 chain rejected."))
+(meta task-tokens
+  (description "src/web/components/tokens.rs: tokens.toml -> single _static/tokens.css under :root (+ [data-theme] blocks); key-by-key merge across layers; CSS-token-safe value recognition (Threat F) -> tokens-value-unsafe.")
+  (acceptance "Unit tests: merge overrides one key; unsafe value (;/}/comment/markup) rejected; deterministic output."))
+(meta task-css-emit
+  (description "src/web/components/css.rs: collect component <name>.css used on a build, dedup (emit once), deterministic order (name then layer); stamp data-z marker contract; UNSCOPED in v1.")
+  (acceptance "Unit tests: N uses -> one emission; stable byte order across two runs."))
+(meta task-site-ctx
+  (description "src/web/context.rs + engine.rs: add a site context object (name, nav, root_path, tokens ref, build mode) available to every render path incl. static pages; preserve vault/page; statically-known tier set per path kind.")
+  (acceptance "Unit/integration: site present on page+folder+static paths; page-tier absent on static path."))
+(meta task-transclude
+  (description "src/web/components/transclude.rs + engine fn: transclude(target) reusing parse_wikilink_inner + render fragment; closed metadata allow-list (title+publishable frontmatter only); visibility gate; unresolved -> transclude-target-unresolved + dead-link; bounded by nesting.")
+  (acceptance "Unit/integration: section transclude renders == embed; backlinks/edges unreachable; draft/missing -> error."))
+(meta task-engine-wire
+  (description "engine.rs: register resolved components as minijinja macros, run lower pass inside the loader, expose transclude() function + site context; thread strict-undefined + diagnostics.")
+  (acceptance "Integration: {% component %} renders end-to-end through TemplateEngine with data-z marker; undeclared tier read -> strict-undefined."))
+(meta task-build-wire
+  (description "build.rs: render *.html.jinja static files with site-only context (REQ-4811, foo.html.jinja->foo/index.html); emit tokens.css + component CSS into _static/; verbatim copy unchanged for plain files.")
+  (acceptance "Integration: about.html.jinja -> about/index.html sharing nav+tokens; plain .html copied verbatim; static page reading page ctx -> error."))
+(meta task-backcompat
+  (description "Ensure REQ-4813: vault with no components/tokens/.html.jinja builds byte-identically; all paths opt-in only.")
+  (acceptance "Integration: no-opt-in build == pre-SPEC-048 golden; no tokens.css emitted absent tokens.toml."))
+(meta task-tests
+  (description "tests/components_integration.rs: end-to-end fixtures for HP2/HP3/HP4/HP5/HP6 + negative cases; wire into cargo test.")
+  (acceptance "All TEST-48xx positive/negative-input/negative-output cases pass; cargo test green."))
+
+;; ---- Readiness rules ----
+(normally r-ready-manifest    (and task-manifest no-deps-manifest)            ready-manifest)
+(normally r-ready-lower       (and task-lower no-deps-lower)                  ready-lower)
+(normally r-ready-tokens      (and task-tokens no-deps-tokens)               ready-tokens)
+(normally r-ready-site-ctx    (and task-site-ctx no-deps-site-ctx)           ready-site-ctx)
+(normally r-ready-validate    (and task-validate completed-manifest)         ready-validate)
+(normally r-ready-resolve     (and task-resolve completed-manifest)          ready-resolve)
+(normally r-ready-css-emit    (and task-css-emit completed-resolve)          ready-css-emit)
+(normally r-ready-nesting     (and task-nesting completed-resolve completed-lower) ready-nesting)
+(normally r-ready-transclude  (and task-transclude completed-site-ctx)       ready-transclude)
+(normally r-ready-engine-wire
+  (and task-engine-wire completed-resolve completed-lower completed-validate completed-nesting completed-transclude completed-site-ctx)
+  ready-engine-wire)
+(normally r-ready-build-wire
+  (and task-build-wire completed-engine-wire completed-tokens completed-css-emit)
+  ready-build-wire)
+(normally r-ready-backcompat  (and task-backcompat completed-build-wire)     ready-backcompat)
+(normally r-ready-tests       (and task-tests completed-build-wire completed-backcompat) ready-tests)
+
+;; ---- Assignment rules (single implementer) ----
+(normally r-assign-manifest    (and ready-manifest agent-opus-impl-available)    assign-to-manifest-opus-impl)
+(normally r-assign-validate    (and ready-validate agent-opus-impl-available)    assign-to-validate-opus-impl)
+(normally r-assign-resolve     (and ready-resolve agent-opus-impl-available)     assign-to-resolve-opus-impl)
+(normally r-assign-lower       (and ready-lower agent-opus-impl-available)       assign-to-lower-opus-impl)
+(normally r-assign-nesting     (and ready-nesting agent-opus-impl-available)     assign-to-nesting-opus-impl)
+(normally r-assign-tokens      (and ready-tokens agent-opus-impl-available)      assign-to-tokens-opus-impl)
+(normally r-assign-css-emit    (and ready-css-emit agent-opus-impl-available)    assign-to-css-emit-opus-impl)
+(normally r-assign-site-ctx    (and ready-site-ctx agent-opus-impl-available)    assign-to-site-ctx-opus-impl)
+(normally r-assign-transclude  (and ready-transclude agent-opus-impl-available)  assign-to-transclude-opus-impl)
+(normally r-assign-engine-wire (and ready-engine-wire agent-opus-impl-available) assign-to-engine-wire-opus-impl)
+(normally r-assign-build-wire  (and ready-build-wire agent-opus-impl-available)  assign-to-build-wire-opus-impl)
+(normally r-assign-backcompat  (and ready-backcompat agent-opus-impl-available)  assign-to-backcompat-opus-impl)
+(normally r-assign-tests       (and ready-tests agent-opus-impl-available)       assign-to-tests-opus-impl)
+
+(claims agent:opus-impl
+  :at "2026-06-24T07:58:49Z"
+  (given claim-v1-manifest)
+  (normally r-cl-state-v1-manifest claim-v1-manifest state-claimed-v1-manifest)
+  (normally r-cl-chain-v1-manifest state-claimed-v1-manifest claimed-manifest)
+)
+
+;; Propagation rules: failures in 'manifest' block downstream tasks
+(normally r-propagate-resolve-from-manifest-failed failed-manifest upstream-blocked-resolve)
+(normally r-propagate-resolve-from-manifest-permanently-failed permanently-failed-manifest upstream-blocked-resolve)
+(normally r-propagate-resolve-from-manifest-stale-v1 stale-v1-manifest upstream-blocked-resolve)
+(normally r-propagate-resolve-from-manifest-timeout-v1 timeout-v1-manifest upstream-blocked-resolve)
+(normally r-propagate-resolve-from-manifest-blocked upstream-blocked-manifest upstream-blocked-resolve)
+(normally r-propagate-validate-from-manifest-failed failed-manifest upstream-blocked-validate)
+(normally r-propagate-validate-from-manifest-permanently-failed permanently-failed-manifest upstream-blocked-validate)
+(normally r-propagate-validate-from-manifest-stale-v1 stale-v1-manifest upstream-blocked-validate)
+(normally r-propagate-validate-from-manifest-timeout-v1 timeout-v1-manifest upstream-blocked-validate)
+(normally r-propagate-validate-from-manifest-blocked upstream-blocked-manifest upstream-blocked-validate)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-css-emit-from-resolve-blocked upstream-blocked-resolve upstream-blocked-css-emit)
+(normally r-propagate-engine-wire-from-resolve-blocked upstream-blocked-resolve upstream-blocked-engine-wire)
+(normally r-propagate-nesting-from-resolve-blocked upstream-blocked-resolve upstream-blocked-nesting)
+(normally r-propagate-engine-wire-from-validate-blocked upstream-blocked-validate upstream-blocked-engine-wire)
+(normally r-propagate-build-wire-from-css-emit-blocked upstream-blocked-css-emit upstream-blocked-build-wire)
+(normally r-propagate-build-wire-from-engine-wire-blocked upstream-blocked-engine-wire upstream-blocked-build-wire)
+(normally r-propagate-engine-wire-from-nesting-blocked upstream-blocked-nesting upstream-blocked-engine-wire)
+(normally r-propagate-backcompat-from-build-wire-blocked upstream-blocked-build-wire upstream-blocked-backcompat)
+(normally r-propagate-tests-from-build-wire-blocked upstream-blocked-build-wire upstream-blocked-tests)
+(normally r-propagate-tests-from-backcompat-blocked upstream-blocked-backcompat upstream-blocked-tests)
+
+(claims agent:opus-impl
+  :at "2026-06-24T07:58:49Z"
+  (given claim-v1-lower)
+  (normally r-cl-state-v1-lower claim-v1-lower state-claimed-v1-lower)
+  (normally r-cl-chain-v1-lower state-claimed-v1-lower claimed-lower)
+)
+
+;; Propagation rules: failures in 'lower' block downstream tasks
+(normally r-propagate-engine-wire-from-lower-failed failed-lower upstream-blocked-engine-wire)
+(normally r-propagate-engine-wire-from-lower-permanently-failed permanently-failed-lower upstream-blocked-engine-wire)
+(normally r-propagate-engine-wire-from-lower-stale-v1 stale-v1-lower upstream-blocked-engine-wire)
+(normally r-propagate-engine-wire-from-lower-timeout-v1 timeout-v1-lower upstream-blocked-engine-wire)
+(normally r-propagate-engine-wire-from-lower-blocked upstream-blocked-lower upstream-blocked-engine-wire)
+(normally r-propagate-nesting-from-lower-failed failed-lower upstream-blocked-nesting)
+(normally r-propagate-nesting-from-lower-permanently-failed permanently-failed-lower upstream-blocked-nesting)
+(normally r-propagate-nesting-from-lower-stale-v1 stale-v1-lower upstream-blocked-nesting)
+(normally r-propagate-nesting-from-lower-timeout-v1 timeout-v1-lower upstream-blocked-nesting)
+(normally r-propagate-nesting-from-lower-blocked upstream-blocked-lower upstream-blocked-nesting)
+
+(claims agent:opus-impl
+  :at "2026-06-24T07:58:49Z"
+  (given claim-v1-tokens)
+  (normally r-cl-state-v1-tokens claim-v1-tokens state-claimed-v1-tokens)
+  (normally r-cl-chain-v1-tokens state-claimed-v1-tokens claimed-tokens)
+)
+
+;; Propagation rules: failures in 'tokens' block downstream tasks
+(normally r-propagate-build-wire-from-tokens-failed failed-tokens upstream-blocked-build-wire)
+(normally r-propagate-build-wire-from-tokens-permanently-failed permanently-failed-tokens upstream-blocked-build-wire)
+(normally r-propagate-build-wire-from-tokens-stale-v1 stale-v1-tokens upstream-blocked-build-wire)
+(normally r-propagate-build-wire-from-tokens-timeout-v1 timeout-v1-tokens upstream-blocked-build-wire)
+(normally r-propagate-build-wire-from-tokens-blocked upstream-blocked-tokens upstream-blocked-build-wire)
+
+(claims agent:opus-impl
+  :at "2026-06-24T07:58:49Z"
+  (given claim-v1-site-ctx)
+  (normally r-cl-state-v1-site-ctx claim-v1-site-ctx state-claimed-v1-site-ctx)
+  (normally r-cl-chain-v1-site-ctx state-claimed-v1-site-ctx claimed-site-ctx)
+)
+
+;; Propagation rules: failures in 'site-ctx' block downstream tasks
+(normally r-propagate-engine-wire-from-site-ctx-failed failed-site-ctx upstream-blocked-engine-wire)
+(normally r-propagate-engine-wire-from-site-ctx-permanently-failed permanently-failed-site-ctx upstream-blocked-engine-wire)
+(normally r-propagate-engine-wire-from-site-ctx-stale-v1 stale-v1-site-ctx upstream-blocked-engine-wire)
+(normally r-propagate-engine-wire-from-site-ctx-timeout-v1 timeout-v1-site-ctx upstream-blocked-engine-wire)
+(normally r-propagate-engine-wire-from-site-ctx-blocked upstream-blocked-site-ctx upstream-blocked-engine-wire)
+(normally r-propagate-transclude-from-site-ctx-failed failed-site-ctx upstream-blocked-transclude)
+(normally r-propagate-transclude-from-site-ctx-permanently-failed permanently-failed-site-ctx upstream-blocked-transclude)
+(normally r-propagate-transclude-from-site-ctx-stale-v1 stale-v1-site-ctx upstream-blocked-transclude)
+(normally r-propagate-transclude-from-site-ctx-timeout-v1 timeout-v1-site-ctx upstream-blocked-transclude)
+(normally r-propagate-transclude-from-site-ctx-blocked upstream-blocked-site-ctx upstream-blocked-transclude)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-engine-wire-from-transclude-blocked upstream-blocked-transclude upstream-blocked-engine-wire)
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:10:54Z"
+  (given completed-manifest))
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:10:54Z"
+  (given completed-lower))
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:10:54Z"
+  (given completed-tokens))
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:10:54Z"
+  (given claim-v1-validate)
+  (normally r-cl-state-v1-validate claim-v1-validate state-claimed-v1-validate)
+  (normally r-cl-chain-v1-validate state-claimed-v1-validate claimed-validate)
+)
+
+;; Propagation rules: failures in 'validate' block downstream tasks
+(normally r-propagate-engine-wire-from-validate-failed failed-validate upstream-blocked-engine-wire)
+(normally r-propagate-engine-wire-from-validate-permanently-failed permanently-failed-validate upstream-blocked-engine-wire)
+(normally r-propagate-engine-wire-from-validate-stale-v1 stale-v1-validate upstream-blocked-engine-wire)
+(normally r-propagate-engine-wire-from-validate-timeout-v1 timeout-v1-validate upstream-blocked-engine-wire)
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:10:54Z"
+  (given completed-validate))
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:10:54Z"
+  (given claim-v1-resolve)
+  (normally r-cl-state-v1-resolve claim-v1-resolve state-claimed-v1-resolve)
+  (normally r-cl-chain-v1-resolve state-claimed-v1-resolve claimed-resolve)
+)
+
+;; Propagation rules: failures in 'resolve' block downstream tasks
+(normally r-propagate-css-emit-from-resolve-failed failed-resolve upstream-blocked-css-emit)
+(normally r-propagate-css-emit-from-resolve-permanently-failed permanently-failed-resolve upstream-blocked-css-emit)
+(normally r-propagate-css-emit-from-resolve-stale-v1 stale-v1-resolve upstream-blocked-css-emit)
+(normally r-propagate-css-emit-from-resolve-timeout-v1 timeout-v1-resolve upstream-blocked-css-emit)
+(normally r-propagate-engine-wire-from-resolve-failed failed-resolve upstream-blocked-engine-wire)
+(normally r-propagate-engine-wire-from-resolve-permanently-failed permanently-failed-resolve upstream-blocked-engine-wire)
+(normally r-propagate-engine-wire-from-resolve-stale-v1 stale-v1-resolve upstream-blocked-engine-wire)
+(normally r-propagate-engine-wire-from-resolve-timeout-v1 timeout-v1-resolve upstream-blocked-engine-wire)
+(normally r-propagate-nesting-from-resolve-failed failed-resolve upstream-blocked-nesting)
+(normally r-propagate-nesting-from-resolve-permanently-failed permanently-failed-resolve upstream-blocked-nesting)
+(normally r-propagate-nesting-from-resolve-stale-v1 stale-v1-resolve upstream-blocked-nesting)
+(normally r-propagate-nesting-from-resolve-timeout-v1 timeout-v1-resolve upstream-blocked-nesting)
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:10:54Z"
+  (given completed-resolve))
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:10:54Z"
+  (given claim-v1-nesting)
+  (normally r-cl-state-v1-nesting claim-v1-nesting state-claimed-v1-nesting)
+  (normally r-cl-chain-v1-nesting state-claimed-v1-nesting claimed-nesting)
+)
+
+;; Propagation rules: failures in 'nesting' block downstream tasks
+(normally r-propagate-engine-wire-from-nesting-failed failed-nesting upstream-blocked-engine-wire)
+(normally r-propagate-engine-wire-from-nesting-permanently-failed permanently-failed-nesting upstream-blocked-engine-wire)
+(normally r-propagate-engine-wire-from-nesting-stale-v1 stale-v1-nesting upstream-blocked-engine-wire)
+(normally r-propagate-engine-wire-from-nesting-timeout-v1 timeout-v1-nesting upstream-blocked-engine-wire)
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:10:54Z"
+  (given completed-nesting))
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:10:54Z"
+  (given claim-v1-css-emit)
+  (normally r-cl-state-v1-css-emit claim-v1-css-emit state-claimed-v1-css-emit)
+  (normally r-cl-chain-v1-css-emit state-claimed-v1-css-emit claimed-css-emit)
+)
+
+;; Propagation rules: failures in 'css-emit' block downstream tasks
+(normally r-propagate-build-wire-from-css-emit-failed failed-css-emit upstream-blocked-build-wire)
+(normally r-propagate-build-wire-from-css-emit-permanently-failed permanently-failed-css-emit upstream-blocked-build-wire)
+(normally r-propagate-build-wire-from-css-emit-stale-v1 stale-v1-css-emit upstream-blocked-build-wire)
+(normally r-propagate-build-wire-from-css-emit-timeout-v1 timeout-v1-css-emit upstream-blocked-build-wire)
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:10:54Z"
+  (given completed-css-emit))
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:10:54Z"
+  (given completed-transclude))
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:18:55Z"
+  (given completed-site-ctx))
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:18:55Z"
+  (given claim-v1-engine-wire)
+  (normally r-cl-state-v1-engine-wire claim-v1-engine-wire state-claimed-v1-engine-wire)
+  (normally r-cl-chain-v1-engine-wire state-claimed-v1-engine-wire claimed-engine-wire)
+)
+
+;; Propagation rules: failures in 'engine-wire' block downstream tasks
+(normally r-propagate-build-wire-from-engine-wire-failed failed-engine-wire upstream-blocked-build-wire)
+(normally r-propagate-build-wire-from-engine-wire-permanently-failed permanently-failed-engine-wire upstream-blocked-build-wire)
+(normally r-propagate-build-wire-from-engine-wire-stale-v1 stale-v1-engine-wire upstream-blocked-build-wire)
+(normally r-propagate-build-wire-from-engine-wire-timeout-v1 timeout-v1-engine-wire upstream-blocked-build-wire)
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:18:55Z"
+  (given completed-engine-wire))
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:18:55Z"
+  (given claim-v1-build-wire)
+  (normally r-cl-state-v1-build-wire claim-v1-build-wire state-claimed-v1-build-wire)
+  (normally r-cl-chain-v1-build-wire state-claimed-v1-build-wire claimed-build-wire)
+)
+
+;; Propagation rules: failures in 'build-wire' block downstream tasks
+(normally r-propagate-backcompat-from-build-wire-failed failed-build-wire upstream-blocked-backcompat)
+(normally r-propagate-backcompat-from-build-wire-permanently-failed permanently-failed-build-wire upstream-blocked-backcompat)
+(normally r-propagate-backcompat-from-build-wire-stale-v1 stale-v1-build-wire upstream-blocked-backcompat)
+(normally r-propagate-backcompat-from-build-wire-timeout-v1 timeout-v1-build-wire upstream-blocked-backcompat)
+(normally r-propagate-tests-from-build-wire-failed failed-build-wire upstream-blocked-tests)
+(normally r-propagate-tests-from-build-wire-permanently-failed permanently-failed-build-wire upstream-blocked-tests)
+(normally r-propagate-tests-from-build-wire-stale-v1 stale-v1-build-wire upstream-blocked-tests)
+(normally r-propagate-tests-from-build-wire-timeout-v1 timeout-v1-build-wire upstream-blocked-tests)
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:18:55Z"
+  (given completed-build-wire))
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:22:54Z"
+  (given claim-v1-backcompat)
+  (normally r-cl-state-v1-backcompat claim-v1-backcompat state-claimed-v1-backcompat)
+  (normally r-cl-chain-v1-backcompat state-claimed-v1-backcompat claimed-backcompat)
+)
+
+;; Propagation rules: failures in 'backcompat' block downstream tasks
+(normally r-propagate-tests-from-backcompat-failed failed-backcompat upstream-blocked-tests)
+(normally r-propagate-tests-from-backcompat-permanently-failed permanently-failed-backcompat upstream-blocked-tests)
+(normally r-propagate-tests-from-backcompat-stale-v1 stale-v1-backcompat upstream-blocked-tests)
+(normally r-propagate-tests-from-backcompat-timeout-v1 timeout-v1-backcompat upstream-blocked-tests)
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:22:54Z"
+  (given completed-backcompat))
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:22:54Z"
+  (given claim-v1-tests)
+  (normally r-cl-state-v1-tests claim-v1-tests state-claimed-v1-tests)
+  (normally r-cl-chain-v1-tests state-claimed-v1-tests claimed-tests)
+)
+
+(claims agent:opus-impl
+  :at "2026-06-24T08:22:54Z"
+  (given completed-tests))

@@ -1,10 +1,58 @@
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use include_dir::{include_dir, Dir};
 use minijinja::{context, Environment};
 
+use super::components::lower::{lower_template, ComponentLookup, COMPONENTS_TEMPLATE};
+use super::components::manifest::Manifest;
+use super::components::resolve::discover_components;
 use super::context::{FolderContext, PageContext, TagCloudContext, VaultContext};
+
+/// SPEC-048 — components discovered for an [`Environment`], used both to serve the
+/// synthetic `__zetl_components.html` macro template and to validate `{% component %}`
+/// invocations while lowering each loaded template.
+#[derive(Clone, Default)]
+struct EngineComponents {
+    manifests: BTreeMap<String, Manifest>,
+    /// Source of the synthetic macro template (one `{% macro %}` per component).
+    synthetic: String,
+}
+
+impl ComponentLookup for EngineComponents {
+    fn manifest(&self, name: &str) -> Option<&Manifest> {
+        self.manifests.get(name)
+    }
+}
+
+/// Discover components and build the synthetic macro template. Each component's
+/// `<name>.html` becomes `{% macro <name>(props, _name="<name>", <slots>="") %}…{% endmacro %}`:
+/// the default slot is `caller()`, named slots are macro args, and `_name` carries the
+/// `data-z` marker value (REQ-4809/CON-4805).
+fn build_components(vault_root: &Path, theme: &str) -> EngineComponents {
+    let comps = match discover_components(vault_root, theme) {
+        Ok(c) => c,
+        Err(_) => return EngineComponents::default(),
+    };
+    let mut manifests = BTreeMap::new();
+    let mut synthetic = String::new();
+    for (name, c) in &comps {
+        manifests.insert(name.clone(), c.manifest.clone());
+        let ident = super::components::lower::macro_ident(name);
+        let mut params = vec!["props".to_string(), format!("_name=\"{name}\"")];
+        for slot in &c.manifest.slots {
+            params.push(format!("{slot}=\"\""));
+        }
+        synthetic.push_str(&format!("{{% macro {ident}({}) %}}", params.join(", ")));
+        synthetic.push_str(&c.template);
+        synthetic.push_str("{% endmacro %}\n");
+    }
+    EngineComponents {
+        manifests,
+        synthetic,
+    }
+}
 
 // ── Bundled themes ──────────────────────────────────────────────────────────
 
@@ -292,20 +340,36 @@ fn build_env_with_strictness(
 fn __build_env_finish(env: &mut Environment<'static>, vault_root: &Path, theme: &str) {
     let vr = vault_root.to_path_buf();
     let t = theme.to_string();
+    // SPEC-048: discover components once for this Environment. In serve/reload mode a
+    // fresh Environment is built per render, so on-disk component edits take effect.
+    let components = build_components(vault_root, theme);
     env.set_loader(move |name: &str| {
-        // Tier 1: check active theme directory on disk (skip for "default")
-        if t != "default" {
-            let theme_path = vr.join(".zetl/themes").join(&t).join(name);
-            if let Ok(content) = std::fs::read_to_string(&theme_path) {
-                return Ok(Some(content));
-            }
+        // SPEC-048 REQ-4805: serve the synthetic component-macro template.
+        if name == COMPONENTS_TEMPLATE {
+            return Ok(Some(components.synthetic.clone()));
         }
-        // Tier 2: check bundled theme for the active theme name
-        if let Some(content) = bundled_template(&t, name) {
-            return Ok(Some(content.to_string()));
+        // Resolve the template source via the three tiers.
+        let source: Option<String> = {
+            // Tier 1: active theme directory on disk (skip for "default")
+            let from_disk = if t != "default" {
+                std::fs::read_to_string(vr.join(".zetl/themes").join(&t).join(name)).ok()
+            } else {
+                None
+            };
+            from_disk
+                // Tier 2: bundled theme for the active theme name
+                .or_else(|| bundled_template(&t, name).map(|s| s.to_string()))
+                // Tier 3: bundled default theme
+                .or_else(|| bundled_template("default", name).map(|s| s.to_string()))
+        };
+        match source {
+            // SPEC-048 REQ-4805: lower {% component %}/{% slot %} sugar before parse.
+            // No-op (byte-identical) for templates that invoke no component.
+            Some(src) => lower_template(&src, &components).map(Some).map_err(|e| {
+                minijinja::Error::new(minijinja::ErrorKind::SyntaxError, e.to_string())
+            }),
+            None => Ok(None),
         }
-        // Tier 3: fall back to built-in default theme embedded at compile time
-        Ok(bundled_template("default", name).map(|s| s.to_string()))
     });
 
     // SPEC-028 REQ-116: inject the resolved graph widget placement as a
@@ -376,6 +440,194 @@ fn __build_env_finish(env: &mut Environment<'static>, vault_root: &Path, theme: 
         "spa_enabled",
         minijinja::Value::from(theme_spa_enabled(vault_root, theme)),
     );
+
+    // SPEC-048 REQ-4818: addressed vault transclusion. `{{ transclude("page#section") }}`
+    // returns the rendered HTML of a *named* page through the closed CON-4806 allow-list.
+    let vr_tx = vault_root.to_path_buf();
+    env.add_function(
+        "transclude",
+        move |state: &minijinja::State,
+              target: String|
+              -> Result<minijinja::Value, minijinja::Error> {
+            let root_path = state
+                .lookup("root_path")
+                .and_then(|v| v.as_str().map(|s| s.to_string()))
+                .unwrap_or_else(|| "/".to_string());
+            let index_file = state
+                .lookup("index_file")
+                .and_then(|v| v.as_str().map(|s| s.to_string()))
+                .unwrap_or_default();
+            let lookup = DiskVaultLookup {
+                vault_root: vr_tx.clone(),
+                root_path,
+                index_file,
+            };
+            match super::components::transclude::transclude(&target, &lookup, 0) {
+                Ok(t) => Ok(minijinja::Value::from_safe_string(t.html)),
+                Err(e) => Err(minijinja::Error::new(
+                    minijinja::ErrorKind::InvalidOperation,
+                    e.to_string(),
+                )),
+            }
+        },
+    );
+}
+
+/// SPEC-048 REQ-4801/4802: the site-context object available to every render path
+/// (themed pages, folder indexes, static override pages). Carries only site-tier data
+/// — name, depth-correct `root_path`, build mode, nav, and the tokens stylesheet URL.
+pub(crate) fn build_site_value(name: &str, root_path: &str, mode: &str) -> minijinja::Value {
+    context! {
+        name => name,
+        root_path => root_path,
+        mode => mode,
+        nav => Vec::<minijinja::Value>::new(),
+        tokens_url => format!("{root_path}_static/tokens.css"),
+    }
+}
+
+/// SPEC-048 REQ-4818 / CON-4806 — disk-backed [`VaultLookup`] for transclusion. Resolves
+/// a named page to a file, enforces the publishable gate, slices the addressed fragment,
+/// and renders it to HTML. v1 limitations: internal wikilinks in transcluded content are
+/// not re-resolved (empty slug map); block (`#^id`) slicing falls back to the whole page.
+struct DiskVaultLookup {
+    vault_root: PathBuf,
+    root_path: String,
+    index_file: String,
+}
+
+impl DiskVaultLookup {
+    /// Find a content file whose stem matches `page` (case-insensitive). Skips `.zetl`,
+    /// `dist`, and hidden directories.
+    fn find_page_file(&self, page: &str) -> Option<PathBuf> {
+        let mut stack = vec![self.vault_root.clone()];
+        while let Some(dir) = stack.pop() {
+            let entries = std::fs::read_dir(&dir).ok()?;
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if path.is_dir() {
+                    if name.starts_with('.') || name == "dist" || name == "target" {
+                        continue;
+                    }
+                    stack.push(path);
+                } else if matches!(
+                    path.extension().and_then(|e| e.to_str()),
+                    Some("md") | Some("markdown") | Some("spl")
+                ) {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        if stem.eq_ignore_ascii_case(page) {
+                            return Some(path);
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
+impl super::components::transclude::VaultLookup for DiskVaultLookup {
+    fn render_fragment(
+        &self,
+        page: &str,
+        heading: Option<&str>,
+        _block_id: Option<&str>,
+    ) -> Option<String> {
+        let path = self.find_page_file(page)?;
+        let raw = std::fs::read_to_string(&path).ok()?;
+        let (frontmatter, body) = split_frontmatter(&raw);
+        if !is_publishable(frontmatter) {
+            return None;
+        }
+        let slice = match heading {
+            Some(h) => slice_heading(body, h)?,
+            None => body.to_string(),
+        };
+        Some(super::markdown::render_to_html(
+            &slice,
+            &std::collections::HashMap::new(),
+            &self.root_path,
+            &self.index_file,
+        ))
+    }
+
+    fn metadata(&self, page: &str) -> Option<super::components::transclude::TranscludeMeta> {
+        let path = self.find_page_file(page)?;
+        let raw = std::fs::read_to_string(&path).ok()?;
+        let (frontmatter, _body) = split_frontmatter(&raw);
+        if !is_publishable(frontmatter) {
+            return None;
+        }
+        Some(super::components::transclude::TranscludeMeta {
+            title: page.to_string(),
+            frontmatter: std::collections::BTreeMap::new(),
+        })
+    }
+}
+
+/// Split a leading `---`-delimited YAML frontmatter block from the body.
+fn split_frontmatter(raw: &str) -> (Option<&str>, &str) {
+    let trimmed = raw.trim_start_matches('\u{feff}');
+    if let Some(rest) = trimmed.strip_prefix("---\n") {
+        if let Some(end) = rest.find("\n---\n") {
+            return (Some(&rest[..end]), &rest[end + 5..]);
+        }
+        if let Some(end) = rest.find("\n---") {
+            return (Some(&rest[..end]), &rest[end + 4..]);
+        }
+    }
+    (None, raw)
+}
+
+/// REQ-4818 visibility gate: a page is publishable unless its frontmatter declares
+/// `draft: true` or `published: false`.
+fn is_publishable(frontmatter: Option<&str>) -> bool {
+    let Some(fm) = frontmatter else {
+        return true;
+    };
+    for line in fm.lines() {
+        let line = line.trim();
+        let lower = line.to_ascii_lowercase().replace(' ', "");
+        if lower == "draft:true" || lower == "published:false" {
+            return false;
+        }
+    }
+    true
+}
+
+/// Slice the section under a heading matching `wanted` (case-insensitive), from the
+/// heading line up to the next heading of the same or higher level.
+fn slice_heading(body: &str, wanted: &str) -> Option<String> {
+    let lines: Vec<&str> = body.lines().collect();
+    let mut start = None;
+    let mut level = 0usize;
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed = line.trim_start();
+        if let Some(hashes) = trimmed.strip_prefix('#') {
+            let lvl = 1 + hashes.chars().take_while(|c| *c == '#').count();
+            let text = trimmed.trim_start_matches('#').trim();
+            if text.eq_ignore_ascii_case(wanted) {
+                start = Some(i);
+                level = lvl;
+                break;
+            }
+        }
+    }
+    let start = start?;
+    let mut end = lines.len();
+    for (i, line) in lines.iter().enumerate().skip(start + 1) {
+        let trimmed = line.trim_start();
+        if let Some(hashes) = trimmed.strip_prefix('#') {
+            let lvl = 1 + hashes.chars().take_while(|c| *c == '#').count();
+            if lvl <= level {
+                end = i;
+                break;
+            }
+        }
+    }
+    Some(lines[start..end].join("\n"))
 }
 
 /// Read `[spa].enabled` from the active theme's `theme.toml`.
@@ -516,8 +768,10 @@ impl TemplateEngine {
         let root_path = compute_root_path(mode, "");
         let idx_file = index_file(mode);
         let graph_url = graph_index_url(&root_path);
+        let site = build_site_value(&vault_ctx.name, &root_path, mode);
         let ctx = context! {
             vault => vault_ctx,
+            site => site,
             mode => mode,
             search_index => search_index,
             theme => &self.theme,
@@ -539,6 +793,63 @@ impl TemplateEngine {
         }
         Ok(html)
     }
+
+    /// SPEC-048 REQ-4811: render a templated static override page (`*.html.jinja`) with
+    /// **site context only** (no page tier — Threat G). `out_slug` is the output path
+    /// minus filename (e.g. `about` for `about/index.html`) so `root_path` is
+    /// depth-correct (REQ-4802). Components requiring `page`/`folder` are rejected at
+    /// compile time (`component-context-unavailable`, REQ-4808 layer 1).
+    pub fn render_static_page(
+        &self,
+        vault_name: &str,
+        source: &str,
+        out_slug: &str,
+        mode: &str,
+    ) -> Result<String, TemplateError> {
+        let root_path = compute_root_path(mode, out_slug);
+        let site = build_site_value(vault_name, &root_path, mode);
+        let components = build_components(&self.vault_root, &self.theme);
+
+        // REQ-4808 layer 1: a static page exposes only the site tier; any invoked
+        // component declaring `page`/`folder` is unavailable here.
+        for name in super::components::lower::invoked_components(source) {
+            if let Some(m) = components.manifests.get(&name) {
+                for tier in &m.requires {
+                    use super::components::manifest::Tier;
+                    if matches!(tier, Tier::Page | Tier::Folder) {
+                        return Err(TemplateError::from_minijinja(minijinja::Error::new(
+                            minijinja::ErrorKind::InvalidOperation,
+                            format!(
+                                "component-context-unavailable: component `{name}` requires `{}` but a static page exposes only `site`",
+                                tier.as_str()
+                            ),
+                        )));
+                    }
+                }
+            }
+        }
+
+        let lowered = lower_template(source, &components).map_err(|e| {
+            TemplateError::from_minijinja(minijinja::Error::new(
+                minijinja::ErrorKind::SyntaxError,
+                e.to_string(),
+            ))
+        })?;
+        let idx_file = index_file(mode);
+        let ctx = context! {
+            site => site,
+            mode => mode,
+            theme => &self.theme,
+            root_path => root_path,
+            index_file => idx_file,
+        };
+        let env = self.env();
+        env.render_named_str("__zetl_static__", &lowered, ctx)
+            .map_err(TemplateError::from_minijinja)
+    }
+
+    // (content-directive expansion lives in the module-level `ContentExpander` below,
+    // which uses a *restricted* env — see SPEC-049 REQ-4907.)
 
     /// Render the help page.
     /// SPEC-040: render a `/_mobile/*` template against an arbitrary
@@ -595,6 +906,44 @@ impl TemplateEngine {
         let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
         if html.trim().is_empty() {
             return Err(TemplateError::empty_output("help.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the not-found page emitted as `dist/404.html` in build mode
+    /// (#73). Static hosts key SPA fallback off the file's absence —
+    /// without it, e.g. Cloudflare Pages answers every unknown path with
+    /// HTTP 200 + the homepage document, masking broken links from both
+    /// full page loads and spa.js. Rendered with an absolute root path
+    /// ("/") because the document is served at arbitrary path depths where
+    /// page-relative `../` chains cannot resolve.
+    pub fn render_not_found(
+        &self,
+        vault_ctx: &VaultContext,
+        mode: &str,
+    ) -> Result<String, TemplateError> {
+        let idx_file = index_file(mode);
+        let graph_url = graph_index_url("/");
+        let ctx = context! {
+            vault => vault_ctx,
+            mode => mode,
+            search_index => "",
+            theme => &self.theme,
+            active_slug => "",
+            root_path => "/",
+            index_file => idx_file,
+            bm25_index => "",
+            history_index => "",
+            graph_index_url => graph_url,
+            graph_index => "",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("404.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("404.html"));
         }
         Ok(html)
     }
@@ -656,9 +1005,11 @@ impl TemplateEngine {
         let root_path = compute_root_path(mode, &page_ctx.slug);
         let idx_file = index_file(mode);
         let graph_url = graph_index_url(&root_path);
+        let site = build_site_value(&vault_ctx.name, &root_path, mode);
         let ctx = context! {
             vault => vault_ctx,
             page => page_ctx,
+            site => site,
             mode => mode,
             search_index => search_index,
             theme => &self.theme,
@@ -1073,7 +1424,9 @@ impl TemplateEngine {
             bm25_index => "",
             history_index => "",
             theme => &self.theme,
-            active_slug => "",
+            // Matches the /_history URL stem so spa.js's fetched-document
+            // identity check (#73) passes for the vault history page.
+            active_slug => "_history",
             root_path => root_path,
             index_file => index_file(mode),
             graph_index_url => graph_url,
@@ -1149,13 +1502,19 @@ impl TemplateEngine {
         let root_path = compute_root_path(mode, &folder_ctx.slug);
         let idx_file = index_file(mode);
         let graph_url = graph_index_url(&root_path);
+        let site = build_site_value(&vault_ctx.name, &root_path, mode);
         let ctx = context! {
             vault => vault_ctx,
             folder => folder_ctx,
+            site => site,
             mode => mode,
             search_index => search_index,
             theme => &self.theme,
-            active_slug => "",
+            // The folder's own slug (not ""): it opens the matching sidebar
+            // subtree, and spa.js verifies <body data-slug> against the URL
+            // it fetched — an empty slug would make folder pages
+            // indistinguishable from a host's homepage 404-fallback (#73).
+            active_slug => &folder_ctx.slug,
             root_path => root_path,
             index_file => idx_file,
             bm25_index => bm25_index,
@@ -1364,6 +1723,158 @@ fn json_escape(s: &str) -> String {
         .replace('\n', "\\n")
         .replace('\r', "\\r")
         .replace('\t', "\\t")
+}
+
+// ── SPEC-049 content-directive expansion (restricted env) ────────────────────
+
+/// Build the **restricted** minijinja environment for rendering content-invocable
+/// components (SPEC-049 REQ-4907). Unlike the page env it deliberately registers **no**
+/// `transclude`, no `site`/`page` globals, and no vault-graph helpers — a content
+/// component (and any trusted sub-component it reaches) sees only what is passed in its
+/// context (`props` + the sanitised slot). `strict_undefined` makes any out-of-context
+/// access a render error (REQ-4808 render-time layer), and autoescape is forced `Html`
+/// over every render (CON-4904(0) precondition).
+#[cfg(feature = "content-components")]
+fn build_content_env(vault_root: &Path, theme: &str) -> Environment<'static> {
+    let mut env = Environment::new();
+    env.set_undefined_behavior(minijinja::UndefinedBehavior::Strict);
+    env.set_auto_escape_callback(|_name| minijinja::AutoEscape::Html);
+    let components = build_components(vault_root, theme);
+    let vr = vault_root.to_path_buf();
+    let t = theme.to_string();
+    env.set_loader(move |name: &str| {
+        if name == COMPONENTS_TEMPLATE {
+            return Ok(Some(components.synthetic.clone()));
+        }
+        let source: Option<String> = {
+            let from_disk = if t != "default" {
+                std::fs::read_to_string(vr.join(".zetl/themes").join(&t).join(name)).ok()
+            } else {
+                None
+            };
+            from_disk
+                .or_else(|| bundled_template(&t, name).map(|s| s.to_string()))
+                .or_else(|| bundled_template("default", name).map(|s| s.to_string()))
+        };
+        match source {
+            Some(src) => lower_template(&src, &components).map(Some).map_err(|e| {
+                minijinja::Error::new(minijinja::ErrorKind::SyntaxError, e.to_string())
+            }),
+            None => Ok(None),
+        }
+    });
+    env
+}
+
+/// Build-scoped expander for SPEC-049 content directives. Constructed once per build: it
+/// discovers components, runs the CON-4904 context lint on every content-invocable one
+/// (a lint failure is a fatal build error), and holds the restricted render env. Pages
+/// then expand their directives through [`ContentExpander::try_expand`].
+#[cfg(feature = "content-components")]
+pub struct ContentExpander {
+    env: Environment<'static>,
+    manifests: BTreeMap<String, Manifest>,
+    any_content_invocable: bool,
+}
+
+#[cfg(feature = "content-components")]
+impl ContentExpander {
+    /// Discover + lint content-invocable components and build the restricted env.
+    pub fn new(vault_root: &Path, theme: &str) -> Result<Self, super::components::ComponentError> {
+        let comps = discover_components(vault_root, theme)?;
+        let mut manifests = BTreeMap::new();
+        let mut any = false;
+        for (name, c) in &comps {
+            if c.manifest.content_invocable {
+                any = true;
+                // CON-4904: fatal build error if the trusted template can leak taint.
+                super::components::context_lint::lint_component(&c.template, &c.manifest)?;
+            }
+            manifests.insert(name.clone(), c.manifest.clone());
+        }
+        Ok(Self {
+            env: build_content_env(vault_root, theme),
+            manifests,
+            any_content_invocable: any,
+        })
+    }
+
+    /// True when at least one component is content-invocable. When false, the build path
+    /// SHALL use the plain markdown renderer (REQ-4912 byte-identical default).
+    pub fn has_content_invocable(&self) -> bool {
+        self.any_content_invocable
+    }
+
+    /// Expand content directives in `content`. Returns `None` when the content has no
+    /// directive at all, so the caller uses the byte-identical plain renderer.
+    pub fn try_expand(
+        &self,
+        content: &str,
+        slug_map: &std::collections::HashMap<String, String>,
+        root_path: &str,
+        index_file: &str,
+    ) -> Option<super::components::expand::Expansion> {
+        use super::components::directive::{scan, Node};
+        let nodes = scan(content);
+        if !nodes.iter().any(|n| matches!(n, Node::Directive(_))) {
+            return None;
+        }
+        let renderer = PageContentRenderer {
+            env: &self.env,
+            manifests: &self.manifests,
+            slug_map,
+            root_path: root_path.to_string(),
+            index_file: index_file.to_string(),
+        };
+        Some(super::components::expand::expand_nodes(&nodes, &renderer))
+    }
+}
+
+/// Per-page [`ContentRenderer`](super::components::expand::ContentRenderer) binding the
+/// restricted env to a page's link base.
+#[cfg(feature = "content-components")]
+struct PageContentRenderer<'a> {
+    env: &'a Environment<'static>,
+    manifests: &'a BTreeMap<String, Manifest>,
+    slug_map: &'a std::collections::HashMap<String, String>,
+    root_path: String,
+    index_file: String,
+}
+
+#[cfg(feature = "content-components")]
+impl super::components::expand::ContentRenderer for PageContentRenderer<'_> {
+    fn render_markdown(&self, md: &str) -> String {
+        super::markdown::render_to_html(md, self.slug_map, &self.root_path, &self.index_file)
+    }
+
+    fn render_component(
+        &self,
+        name: &str,
+        props: &BTreeMap<String, minijinja::Value>,
+        slot_html: &str,
+    ) -> Result<String, super::components::ComponentError> {
+        let ident = super::components::lower::macro_ident(name);
+        // Trusted zetl glue: import the synthetic macro module and call the component
+        // macro with the recognised props and the pre-sanitised slot (marked safe so it
+        // is not double-escaped). The component template was CON-4904-linted; this
+        // wrapper is not author-controlled.
+        let wrapper = format!(
+            "{{% import \"{COMPONENTS_TEMPLATE}\" as __zc %}}{{% call __zc.{ident}(props=props, _name=\"{name}\") %}}{{{{ __slot | safe }}}}{{% endcall %}}"
+        );
+        let ctx = context! {
+            props => minijinja::Value::from_serialize(props),
+            __slot => minijinja::Value::from_safe_string(slot_html.to_string()),
+        };
+        self.env
+            .render_named_str("__zetl_content__.html", &wrapper, ctx)
+            .map_err(|e| {
+                super::components::ComponentError::new("content-render-error", e.to_string())
+            })
+    }
+
+    fn manifest(&self, name: &str) -> Option<&Manifest> {
+        self.manifests.get(name)
+    }
 }
 
 #[cfg(test)]

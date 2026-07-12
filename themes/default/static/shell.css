@@ -146,7 +146,9 @@
       transition: background 0.12s ease;
     }
     a.wikilink.wl-active {
-      background: rgba(0,0,0,0.08);
+      /* Derived from base-content, not literal black, so the highlight
+         stays visible when the base theme flips to dark (#72). */
+      background: oklch(var(--bc) / 0.08);
       border-radius: 2px;
       padding: 1px 3px;
       margin: 0 -3px;
@@ -177,9 +179,15 @@
       padding: 0 0.5em;
       margin-right: 0.35em;
       border-radius: 0.85em;
-      background: rgba(0,0,0,0.05);
-      color: rgba(0,0,0,0.55);
-      border: 1px solid rgba(0,0,0,0.10);
+      /* Colours derive from the theme's base-content (--bc) rather than
+         literal black so the chip tracks whatever colour scheme the
+         compiled base theme resolves to — under OS-enforced
+         prefers-color-scheme: dark the old hardcoded near-black values
+         were dark-on-dark and illegible (#72). 0.75 text alpha clears
+         WCAG AA on both light and dark daisyUI defaults. */
+      background: oklch(var(--bc) / 0.06);
+      color: oklch(var(--bc) / 0.75);
+      border: 1px solid oklch(var(--bc) / 0.12);
       white-space: nowrap;
       vertical-align: 0.05em;
     }
@@ -345,6 +353,44 @@
       --zetl-graph-widget-breakpoint: 900px;
       --zetl-graph-widget-min-width: 180px;
       --zetl-graph-widget-min-height: 140px;
+
+      /* Graph + shell colour tokens (REQ-114). graph-boot.js reads the
+         --zetl-graph-* values via getComputedStyle for Sigma's canvas
+         (which can't consume oklch(var(--bc)) strings, hence literal
+         colours), and _graph.html's fallback list / empty states use the
+         --zetl-shell-* surfaces. These were previously undefined, so the
+         light JS/CSS fallbacks applied even under OS dark mode and the
+         graph rendered dark-on-dark (#72). Light values below mirror the
+         old fallbacks; the media block overrides them for dark. */
+      --zetl-shell-surface: rgba(0, 0, 0, 0.05);
+      --zetl-shell-border: rgba(0, 0, 0, 0.10);
+      --zetl-graph-node: #6366f1;
+      --zetl-graph-node-dead: #9ca3af;
+      --zetl-graph-node-faded: rgba(99, 102, 241, 0.25);
+      --zetl-graph-node-active: #f59e0b;
+      --zetl-graph-edge: #9ca3af;
+      --zetl-graph-edge-dead: rgba(156, 163, 175, 0.6);
+      --zetl-graph-edge-faded: rgba(156, 163, 175, 0.15);
+      --zetl-graph-label: #1f2937;
+    }
+    /* Dark-scheme values for the tokens above (#72). graph-boot.js already
+       re-reads the palette on a prefers-color-scheme change, so flipping
+       the OS theme restyles a live graph without a reload. Themes that pin
+       a light appearance regardless of OS setting can redeclare these vars
+       on :root (the REQ-114 override mechanism) to opt out. */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --zetl-shell-surface: rgba(255, 255, 255, 0.08);
+        --zetl-shell-border: rgba(255, 255, 255, 0.16);
+        --zetl-graph-node: #818cf8;
+        --zetl-graph-node-dead: #6b7280;
+        --zetl-graph-node-faded: rgba(129, 140, 248, 0.25);
+        --zetl-graph-node-active: #fbbf24;
+        --zetl-graph-edge: #4b5563;
+        --zetl-graph-edge-dead: rgba(107, 114, 128, 0.6);
+        --zetl-graph-edge-faded: rgba(107, 114, 128, 0.2);
+        --zetl-graph-label: #e5e7eb;
+      }
     }
 
     .zetl-graph-widget {

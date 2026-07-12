@@ -1,0 +1,547 @@
+;; IMPL-049-050 — Implementation plan for SPEC-049 (Content-Author Components & Directives)
+;; and SPEC-050 (Component Islands & Inter-Island Messaging), built on the shipped SPEC-048 core.
+;; Dependency-ordered task DAG. Single implementer agent (claude). Implemented regardless of the
+;; specs' non-converged strawman status, per explicit operator directive.
+
+(meta plan
+  (id "IMPL-049-050")
+  (title "Content-Author Components (SPEC-049) + Component Islands (SPEC-050) — implementation")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-06-25")
+  (author "agent:claude")
+  (spec "SPEC-049,SPEC-050")
+  (description "Implement SPEC-049 content directives (directive grammar, default-deny content-invocable allowlist, untrusted prop recognition, isolated body sanitiser, CON-4904 static HTML-context lint over minijinja unstable_machinery, transform-stage expansion, restricted content context) and SPEC-050 component islands (manifest island fields + topic/type grammars, static wiring verification, CSP computation/emission, deterministic island asset emission, the window.zetl bus runtime, capability bridge + controlled-element renderer, pre-paint script, hydration strategies). Built on the existing src/web/components/ module (SPEC-048), wired into engine.rs/build.rs/markdown.rs, behind content-components and component-islands feature gates with byte-identical backward-compatible defaults."))
+
+;; ---- Agents ----
+(given agent-claude-available)
+
+;; ---- Tasks ----
+(given task-deps)            ; F0: Cargo.toml deps + feature gates (minijinja exact pin + unstable_machinery)
+(given task-49-manifest)     ; CON-4903: content_invocable, content_props, url ptype, reserved-key tolerance
+(given task-49-directive)    ; REQ-4901 / CON-4901: directive grammar (container/leaf/inline)
+(given task-49-sanitize)     ; REQ-4905 / CON-4902: isolated body sanitiser (ammonia, fixed-point)
+(given task-49-props)        ; REQ-4904: untrusted prop recognition + url ingestion validation + taint
+(given task-49-lint)         ; CON-4904 / NFR-4903: sound static HTML-context lint over unstable_machinery AST
+(given task-49-expand)       ; REQ-4906/4907/4908: transform-stage expansion, restricted context, bounds
+(given task-49-wire)         ; REQ-4911/4912: markdown/build/engine wiring, diagnostics, backward-compat gate
+(given task-49-tests)        ; TEST-49xx integration tests
+(given task-50-manifest)     ; CON-5001/5002/5005: island manifest fields, topic grammar, type language
+(given task-50-theme)        ; theme island-grants + [security.csp] parsing (CON-5002, REQ-5027 declaration)
+(given task-50-wiring)       ; REQ-5008/5009: static wiring verification graph + audit
+(given task-50-csp)          ; REQ-5027: CSP computation/emission (meta tag + headers artifact)
+(given task-50-emit)         ; REQ-5001/5024: island asset emission, dedup, deterministic, hydration markers
+(given task-50-runtime-js)   ; REQ-5004/5005/5007/5019/5030: window.zetl bus runtime JS
+(given task-50-bridge-js)    ; REQ-5016/5025/5029, CON-5006/5007: capability bridge + controlled-element renderer
+(given task-50-prepaint)     ; REQ-5006/5018: persisted pre-paint script + sha256 CSP hash
+(given task-50-wire)         ; REQ-5012/5023: build/engine wiring, backward-compat gate
+(given task-50-tests)        ; TEST-50xx integration tests
+(given task-verify)          ; final: full build + test + clippy + determinism check
+
+;; ---- Task metadata ----
+(meta task-deps
+  (description "Cargo.toml: pin minijinja to exact =2.16.0 and add unstable_machinery feature (NFR-4903); confirm ammonia (CON-4902) and a sha256 impl available; add cargo features content-components and component-islands (default-on for build, gate the new behaviour).")
+  (acceptance "cargo build succeeds; minijinja::machinery is importable; features resolve."))
+(meta task-49-manifest
+  (description "Extend src/web/components/manifest.rs: add PropType::Url; add Manifest fields content_invocable:bool and content_props:Vec<String>; reserve-and-ignore these keys (+ publishes/subscribes/island.* for SPEC-050) under gate-off instead of rejecting (CON-4903 forward-compat); validate content_props name declared props and are scalar/url; content-invocable-unfulfillable check.")
+  (acceptance "Unit tests: content_invocable/content_props parse; url ptype; reserved keys tolerated; content_props naming undeclared prop -> content-manifest-unknown-ref."))
+(meta task-49-directive
+  (description "New src/web/components/directive.rs: recognise container ':::name{attrs}…:::', leaf '::name{attrs}', inline ':name[label]{attrs}' (CON-4901); attr grammar (#id/.class/key=value/key=\"quoted\"/flag); kebab name; single-line quoted; reject < > in bare; malformed -> content-directive-malformed inert. Code-fence/code-span exclusion when integrated.")
+  (acceptance "Unit tests: each form parses to Directive{form,name,attrs,body,pos}; malformed cases fail closed."))
+(meta task-49-sanitize
+  (description "New src/web/components/sanitize.rs: isolated body sanitiser (CON-4902) using ammonia — closed default-deny allowlist (elements/attrs/URL schemes), strip script/style/iframe/on*/comments/PIs, scheme allowlist after canonicalisation (reject //host, javascript:, data:, blob:, vbscript:, file:), srcset sub-grammar; serialise->reparse fixed-point stable; drop counts for OBS-4901; missing policy -> sanitiser-policy-missing.")
+  (acceptance "Unit tests: vector matrix (script/onerror/javascript:/iframe/style/data:/comment/srcset) each dropped; fixed-point byte-identical; allowlisted prose preserved."))
+(meta task-49-props
+  (description "REQ-4904 in validate.rs/new module: recognise directive attrs against [props] strictly (unknown/type/missing/enum -> content-prop-*; list/map -> content-prop-unsupported); url ptype ingestion validation (scheme canonicalise+allowlist); represent content-settable values as tainted; |safe of tainted -> content-unsafe-emit.")
+  (acceptance "Unit tests: scalar/enum/url recognition; bad url rejected at ingestion; list/map rejected; taint flagged."))
+(meta task-49-lint
+  (description "New src/web/components/context_lint.rs: CON-4904 sound static HTML-context lint over minijinja::machinery AST. (0) enforce Html-autoescape over taint, forbid whitespace-trim, exhaustive no-_ match + pinned features; (1) HTML/CSS/JS tokeniser state machine over EmitRaw/EmitExpr; closed URL_ATTR set shared with sanitiser; (2) per-value-kind safe-context sets (scalar->TEXT/ATTR_VALUE_DQ; url->+URL_ATTR; slot->TEXT only); (3) control-flow join fixpoint; (4) interprocedural taint across call/extends/block/import/filter/with/set/caller; (5) closed node-shape allowlist; fail-closed errors content-context-unsafe/-indeterminate/-unsafe-emit/-template-unanalyzable.")
+  (acceptance "Unit tests: context matrix each a build error; safe placements pass; transitive taint caught; |safe -> content-unsafe-emit; unanalyzable -> fail-closed."))
+(meta task-49-expand
+  (description "REQ-4906/4907/4908: transform-stage expansion of Directive nodes -> SPEC-048 component invocation. Bottom-up innermost-first with per-provenance sanitisation barrier (each level's own untrusted body sanitised once; nested composed fragments trusted, not re-sanitised). Restricted deny-by-default content context (props + sanitised slot + draft-filtered safe site helpers; NO transclude, NO page-tier). Bounded depth (content-directive-too-deep) + cycle reuse of nesting.rs (content-directive-cycle).")
+  (acceptance "Unit/integration: directive expands to component HTML; nested directives' trusted output preserved; transclude absent; depth/cycle fail closed."))
+(meta task-49-wire
+  (description "REQ-4911/4912: wire directive recognition into markdown.rs pipeline (code-fence aware) and expansion into build/engine render path; HookDiagnostic at author source location, inert text on failure; content-components gate: gate-off -> ':::' literal, byte-identical output; default-deny means no directive resolves without content_invocable.")
+  (acceptance "Integration: end-to-end vault with content-invocable callout renders; gate-off byte-identical; diagnostics surfaced."))
+(meta task-49-tests
+  (description "tests/content_directives_integration.rs: TEST-4901..4912 — recognition, resolution, default-deny, prop recognition+lint matrix, isolated body sanitisation, transform order, restricted context, bounds, island handoff stub, diagnostics, backward-compat.")
+  (acceptance "All TEST-49xx pass."))
+(meta task-50-manifest
+  (description "New src/web/islands/ (manifest.rs, topic.rs, value_type.rs): parse publishes/subscribes/[island.topics].<t>={type,persisted,default}/render/sandbox/paints/hydrate/[island.requests] (CON-5002); topic grammar DFA content: vs trusted: (CON-5001); type-expr language string|bool|int|number|enum(..)|{flat record} (CON-5005) with one shared recogniser; activate the SPEC-048-reserved publishes/subscribes keys.")
+  (acceptance "Unit tests: manifest island fields parse+validate; topic grammar accept/reject; type-expr parse+value recognition; error codes island-topic-malformed/-render-invalid/-persisted-no-default/-content-value-type."))
+(meta task-50-theme
+  (description "Parse [[theme.island-grants]] (component/topic/direction=subscribe) from theme.toml and [security.csp] tables (connect-src/img-src/... host lists, reject '*') from site config + theme; build per-component grant table; content island subscribing trusted topic requires matching grant (island-capability-ungranted).")
+  (acceptance "Unit tests: grants parsed; csp tables parsed; wildcard rejected; ungranted trusted-topic subscribe flagged."))
+(meta task-50-wiring
+  (description "REQ-5008/5009: build the island wiring graph across components — publishes/subscribes edges, unpublished subscriber -> island-topic-unpublished (warning), incompatible co-publisher types -> island-topic-type-conflict (error); emit audit graph (extends OBS-4801) including resolved edges, render mode, paints, [island.requests] approved/unapproved vs [security.csp].")
+  (acceptance "Unit/integration: wiring graph correct; unpublished/type-conflict detected; audit graph emitted deterministically."))
+(meta task-50-csp
+  (description "REQ-5027: per-page effective CSP = default-deny baseline UNION declared widenings (fail-closed); baseline for content-island pages (default-src 'none'; script-src 'self' + sha256 hashes; worker-src 'self' blob:; connect-src 'none'; img/media/font/style-src 'self'; base-uri 'none'; form-action 'none'); reject '*' (csp-wildcard); emit <meta http-equiv> as first <head> child + csp-headers deploy artifact byte-identically; mandatory for content-island pages.")
+  (acceptance "Unit tests: baseline computed; widenings unioned; wildcard rejected; meta+headers byte-identical; missing on content-island page -> build error."))
+(meta task-50-emit
+  (description "REQ-5001/5024: emit <name>.js island assets once per type per page (dedup, deterministic order by name then layer, reuse SPEC-048 emission); hydration markers on data-z nodes carrying island id + hydrate strategy (load/idle/visible[(margin)]/media(query); unrecognised -> island-hydrate-invalid); props serialised inline as JSON for hydration; only pages with >=1 island load island assets.")
+  (acceptance "Unit/integration: island JS emitted once; markers correct; hydrate strategy parsed; no-island page emits nothing."))
+(meta task-50-runtime-js
+  (description "REQ-5004/5005/5007/5019/5030: src/web/assets/islands.js — window.zetl.store(topic){get,set,subscribe} retained last-value-wins replay-on-subscribe with coalesce + per-subscriber try/catch; window.zetl.bus{emit,on}; monotonic per-session seq; bounds (256 topics/1024 subs/64KiB value); deep-freeze window.zetl before islands run; single instance surviving SPA nav; localStorage/storage reflection for persisted topics.")
+  (acceptance "JS unit tests (node/deno harness or rust-embedded check): store replay, coalesce, bounds, freeze, seq monotonic."))
+(meta task-50-bridge-js
+  (description "REQ-5016/5025/5029, CON-5006/5007: capability bridge reference monitor (per-island grant table; validate every inbound msg: known handle + (topic,direction) granted + payload type-recognised; denied+reason); default Web Worker transport (Map<Worker,Grant>); controlled-element renderer painting declarative tree via setAttribute/textContent with closed ELEM/ATTR allowlist + URL scheme validation + egress-taint rule + depth/breadth/node/byte bounds + cycle rejection (denied:render); keyed reconciler; lifecycle teardown (terminate worker, revoke grant, release subs) on SPA nav.")
+  (acceptance "JS unit tests: ungranted denied; non-allowlisted tag/attr/url dropped; bounds enforced; reconcile preserves focus/keyed nodes; teardown revokes."))
+(meta task-50-prepaint
+  (description "REQ-5006/5018: build-time-generated static pre-paint snippet per persisted topic — embeds own minimal type recogniser, reads localStorage in try/catch, applies recognised value or declared default as DOM signal before paint; deterministic bytes; compute sha256 for CSP admission; emitted only when a persisted topic exists.")
+  (acceptance "Unit tests: snippet deterministic; sha256 matches; default applied on bad/missing value; emitted iff persisted topic."))
+(meta task-50-wire
+  (description "REQ-5012/5023: wire island emission + CSP + pre-paint + bus bootstrap into build.rs/engine.rs render context; has-island and has-persisted-topic markers; component-islands gate; backward-compat: no island and no persisted topic -> byte-identical to SPEC-048 (no window.zetl, no bus, no island scripts, no pre-paint, no CSP meta).")
+  (acceptance "Integration: island page emits bus+assets+CSP; persisted-only emits pre-paint only; neither -> byte-identical."))
+(meta task-50-tests
+  (description "tests/islands_integration.rs: TEST-50xx — emission/dedup/determinism, manifest+topic+type recognition, wiring verification, CSP computation/emission, pre-paint, backward-compat, and the content-island handoff from SPEC-049 (REQ-4910).")
+  (acceptance "All TEST-50xx pass."))
+(meta task-verify
+  (description "Final verification: cargo build, cargo test (full suite incl. existing components_integration), cargo clippy, and a determinism re-run (build twice, diff output) for the new assets.")
+  (acceptance "Green build, all tests pass, no new clippy errors, byte-identical re-build of new assets."))
+
+;; ---- Dependency / readiness rules ----
+;; A task is ready when its dependencies are completed. Foundation task-deps gates everything.
+
+(always r-ready-deps task-deps ready-deps)
+
+(always r-ready-49-manifest (and task-49-manifest completed-deps) ready-49-manifest)
+(always r-ready-49-directive (and task-49-directive completed-deps) ready-49-directive)
+(always r-ready-49-sanitize (and task-49-sanitize completed-deps) ready-49-sanitize)
+(always r-ready-49-lint (and task-49-lint completed-deps) ready-49-lint)
+(always r-ready-49-props (and task-49-props completed-49-manifest) ready-49-props)
+(always r-ready-49-expand (and task-49-expand completed-49-manifest completed-49-directive completed-49-sanitize completed-49-props) ready-49-expand)
+(always r-ready-49-wire (and task-49-wire completed-49-expand completed-49-lint) ready-49-wire)
+(always r-ready-49-tests (and task-49-tests completed-49-wire) ready-49-tests)
+
+(always r-ready-50-manifest (and task-50-manifest completed-49-manifest) ready-50-manifest)
+(always r-ready-50-theme (and task-50-theme completed-50-manifest) ready-50-theme)
+(always r-ready-50-wiring (and task-50-wiring completed-50-manifest) ready-50-wiring)
+(always r-ready-50-csp (and task-50-csp completed-50-theme) ready-50-csp)
+(always r-ready-50-emit (and task-50-emit completed-50-manifest) ready-50-emit)
+(always r-ready-50-runtime-js task-50-runtime-js ready-50-runtime-js)
+(always r-ready-50-bridge-js (and task-50-bridge-js completed-50-runtime-js) ready-50-bridge-js)
+(always r-ready-50-prepaint (and task-50-prepaint completed-50-manifest) ready-50-prepaint)
+(always r-ready-50-wire (and task-50-wire completed-50-emit completed-50-csp completed-50-bridge-js completed-50-prepaint completed-50-wiring) ready-50-wire)
+(always r-ready-50-tests (and task-50-tests completed-50-wire) ready-50-tests)
+
+(always r-ready-verify (and task-verify completed-49-tests completed-50-tests) ready-verify)
+
+;; ---- Assignment: single implementer (claude) ----
+(normally r-assign-deps        (and ready-deps agent-claude-available)        assign-to-deps-claude)
+(normally r-assign-49-manifest (and ready-49-manifest agent-claude-available) assign-to-49-manifest-claude)
+(normally r-assign-49-directive (and ready-49-directive agent-claude-available) assign-to-49-directive-claude)
+(normally r-assign-49-sanitize (and ready-49-sanitize agent-claude-available) assign-to-49-sanitize-claude)
+(normally r-assign-49-props    (and ready-49-props agent-claude-available)    assign-to-49-props-claude)
+(normally r-assign-49-lint     (and ready-49-lint agent-claude-available)     assign-to-49-lint-claude)
+(normally r-assign-49-expand   (and ready-49-expand agent-claude-available)   assign-to-49-expand-claude)
+(normally r-assign-49-wire     (and ready-49-wire agent-claude-available)     assign-to-49-wire-claude)
+(normally r-assign-49-tests    (and ready-49-tests agent-claude-available)    assign-to-49-tests-claude)
+(normally r-assign-50-manifest (and ready-50-manifest agent-claude-available) assign-to-50-manifest-claude)
+(normally r-assign-50-theme    (and ready-50-theme agent-claude-available)    assign-to-50-theme-claude)
+(normally r-assign-50-wiring   (and ready-50-wiring agent-claude-available)   assign-to-50-wiring-claude)
+(normally r-assign-50-csp      (and ready-50-csp agent-claude-available)      assign-to-50-csp-claude)
+(normally r-assign-50-emit     (and ready-50-emit agent-claude-available)     assign-to-50-emit-claude)
+(normally r-assign-50-runtime-js (and ready-50-runtime-js agent-claude-available) assign-to-50-runtime-js-claude)
+(normally r-assign-50-bridge-js (and ready-50-bridge-js agent-claude-available) assign-to-50-bridge-js-claude)
+(normally r-assign-50-prepaint (and ready-50-prepaint agent-claude-available) assign-to-50-prepaint-claude)
+(normally r-assign-50-wire     (and ready-50-wire agent-claude-available)     assign-to-50-wire-claude)
+(normally r-assign-50-tests    (and ready-50-tests agent-claude-available)    assign-to-50-tests-claude)
+(normally r-assign-verify      (and ready-verify agent-claude-available)      assign-to-verify-claude)
+
+(claims agent:claude
+  :at "2026-06-25T12:59:26Z"
+  (given claim-v1-deps)
+  (normally r-cl-state-v1-deps claim-v1-deps state-claimed-v1-deps)
+  (normally r-cl-chain-v1-deps state-claimed-v1-deps claimed-deps)
+)
+
+;; Propagation rules: failures in 'deps' block downstream tasks
+(normally r-propagate-49-directive-from-deps-failed failed-deps upstream-blocked-49-directive)
+(normally r-propagate-49-directive-from-deps-permanently-failed permanently-failed-deps upstream-blocked-49-directive)
+(normally r-propagate-49-directive-from-deps-stale-v1 stale-v1-deps upstream-blocked-49-directive)
+(normally r-propagate-49-directive-from-deps-timeout-v1 timeout-v1-deps upstream-blocked-49-directive)
+(normally r-propagate-49-directive-from-deps-blocked upstream-blocked-deps upstream-blocked-49-directive)
+(normally r-propagate-49-lint-from-deps-failed failed-deps upstream-blocked-49-lint)
+(normally r-propagate-49-lint-from-deps-permanently-failed permanently-failed-deps upstream-blocked-49-lint)
+(normally r-propagate-49-lint-from-deps-stale-v1 stale-v1-deps upstream-blocked-49-lint)
+(normally r-propagate-49-lint-from-deps-timeout-v1 timeout-v1-deps upstream-blocked-49-lint)
+(normally r-propagate-49-lint-from-deps-blocked upstream-blocked-deps upstream-blocked-49-lint)
+(normally r-propagate-49-manifest-from-deps-failed failed-deps upstream-blocked-49-manifest)
+(normally r-propagate-49-manifest-from-deps-permanently-failed permanently-failed-deps upstream-blocked-49-manifest)
+(normally r-propagate-49-manifest-from-deps-stale-v1 stale-v1-deps upstream-blocked-49-manifest)
+(normally r-propagate-49-manifest-from-deps-timeout-v1 timeout-v1-deps upstream-blocked-49-manifest)
+(normally r-propagate-49-manifest-from-deps-blocked upstream-blocked-deps upstream-blocked-49-manifest)
+(normally r-propagate-49-sanitize-from-deps-failed failed-deps upstream-blocked-49-sanitize)
+(normally r-propagate-49-sanitize-from-deps-permanently-failed permanently-failed-deps upstream-blocked-49-sanitize)
+(normally r-propagate-49-sanitize-from-deps-stale-v1 stale-v1-deps upstream-blocked-49-sanitize)
+(normally r-propagate-49-sanitize-from-deps-timeout-v1 timeout-v1-deps upstream-blocked-49-sanitize)
+(normally r-propagate-49-sanitize-from-deps-blocked upstream-blocked-deps upstream-blocked-49-sanitize)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-49-expand-from-49-directive-blocked upstream-blocked-49-directive upstream-blocked-49-expand)
+(normally r-propagate-49-wire-from-49-lint-blocked upstream-blocked-49-lint upstream-blocked-49-wire)
+(normally r-propagate-49-expand-from-49-manifest-blocked upstream-blocked-49-manifest upstream-blocked-49-expand)
+(normally r-propagate-49-props-from-49-manifest-blocked upstream-blocked-49-manifest upstream-blocked-49-props)
+(normally r-propagate-50-manifest-from-49-manifest-blocked upstream-blocked-49-manifest upstream-blocked-50-manifest)
+(normally r-propagate-49-expand-from-49-sanitize-blocked upstream-blocked-49-sanitize upstream-blocked-49-expand)
+(normally r-propagate-49-wire-from-49-expand-blocked upstream-blocked-49-expand upstream-blocked-49-wire)
+(normally r-propagate-49-tests-from-49-wire-blocked upstream-blocked-49-wire upstream-blocked-49-tests)
+(normally r-propagate-49-expand-from-49-props-blocked upstream-blocked-49-props upstream-blocked-49-expand)
+(normally r-propagate-50-emit-from-50-manifest-blocked upstream-blocked-50-manifest upstream-blocked-50-emit)
+(normally r-propagate-50-prepaint-from-50-manifest-blocked upstream-blocked-50-manifest upstream-blocked-50-prepaint)
+(normally r-propagate-50-theme-from-50-manifest-blocked upstream-blocked-50-manifest upstream-blocked-50-theme)
+(normally r-propagate-50-wiring-from-50-manifest-blocked upstream-blocked-50-manifest upstream-blocked-50-wiring)
+(normally r-propagate-verify-from-49-tests-blocked upstream-blocked-49-tests upstream-blocked-verify)
+(normally r-propagate-50-wire-from-50-emit-blocked upstream-blocked-50-emit upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-prepaint-blocked upstream-blocked-50-prepaint upstream-blocked-50-wire)
+(normally r-propagate-50-csp-from-50-theme-blocked upstream-blocked-50-theme upstream-blocked-50-csp)
+(normally r-propagate-50-wire-from-50-wiring-blocked upstream-blocked-50-wiring upstream-blocked-50-wire)
+(normally r-propagate-50-tests-from-50-wire-blocked upstream-blocked-50-wire upstream-blocked-50-tests)
+(normally r-propagate-50-wire-from-50-csp-blocked upstream-blocked-50-csp upstream-blocked-50-wire)
+(normally r-propagate-verify-from-50-tests-blocked upstream-blocked-50-tests upstream-blocked-verify)
+
+(claims agent:claude
+  :at "2026-06-25T13:02:32Z"
+  (given completed-deps))
+
+(claims agent:claude
+  :at "2026-06-25T13:06:46Z"
+  (given claim-v1-49-manifest)
+  (normally r-cl-state-v1-49-manifest claim-v1-49-manifest state-claimed-v1-49-manifest)
+  (normally r-cl-chain-v1-49-manifest state-claimed-v1-49-manifest claimed-49-manifest)
+)
+
+;; Propagation rules: failures in '49-manifest' block downstream tasks
+(normally r-propagate-49-expand-from-49-manifest-failed failed-49-manifest upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-manifest-permanently-failed permanently-failed-49-manifest upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-manifest-stale-v1 stale-v1-49-manifest upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-manifest-timeout-v1 timeout-v1-49-manifest upstream-blocked-49-expand)
+(normally r-propagate-49-props-from-49-manifest-failed failed-49-manifest upstream-blocked-49-props)
+(normally r-propagate-49-props-from-49-manifest-permanently-failed permanently-failed-49-manifest upstream-blocked-49-props)
+(normally r-propagate-49-props-from-49-manifest-stale-v1 stale-v1-49-manifest upstream-blocked-49-props)
+(normally r-propagate-49-props-from-49-manifest-timeout-v1 timeout-v1-49-manifest upstream-blocked-49-props)
+(normally r-propagate-50-manifest-from-49-manifest-failed failed-49-manifest upstream-blocked-50-manifest)
+(normally r-propagate-50-manifest-from-49-manifest-permanently-failed permanently-failed-49-manifest upstream-blocked-50-manifest)
+(normally r-propagate-50-manifest-from-49-manifest-stale-v1 stale-v1-49-manifest upstream-blocked-50-manifest)
+(normally r-propagate-50-manifest-from-49-manifest-timeout-v1 timeout-v1-49-manifest upstream-blocked-50-manifest)
+
+(claims agent:claude
+  :at "2026-06-25T13:06:46Z"
+  (given completed-49-manifest))
+
+(claims agent:claude
+  :at "2026-06-25T13:11:18Z"
+  (given claim-v1-49-directive)
+  (normally r-cl-state-v1-49-directive claim-v1-49-directive state-claimed-v1-49-directive)
+  (normally r-cl-chain-v1-49-directive state-claimed-v1-49-directive claimed-49-directive)
+)
+
+;; Propagation rules: failures in '49-directive' block downstream tasks
+(normally r-propagate-49-expand-from-49-directive-failed failed-49-directive upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-directive-permanently-failed permanently-failed-49-directive upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-directive-stale-v1 stale-v1-49-directive upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-directive-timeout-v1 timeout-v1-49-directive upstream-blocked-49-expand)
+
+(claims agent:claude
+  :at "2026-06-25T13:11:18Z"
+  (given completed-49-directive))
+
+(claims agent:claude
+  :at "2026-06-25T13:14:57Z"
+  (given claim-v1-49-sanitize)
+  (normally r-cl-state-v1-49-sanitize claim-v1-49-sanitize state-claimed-v1-49-sanitize)
+  (normally r-cl-chain-v1-49-sanitize state-claimed-v1-49-sanitize claimed-49-sanitize)
+)
+
+;; Propagation rules: failures in '49-sanitize' block downstream tasks
+(normally r-propagate-49-expand-from-49-sanitize-failed failed-49-sanitize upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-sanitize-permanently-failed permanently-failed-49-sanitize upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-sanitize-stale-v1 stale-v1-49-sanitize upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-sanitize-timeout-v1 timeout-v1-49-sanitize upstream-blocked-49-expand)
+
+(claims agent:claude
+  :at "2026-06-25T13:14:57Z"
+  (given completed-49-sanitize))
+
+(claims agent:claude
+  :at "2026-06-25T13:16:56Z"
+  (given claim-v1-49-props)
+  (normally r-cl-state-v1-49-props claim-v1-49-props state-claimed-v1-49-props)
+  (normally r-cl-chain-v1-49-props state-claimed-v1-49-props claimed-49-props)
+)
+
+;; Propagation rules: failures in '49-props' block downstream tasks
+(normally r-propagate-49-expand-from-49-props-failed failed-49-props upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-props-permanently-failed permanently-failed-49-props upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-props-stale-v1 stale-v1-49-props upstream-blocked-49-expand)
+(normally r-propagate-49-expand-from-49-props-timeout-v1 timeout-v1-49-props upstream-blocked-49-expand)
+
+(claims agent:claude
+  :at "2026-06-25T13:16:56Z"
+  (given completed-49-props))
+
+(claims agent:claude
+  :at "2026-06-25T13:24:24Z"
+  (given claim-v1-49-lint)
+  (normally r-cl-state-v1-49-lint claim-v1-49-lint state-claimed-v1-49-lint)
+  (normally r-cl-chain-v1-49-lint state-claimed-v1-49-lint claimed-49-lint)
+)
+
+;; Propagation rules: failures in '49-lint' block downstream tasks
+(normally r-propagate-49-wire-from-49-lint-failed failed-49-lint upstream-blocked-49-wire)
+(normally r-propagate-49-wire-from-49-lint-permanently-failed permanently-failed-49-lint upstream-blocked-49-wire)
+(normally r-propagate-49-wire-from-49-lint-stale-v1 stale-v1-49-lint upstream-blocked-49-wire)
+(normally r-propagate-49-wire-from-49-lint-timeout-v1 timeout-v1-49-lint upstream-blocked-49-wire)
+
+(claims agent:claude
+  :at "2026-06-25T13:24:24Z"
+  (given completed-49-lint))
+
+(claims agent:claude
+  :at "2026-06-25T13:28:32Z"
+  (given claim-v1-49-expand)
+  (normally r-cl-state-v1-49-expand claim-v1-49-expand state-claimed-v1-49-expand)
+  (normally r-cl-chain-v1-49-expand state-claimed-v1-49-expand claimed-49-expand)
+)
+
+;; Propagation rules: failures in '49-expand' block downstream tasks
+(normally r-propagate-49-wire-from-49-expand-failed failed-49-expand upstream-blocked-49-wire)
+(normally r-propagate-49-wire-from-49-expand-permanently-failed permanently-failed-49-expand upstream-blocked-49-wire)
+(normally r-propagate-49-wire-from-49-expand-stale-v1 stale-v1-49-expand upstream-blocked-49-wire)
+(normally r-propagate-49-wire-from-49-expand-timeout-v1 timeout-v1-49-expand upstream-blocked-49-wire)
+
+(claims agent:claude
+  :at "2026-06-25T13:28:32Z"
+  (given completed-49-expand))
+
+(claims agent:claude
+  :at "2026-06-25T13:38:10Z"
+  (given claim-v1-49-wire)
+  (normally r-cl-state-v1-49-wire claim-v1-49-wire state-claimed-v1-49-wire)
+  (normally r-cl-chain-v1-49-wire state-claimed-v1-49-wire claimed-49-wire)
+)
+
+;; Propagation rules: failures in '49-wire' block downstream tasks
+(normally r-propagate-49-tests-from-49-wire-failed failed-49-wire upstream-blocked-49-tests)
+(normally r-propagate-49-tests-from-49-wire-permanently-failed permanently-failed-49-wire upstream-blocked-49-tests)
+(normally r-propagate-49-tests-from-49-wire-stale-v1 stale-v1-49-wire upstream-blocked-49-tests)
+(normally r-propagate-49-tests-from-49-wire-timeout-v1 timeout-v1-49-wire upstream-blocked-49-tests)
+
+(claims agent:claude
+  :at "2026-06-25T13:38:10Z"
+  (given completed-49-wire))
+
+(claims agent:claude
+  :at "2026-06-25T13:40:09Z"
+  (given claim-v1-49-tests)
+  (normally r-cl-state-v1-49-tests claim-v1-49-tests state-claimed-v1-49-tests)
+  (normally r-cl-chain-v1-49-tests state-claimed-v1-49-tests claimed-49-tests)
+)
+
+;; Propagation rules: failures in '49-tests' block downstream tasks
+(normally r-propagate-verify-from-49-tests-failed failed-49-tests upstream-blocked-verify)
+(normally r-propagate-verify-from-49-tests-permanently-failed permanently-failed-49-tests upstream-blocked-verify)
+(normally r-propagate-verify-from-49-tests-stale-v1 stale-v1-49-tests upstream-blocked-verify)
+(normally r-propagate-verify-from-49-tests-timeout-v1 timeout-v1-49-tests upstream-blocked-verify)
+
+(claims agent:claude
+  :at "2026-06-25T13:40:10Z"
+  (given completed-49-tests))
+
+(claims agent:claude
+  :at "2026-06-25T13:47:39Z"
+  (given claim-v1-50-manifest)
+  (normally r-cl-state-v1-50-manifest claim-v1-50-manifest state-claimed-v1-50-manifest)
+  (normally r-cl-chain-v1-50-manifest state-claimed-v1-50-manifest claimed-50-manifest)
+)
+
+;; Propagation rules: failures in '50-manifest' block downstream tasks
+(normally r-propagate-50-emit-from-50-manifest-failed failed-50-manifest upstream-blocked-50-emit)
+(normally r-propagate-50-emit-from-50-manifest-permanently-failed permanently-failed-50-manifest upstream-blocked-50-emit)
+(normally r-propagate-50-emit-from-50-manifest-stale-v1 stale-v1-50-manifest upstream-blocked-50-emit)
+(normally r-propagate-50-emit-from-50-manifest-timeout-v1 timeout-v1-50-manifest upstream-blocked-50-emit)
+(normally r-propagate-50-prepaint-from-50-manifest-failed failed-50-manifest upstream-blocked-50-prepaint)
+(normally r-propagate-50-prepaint-from-50-manifest-permanently-failed permanently-failed-50-manifest upstream-blocked-50-prepaint)
+(normally r-propagate-50-prepaint-from-50-manifest-stale-v1 stale-v1-50-manifest upstream-blocked-50-prepaint)
+(normally r-propagate-50-prepaint-from-50-manifest-timeout-v1 timeout-v1-50-manifest upstream-blocked-50-prepaint)
+(normally r-propagate-50-theme-from-50-manifest-failed failed-50-manifest upstream-blocked-50-theme)
+(normally r-propagate-50-theme-from-50-manifest-permanently-failed permanently-failed-50-manifest upstream-blocked-50-theme)
+(normally r-propagate-50-theme-from-50-manifest-stale-v1 stale-v1-50-manifest upstream-blocked-50-theme)
+(normally r-propagate-50-theme-from-50-manifest-timeout-v1 timeout-v1-50-manifest upstream-blocked-50-theme)
+(normally r-propagate-50-wiring-from-50-manifest-failed failed-50-manifest upstream-blocked-50-wiring)
+(normally r-propagate-50-wiring-from-50-manifest-permanently-failed permanently-failed-50-manifest upstream-blocked-50-wiring)
+(normally r-propagate-50-wiring-from-50-manifest-stale-v1 stale-v1-50-manifest upstream-blocked-50-wiring)
+(normally r-propagate-50-wiring-from-50-manifest-timeout-v1 timeout-v1-50-manifest upstream-blocked-50-wiring)
+
+(claims agent:claude
+  :at "2026-06-25T13:47:39Z"
+  (given completed-50-manifest))
+
+(claims agent:claude
+  :at "2026-06-25T13:47:39Z"
+  (given claim-v1-50-theme)
+  (normally r-cl-state-v1-50-theme claim-v1-50-theme state-claimed-v1-50-theme)
+  (normally r-cl-chain-v1-50-theme state-claimed-v1-50-theme claimed-50-theme)
+)
+
+;; Propagation rules: failures in '50-theme' block downstream tasks
+(normally r-propagate-50-csp-from-50-theme-failed failed-50-theme upstream-blocked-50-csp)
+(normally r-propagate-50-csp-from-50-theme-permanently-failed permanently-failed-50-theme upstream-blocked-50-csp)
+(normally r-propagate-50-csp-from-50-theme-stale-v1 stale-v1-50-theme upstream-blocked-50-csp)
+(normally r-propagate-50-csp-from-50-theme-timeout-v1 timeout-v1-50-theme upstream-blocked-50-csp)
+
+(claims agent:claude
+  :at "2026-06-25T13:47:39Z"
+  (given completed-50-theme))
+
+(claims agent:claude
+  :at "2026-06-25T13:47:39Z"
+  (given claim-v1-50-wiring)
+  (normally r-cl-state-v1-50-wiring claim-v1-50-wiring state-claimed-v1-50-wiring)
+  (normally r-cl-chain-v1-50-wiring state-claimed-v1-50-wiring claimed-50-wiring)
+)
+
+;; Propagation rules: failures in '50-wiring' block downstream tasks
+(normally r-propagate-50-wire-from-50-wiring-failed failed-50-wiring upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-wiring-permanently-failed permanently-failed-50-wiring upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-wiring-stale-v1 stale-v1-50-wiring upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-wiring-timeout-v1 timeout-v1-50-wiring upstream-blocked-50-wire)
+
+(claims agent:claude
+  :at "2026-06-25T13:47:39Z"
+  (given completed-50-wiring))
+
+(claims agent:claude
+  :at "2026-06-25T13:47:39Z"
+  (given claim-v1-50-csp)
+  (normally r-cl-state-v1-50-csp claim-v1-50-csp state-claimed-v1-50-csp)
+  (normally r-cl-chain-v1-50-csp state-claimed-v1-50-csp claimed-50-csp)
+)
+
+;; Propagation rules: failures in '50-csp' block downstream tasks
+(normally r-propagate-50-wire-from-50-csp-failed failed-50-csp upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-csp-permanently-failed permanently-failed-50-csp upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-csp-stale-v1 stale-v1-50-csp upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-csp-timeout-v1 timeout-v1-50-csp upstream-blocked-50-wire)
+
+(claims agent:claude
+  :at "2026-06-25T13:47:39Z"
+  (given completed-50-csp))
+
+(claims agent:claude
+  :at "2026-06-25T13:49:00Z"
+  (given claim-v1-50-runtime-js)
+  (normally r-cl-state-v1-50-runtime-js claim-v1-50-runtime-js state-claimed-v1-50-runtime-js)
+  (normally r-cl-chain-v1-50-runtime-js state-claimed-v1-50-runtime-js claimed-50-runtime-js)
+)
+
+;; Propagation rules: failures in '50-runtime-js' block downstream tasks
+(normally r-propagate-50-bridge-js-from-50-runtime-js-failed failed-50-runtime-js upstream-blocked-50-bridge-js)
+(normally r-propagate-50-bridge-js-from-50-runtime-js-permanently-failed permanently-failed-50-runtime-js upstream-blocked-50-bridge-js)
+(normally r-propagate-50-bridge-js-from-50-runtime-js-stale-v1 stale-v1-50-runtime-js upstream-blocked-50-bridge-js)
+(normally r-propagate-50-bridge-js-from-50-runtime-js-timeout-v1 timeout-v1-50-runtime-js upstream-blocked-50-bridge-js)
+(normally r-propagate-50-bridge-js-from-50-runtime-js-blocked upstream-blocked-50-runtime-js upstream-blocked-50-bridge-js)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-50-wire-from-50-bridge-js-blocked upstream-blocked-50-bridge-js upstream-blocked-50-wire)
+
+(claims agent:claude
+  :at "2026-06-25T13:49:00Z"
+  (given completed-50-runtime-js))
+
+(claims agent:claude
+  :at "2026-06-25T13:49:00Z"
+  (given claim-v1-50-bridge-js)
+  (normally r-cl-state-v1-50-bridge-js claim-v1-50-bridge-js state-claimed-v1-50-bridge-js)
+  (normally r-cl-chain-v1-50-bridge-js state-claimed-v1-50-bridge-js claimed-50-bridge-js)
+)
+
+;; Propagation rules: failures in '50-bridge-js' block downstream tasks
+(normally r-propagate-50-wire-from-50-bridge-js-failed failed-50-bridge-js upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-bridge-js-permanently-failed permanently-failed-50-bridge-js upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-bridge-js-stale-v1 stale-v1-50-bridge-js upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-bridge-js-timeout-v1 timeout-v1-50-bridge-js upstream-blocked-50-wire)
+
+(claims agent:claude
+  :at "2026-06-25T13:49:00Z"
+  (given completed-50-bridge-js))
+
+(claims agent:claude
+  :at "2026-06-25T13:56:26Z"
+  (given claim-v1-50-emit)
+  (normally r-cl-state-v1-50-emit claim-v1-50-emit state-claimed-v1-50-emit)
+  (normally r-cl-chain-v1-50-emit state-claimed-v1-50-emit claimed-50-emit)
+)
+
+;; Propagation rules: failures in '50-emit' block downstream tasks
+(normally r-propagate-50-wire-from-50-emit-failed failed-50-emit upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-emit-permanently-failed permanently-failed-50-emit upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-emit-stale-v1 stale-v1-50-emit upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-emit-timeout-v1 timeout-v1-50-emit upstream-blocked-50-wire)
+
+(claims agent:claude
+  :at "2026-06-25T13:56:26Z"
+  (given completed-50-emit))
+
+(claims agent:claude
+  :at "2026-06-25T13:56:26Z"
+  (given claim-v1-50-prepaint)
+  (normally r-cl-state-v1-50-prepaint claim-v1-50-prepaint state-claimed-v1-50-prepaint)
+  (normally r-cl-chain-v1-50-prepaint state-claimed-v1-50-prepaint claimed-50-prepaint)
+)
+
+;; Propagation rules: failures in '50-prepaint' block downstream tasks
+(normally r-propagate-50-wire-from-50-prepaint-failed failed-50-prepaint upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-prepaint-permanently-failed permanently-failed-50-prepaint upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-prepaint-stale-v1 stale-v1-50-prepaint upstream-blocked-50-wire)
+(normally r-propagate-50-wire-from-50-prepaint-timeout-v1 timeout-v1-50-prepaint upstream-blocked-50-wire)
+
+(claims agent:claude
+  :at "2026-06-25T13:56:26Z"
+  (given completed-50-prepaint))
+
+(claims agent:claude
+  :at "2026-06-25T13:56:26Z"
+  (given claim-v1-50-wire)
+  (normally r-cl-state-v1-50-wire claim-v1-50-wire state-claimed-v1-50-wire)
+  (normally r-cl-chain-v1-50-wire state-claimed-v1-50-wire claimed-50-wire)
+)
+
+;; Propagation rules: failures in '50-wire' block downstream tasks
+(normally r-propagate-50-tests-from-50-wire-failed failed-50-wire upstream-blocked-50-tests)
+(normally r-propagate-50-tests-from-50-wire-permanently-failed permanently-failed-50-wire upstream-blocked-50-tests)
+(normally r-propagate-50-tests-from-50-wire-stale-v1 stale-v1-50-wire upstream-blocked-50-tests)
+(normally r-propagate-50-tests-from-50-wire-timeout-v1 timeout-v1-50-wire upstream-blocked-50-tests)
+
+(claims agent:claude
+  :at "2026-06-25T13:56:26Z"
+  (given completed-50-wire))
+
+(claims agent:claude
+  :at "2026-06-25T13:59:13Z"
+  (given claim-v1-50-tests)
+  (normally r-cl-state-v1-50-tests claim-v1-50-tests state-claimed-v1-50-tests)
+  (normally r-cl-chain-v1-50-tests state-claimed-v1-50-tests claimed-50-tests)
+)
+
+;; Propagation rules: failures in '50-tests' block downstream tasks
+(normally r-propagate-verify-from-50-tests-failed failed-50-tests upstream-blocked-verify)
+(normally r-propagate-verify-from-50-tests-permanently-failed permanently-failed-50-tests upstream-blocked-verify)
+(normally r-propagate-verify-from-50-tests-stale-v1 stale-v1-50-tests upstream-blocked-verify)
+(normally r-propagate-verify-from-50-tests-timeout-v1 timeout-v1-50-tests upstream-blocked-verify)
+
+(claims agent:claude
+  :at "2026-06-25T13:59:13Z"
+  (given completed-50-tests))
+
+(claims agent:claude
+  :at "2026-06-25T14:05:55Z"
+  (given claim-v1-verify)
+  (normally r-cl-state-v1-verify claim-v1-verify state-claimed-v1-verify)
+  (normally r-cl-chain-v1-verify state-claimed-v1-verify claimed-verify)
+)
+
+(claims agent:claude
+  :at "2026-06-25T14:05:55Z"
+  (given completed-verify))

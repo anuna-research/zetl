@@ -22,6 +22,7 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 
 - **Wikilink parsing** — `[[target]]`, `[[target|alias]]`, `[[target#heading]]`, `[[target^block-id]]`, `![[embeds]]`
 - **Typed named edges** — label a wikilink with a predicate (`derived_from::[[X]]`, chained `supersedes::informed_by::[[Y]]`, with nested-bullet annotations) to record *how* two pages connect, not just *that* they do. Bare links stay untyped (fully backward-compatible). Query with `zetl edges`, lint vocabulary drift in `zetl check`, group typed backlinks in the web UI, colour/filter them in the `/_graph` view, project them to SPL facts (`--features reason`) or RDF (`zetl export --rdf`). See [`docs/wikilink-predicates.md`](docs/wikilink-predicates.md).
+- **Template components & static pages** — define reusable, parameterised theme components (`{% component "nav-header" %}`), render hand-authored `*.html.jinja` static pages through the same engine with shared site context, compile one `tokens.toml` to merged design tokens, and `transclude("page#section")` live wiki content into any page. All opt-in and identical across `build`/`serve`. See [`docs/components.md`](docs/components.md).
 - **Graph queries** — forward links, backlinks, multi-hop traversal, shortest path
 - **Vault diagnostics** — dead links, orphan pages, syntax errors, SPL parse errors
 - **Full-text search** — content search with regex, frontmatter/code-block awareness

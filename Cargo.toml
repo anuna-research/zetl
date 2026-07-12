@@ -1,6 +1,6 @@
 [package]
 name = "zetl"
-version = "0.8.1"
+version = "0.9.3"
 edition = "2021"
 description = "Bi-directional wikilink graph CLI for knowledge management, solo or team"
 license = "AGPL-3.0-or-later"
@@ -23,8 +23,21 @@ codegen-units = 1
 strip = true
 
 [features]
-default = []
+default = ["content-components", "component-islands"]
 reason = ["dep:spindle-core", "dep:spindle-parser"]
+# SPEC-049 content-author components & directives. Gates the directive
+# recogniser, the isolated body sanitiser, untrusted prop recognition, and
+# the CON-4904 static HTML-context lint. The lint parses templates via
+# minijinja's `unstable_machinery` API (no semver guarantee — NFR-4903(d)
+# requires it be reachable ONLY through this feature, alongside the exact
+# minijinja version pin below). On by default; turning it off compiles the
+# pre-SPEC-049 behaviour (`:::name` stays literal text).
+content-components = ["minijinja/unstable_machinery"]
+# SPEC-050 component islands & inter-island messaging. Gates island manifest
+# fields, topic/type grammars, static wiring verification, CSP computation,
+# island asset emission, and the window.zetl bus runtime. On by default;
+# off compiles the pre-SPEC-050 behaviour (no bus, no island scripts).
+component-islands = []
 history = ["dep:jj-lib", "dep:chrono", "dep:pollster"]
 semantic = ["dep:ort", "dep:tokenizers", "dep:ureq"]
 mcp = ["dep:rmcp"]
@@ -110,7 +123,11 @@ crossterm = "0.28"
 ratatui = "0.29"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-minijinja = { version = "2", features = ["builtins", "loader", "urlencode"] }
+# SPEC-049 NFR-4903(a): exact version pin (not a `^`/`~` range) while the
+# `unstable_machinery` AST API — enabled via the `content-components` feature
+# — is in use, because that API carries NO semver guarantee. A minijinja bump
+# is a deliberate, reviewed step (re-run the AST-shape regression tests).
+minijinja = { version = "=2.16.0", features = ["builtins", "loader", "urlencode"] }
 include_dir = "0.7"
 serde_yaml_ng = "0.10"
 toml = "0.8"
