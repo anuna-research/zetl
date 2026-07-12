@@ -2,7 +2,7 @@
 id: SPEC-047
 title: "Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing"
 status: draft
-version: 0.10.0-strawman
+version: 0.11.0-strawman
 last-updated: 2026-07-12
 ---
 
@@ -58,7 +58,8 @@ Decisions:    [[#ADR-470 Loro as Canonical Store Markdown+Git as Export]] ·
               [[#ADR-473 Phrase-Derived DHT Rendezvous for SPAKE2]] (crypto · human-gated, not rejected) ·
               [[#ADR-477 Single Per-Vault Group Key]] ·
               [[#ADR-478 Merkle DAG as Convergence Witness and Reconciliation Index]] ·
-              [[#ADR-479 CBCL as the Control-Plane Message Language]]
+              [[#ADR-479 CBCL as the Control-Plane Message Language]] ·
+              [[#ADR-481 did:crdt as the Member Identity Layer]] (auth-core · human-gated)
 Load-bearing: [[#REQ-491 SPAKE2 Channel Authentication]] (the pairing secret) ·
               [[#REQ-476 DHT-Bootstrapped SPAKE2 Pairing]] (rendezvous discovery) ·
               [[#REQ-477 Phrase OOB-Only Non-Leak]] ·
@@ -83,7 +84,7 @@ capitals.
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | SPEC-047                                                                                |
 | Title        | Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing         |
-| Version      | 0.10.0-strawman                                                                          |
+| Version      | 0.11.0-strawman                                                                          |
 | Status       | Draft (strawman; pending DESIGN-047 execution)                                          |
 | Author       | Agent (Claude Opus 4.8 [1M]) under [[PROTO-001]] v1.11.0                                |
 | Audience     | Agent, Human                                                                            |
@@ -106,7 +107,10 @@ engine), with Markdown + git as a deterministic export; and a [[P2P]] transport
 over [[iroh]] ([[QUIC]] + [[NAT Traversal]]) where peer identity *is* an ed25519
 [[NodeId]], discovery runs over [[pkarr]] records on the [[Mainline DHT]], and
 trust is bootstrapped by a [[SPAKE2]] pairing ceremony whose rendezvous is itself
-located on the DHT. There is no central server: no editing hub and no
+located on the DHT. Identity is layered: a *device* is an ed25519 [[NodeId]]; a
+*member* (person) is a [[did:crdt]] DID whose verification methods enumerate that
+member's device NodeIds ([[#ADR-481 did:crdt as the Member Identity Layer]]).
+There is no central server: no editing hub and no
 zetl-operated [[Relay]] (relays are an optional fallback —
 [[#ADR-474 Relay as Optional Fallback Not Requirement]]).
 
@@ -146,7 +150,9 @@ no shared infrastructure.
 **In scope:** the `zetld` daemon + local control plane; a [[Loro]]-backed store
 with deterministic [[Materialization]] to Markdown; a [[P2P]] sync engine
 ([[Version Vector]] delta sync + [[Ephemeral Store]] presence); [[pkarr]]/[[Mainline DHT]]
-discovery; serverless [[SPAKE2]] pairing into a per-vault [[Group Key]]; CLI
+discovery; a [[did:crdt]] member-identity layer over device [[NodeId]]s
+([[#ADR-481 did:crdt as the Member Identity Layer]]); serverless [[SPAKE2]]
+pairing into a per-vault [[Group Key]]; CLI
 under the existing groups — `zetl daemon {start,stop,status}` (mirroring
 `zetl serve`) and `zetl collab {pair,join,peers,revoke}` (extending the existing
 `zetl collab` group, reusing SPEC-036's `zetl collab join`) per
@@ -658,6 +664,29 @@ secret, previously unspecified (F31).
 
 **Trace:** [[#TEST-496a]], [[#TEST-496b]], [[#CON-474 Pairing Protocol]], [[#OBS-475 Pairing failure cause]].
 
+### REQ-497: DID-Bound Member Identity
+
+The system SHALL identify each roster member by a [[did:crdt]] DID whose
+verification methods enumerate that member's device ed25519 [[NodeId]]s, FOR
+every roster entry, WITH a connecting [[NodeId]] admitted by
+[[#REQ-492 Roster Gate Before Vault Frame]] only while it is a currently-valid
+verification method of an on-roster DID (`[Provisional — DESIGN-047 task
+adr-identity]`; [[#ADR-481 did:crdt as the Member Identity Layer]]).
+
+**Trace:** [[#TEST-497a]], [[#TEST-497b]], [[#CON-477 Group Key Roster and Revocation]], [[#OBS-482 Identity verification]].
+
+### REQ-498: DID Key Removal Triggers Key Rotation
+
+The system SHALL treat removal of a device verification method from an
+on-roster [[did:crdt]] document as a revocation event that rotates the
+[[Group Key]] epoch per [[#REQ-481 Revocation by Key Rotation]], FOR every
+accepted key-removal delta, WITH the removed [[NodeId]] unable to decrypt
+post-rotation sync — composing the DID layer's key revocation with the
+transport layer's epoch rotation so neither can silently lag the other
+([[#18. Open Questions]] Q11).
+
+**Trace:** [[#TEST-498a]], [[#TEST-498b]], [[#CON-477 Group Key Roster and Revocation]], [[#OBS-477 Roster audit]], [[#OBS-482 Identity verification]].
+
 ---
 
 ## 5. Non-Functional Requirements
@@ -1021,6 +1050,64 @@ acceptable, both are "collaboration"; the encrustation guard
 ([[PROTO-001]] §Specification Status Lifecycle) is satisfied because pairing is
 on `collab`'s existing responsibility, not a broadening of it.
 
+### ADR-481: did:crdt as the Member Identity Layer
+
+**`[Provisional — DESIGN-047 task adr-identity]` · No-go area: authentication
+core, human review required.** · **Status:** Proposed
+
+**Context:** The spec so far has only *device* identity — a flat roster of raw
+ed25519 [[NodeId]]s. There is no *member* (person) identity: revoking a lost
+phone is indistinguishable from expelling a person, the
+[[users/solo-multi-device/user|solo user]]'s device fleet has no unifying
+subject, and F34/threat §N showed membership authority needs a cryptographic
+substrate that a flat key list cannot provide. `../did-crdt` ([[did:crdt]]) is a
+sibling Rust crate: a [[W3C DID Core]] 1.0-compliant DID method whose documents
+are signed CRDTs (G-Set/OR-Set/LWW-Map/Max-Register composition, Hybrid Logical
+Clock ordering) — all DID operations are monotonic and coordination-free (CALM),
+so identity updates merge offline exactly like vault content. Its core is pure
+(zero I/O, WASM-compatible, property-tested for commutativity/associativity/
+idempotence), it signs with ed25519 (the [[NodeId]] primitive), and its
+feature-gated sync already rides [[iroh]].
+
+**Options:** (A) status quo — flat NodeId roster, no member identity;
+(B) **[[did:crdt]] DIDs as member identity** — one DID per member, device
+[[NodeId]]s as verification methods, DID deltas exchanged over the existing
+encrypted peer channel; (C) another DID method — `did:key` (single-key: no
+rotation, no multi-device), `did:web` (reintroduces a server), ledger-based
+methods (fees, confirmation delay — the coordination did-crdt exists to avoid).
+
+**Decision:** (B). One [[did:crdt]] document per member; the roster maps
+DID → {devices, role, added_at, key_epoch} and a device [[NodeId]] is admitted
+only as a currently-valid verification method of an on-roster DID
+([[#REQ-497 DID-Bound Member Identity]]). Pairing a new device adds a
+verification method (a signed delta authored by an existing device key);
+losing a device removes one, which MUST also rotate the [[Group Key]] epoch
+([[#REQ-498 DID Key Removal Triggers Key Rotation]]). DID deltas are exchanged
+**only over the roster-gated encrypted peer channel**
+([[#REQ-482 Roster-Gated Encrypted Transport]]) — NOT public iroh-gossip and
+NOT the public DHT (threat §P). Sits at Simplicity-Ladder rung 4: an existing
+sibling dependency (like `../cbcl-rs`), pure core reused as-is; the secp256k1
+feature stays off (unused surface).
+
+**Consequences:** (+) Member ≠ device at last: device revocation and member
+expulsion become distinct, correctly-scoped operations. (+) Identity updates
+are offline-first CRDT merges — the same convergence model as the vault itself,
+no coordination service. (+) DID controller proofs give the *authenticated
+substrate* the web-of-trust successor needs (partial path out of threat §N —
+though a current key-holder forking the [[Group Key]] remains that successor's
+problem). (+) `resolve()` projects a standard W3C DID Document for external
+interop. (−) A second Tier-1 auth-core dependency at version 0.1.0 — the
+human-review package grows (its ADR-002 key-compromise recovery and ADR-003
+Sybil analysis join the Q7/Q11 review). (−) Two revocation mechanisms must
+compose, never race ([[#REQ-498 DID Key Removal Triggers Key Rotation]], Q11).
+(−) Two logical-time systems coexist (did-crdt HLC for identity, [[Loro]]
+logical time for content) — acceptable because the layers never share a clock,
+recorded so the boundary is a decision. (−) A DID document enumerates a
+member's whole device fleet — it MUST NOT be published to the public DHT
+(threat §P). (−) `zetl collab revoke` grows a member-level form
+(`revoke <did>` vs device-level `revoke <nodeid>`) — CLI detail deferred to
+DESIGN-047 `adr-identity`.
+
 ---
 
 ## 7. Contracts
@@ -1145,26 +1232,36 @@ exhaustion aborts the pairing and tears down the rendezvous record.
 ### CON-477: Group Key Roster and Revocation
 
 **Interface:** roster store (`[Provisional: .zetl/peers.toml` mode `0600`]`)
-mapping [[NodeId]] → {role, added_at, key_epoch}; `zetl collab revoke <nodeid>`
-rotates epoch + schedules re-seal (positional id, mirroring
-`zetl collab share revoke <jti>`); `zetl collab peers` lists the roster and
-never prints key material (mirroring `zetl collab share list`).
+mapping [[did:crdt]] DID → {devices: [[[NodeId]]], role, added_at, key_epoch}
+([[#ADR-481 did:crdt as the Member Identity Layer]], [[#REQ-497 DID-Bound Member Identity]]);
+`zetl collab revoke <nodeid>` (device) rotates epoch + schedules re-seal
+(positional id, mirroring `zetl collab share revoke <jti>`; the member-level
+`revoke <did>` form is `[Provisional — DESIGN-047 task adr-identity]`);
+`zetl collab peers` lists the roster and never prints key material (mirroring
+`zetl collab share list`); `apply_did_delta(delta) -> Accepted | Rejected`
+folds a signed [[did:crdt]] delta into a member's document.
 
 **Grammar / Recogniser:** roster file is a declared [[TOML]] schema
 ([[#8.7 Roster Schema]]); recogniser = a `serde` TOML decoder + schema validation
-(it is trusted local state, but recognised before use per Principle 14).
+(it is trusted local state, but recognised before use per Principle 14). DID
+deltas arriving from peers are recognised per [[#8.10 did:crdt Delta]] before
+`apply_did_delta` runs.
 
-**Pre-conditions:** C1 (REQ-481) caller is the [[users/vault-owner/user|Owner]].
+**Pre-conditions:** C1 (REQ-481) caller is the [[users/vault-owner/user|Owner]];
+C5 (REQ-497) a delta's Linked-Data Proof verifies against an existing key of
+that DID before it mutates the document.
 
 **Post-conditions:** C2 (REQ-481) revoked [[NodeId]] removed; new epoch sealed to
 survivors within [[#NFR-474 Revocation Propagation]]; C3 (REQ-481) revoked peer
 rejected by [[#CON-473 Peer Session]]; C4 (REQ-480) entries added only via
-completed [[SPAKE2]].
+completed [[SPAKE2]]; C6 (REQ-498) an accepted key-removal delta rotates the
+[[Group Key]] epoch before the removal is considered applied.
 
-**Error model:** `not-on-roster`; `last-member` (cannot revoke the sole member).
+**Error model:** `not-on-roster`; `last-member` (cannot revoke the sole member);
+`invalid-did-delta` (proof/recognition failure — dropped, logged).
 
-**Implements:** [[#REQ-480 Group-Key Admission Gate]], [[#REQ-481 Revocation by Key Rotation]].
-**Verified by:** [[#TEST-480a]], [[#TEST-480b]], [[#TEST-481a]], [[#TEST-481b]], [[#TEST-481c]].
+**Implements:** [[#REQ-480 Group-Key Admission Gate]], [[#REQ-481 Revocation by Key Rotation]], [[#REQ-497 DID-Bound Member Identity]], [[#REQ-498 DID Key Removal Triggers Key Rotation]].
+**Verified by:** [[#TEST-480a]], [[#TEST-480b]], [[#TEST-481a]], [[#TEST-481b]], [[#TEST-481c]], [[#TEST-497a]], [[#TEST-497b]], [[#TEST-498a]], [[#TEST-498b]].
 
 ---
 
@@ -1253,6 +1350,16 @@ record is an unauthenticated *hint* only — it confers no trust until [[SPAKE2]
 **network, untrusted** (anyone can publish to the [[Mainline DHT]], incl. at a
 phrase-derived rendezvous pubkey — threat §J).
 
+### 8.10 did:crdt Delta
+A signed [[did:crdt]] document delta (verification-method add/remove, service
+update) received from a roster peer over the encrypted channel — never from
+the public DHT or open gossip (threat §P). Power: context-free (a declared
+JSON schema over the did-crdt delta type). Recogniser: the `did-crdt`
+`core::validate` path — schema recognition, then Linked-Data-Proof ed25519
+verification against an *existing* key of the target DID, then CRDT merge
+(fuzzed, [[#TEST-fuzz-did]]). Boundary: **network, untrusted** (a roster peer
+may still be malicious — §N).
+
 No grammar in this spec exceeds context-free power; the control plane sits at
 [[DCFL]] (a decidable subset of CF), justified in
 [[#ADR-479 CBCL as the Control-Plane Message Language]] per Principle 14 §6.
@@ -1279,6 +1386,7 @@ construction.
 | Markdown materialise/import | 5 — minimum new code over existing parser/flush | pure `crdt::loro::{materialise,import}` + reuse of the existing git/jj flush pipeline. |
 | Merkle reconciliation + witness | 4 — existing `src/merkle.rs` ([[SPEC-006]]) | reuse the vault Merkle DAG at the materialisation boundary; layered on [[Loro]], not a new engine ([[#ADR-478 Merkle DAG as Convergence Witness and Reconciliation Index]]). |
 | Control-plane message language | 4 — existing dependency `../cbcl-rs` ([[CBCL]]) | shared `p2p::proto` over `cbcl-core`/`cbcl-parser`; one DPDA replaces the bespoke per-message CBOR validators (deletion over addition) ([[#ADR-479 CBCL as the Control-Plane Message Language]]). |
+| Member identity | 4 — existing sibling dependency `../did-crdt` ([[did:crdt]]) | shared `p2p::identity` over the pure `did-crdt` core (merge/validate/resolve); devices stay [[iroh]] [[NodeId]]s — no new key primitive ([[#ADR-481 did:crdt as the Member Identity Layer]]). |
 | CLI verbs (pair/join/peers/revoke, daemon) | 6 — new verbs, but *on existing groups* | add to the existing `zetl collab` `clap` group + a `zetl daemon` group paralleling `zetl serve`; no new CLI idiom (Principle 15: options on the artefact with the right responsibility) ([[#ADR-480 CLI Surface Follows Existing zetl Conventions]]). |
 | Wire framing (data plane) | 2/4 — std length-prefix + [[Loro]] codec | no bespoke serialisation (Principle 14 bans string-concat formats). |
 
@@ -1371,6 +1479,10 @@ negative-output); each TEST records `Validates:`.
 | **TEST-495b** | neg-input | example | replayed root with `root_seq` ≤ last accepted → rejected | [[#REQ-495 Signed-Root Freshness]] |
 | **TEST-496a** | positive | example | attempts within budget reach [[SPAKE2]] | [[#REQ-496 Pairing Attempt Rate Limit]] |
 | **TEST-496b** | neg-input | example | excess attempts dropped pre-handshake; exhaustion aborts pairing + tears down rendezvous | [[#REQ-496 Pairing Attempt Rate Limit]] |
+| **TEST-497a** | positive | integration | paired device's [[NodeId]] is a verification method of its member's DID; session admitted | [[#REQ-497 DID-Bound Member Identity]] |
+| **TEST-497b** | neg-input | integration | [[NodeId]] absent from every on-roster DID → rejected pre-frame | [[#REQ-497 DID-Bound Member Identity]] |
+| **TEST-498a** | positive | example | accepted key-removal delta → [[Group Key]] epoch rotates ≤ [[#NFR-474 Revocation Propagation]] | [[#REQ-498 DID Key Removal Triggers Key Rotation]] |
+| **TEST-498b** | neg-output | example | removed [[NodeId]] MUST NOT decrypt post-rotation frames | [[#REQ-498 DID Key Removal Triggers Key Rotation]] |
 
 ### 10.3 Non-Functional & Robustness Tests
 
@@ -1387,6 +1499,7 @@ negative-output); each TEST records `Validates:`.
 | **TEST-fuzz-spake** | fuzz | [[SPAKE2]]/pairing decoder vs random bytes | [[#REQ-483 Full Recognition at Trust Boundaries]] |
 | **TEST-fuzz-loro** | fuzz | [[Loro]] update import vs hostile frames | [[#REQ-483 Full Recognition at Trust Boundaries]] |
 | **TEST-fuzz-markdown** | fuzz | restricted-CommonMark import recogniser vs hostile input (F13) | [[#REQ-483 Full Recognition at Trust Boundaries]], [[#REQ-484 Guarded Import of External Markdown Edits]] |
+| **TEST-fuzz-did** | fuzz | [[did:crdt]] delta recogniser + proof verifier vs hostile deltas | [[#REQ-483 Full Recognition at Trust Boundaries]], [[#REQ-497 DID-Bound Member Identity]] |
 | **TEST-mut-rendezvous** | mutation | ≥ 90% kill on rendezvous derivation | [[#REQ-476 DHT-Bootstrapped SPAKE2 Pairing]], [[#NFR-475 Pairing Secret Entropy Floor]] |
 | **TEST-mut-roster** | mutation | ≥ 90% kill on roster/revocation | [[#REQ-481 Revocation by Key Rotation]], [[#REQ-482 Roster-Gated Encrypted Transport]] |
 | **TEST-adv-pairing** | adversarial | attack pairing/rendezvous to Adversary Exhaustion | [[#REQ-476 DHT-Bootstrapped SPAKE2 Pairing]]–[[#REQ-483 Full Recognition at Trust Boundaries]] |
@@ -1409,6 +1522,7 @@ negative-output); each TEST records `Validates:`.
 | **OBS-479** External-edit import | log | import outcome (`folded`/`staged`) | [[#REQ-484 Guarded Import of External Markdown Edits]] |
 | **OBS-480** Convergence witness | metric | `zetl_root_mismatch_total` (integrity alarm), `zetl_reconcile_rounds`, `zetl_reconcile_skipped_total` (equal-root) | [[#REQ-485 Merkle Convergence Witness]], [[#REQ-486 Merkle Anti-Entropy Reconciliation]] |
 | **OBS-481** Message recognition | metric+log | `zetl_cbcl_reject_total{cause}` (parse / R1–R5 / R4-sig) on incoming control messages against the shipped dialect | [[#REQ-487 Control-Plane Messages Recognised by the CBCL DPDA]], [[#REQ-488 Choreographies as Verified R5 Causal-Protocol Contracts]] |
+| **OBS-482** Identity verification | metric+log | `zetl_did_delta_reject_total{cause}` (schema / proof / merge); audit line per verification-method add/remove with DID + [[NodeId]] + ts | [[#REQ-497 DID-Bound Member Identity]], [[#REQ-498 DID Key Removal Triggers Key Rotation]] |
 
 > [[#OBS-475 Pairing failure cause]]'s `cause` label is operator-channel only and
 > MUST NOT be exposed via any unauthenticated metrics endpoint, lest it become an
@@ -1513,6 +1627,16 @@ negative-output); each TEST records `Validates:`.
   MUST refuse older epochs; specified in the Q7 group-key package
   ([[#18. Open Questions]] Q7). *Residual:* unbounded for indefinitely-offline
   survivors.
+- **P. DID document as a device-fleet map** — a member's [[did:crdt]] document
+  enumerates *all* of that member's device keys; published openly (public DHT,
+  open iroh-gossip) it hands an observer the member's device graph and its
+  churn over time — a richer metadata leak than §G's single-record liveness.
+  *Mitigation:* DID deltas and documents travel **only** over the roster-gated
+  encrypted channel ([[#ADR-481 did:crdt as the Member Identity Layer]],
+  [[#8.10 did:crdt Delta]]); nothing DID-shaped reaches the public DHT.
+  *Residual:* roster members see each other's fleets — inherent to
+  membership; the DESIGN-047 `threat-model` task weighs per-member visibility
+  scoping for the web-of-trust successor.
 
 ---
 
@@ -1536,6 +1660,10 @@ negative-output); each TEST records `Validates:`.
   (REQ-487, REQ-488). R4 signature *verification* is pure; key *custody* is shell.
 - `p2p::pair::error::classify(cause) -> FailureCategory` — operator-only; user
   text constant (REQ-479).
+- `p2p::identity::{merge, validate, resolve}` — reuse the [[did:crdt]] pure core
+  (`merge(state, delta) → state`, commutative/associative/idempotent; zero I/O);
+  member-identity recognition + document projection (REQ-497, REQ-498). Delta
+  *verification* is pure; delta *exchange* and roster persistence are shell.
 
 ### Effectful Shell (orchestrates I/O, calls pure core)
 
@@ -1545,6 +1673,8 @@ negative-output); each TEST records `Validates:`.
 - `crdt::store` — `.zetl/loro/` persistence; oplog append; snapshotting.
 - `crdt::materialise_sink` — write Markdown + drive git/jj flush.
 - `p2p::pair::store` — roster + nonce persistence; rendezvous TTL pruning.
+- `p2p::identity::exchange` — DID-delta send/receive over the roster-gated
+  channel (never public DHT/gossip — threat §P).
 - `daemon::watch` — external-edit watcher feeding guarded import.
 
 ### Boundary Contracts (data types crossing the boundary)
@@ -1610,6 +1740,8 @@ REQ-### ←π→ TEST-### → CODE → OBS-###
 | 494 | 494a/b | 473 | 479 | 478 |
 | 495 | 495a/b | 473 | 478 | 477 |
 | 496 | 496a/b | 474 | 473 | 475 |
+| 497 | 497a/b, fuzz-did | 477 | 481 | 482 |
+| 498 | 498a/b | 477 | 481 | 477,482 |
 
 Every REQ links ≥ 1 TEST per applicable type and ≥ 1 OBS (post-release;
 REQ-489 is a build-time CLI-surface conformance REQ with no runtime signal —
@@ -1686,6 +1818,13 @@ Per [[PROTO-001]] §AI Trust Boundaries. Tier-1 ⇒ synthesis trajectory recorde
     five line-wrapped wikilinks unwrapped (F44); Orientation legend +
     scrambled-channel metaphor + §H reference fixes (comprehension-gate
     findings).
+  - S₁₀ — adopted [[did:crdt]] (`../did-crdt`) as the member identity layer on
+    user direction: ADR-481, REQ-497 (DID-bound member identity; roster keyed
+    by DID, devices as verification methods), REQ-498 (DID key removal triggers
+    [[Group Key]] rotation — the two revocation mechanisms compose, Q11), §8.10
+    delta grammar + TEST-fuzz-did, CON-477 rework (DID-keyed roster,
+    `apply_did_delta`), OBS-482, threat §P (device-fleet metadata — DID material
+    never on the public DHT), §9/§13 placement (rung 4, pure core reused).
   - Adversarial tests: not yet generated (DESIGN-047 `test-strategy` +
     cross-model).
 - **Reviewer:** **PENDING** — Tier-1 requires cross-model adversarial review,
@@ -1731,6 +1870,8 @@ DESIGN-047 task lands.
 | 494 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | n/a | ✓ | ✓ | ✓ | ✓ | ✓ |
 | 495 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | n/a | ✓ | ✓ | ✓ | ✓ | ✓ |
 | 496 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 497 | ⚠ ADR-481 | ✓ | ✓ | ✓ | ⚠ | ✓ | ✓ | ✓ | ✓ | n/a | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 498 | ⚠ ADR-481 | ✓ | ✓ | ✓ | ⚠ | ✓ | ✓ | ✓ | ✓ | n/a | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 > **F18/F30 corrections.** The atomicity splits (F5/F6/F7 → REQ-490/491/492) make
 > REQ-470/476/482 genuinely single-obligation; their ✓Atomic now holds rather
@@ -1810,6 +1951,15 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
     successor spec; it would reintroduce a runtime-extension attack surface and
     needs its own rate-limit + R1–R5-at-install threat analysis before it earns a
     place. Not needed for the v1 multi-device profile.
+11. **Revocation composition (DID layer ↔ Group Key layer).**
+    [[#REQ-498 DID Key Removal Triggers Key Rotation]] ties a verification-method
+    removal to an epoch rotation, but the ordering under partition needs the
+    human auth-core review: a key-removal delta that converges *after* the
+    removed device has already synced under the old epoch; whether rotation is
+    authored by the delta's author or by each verifier on acceptance;
+    interaction with did-crdt's own ADR-002 key-compromise recovery (a
+    compromised controller key can author removals). Joins the Q7 group-key
+    package. ([[#ADR-481 did:crdt as the Member Identity Layer]])
 
 ---
 
@@ -1833,8 +1983,21 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.10.0</summary>
+<summary>Revision history — 0.1.0 → 0.11.0</summary>
 
+- 0.11.0-strawman — adopted [[did:crdt]] (`../did-crdt`) as the **member
+  identity layer** on user direction
+  ([[#ADR-481 did:crdt as the Member Identity Layer]]): member = W3C DID whose
+  verification methods are the member's device [[NodeId]]s; roster re-keyed
+  DID → devices ([[#REQ-497 DID-Bound Member Identity]], CON-477 rework);
+  DID key removal composes with [[Group Key]] epoch rotation
+  ([[#REQ-498 DID Key Removal Triggers Key Rotation]], Q11 raised); §8.10 delta
+  grammar (recognise → proof-verify → merge, fuzzed via TEST-fuzz-did); DID
+  material confined to the roster-gated channel — never the public DHT
+  (threat §P, device-fleet metadata); OBS-482; §9 placement rung 4 (pure
+  sibling core, like `../cbcl-rs`); a second Tier-1 auth-core dependency —
+  did-crdt's key-compromise-recovery and Sybil ADRs join the human-review
+  package.
 - 0.10.0-strawman — third fresh-context review pass (on 0.9.0; Claude Fable 5,
   same-vendor — the Tier-1 cross-model gate remains undischarged) → 4×S2, 6×S3,
   4×S4, the first pass probing protocol *semantics* rather than document
