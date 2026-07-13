@@ -2,7 +2,7 @@
 id: SPEC-047
 title: "Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing"
 status: draft
-version: 0.12.0-strawman
+version: 0.13.0-strawman
 last-updated: 2026-07-13
 ---
 
@@ -67,8 +67,10 @@ Load-bearing: [[#REQ-491 SPAKE2 Channel Authentication]] (the pairing secret) ·
               [[#REQ-499 Group-Keyed Sync Frames]] (rotation bites the wire) ·
               [[#REQ-474 Conflict-Free Offline Merge]] ·
               [[#NFR-475 Pairing Secret Entropy Floor]]
-Open:         threat-model §H rendezvous enumeration vs phrase entropy (owner: HOC, gating
-              the Tier-1 crypto review) → [[#18. Open Questions]] Q1
+Open:         threat-model §H/§J rendezvous enumeration + write authority vs
+              phrase entropy (owner: HOC, gating the Tier-1 crypto review) →
+              [[#18. Open Questions]] Q1; §B OOB-compromise recovery
+              (fingerprint/SAS) → Q2
 Detail:       this document — the nodes below are the room; this block is the door.
 ```
 
@@ -85,7 +87,7 @@ capitals.
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | SPEC-047                                                                                |
 | Title        | Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing         |
-| Version      | 0.12.0-strawman                                                                          |
+| Version      | 0.13.0-strawman                                                                          |
 | Status       | Draft (strawman; pending DESIGN-047 execution)                                          |
 | Author       | Agent (Claude Opus 4.8 [1M]) under [[PROTO-001]] v1.11.0                                |
 | Audience     | Agent, Human                                                                            |
@@ -255,8 +257,10 @@ with the CLI binary, peer-to-peer dialect propagation is deferred
    other into the roster.
 6. B initialises `notes`, pulls [[Loro]] state via [[Version Vector]] delta sync,
    materialises Markdown → "synced".
-7. Rendezvous record torn down; phrase consumed → later discovery uses durable
-   [[NodeId]] via [[pkarr]], no phrase.
+7. Rendezvous torn down — the daemon closes the ephemeral pairing endpoint and
+   stops republishing; the DHT record itself cannot be deleted and persists in
+   caches until TTL expiry ([[#12. Threat Model]] §J, F58); phrase consumed →
+   later discovery uses durable [[NodeId]] via [[pkarr]], no phrase.
 
 **Postconditions:** Both devices hold identical content + [[Group Key]]; either
 edits offline and merges on reconnect.
@@ -334,13 +338,15 @@ resealed member ([[#12. Threat Model]] §O).
 
 **Steps:**
 
-1. Watcher detects the change → identifies the write's **base export** against
-   the daemon's retained per-document export-generation history, then diffs the
-   on-disk Markdown against that base.
-2. Base = current export AND no concurrent daemon edit → fold the delta into
-   [[Loro]] → "imported".
-3. Concurrent daemon edit, **stale base** (the saved buffer derives from a
-   superseded export generation — F51), or unidentifiable base → stage to
+1. Watcher detects the change → checks the write's **base ambiguity**: has the
+   daemon materialised any new export generation for this document since the
+   last external event on it? (Content hashes recognise only *unchanged*
+   saves; an edited buffer's base is undecidable from its bytes — F59.)
+2. No intervening export AND no concurrent daemon edit → the base is
+   unambiguous → diff against it and fold the delta into [[Loro]] →
+   "imported".
+3. Concurrent daemon edit, or **ambiguous base** (an intervening export means
+   the buffer may derive from a superseded generation — F51/F59) → stage to
    `.zetl/sync/conflicts/` → surface.
 
 **Postconditions:** External edits never lost; [[Loro]] causality intact;
@@ -526,21 +532,28 @@ rejected (fail-closed) and never repaired or partially acted upon
 The system SHALL route each external (non-daemon) Markdown write, delete, or
 rename per the guarded-import decision — folding it into the canonical [[Loro]]
 store when no unmaterialised daemon op exists for that document since
-`last_export` **and** the edit's identified base is the current export
-generation (a delete folds as a document tombstone; a rename is treated as
-delete + create pending identity-preserving refinement by DESIGN-047
-`adr-external-edits` — F38), and staging it to the conflict area otherwise —
-FOR every external write, delete, or rename, WITH neither side
-silently discarded. The predicate is defined over [[Loro]] *logical* time
-(presence of an unmaterialised op), NOT a wall-clock debounce window, so it is not
-a timing-controllable data-authority oracle (F16). The base-export condition
-closes the stale-buffer hole: the daemon retains per-document
-export-generation hashes since the last fold and identifies which retained
-generation the saved content derives from; a save based on a *superseded*
-export (the editor opened E0, the daemon later materialised E1) has no
-unmaterialised ops at save time yet folding its diff would silently convert
-E1's daemon edits into deletions — such a write, and any write whose base
-cannot be identified, is staged (F51).
+`last_export` **and** the write's base export is *unambiguous* (a delete folds
+as a namespace-manifest tombstone and a rename as a manifest rename op —
+[[#REQ-504 Replicated Vault Namespace Manifest]], F38/F64), and staging it to
+the conflict area otherwise — FOR every external write, delete, or rename,
+WITH neither side silently discarded. The predicate is defined over [[Loro]]
+*logical* time (presence of an unmaterialised op), NOT a wall-clock debounce
+window, so it is not a timing-controllable data-authority oracle (F16). The
+base-ambiguity condition closes the stale-buffer hole (F51) and is decidable
+(F59): content hashes can identify the base only of an *unchanged* save — an
+edited buffer matches no retained export hash, so "which export did these
+bytes derive from" is unknowable from content alone. The daemon therefore
+folds an edited save only when exactly one base is *possible*: no export
+generation has been materialised for that document since the last external
+event on it (previous external write folded/staged, or the document's initial
+export). Any **intervening export** (the editor may have opened E0 while the
+daemon later wrote E1 — e.g. from remote ops, leaving no unmaterialised op at
+save time) makes the base ambiguous, and folding a stale-based diff would
+silently convert the daemon's materialised edits into deletions — such a
+write is staged. This conservative rule over-stages the mixed
+daemon+external-editor workflow (a false positive, never data loss); a
+cooperative editor-supplied provenance token (an export-generation stamp) is
+the refinement path, owned by DESIGN-047 `adr-external-edits` (F59).
 
 **Trace:** [[#TEST-484a]], [[#TEST-484b]], [[#TEST-484c]], [[#TEST-484d]], [[#TEST-484e]], [[#CON-471 Loro Store and Materialisation]], [[#OBS-479 External-edit import]].
 
@@ -578,9 +591,15 @@ operations that cancel in the materialised bytes), the [[Merkle DAG]] cannot
 localise the difference; the session localises by exchanging **per-document
 [[Version Vector]]s** instead and exchanges op deltas for every document whose
 vectors differ — the equal-root path is a fast path, never a way to skip the
-op exchange the completion condition requires (F50).
+op exchange the completion condition requires (F50). Reconciliation LOOPS
+(F65): after every op exchange the session recompares roots and
+[[Version Vector]]s and repeats localisation until both are equal — a single
+DAG descent is not completion, because a root mismatch localised to document
+X coexists with, and does not reveal, an equal-root/unequal-vector divergence
+in document Y (byte-cancelling or unmaterialised ops invisible to the DAG);
+the recompare catches Y on the next iteration.
 
-**Trace:** [[#TEST-486a]], [[#TEST-486b]], [[#TEST-486c]], [[#CON-473 Peer Session]], [[#OBS-480 Convergence witness]].
+**Trace:** [[#TEST-486a]], [[#TEST-486b]], [[#TEST-486c]], [[#TEST-486d]], [[#CON-473 Peer Session]], [[#OBS-480 Convergence witness]].
 
 ### REQ-487: Control-Plane Messages Recognised by the CBCL DPDA
 
@@ -589,18 +608,31 @@ pairing/reconcile choreography, presence, signed-root announcement) as a
 [[CBCL]] message parsed by the shared deterministic pushdown automaton
 ([[DCFL]], parser-equivalence) before any semantic action, FOR all control-plane
 inputs at a trust boundary, WITH every *network* control-plane message carrying
-a [[CBCL]] **R4** Ed25519 signature verified against the sending peer's
-**verification key for the session phase** — the roster [[NodeId]] for
-post-admission sessions, or the connection's [[Pre-Admission Pairing Identity]]
-(the ephemeral pairing [[NodeId]] that authenticated the [[QUIC]] channel,
-F45/F54) for pairing-ceremony messages, whose *authority to pair* is conferred
-not by the signature but by [[SPAKE2]] key confirmation over a transcript that
-binds both pairing NodeIds ([[#REQ-491 SPAKE2 Channel Authentication]]) —
-(local control-socket messages authenticate by the socket's filesystem
-permissions instead — [[#CON-470 Daemon Control Channel]]) and the
-shipped dialects validated (R1–R5) at load with any `Invalid` dialect refused
-(dialects are release artefacts of the binary — not roster-signed, not installed
-from peers; F37; [[#ADR-479 CBCL as the Control-Plane Message Language]]).
+a [[CBCL]] **message attestation** — NOT "R4": R4 is CBCL's *dialect*-integrity
+invariant, verified once at dialect load, and authenticates no ordinary
+message (F61) — an Ed25519 signature under CBCL's attestation discipline
+(cbcl-core `attest`, SPEC-015/SPEC-017: the signed preimage is the
+domain-tagged canonical encoding `(cbcl-attest-v2 <suite> <content-hash>
+<performative> <from-key> (<to-key>*) <thread> [<caused-ref>])`, or the
+attest-v3 typed-Merkle-root commitment; verification dispatches on the
+explicit `SignatureDiscipline` marker via `verify_with_discipline`,
+fail-closed on mismatch), explicitly verified on every message with **key
+lookup by session phase**: the attestation's `from` key MUST equal the roster
+[[NodeId]] for post-admission sessions, or the connection's
+[[Pre-Admission Pairing Identity]] (the ephemeral pairing [[NodeId]] that
+authenticated the [[QUIC]] channel, F45/F54) for pairing-ceremony messages —
+whose *authority to pair* is conferred not by the signature but by [[SPAKE2]]
+key confirmation over a transcript that binds both pairing NodeIds
+([[#REQ-491 SPAKE2 Channel Authentication]]) — and additionally the
+message's vault binding verified per
+[[#REQ-503 Vault-Bound Peer Sessions]] (local control-socket messages
+authenticate by the socket's filesystem permissions instead —
+[[#CON-470 Daemon Control Channel]]) and the shipped dialects validated
+(R1–R5) at load with any R4-`Invalid` dialect refused (dialects are release
+artefacts of the binary — their integrity rides the release, and the
+R4-`Unsigned`-accepted-with-warning install path is never exercised for
+peer-supplied material because dialects are not installed from peers; F37/F61;
+[[#ADR-479 CBCL as the Control-Plane Message Language]]).
 
 > Specialises [[#REQ-483 Full Recognition at Trust Boundaries]]: [[CBCL]] is the
 > *mechanism* — one Lean-verified recogniser for all control messages, so
@@ -659,9 +691,11 @@ only on success per [[#REQ-480 Group-Key Admission Gate]]; F41).
 
 ### REQ-492: Roster Gate Before Vault Frame
 
-The system SHALL verify a connecting peer's durable [[NodeId]] against the vault
-roster before parsing any vault frame, FOR every peer session, WITH off-roster
-[[NodeId]]s rejected pre-frame (the recognition-before-action ordering of
+The system SHALL verify a connecting peer's durable [[NodeId]] against the
+roster of the session's *selected* vault (named by the [[#8.11 Vault Selector]]
+— [[#REQ-503 Vault-Bound Peer Sessions]], F63) before parsing any vault frame,
+FOR every peer session, WITH off-roster [[NodeId]]s rejected pre-frame (the
+recognition-before-action ordering of
 [[#REQ-483 Full Recognition at Trust Boundaries]] applied to access control).
 
 **Trace:** [[#TEST-492a]], [[#TEST-492b]], [[#CON-473 Peer Session]], [[#OBS-478 Off-roster rejections]].
@@ -686,7 +720,7 @@ payload rejected (no bare-id binding — F12). The hash alone detects
 *substitution*, not an exact *replay* — a captured control message with its
 byte-identical payload still carries the expected hash — so the signed
 reference additionally carries a **per-session monotonic reference sequence**
-covered by the message's R4 signature; the receiver tracks the last sequence
+covered by the message's attestation signature (F61); the receiver tracks the last sequence
 per session and rejects any reference whose sequence is ≤ it (F53). This
 matters most on the [[SPAKE2]] path, where a replayed handshake payload must
 fail before the decoder runs.
@@ -788,16 +822,88 @@ auth-core review ([[#18. Open Questions]] Q11).
 ### REQ-501: Bounded Frame Recognition
 
 The system SHALL enforce the declared fixed-width length prefix and hard
-per-frame maximum on every untrusted data-plane frame before allocating
-buffers or reading the payload, FOR every [[#8.2 Peer Sync Frame]] and
-[[#8.6 SPAKE2 Frame]] (including pre-authentication pairing frames), WITH an
-over-limit length advertisement rejected at the prefix and a partially
-received frame's connection state reclaimed after a read deadline of
-`[Provisional: 10 s]` — so an attacker who advertises a huge payload, or
-stalls after the prefix before any [[SPAKE2]] or roster authentication exists,
-cannot cause unbounded buffering or connection-state exhaustion (F52).
+per-frame maximum on **every untrusted network frame — data-plane AND
+control-plane** — before allocating buffers or reading the payload, FOR every
+[[#8.2 Peer Sync Frame]], [[#8.6 SPAKE2 Frame]], and network
+[[#8.1 Control Envelope]] frame (including pre-authentication pairing frames
+of both planes: the pairing *control* envelope arrives before [[SPAKE2]] and
+was previously unbounded — F62), WITH an over-limit length advertisement
+rejected at the prefix and a partially received frame's connection state
+reclaimed after a read deadline of `[Provisional: 10 s]` — so an attacker who
+advertises a huge payload, or stalls after the prefix before any [[SPAKE2]]
+or roster authentication exists, cannot cause unbounded buffering or
+connection-state exhaustion (F52/F62).
 
-**Trace:** [[#TEST-501a]], [[#TEST-501b]], [[#CON-473 Peer Session]], [[#CON-474 Pairing Protocol]], [[#OBS-478 Off-roster rejections]].
+**Trace:** [[#TEST-501a]], [[#TEST-501b]], [[#TEST-501c]], [[#CON-473 Peer Session]], [[#CON-474 Pairing Protocol]], [[#OBS-478 Off-roster rejections]].
+
+### REQ-502: Replicated Signed Roster
+
+The system SHALL replicate vault membership as a log of **signed membership
+events** — an *admission event* authored by the pairing device (binding the
+completed [[SPAKE2]] ceremony transcript, the new member's [[did:crdt]]
+genesis or added verification method, and the roster entry) and a *removal
+event* (the rotation event of
+[[#REQ-498 DID Key Removal Triggers Key Rotation]]) — exchanged over the
+roster-gated encrypted channel and merged under the order-independent
+semantics of [[#REQ-500 Order-Independent DID Authorization]], FOR every
+roster mutation, WITH any two peers holding the same event set deriving an
+identical roster (members, devices, roles, `key_epoch`) and a third peer
+accepting a member it never paired with only via an admission event whose
+author is, in the event's causal context, an on-roster device (F60). This is
+what makes third-peer admission coherent: after A pairs C, B receives C's
+genesis *carried by A's signed admission event* — the ceremony-only genesis
+rule of [[#8.10 did:crdt Delta]] binds the *pairing devices*; everyone else
+verifies the admission event instead. The local
+[[#8.7 Roster Schema]] TOML is a **projection cache** of this log, never the
+authority. Conflict rule: concurrent admission and removal of the same
+device resolves removal-wins (fail-closed), then epoch precedence per the Q7
+package.
+
+**Trace:** [[#TEST-502a]], [[#TEST-502b]], [[#TEST-502c]], [[#CON-477 Group Key Roster and Revocation]], [[#OBS-477 Roster audit]], [[#OBS-482 Identity verification]].
+
+### REQ-503: Vault-Bound Peer Sessions
+
+The system SHALL negotiate a versioned ALPN (`[Provisional: zetl/p2p/1]`) and
+recognise a bounded **vault selector** ([[#8.11 Vault Selector]]) as the
+first frame of every peer connection — naming the vault the session is for —
+and SHALL bind that vault identifier into every subsequent frame's
+authentication (the attestation preimage's thread/context for control
+messages; the [[AEAD]] associated data for [[#8.2 Peer Sync Frame]]s), FOR
+every inbound peer connection on a daemon serving one or more vaults, WITH
+the roster check of [[#REQ-492 Roster Gate Before Vault Frame]] performed
+against the *selected* vault's roster and a frame whose bound vault differs
+from the session's rejected before interpretation (F63 — without a selector,
+a multi-vault daemon cannot know which roster to consult, and a frame for
+vault X could be replayed into a session for vault Y).
+
+**Trace:** [[#TEST-503a]], [[#TEST-503b]], [[#CON-473 Peer Session]], [[#OBS-478 Off-roster rejections]], [[#OBS-481 Message recognition]].
+
+### REQ-504: Replicated Vault Namespace Manifest
+
+The system SHALL replicate the vault *namespace* — the mapping from stable
+[[DocId]]s to vault-relative paths — as a CRDT **manifest document**
+([[Loro]] map/movable-tree) with create, rename, and delete (tombstone) as
+first-class manifest operations that merge conflict-free, FOR the whole
+vault, WITH any two converged peers deriving an identical DocId → path
+mapping, a rename preserving the document's identity and history (no longer
+provisional delete + create), and path collisions resolved by a
+deterministic rule — paths compared under the canonical form of
+[[#REQ-473 Deterministic Materialisation]] (NFC) plus a declared
+case-folding policy for case-insensitive filesystems, with the losing
+document materialised under a deterministic disambiguated path rather than
+silently overwriting (F64 — document *contents* were CRDTs but the namespace
+was not, so create/delete/rename, case collisions, and Unicode-normalised
+paths had no convergence rule, leaving
+[[#REQ-474 Conflict-Free Offline Merge]] /
+[[#REQ-485 Merkle Convergence Witness]] /
+[[#REQ-486 Merkle Anti-Entropy Reconciliation]] unsatisfiable at vault
+scope). Materialisation reads the manifest; the [[Merkle Vault Root]]'s
+path-sorted file roots are computed over manifest paths. DocId scheme and
+the exact collision-disambiguation rule are
+`[Provisional — DESIGN-047 task adr-namespace]` ([[#18. Open Questions]]
+Q12).
+
+**Trace:** [[#TEST-504a]], [[#TEST-504b]], [[#TEST-504c]], [[#CON-471 Loro Store and Materialisation]], [[#CON-473 Peer Session]], [[#OBS-471 Materialisation]], [[#OBS-472 Sync convergence]].
 
 ---
 
@@ -924,11 +1030,16 @@ detection.
 **Decision:** (C) — fold iff no **unmaterialised daemon op** exists for the file
 since `last_export` (a [[Loro]] *logical-time* predicate, not a wall-clock
 window — [[#REQ-484 Guarded Import of External Markdown Edits]], F16) **and**
-the write's base export — identified against the retained per-document
-export-generation history — is the *current* export; else stage. Tracking only
-unmaterialised ops is insufficient: a stale editor buffer saved after the
-daemon has materialised newer ops passes the op predicate yet would fold the
-daemon's edits away as deletions (F51).
+no **intervening export** makes the write's base ambiguous; else stage.
+Tracking only unmaterialised ops is insufficient: a stale editor buffer saved
+after the daemon has materialised newer ops passes the op predicate yet would
+fold the daemon's edits away as deletions (F51). And base identification by
+content hash is insufficient too: hashes recognise only *unchanged* saves —
+an edited buffer matches no retained hash, so its base is undecidable from
+content (F59). The decidable conservative predicate: stage whenever the
+daemon has materialised any new export generation for the document since the
+last external event on it; a cooperative editor provenance token is the
+refinement (DESIGN-047 `adr-external-edits`).
 
 **Consequences:** (+) Markdown stays a git/editor surface. (−) The
 concurrent-edit predicate is security-relevant (covered by [[#TEST-484c]]).
@@ -996,9 +1107,16 @@ routing layer. The secret's resistance is [[SPAKE2]] online-single-guess over
 enforceable at the daemon — F31). (−)
 `num` must be sized for *collision-avoidance* between concurrent serverless
 pairings (birthday bound), NOT for secrecy — see
-[[#NFR-475 Pairing Secret Entropy Floor]]. (−) An attacker can squat or
-overwrite a rendezvous record (DoS / MitM-positioning) — [[SPAKE2]] still denies
-auth, but it is a residual ([[#12. Threat Model]] §J).
+[[#NFR-475 Pairing Secret Entropy Floor]]. (−) Because the rendezvous keypair
+is derived from public `num`, **anyone holds the rendezvous *signing* key**:
+an attacker can publish validly-signed competing records, pre-squat the whole
+~110,000-key routing namespace, and win pkarr's timestamp-ordered,
+cache-TTL'd write races — a fresh phrase does not escape a namespace-wide
+squatter (F58). [[SPAKE2]] still denies auth to a squatter without
+`word-word`, but availability and (combined with a leaked phrase, threat §B)
+MitM positioning are residuals ([[#12. Threat Model]] §J). "Teardown" of a
+rendezvous record means closing the endpoint and ceasing republication —
+pkarr has no deletion primitive.
 
 ### ADR-474: Relay as Optional Fallback, Not Requirement
 
@@ -1067,7 +1185,10 @@ committed unmaterialised ops — F33); root mismatch →
 descend the DAG to localise differing docs, then ship [[Loro]] op deltas for only
 those; equal roots with **unequal** [[Version Vector]]s → the DAG cannot
 localise (the difference is invisible in materialised bytes), so localisation
-falls back to per-document [[Version Vector]] exchange (F50). Converged peers MUST match roots
+falls back to per-document [[Version Vector]] exchange (F50); after each
+exchange, recompare and repeat until roots and vectors are both equal — the
+mixed case (root mismatch in one document masking an invisible
+equal-root divergence in another) terminates only through the loop (F65). Converged peers MUST match roots
 ([[#REQ-485 Merkle Convergence Witness]]); a mismatch under a [[Loro]]-reported convergence is an integrity
 alarm. A peer MAY sign its `vault_root` with its [[NodeId]] and carry it in the
 [[pkarr]] record or a direct peer-to-peer announcement as an authenticated state hint
@@ -1096,7 +1217,9 @@ schema validators. `../cbcl-rs` ([[CBCL]]) is a Rust, `no_std`, Lean-verified
 validity stays decidable even under runtime dialect extension (zetl ships a
 fixed dialect set and does not use that runtime-extension capability), with five
 machine-checked invariants: R1 no-recursion, R2 resource-bounds, R3
-core-preservation, **R4 Ed25519 integrity over a canonical encoding**, **R5
+core-preservation, **R4 Ed25519 *dialect* integrity over a canonical
+encoding** (plus a separate per-message **attestation discipline**,
+cbcl-core `attest`, SPEC-015/017 — F61), **R5
 causal-protocol + shape contracts**.
 
 **Options:** (A) bespoke CBOR + schema per message (status quo; many small
@@ -1108,9 +1231,11 @@ the **control plane**, native length-prefixed binary for the **data plane**
 **Decision:** (B). Define `zetl-pair` and `zetl-sync` [[CBCL]] dialects over the 8
 core performatives (`tell ask reply hello bye ok error cancel`, immutable by R3).
 One DPDA recognises all control messages (parser-equivalence → no
-parser-differential attacks). R4 carries message/dialect authentication on
-ed25519 ([[NodeId]] is already ed25519 — unifies with
-[[#8.8 Signed Vault Root]]). R5 encodes the pairing and reconcile choreographies
+parser-differential attacks). Per-message authentication is CBCL's
+**attestation discipline** (cbcl-core `attest`, SPEC-015 attest-v2 / SPEC-017
+attest-v3; `verify_with_discipline`, fail-closed) on ed25519 — [[NodeId]] is
+already ed25519, unifying with [[#8.8 Signed Vault Root]]; R4 authenticates
+*dialects at load*, never ordinary messages (F61). R5 encodes the pairing and reconcile choreographies
 as verified causal-protocol contracts ([[#REQ-488 Choreographies as Verified R5 Causal-Protocol Contracts]]),
 verified at build time over the shipped dialect (not at peer-driven install).
 [[Loro]] updates and [[SPAKE2]] bytes stay opaque on the data plane, referenced by
@@ -1118,12 +1243,14 @@ id from control messages. The `zetl-pair`/`zetl-sync` dialects are **shipped
 with the CLI binary** (a fixed, release-versioned set) — NOT installed from peers
 at runtime; protocol evolution happens by releasing a new `zetl`, not by DHT
 gossip (deferred — [[#18. Open Questions]] Q10). zetl therefore uses [[CBCL]]'s
-recognition + R4 + R5 properties but not its runtime self-extension.
+recognition + attestation + R4 + R5 properties but not its runtime
+self-extension.
 
 **Consequences:** (+) Principle 14 satisfied with a *formal* warrant
 (Lean `dcfl_preserved`/`decidable_preserved`), not a hand-rolled validator;
 parser-differential attacks excluded by construction (strengthens
-[[#12. Threat Model]] §F); R4 supplies message auth; R5 supplies a verified
+[[#12. Threat Model]] §F); the attestation discipline supplies message auth
+(F61 — R4 is dialect-load integrity only); R5 supplies a verified
 handshake state machine; shipping a fixed dialect set with the binary keeps the
 recognised language static per release (no runtime-extension attack surface — F17
 dissolved); `no_std` suits the mobile daemon; reuses an existing dependency
@@ -1132,12 +1259,13 @@ dissolved); `no_std` suits the mobile daemon; reuses an existing dependency
 the Principle 14 §6 justification (decidable + parser-equivalent, far below the
 undecidable danger zone). (−) [[CBCL]]'s canonical encoding is S-expression text,
 so control messages are textual (acceptable at control-plane volume; bulk binary
-stays on the data plane — see [[#18. Open Questions]] Q9). (−) Per-message R4
-signing on the presence path costs one ed25519 sign + verify per frame (~50 µs
-each on commodity hardware — well inside
+stays on the data plane — see [[#18. Open Questions]] Q9). (−) Per-message
+attestation signing on the presence path costs one ed25519 sign + verify per
+frame (~50 µs each on commodity hardware — well inside
 [[#NFR-477 Remote Edit Propagation Latency]]'s budget; recorded so the cost is
 a decision, not an accident — F37). (−) Adds a Tier-1
-dependency whose R4 path is auth-core and must be in the human-review package.
+dependency whose attestation/R4 path is auth-core and must be in the
+human-review package.
 
 ### ADR-480: CLI Surface Follows Existing zetl Conventions
 
@@ -1275,8 +1403,10 @@ failure causes (REQ-479).
 
 **Interface:** `materialise(loro_doc) -> Markdown` (pure, deterministic);
 `import_external(markdown, export_history, edit_state) -> ImportOutcome`
-(guarded; `export_history` carries the current `last_export` plus the retained
-per-document export-generation hashes used to identify the write's base — F51).
+(guarded; `export_history` carries the current `last_export`, the retained
+per-document export-generation hashes — which recognise *unchanged* saves —
+and the per-document intervening-export marker since the last external event,
+which decides base ambiguity for *edited* saves — F51/F59).
 
 **Grammar / Recogniser:** `import_external` input is UTF-8 Markdown; grammar
 [[#8.4 Materialised Markdown]]; recogniser = the existing zetl Markdown parser;
@@ -1284,7 +1414,8 @@ non-UTF-8/binary fails closed → staged.
 
 **Pre-conditions:** C1 (REQ-472/473) `materialise` total over valid [[Loro]] docs,
 no I/O; C2 (REQ-484) `import_external` receives live edit-state and the
-export-generation history (base identification never guesses from one export).
+export-generation history (base ambiguity is decided from recorded state,
+never guessed from content — F59).
 
 **Post-conditions:** C3 (REQ-473) `materialise` referentially transparent →
 identical bytes; C4 (REQ-472) restart reloads canonical state with causal
@@ -1294,15 +1425,17 @@ neither side.
 **Error model:** `materialise` infallible on valid docs; `import_external`
 surfaces `Staged(path)` instead of erroring.
 
-**Implements:** [[#REQ-472 Loro Canonical Store]], [[#REQ-473 Deterministic Materialisation]], [[#REQ-484 Guarded Import of External Markdown Edits]].
-**Verified by:** [[#TEST-472a]], [[#TEST-472c]], [[#TEST-472d]], [[#TEST-473a]], [[#TEST-473c]], [[#TEST-484a]], [[#TEST-484b]], [[#TEST-484c]], [[#TEST-484d]], [[#TEST-484e]].
+**Implements:** [[#REQ-472 Loro Canonical Store]], [[#REQ-473 Deterministic Materialisation]], [[#REQ-484 Guarded Import of External Markdown Edits]], [[#REQ-504 Replicated Vault Namespace Manifest]] (materialisation reads the manifest for DocId → path — F64).
+**Verified by:** [[#TEST-472a]], [[#TEST-472c]], [[#TEST-472d]], [[#TEST-473a]], [[#TEST-473c]], [[#TEST-484a]], [[#TEST-484b]], [[#TEST-484c]], [[#TEST-484d]], [[#TEST-484e]], [[#TEST-504a]], [[#TEST-504b]], [[#TEST-504c]].
 
 ### CON-473: Peer Session (iroh)
 
-**Interface:** [[QUIC]] connection keyed by [[NodeId]]; streams `reconcile`
-([[Merkle Vault Root]] compare → DAG descent), `sync` ([[Loro]] update exchange
-via [[Version Vector]] for the docs `reconcile` localised), and `presence`
-([[Ephemeral Store]]).
+**Interface:** [[QUIC]] connection keyed by [[NodeId]] under versioned ALPN
+`[Provisional: zetl/p2p/1]`; first frame = the [[#8.11 Vault Selector]]
+naming the vault (F63, [[#REQ-503 Vault-Bound Peer Sessions]]); then streams
+`reconcile` ([[Merkle Vault Root]] compare → DAG descent, looping — F65),
+`sync` ([[Loro]] update exchange via [[Version Vector]] for the docs
+`reconcile` localised), and `presence` ([[Ephemeral Store]]).
 
 **Grammar / Recogniser:** **control plane** — `reconcile`/`presence`/signed-root
 are [[CBCL]] `zetl-sync` messages recognised by the shared DPDA
@@ -1313,26 +1446,33 @@ referenced by hash+sequence from a [[CBCL]] message and recognised by the
 [[Loro]] import decoder (fuzzed). **The primary untrusted trust boundary.**
 
 **Pre-conditions:** C1 (REQ-475) both endpoints discovered via [[pkarr]];
-C2 (REQ-482) peer [[NodeId]] ∈ roster, verified before any frame; C3 (REQ-483)
-each frame fully recognised before apply.
+C2 (REQ-482/503) the [[#8.11 Vault Selector]] is recognised first and the
+peer [[NodeId]] verified against the *selected* vault's roster before any
+vault frame (F63); C3 (REQ-483) each frame fully recognised before apply.
 
 **Post-conditions:** C4 (REQ-482) content frames exchanged only after the roster
 check; C5 (REQ-486) `reconcile` runs before `sync`; op exchange is skipped only
 on equal roots **and** equal [[Version Vector]]s — equal-root/unequal-vector
-sessions localise via per-document [[Version Vector]] exchange (F50); C6
+sessions localise via per-document [[Version Vector]] exchange (F50), and
+reconciliation loops (recompare after every exchange) until both are equal
+(F65); C6
 (REQ-474) `sync` converges
 to identical [[Loro]] state; C7 (REQ-485)
 converged peers report equal [[Merkle Vault Root]] or raise an integrity alarm;
 C8 (REQ-499) every sync payload is sealed under the current [[Group Key]]
 epoch, stale-epoch frames rejected pre-decode; C9 (REQ-501) frame length
-maxima and read deadlines enforced before allocation.
+maxima and read deadlines enforced before allocation — on control envelopes
+too (F62); C10 (REQ-503) the session's vault id is bound into every frame's
+attestation context / AEAD associated data, cross-vault frames rejected
+before interpretation (F63); C11 (REQ-504) the namespace manifest converges
+with content — converged peers derive one DocId → path mapping (F64).
 
 **Error model:** `not-on-roster` (reject pre-frame); `malformed-frame` (drop +
 log); `root-mismatch-after-converge` (integrity alarm); `reachability-failed`
 (distinct from auth).
 
-**Implements:** [[#REQ-474 Conflict-Free Offline Merge]], [[#REQ-475 Serverless Peer Discovery]], [[#REQ-482 Roster-Gated Encrypted Transport]], [[#REQ-483 Full Recognition at Trust Boundaries]], [[#REQ-485 Merkle Convergence Witness]], [[#REQ-486 Merkle Anti-Entropy Reconciliation]], [[#REQ-487 Control-Plane Messages Recognised by the CBCL DPDA]], [[#REQ-488 Choreographies as Verified R5 Causal-Protocol Contracts]], [[#REQ-492 Roster Gate Before Vault Frame]], [[#REQ-493 Signed-Root Epoch Binding]], [[#REQ-494 Control-to-Data Binding]], [[#REQ-495 Signed-Root Freshness]], [[#REQ-499 Group-Keyed Sync Frames]], [[#REQ-501 Bounded Frame Recognition]].
-**Verified by:** [[#TEST-474a]], [[#TEST-474c]], [[#TEST-475a]], [[#TEST-475b]], [[#TEST-482a]], [[#TEST-483a]], [[#TEST-483c]], [[#TEST-485a]], [[#TEST-485c]], [[#TEST-486a]], [[#TEST-486b]], [[#TEST-486c]], [[#TEST-492a]], [[#TEST-492b]], [[#TEST-493a]], [[#TEST-493b]], [[#TEST-494a]], [[#TEST-494b]], [[#TEST-494c]], [[#TEST-495a]], [[#TEST-495b]], [[#TEST-499a]], [[#TEST-499b]], [[#TEST-501a]], [[#TEST-501b]].
+**Implements:** [[#REQ-474 Conflict-Free Offline Merge]], [[#REQ-475 Serverless Peer Discovery]], [[#REQ-482 Roster-Gated Encrypted Transport]], [[#REQ-483 Full Recognition at Trust Boundaries]], [[#REQ-485 Merkle Convergence Witness]], [[#REQ-486 Merkle Anti-Entropy Reconciliation]], [[#REQ-487 Control-Plane Messages Recognised by the CBCL DPDA]], [[#REQ-488 Choreographies as Verified R5 Causal-Protocol Contracts]], [[#REQ-492 Roster Gate Before Vault Frame]], [[#REQ-493 Signed-Root Epoch Binding]], [[#REQ-494 Control-to-Data Binding]], [[#REQ-495 Signed-Root Freshness]], [[#REQ-499 Group-Keyed Sync Frames]], [[#REQ-501 Bounded Frame Recognition]], [[#REQ-503 Vault-Bound Peer Sessions]], [[#REQ-504 Replicated Vault Namespace Manifest]].
+**Verified by:** [[#TEST-474a]], [[#TEST-474c]], [[#TEST-475a]], [[#TEST-475b]], [[#TEST-482a]], [[#TEST-483a]], [[#TEST-483c]], [[#TEST-485a]], [[#TEST-485c]], [[#TEST-486a]], [[#TEST-486b]], [[#TEST-486c]], [[#TEST-486d]], [[#TEST-492a]], [[#TEST-492b]], [[#TEST-493a]], [[#TEST-493b]], [[#TEST-494a]], [[#TEST-494b]], [[#TEST-494c]], [[#TEST-495a]], [[#TEST-495b]], [[#TEST-499a]], [[#TEST-499b]], [[#TEST-501a]], [[#TEST-501b]], [[#TEST-501c]], [[#TEST-503a]], [[#TEST-503b]], [[#TEST-504a]], [[#TEST-504b]], [[#TEST-504c]].
 
 ### CON-474: Pairing Protocol (`zetl collab pair` / `zetl collab join`)
 
@@ -1357,11 +1497,12 @@ rendezvous torn down; C5 (REQ-478) phrase consumed; C6 (REQ-479) all failures
 return one opaque `auth-failed`; C7 (REQ-480) membership granted only on
 [[SPAKE2]] success; C8 (REQ-496) the inbound attempt budget is enforced —
 exhaustion aborts the pairing and tears down the rendezvous record; C9
-(REQ-487) pairing control messages R4-verify against the ceremony's ephemeral
+(REQ-487) pairing control messages attestation-verify (F61) against the ceremony's ephemeral
 [[Pre-Admission Pairing Identity|pre-admission NodeIds]], with authority
 conferred by [[SPAKE2]] key confirmation over the transcript (F45); C10
-(REQ-501) [[SPAKE2]]-frame length maxima and read deadlines are enforced
-before any authentication exists (F52).
+(REQ-501) length maxima and read deadlines are enforced before any
+authentication exists on **both** pre-auth planes — [[SPAKE2]] frames AND the
+pairing control envelope (F52/F62).
 
 **Error model:** single opaque `auth-failed`; distinct `reachability-failed`,
 `malformed-input`.
@@ -1371,9 +1512,15 @@ before any authentication exists (F52).
 
 ### CON-477: Group Key Roster and Revocation
 
-**Interface:** roster store (`[Provisional: .zetl/peers.toml` mode `0600`]`)
-mapping [[did:crdt]] DID → {devices: [[[NodeId]]], role, added_at, key_epoch}
+**Interface:** the replicated **membership-event log** of
+[[#REQ-502 Replicated Signed Roster]] (signed admission/removal events,
+[[#8.12 Membership Event]], exchanged over the roster-gated channel — F60),
+locally projected into a roster cache (`[Provisional: .zetl/peers.toml` mode
+`0600`]`, never the authority) mapping [[did:crdt]] DID → {devices:
+[[[NodeId]]], role, added_at, key_epoch}
 ([[#ADR-481 did:crdt as the Member Identity Layer]], [[#REQ-497 DID-Bound Member Identity]]);
+`apply_membership_event(event) -> Accepted | Rejected` merges a signed
+admission/removal event;
 `zetl collab revoke <nodeid>` (device) rotates epoch + schedules re-seal
 (positional id, mirroring `zetl collab share revoke <jti>`; the member-level
 `revoke <did>` form is `[Provisional — DESIGN-047 task adr-identity]`);
@@ -1381,11 +1528,12 @@ mapping [[did:crdt]] DID → {devices: [[[NodeId]]], role, added_at, key_epoch}
 `zetl collab share list`); `apply_did_delta(delta) -> Accepted | Rejected`
 folds a signed [[did:crdt]] delta into a member's document.
 
-**Grammar / Recogniser:** roster file is a declared [[TOML]] schema
+**Grammar / Recogniser:** roster cache file is a declared [[TOML]] schema
 ([[#8.7 Roster Schema]]); recogniser = a `serde` TOML decoder + schema validation
 (it is trusted local state, but recognised before use per Principle 14). DID
 deltas arriving from peers are recognised per [[#8.10 did:crdt Delta]] before
-`apply_did_delta` runs.
+`apply_did_delta` runs; membership events per [[#8.12 Membership Event]]
+before `apply_membership_event` runs (F60).
 
 **Pre-conditions:** C1 (REQ-481) caller is the [[users/vault-owner/user|Owner]];
 C5 (REQ-497/REQ-500) a delta's Linked-Data Proof verifies against a key valid
@@ -1401,13 +1549,17 @@ completed [[SPAKE2]]; C6 (REQ-498) an accepted key-removal delta rotates the
 [[Group Key]] epoch before the removal is considered applied — via the
 removal author's single signed rotation event, applied idempotently keyed on
 `rotation_id` (re-delivery never re-rotates; receivers never mint their own
-key for another author's removal — F49).
+key for another author's removal — F49); C7 (REQ-502) any two peers holding
+the same membership-event set derive an identical roster — a third peer
+admits a member it never paired with only via an admission event whose
+author is on-roster in the event's causal context; concurrent
+admission/removal of one device resolves removal-wins (F60).
 
 **Error model:** `not-on-roster`; `last-member` (cannot revoke the sole member);
 `invalid-did-delta` (proof/recognition failure — dropped, logged).
 
-**Implements:** [[#REQ-480 Group-Key Admission Gate]], [[#REQ-481 Revocation by Key Rotation]], [[#REQ-497 DID-Bound Member Identity]], [[#REQ-498 DID Key Removal Triggers Key Rotation]], [[#REQ-500 Order-Independent DID Authorization]].
-**Verified by:** [[#TEST-480a]], [[#TEST-480b]], [[#TEST-481a]], [[#TEST-481b]], [[#TEST-481c]], [[#TEST-497a]], [[#TEST-497b]], [[#TEST-498a]], [[#TEST-498b]], [[#TEST-498c]], [[#TEST-500a]], [[#TEST-500b]].
+**Implements:** [[#REQ-480 Group-Key Admission Gate]], [[#REQ-481 Revocation by Key Rotation]], [[#REQ-497 DID-Bound Member Identity]], [[#REQ-498 DID Key Removal Triggers Key Rotation]], [[#REQ-500 Order-Independent DID Authorization]], [[#REQ-502 Replicated Signed Roster]].
+**Verified by:** [[#TEST-480a]], [[#TEST-480b]], [[#TEST-481a]], [[#TEST-481b]], [[#TEST-481c]], [[#TEST-497a]], [[#TEST-497b]], [[#TEST-498a]], [[#TEST-498b]], [[#TEST-498c]], [[#TEST-500a]], [[#TEST-500b]], [[#TEST-502a]], [[#TEST-502b]], [[#TEST-502c]].
 
 ---
 
@@ -1437,18 +1589,29 @@ own decoders interpret them (defense in depth). Each grammar below is a
 subsection so its anchor resolves under `zetl check --dead-links`.
 
 ### 8.1 Control Envelope
-[[CBCL]] `(verb …)` in a `zetl-*` dialect. A message that references a data-plane
-payload MUST carry the reference as a **recognised** `(ref <payload-id>
-<content-hash> <ref-seq>)` clause of the dialect grammar — so the control→data
-binding ([[#REQ-494 Control-to-Data Binding]], F12) is part of full DPDA
-recognition, not a post-parse check; `ref-seq` is the per-session monotonic
-sequence that rejects byte-identical replays the hash cannot (F53). Power:
-[[DCFL]]. Recogniser: shared [[CBCL]] DPDA + R1–R5. Boundary: local process.
+`len₃₂ ‖ cbcl_text` — a [[CBCL]] `(verb …)` message in a `zetl-*` dialect.
+`len₃₂` is a fixed-width u32 with hard maximum `[Provisional: 64 KiB]`,
+enforced before allocation, with the [[#REQ-501 Bounded Frame Recognition]]
+read deadline — network control envelopes (the pairing choreography included)
+arrive **before any [[SPAKE2]] or roster authentication exists**, so they
+need the same pre-auth bounding as the data plane (F62). A message that
+references a data-plane payload MUST carry the reference as a **recognised**
+`(ref <payload-id> <content-hash> <ref-seq>)` clause of the dialect grammar —
+so the control→data binding ([[#REQ-494 Control-to-Data Binding]], F12) is
+part of full DPDA recognition, not a post-parse check; `ref-seq` is the
+per-session monotonic sequence that rejects byte-identical replays the hash
+cannot (F53). Power: [[DCFL]] (payload) over regular framing. Recogniser:
+shared [[CBCL]] DPDA + R1–R5 + per-message attestation verify (F61).
+Boundary: **two boundaries** — the local control socket (authenticated by
+filesystem permissions) AND **network, untrusted** ([[QUIC]] control streams
+carrying `zetl-pair`/`zetl-sync` messages; the earlier "local process" label
+was wrong — F62).
 
 ### 8.2 Peer Sync Frame
 `len₃₂ ‖ key_epoch ‖ nonce ‖ aead_ciphertext` (data plane): the [[Loro]] update
 is sealed with an [[AEAD]] (`[Provisional: XChaCha20-Poly1305]`) under the
-vault [[Group Key]] of `key_epoch`, with the referencing control message's
+vault [[Group Key]] of `key_epoch`, with the session's **vault identifier**
+([[#8.11 Vault Selector]], F63) plus the referencing control message's
 `(ref …)` clause as associated data — the [[Group Key]] protects the sync
 content itself, not just the pairwise [[QUIC]] hop
 ([[#REQ-499 Group-Keyed Sync Frames]], F46). `len₃₂` is a fixed-width u32 with
@@ -1498,9 +1661,9 @@ Boundary: network, untrusted.
 schema check. Boundary: local file.
 
 ### 8.8 Signed Vault Root
-[[CBCL]] `zetl-sync` message, R4-signed `{nodeid, key_epoch, root_seq,
+[[CBCL]] `zetl-sync` message, attestation-signed (F61) `{nodeid, key_epoch, root_seq,
 vault_root}` where `root_seq` is a per-signer monotonic counter (freshness — F29).
-Power: [[DCFL]]. Recogniser: shared [[CBCL]] DPDA + R4 ed25519 verify vs roster
+Power: [[DCFL]]. Recogniser: shared [[CBCL]] DPDA + attestation ed25519 verify vs roster
 [[NodeId]], **rejecting any `key_epoch` ≠ the verifier's current epoch** (F9,
 [[#REQ-493 Signed-Root Epoch Binding]]) **and any `root_seq` ≤ the last accepted
 from that signer** (defeats same-epoch replay — F29, threat §K). Boundary:
@@ -1516,8 +1679,12 @@ the peer's own durable pubkey, which is not phrase-enumerable.
 Power: regular framing + schema. Recogniser: generated decoder; **a resolved
 record is an unauthenticated *hint* only — it confers no trust until [[SPAKE2]]
 (pairing) or roster-NodeId verification (reconnect) succeeds** (F14). Boundary:
-**network, untrusted** (anyone can publish to the [[Mainline DHT]], incl. at a
-phrase-derived rendezvous pubkey — threat §J).
+**network, untrusted** — at a phrase-derived rendezvous key this is stronger
+than "anyone can publish": the keypair derives from public `num`, so anyone
+holds the *signing* key and a "valid signature" on a rendezvous record proves
+nothing (F58, threat §J). Durable-pubkey records are signed by a key only the
+peer holds; their signature is meaningful but the endpoint they name is still
+a hint (F14).
 
 ### 8.10 did:crdt Delta
 A signed [[did:crdt]] document delta (verification-method add/remove, service
@@ -1536,8 +1703,34 @@ self-certifying — signed by the very key it introduces, with the resulting DID
 and the joiner's durable [[NodeId]] bound to the ceremony transcript
 ([[#REQ-497 DID-Bound Member Identity]]); and a fresh device with no local DID
 or roster state accepts the roster + DID documents transferred inside the
-ceremony as its bootstrap trust root (HP1 step 5). Boundary: **network,
+ceremony as its bootstrap trust root (HP1 step 5). A **third-peer** genesis
+(a member the receiver never paired with) is accepted only inside a signed
+admission event ([[#8.12 Membership Event]], F60). Boundary: **network,
 untrusted** (a roster peer may still be malicious — §N).
+
+### 8.11 Vault Selector
+The first frame of every peer connection after the versioned ALPN
+(`[Provisional: zetl/p2p/1]`): a [[CBCL]] `zetl-sync` message naming the
+target vault by identifier (`[Provisional: BLAKE3 of the vault genesis]`) —
+bounded by the [[#8.1 Control Envelope]] framing, recognised **before** the
+roster gate of [[#REQ-492 Roster Gate Before Vault Frame]] so the daemon
+knows *which* roster to consult ([[#REQ-503 Vault-Bound Peer Sessions]],
+F63). The vault id then binds every subsequent frame (attestation context /
+AEAD associated data). Power: [[DCFL]] over regular framing. Recogniser:
+shared [[CBCL]] DPDA. Boundary: network, untrusted (pre-roster).
+
+### 8.12 Membership Event
+A signed roster **admission** or **removal** event
+([[#REQ-502 Replicated Signed Roster]], F60): a [[CBCL]] `zetl-sync` message
+carrying `{event_id, vault_id, author key, ceremony-transcript binding
+(admission) | rotation_id (removal), embedded did:crdt delta, roster entry,
+HLC causal context}`, attestation-signed by the authoring device. Recogniser:
+shared [[CBCL]] DPDA + attestation verify, THEN author-authority check in the
+event's causal context (an on-roster verification method —
+[[#REQ-500 Order-Independent DID Authorization]]), THEN the embedded
+[[#8.10 did:crdt Delta]] recognition. Boundary: network, untrusted (a roster
+peer may be malicious — §N; admission authority remains local policy against
+a key-holding adversary, F34).
 
 No grammar in this spec exceeds context-free power; the control plane sits at
 [[DCFL]] (a decidable subset of CF), justified in
@@ -1568,6 +1761,8 @@ construction.
 | Member identity | 4 — existing sibling dependency `../did-crdt` ([[did:crdt]]) | shared `p2p::identity` over the pure `did-crdt` core (merge/validate/resolve); devices stay [[iroh]] [[NodeId]]s — no new key primitive ([[#ADR-481 did:crdt as the Member Identity Layer]]). |
 | CLI verbs (pair/join/peers/revoke, daemon) | 6 — new verbs, but *on existing groups* | add to the existing `zetl collab` `clap` group + a `zetl daemon` group paralleling `zetl serve`; no new CLI idiom (Principle 15: options on the artefact with the right responsibility) ([[#ADR-480 CLI Surface Follows Existing zetl Conventions]]). |
 | Wire framing (data plane) | 2/4 — std length-prefix + [[Loro]] codec | no bespoke serialisation (Principle 14 bans string-concat formats). |
+| Namespace manifest | 4 — existing dependency ([[Loro]] map/movable tree) | `crdt::manifest` beside the content docs; the namespace converges by the same engine as content — no bespoke rename protocol ([[#REQ-504 Replicated Vault Namespace Manifest]], F64). |
+| Roster replication | 4/5 — compose [[did:crdt]] deltas + [[CBCL]] messages | `p2p::identity::events`; signed membership events reuse the attestation + HLC machinery — no new consensus layer ([[#REQ-502 Replicated Signed Roster]], F60). |
 
 No new abstraction is introduced with a single implementation
 ([[PROTO-001]] Discipline Rules); the [[CrdtBackend]] trait of the current code
@@ -1641,8 +1836,9 @@ negative-output); each TEST records `Validates:`.
 | **TEST-486a** | positive | example | equal roots **and equal [[Version Vector]]s** → session completes with zero op exchange (F50) | [[#REQ-486 Merkle Anti-Entropy Reconciliation]] |
 | **TEST-486b** | neg-input | example | mismatch → DAG descent localises only differing docs | [[#REQ-486 Merkle Anti-Entropy Reconciliation]] |
 | **TEST-486c** | neg-output | property | equal roots + unequal [[Version Vector]]s MUST NOT skip op exchange — localised via per-document vectors incl. ops that cancel in materialised bytes (F50) | [[#REQ-486 Merkle Anti-Entropy Reconciliation]] |
-| **TEST-487a** | positive | example | valid [[CBCL]] control message accepted by the DPDA + R4 | [[#REQ-487 Control-Plane Messages Recognised by the CBCL DPDA]] |
-| **TEST-487b** | neg-input | fuzz+example | non-conformant / R4-`Invalid` message rejected, no action | [[#REQ-487 Control-Plane Messages Recognised by the CBCL DPDA]] |
+| **TEST-486d** | neg-output | example | mixed case: root mismatch in doc X **plus** byte-cancelling missing ops in doc Y → session MUST loop (recompare after exchanging X) and also ship Y's deltas before completing (F65) | [[#REQ-486 Merkle Anti-Entropy Reconciliation]] |
+| **TEST-487a** | positive | example | valid [[CBCL]] control message accepted by the DPDA + attestation verify | [[#REQ-487 Control-Plane Messages Recognised by the CBCL DPDA]] |
+| **TEST-487b** | neg-input | fuzz+example | non-conformant / attestation-invalid / wrong-phase-key message rejected, no action (F61) | [[#REQ-487 Control-Plane Messages Recognised by the CBCL DPDA]] |
 | **TEST-488a** | positive | example | in-order handshake satisfies the R5 causal-protocol contract | [[#REQ-488 Choreographies as Verified R5 Causal-Protocol Contracts]] |
 | **TEST-488b** | neg-input | property | out-of-order / undefined-step message rejected by the R5 contract | [[#REQ-488 Choreographies as Verified R5 Causal-Protocol Contracts]] |
 | **TEST-489a** | positive | example | `zetl collab pair --json` emits valid JSON; verbs live under `collab`/`daemon` | [[#REQ-489 P2P CLI Follows Existing zetl Conventions]] |
@@ -1671,6 +1867,15 @@ negative-output); each TEST records `Validates:`.
 | **TEST-500b** | neg-output | property | delta signed by K concurrent with K's removal MUST NOT be judged differently by delivery order | [[#REQ-500 Order-Independent DID Authorization]] |
 | **TEST-501a** | neg-input | example | over-limit length advertisement rejected at the prefix, no allocation (F52) | [[#REQ-501 Bounded Frame Recognition]] |
 | **TEST-501b** | neg-input | integration | stall-after-prefix (pre-auth) → connection state reclaimed at the read deadline | [[#REQ-501 Bounded Frame Recognition]] |
+| **TEST-501c** | neg-input | example | over-limit **control envelope** (pre-SPAKE2 pairing choreography) rejected at the prefix, no allocation (F62) | [[#REQ-501 Bounded Frame Recognition]] |
+| **TEST-502a** | positive | integration | three-peer offline admission: A pairs C offline from B → B accepts C via A's signed admission event on reconnect (F60) | [[#REQ-502 Replicated Signed Roster]] |
+| **TEST-502b** | neg-input | example | genesis for an unknown member without a valid admission event (author off-roster in the event's causal context) → rejected | [[#REQ-502 Replicated Signed Roster]] |
+| **TEST-502c** | neg-output | property | any permutation of one membership-event set → identical roster; concurrent admit+remove of one device → removal wins (F60) | [[#REQ-502 Replicated Signed Roster]] |
+| **TEST-503a** | positive | integration | multi-vault daemon: vault selector names vault X → roster check runs against X's roster, session syncs X (F63) | [[#REQ-503 Vault-Bound Peer Sessions]] |
+| **TEST-503b** | neg-input | example | frame bound to vault X replayed into a vault-Y session → rejected before interpretation (AD/attestation mismatch) | [[#REQ-503 Vault-Bound Peer Sessions]] |
+| **TEST-504a** | positive | property(convergence) | concurrent create/rename/delete on disconnected peers → identical DocId → path mapping; rename preserves history (F64) | [[#REQ-504 Replicated Vault Namespace Manifest]] |
+| **TEST-504b** | neg-input | example | colliding paths (case-fold / NFC-equal) created concurrently → deterministic disambiguation, no silent overwrite | [[#REQ-504 Replicated Vault Namespace Manifest]] |
+| **TEST-504c** | neg-output | property | concurrent rename vs edit MUST lose neither — edits land in the renamed document, never a resurrected tombstone | [[#REQ-504 Replicated Vault Namespace Manifest]] |
 
 ### 10.3 Non-Functional & Robustness Tests
 
@@ -1709,7 +1914,7 @@ negative-output); each TEST records `Validates:`.
 | **OBS-478** Off-roster rejections | metric | `zetl_offroster_rejections_total`, `zetl_malformed_frames_total`, `zetl_frame_reject_total{cause: stale-epoch\|over-limit\|read-deadline\|replayed-ref}` | [[#REQ-482 Roster-Gated Encrypted Transport]], [[#REQ-483 Full Recognition at Trust Boundaries]], [[#REQ-494 Control-to-Data Binding]], [[#REQ-499 Group-Keyed Sync Frames]], [[#REQ-501 Bounded Frame Recognition]] |
 | **OBS-479** External-edit import | log | import outcome (`folded`/`staged`) | [[#REQ-484 Guarded Import of External Markdown Edits]] |
 | **OBS-480** Convergence witness | metric | `zetl_root_mismatch_total` (integrity alarm), `zetl_reconcile_rounds`, `zetl_reconcile_skipped_total` (equal-root) | [[#REQ-485 Merkle Convergence Witness]], [[#REQ-486 Merkle Anti-Entropy Reconciliation]] |
-| **OBS-481** Message recognition | metric+log | `zetl_cbcl_reject_total{cause}` (parse / R1–R5 / R4-sig) on incoming control messages against the shipped dialect | [[#REQ-487 Control-Plane Messages Recognised by the CBCL DPDA]], [[#REQ-488 Choreographies as Verified R5 Causal-Protocol Contracts]] |
+| **OBS-481** Message recognition | metric+log | `zetl_cbcl_reject_total{cause}` (parse / R1–R5 at load / attest-sig / wrong-phase-key / vault-binding) on incoming control messages against the shipped dialect | [[#REQ-487 Control-Plane Messages Recognised by the CBCL DPDA]], [[#REQ-488 Choreographies as Verified R5 Causal-Protocol Contracts]], [[#REQ-503 Vault-Bound Peer Sessions]] |
 | **OBS-482** Identity verification | metric+log | `zetl_did_delta_reject_total{cause}` (schema / proof / merge); audit line per verification-method add/remove with DID + [[NodeId]] + ts | [[#REQ-497 DID-Bound Member Identity]], [[#REQ-498 DID Key Removal Triggers Key Rotation]] |
 
 > [[#OBS-475 Pairing failure cause]]'s `cause` label is operator-channel only and
@@ -1725,9 +1930,24 @@ negative-output); each TEST records `Validates:`.
 
 - **A. Passive network observer** — recovers neither phrase (REQ-477) nor
   [[SPAKE2]] key (protocol); content transit-encrypted (REQ-482).
-- **B. Active OOB-channel MitM** — learns the phrase; [[SPAKE2]] bounds to one
-  online guess; single-use (REQ-478) + owner notices the legit join failing.
-  *Documented residual.*
+- **B. OOB-channel compromise (attacker learns the phrase)** — **complete
+  pairing compromise, not a bounded guess** (F57). [[SPAKE2]]'s
+  online-single-guess bound protects only against an attacker who does *not*
+  know the password; matching passwords derive matching keys, so an attacker
+  who learns the phrase can complete a fully *authenticated* exchange — racing
+  the legitimate joiner to redeem the phrase first
+  ([[#REQ-478 Single-Use Phrase]] merely creates that race), or completing
+  separate authenticated exchanges with each victim (classic MitM) if it can
+  interpose on the rendezvous (§J gives it the squat primitive to do so).
+  *Mitigation:* the protocol therefore ASSUMES a **confidential, authentic OOB
+  channel** for phrase delivery — this assumption is now explicit and joins
+  the Tier-1 review package; the candidate in-protocol backstop is the
+  [[NodeId]]-fingerprint / SAS confirmation of §E
+  ([[#18. Open Questions]] Q2, upgraded from "phishing nicety" to the sole
+  recovery against OOB compromise). Detection is best-effort: the owner *may*
+  notice the legitimate join failing (race variant), but the MitM variant
+  completes both sides and is invisible at pairing time. *Documented
+  residual pending Q2.*
 - **C. Off-roster connection** — rejected before any frame (REQ-482, REQ-483).
 - **D. Compromised member device** — holds [[Group Key]] + already-synced
   plaintext ([[Encryption at Rest]] opt-in, ADR-476). Recovery = revoke + rotate
@@ -1767,17 +1987,29 @@ negative-output); each TEST records `Validates:`.
   roster [[NodeId]] before trust (REQ-483); a root is only *trusted as converged*
   after the [[Loro]] state that produces it is actually applied — the witness
   cross-checks merge, it never substitutes for it (REQ-485).
-- **J. Rendezvous squat / overwrite** — because `num` is public, an attacker can
-  publish a [[pkarr]] record at a live rendezvous (squat) or overwrite the
-  owner's, positioning as a MitM or denying the meeting (DoS). *Mitigation:*
-  [[SPAKE2]] denies auth (the attacker lacks `word-word`, so key agreement fails
-  and no secret leaks — same one-guess bound); the joiner sees a failed handshake
-  and the owner re-pairs. *Residual:* availability/phishing pressure; interacts
-  with §E (pairing phishing) — both weigh the [[NodeId]]-fingerprint OOB
-  confirmation in DESIGN-047 `threat-model`.
+- **J. Rendezvous squat / overwrite — attacker holds full write authority**
+  (F58) — the rendezvous keypair is `HKDF(num)` and `num` is public, so
+  **anyone can derive the rendezvous *private* key and sign valid competing
+  [[pkarr]] records** — this is not mere unauthenticated-hint pollution but
+  equal publishing authority with the owner. pkarr orders competing signed
+  packets by *controller-authored timestamps* with best-effort consistency
+  and resolver caches (default minimum TTL ~5 min), so the owner cannot
+  reliably win a write race. The routing space is small
+  (`4*5DIGIT` ≈ 110,000 keys), so an attacker can **pre-squat the entire
+  namespace continuously** — choosing a fresh phrase is NOT a recovery from a
+  namespace-wide squatter, only from a per-rendezvous one. *Mitigation:*
+  [[SPAKE2]] still denies auth (the squatter lacks `word-word`; no secret
+  leaks) — but see §B: against an attacker who *also* knows the phrase, the
+  squat is the MitM interposition point. **Teardown semantics:** "rendezvous
+  record torn down" (HP1 step 7) MUST be read as *the daemon closes the
+  ephemeral endpoint and stops republishing* — pkarr offers no deletion;
+  cached/replayed records persist until TTL expiry and are answered by a
+  closed endpoint. *Residual:* namespace-wide availability DoS on pairing;
+  MitM positioning when combined with §B — both in the Tier-1 crypto-review
+  scope ([[#18. Open Questions]] Q1, Q2).
 - **K. Cross-epoch signed-root replay by a revoked member** — revocation rotates
   the [[Group Key]] epoch, but a member's durable ed25519 [[NodeId]] does not
-  change, so a since-revoked member can re-present an old R4-signed
+  change, so a since-revoked member can re-present an old attestation-signed
   `{nodeid, epoch_n, root}` after rotation; the signature still verifies.
   *Mitigation:* [[#REQ-493 Signed-Root Epoch Binding]] rejects any root whose
   `key_epoch` ≠ the verifier's current epoch, so a stale-epoch witness is not
@@ -1851,7 +2083,7 @@ negative-output); each TEST records `Validates:`.
   DAG descent (REQ-485, REQ-486). Pure.
 - `p2p::proto::recognise(text) -> Result<Message>` + R1–R5 validators — reuse
   [[CBCL]] `cbcl-core`/`cbcl-parser` (`no_std`, pure); control-plane recognition
-  (REQ-487, REQ-488). R4 signature *verification* is pure; key *custody* is shell.
+  (REQ-487, REQ-488). Attestation/R4 signature *verification* is pure; key *custody* is shell.
 - `p2p::pair::error::classify(cause) -> FailureCategory` — operator-only; user
   text constant (REQ-479).
 - `p2p::identity::{merge, validate, resolve}` — reuse the [[did:crdt]] pure core
@@ -1923,7 +2155,7 @@ REQ-### ←π→ TEST-### → CODE → OBS-###
 | 483 | 483a/b/c, fuzz-spake, fuzz-loro | 470,473,474 | 472 | 478 |
 | 484 | 484a/b/c/d/e | 471 | 471 | 479 |
 | 485 | 485a/c | 473 | 478 | 480 |
-| 486 | 486a/b/c | 473 | 478 | 480 |
+| 486 | 486a/b/c/d | 473 | 478 | 480 |
 | 487 | 487a/b | 470,473,474 | 479 | 481 |
 | 488 | 488a/b | 473,474 | 479 | 481 |
 | 489 | 489a/b | 470,474,477 | 480 | — |
@@ -1938,7 +2170,10 @@ REQ-### ←π→ TEST-### → CODE → OBS-###
 | 498 | 498a/b/c | 477 | 481 | 477,482 |
 | 499 | 499a/b | 473 | 477 | 478 |
 | 500 | 500a/b, fuzz-did | 477 | 481 | 482 |
-| 501 | 501a/b | 473,474 | — | 478 |
+| 501 | 501a/b/c | 473,474 | — | 478 |
+| 502 | 502a/b/c | 477 | 481 | 477,482 |
+| 503 | 503a/b | 473 | 472,479 | 478,481 |
+| 504 | 504a/b/c | 471,473 | 470,478 | 471,472 |
 
 Every REQ links ≥ 1 TEST per applicable type and ≥ 1 OBS (post-release;
 REQ-489 is a build-time CLI-surface conformance REQ with no runtime signal —
@@ -2050,6 +2285,38 @@ Per [[PROTO-001]] §AI Trust Boundaries. Tier-1 ⇒ synthesis trajectory recorde
     (ADR-473, §8.9, threat §H, HP1). **F55** HP1's phrase example now matches
     the `4*5DIGIT` routing grammar. **F56** Orientation names [[CBCL]], not
     CBOR, as the control channel.
+  - S₁₂ — fifth fresh-context adversarial pass (structural gaps beyond the
+    declared open questions; findings verified against the `../cbcl-rs`
+    source and pkarr/spake2 documentation) → F57–F65 applied. **F57** threat
+    §B corrected: an attacker who *knows* the phrase completes authenticated
+    [[SPAKE2]] exchanges — OOB compromise is complete pairing compromise, not
+    one guess; confidential-OOB assumption made explicit, Q2 upgraded.
+    **F58** `HKDF(num)` gives *anyone* the rendezvous signing key: §J/ADR-473
+    now record full write authority, whole-namespace pre-squat, and
+    teardown = stop-republishing (pkarr cannot delete). **F59** guarded
+    import: hash-based base identification only recognises unchanged saves —
+    replaced with the decidable conservative intervening-export rule +
+    cooperative-token refinement path (REQ-484/ADR-471/CON-471/HP5).
+    **F60** [[#REQ-502 Replicated Signed Roster]]: signed admission/removal
+    membership events (§8.12) make third-peer admission coherent with
+    §8.10's ceremony-only genesis; TOML roster demoted to a projection
+    cache; TEST-502a three-peer offline admission. **F61** "CBCL R4
+    per-message signatures" do not exist — R4 is dialect-load integrity;
+    per-message auth now names CBCL's attestation discipline (attest-v2/v3
+    preimages, `verify_with_discipline`, phase-key lookup) across
+    REQ-487/494, ADR-479, §8.8, OBS-481. **F62** the pre-auth pairing
+    *control* envelope was unbounded and mislabelled "local process" — §8.1
+    gains framing, a hard max, and the network boundary; REQ-501 extended to
+    every untrusted frame (TEST-501c). **F63**
+    [[#REQ-503 Vault-Bound Peer Sessions]]: versioned ALPN + vault selector
+    (§8.11), vault id bound into attestation context and AEAD associated
+    data — a multi-vault daemon can now select the roster REQ-492 requires.
+    **F64** [[#REQ-504 Replicated Vault Namespace Manifest]]: DocId → path
+    as a manifest CRDT with tombstones, identity-preserving rename, and
+    deterministic case/NFC collision handling — the namespace converges, not
+    just document contents (Q12 raised). **F65** [[Merkle DAG]]
+    reconciliation loops — recompare roots/vectors after every exchange; the
+    mixed root-mismatch + byte-cancelling case gets TEST-486d.
   - Adversarial tests: not yet generated (DESIGN-047 `test-strategy` +
     cross-model).
 - **Reviewer:** **PENDING** — Tier-1 requires cross-model adversarial review,
@@ -2100,6 +2367,9 @@ DESIGN-047 task lands.
 | 499 | ⚠ Q7 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | 500 | ⚠ ADR-481 | ✓ | ✓ | ✓ | ⚠ | ✓ | ✓ | ✓ | ✓ | n/a | ✓ | ✓ | ✓ | ✓ | ✓ |
 | 501 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 502 | ⚠ ADR-481 | ✓ | ✓ | ✓ | ⚠ | ✓ | ✓ | ✓ | ✓ | n/a | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 503 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 504 | ⚠ Q12 | ✓ | ✓ | ✓ | ⚠ | ✓ | ✓ | ✓ | ✓ | n/a | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 > **F18/F30 corrections.** The atomicity splits (F5/F6/F7 → REQ-490/491/492) make
 > REQ-470/476/482 genuinely single-obligation; their ✓Atomic now holds rather
@@ -2115,7 +2385,11 @@ DESIGN-047 task lands.
 > closes when DESIGN-047 `adr-rendezvous` fixes the provisional attempt budget;
 > REQ-499's ⚠s close when the Q7 group-key package fixes the AEAD; REQ-501's
 > ⚠ Precise closes when DESIGN-047 `input-grammars` fixes the provisional frame
-> maxima and read deadline.
+> maxima and read deadline; REQ-503's ⚠ Precise closes when the ALPN string
+> and vault-id derivation are fixed (same task); REQ-502's ⚠s close with the
+> Q7/Q11 membership-event review; REQ-504's ⚠s close when DESIGN-047
+> `adr-namespace` fixes the DocId scheme and collision-disambiguation rule
+> (Q12).
 
 ---
 
@@ -2145,9 +2419,19 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
    for collision-avoidance ([[#NFR-475 Pairing Secret Entropy Floor]]); (c) ~22-bit
    `word-word` is adequate given first-exchange-consumption
    ([[#REQ-478 Single-Use Phrase]]) + the
-   [[#REQ-496 Pairing Attempt Rate Limit]]. *(owner: HOC)*
-2. **Pairing phishing (§E).** Ship [[NodeId]]-fingerprint OOB confirmation in v1
-   or defer? (Carries [[SPEC-036-spake2-onboarding]] §G.)
+   [[#REQ-496 Pairing Attempt Rate Limit]]; and (d) the rendezvous
+   **write-authority** consequence of the split — anyone derives the
+   `HKDF(num)` signing key, so pkarr record authenticity at a rendezvous is
+   void and the whole ~110k namespace is pre-squattable (F58, threat §J) —
+   is an acceptable availability residual. *(owner: HOC)*
+2. **Phrase-compromise recovery / pairing phishing (§B, §E) — upgraded by
+   F57.** OOB phrase compromise is *complete pairing compromise*, not a
+   bounded guess; the protocol currently ASSUMES a confidential, authentic
+   OOB channel. [[NodeId]]-fingerprint / SAS confirmation is the only
+   in-protocol backstop — the human crypto review MUST decide whether it
+   ships in v1 (mandatory vs opt-in) or the OOB-channel assumption is
+   accepted and documented for the v1 profiles. (Carries
+   [[SPEC-036-spake2-onboarding]] §G.)
 3. **CRDT granularity.** One [[Loro]] doc per note, or one container tree per
    vault? Affects sync chattiness, presence, snapshot cost. Note:
    [[#REQ-486 Merkle Anti-Entropy Reconciliation]] and §8 word their
@@ -2199,6 +2483,13 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
     interaction with did-crdt's own ADR-002 key-compromise recovery (a
     compromised controller key can author removals). Joins the Q7 group-key
     package. ([[#ADR-481 did:crdt as the Member Identity Layer]])
+12. **Namespace manifest design (F64).**
+    [[#REQ-504 Replicated Vault Namespace Manifest]] requires a stable
+    [[DocId]] scheme, the manifest CRDT shape ([[Loro]] map vs movable tree —
+    interacts with Q3 granularity), the case-folding policy for
+    case-insensitive filesystems, and the deterministic
+    collision-disambiguation rule (deterministic renamed-path formula; user
+    surfacing). Owner: DESIGN-047 `adr-namespace`.
 
 ---
 
@@ -2222,8 +2513,30 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.12.0</summary>
+<summary>Revision history — 0.1.0 → 0.13.0</summary>
 
+- 0.13.0-strawman — fifth fresh-context adversarial pass (structural gaps
+  beyond the declared open questions, verified against `../cbcl-rs` and
+  pkarr/spake2 docs) → applied F57–F65. Threat model honesty: OOB phrase
+  compromise = **complete pairing compromise** (SPAKE2 gives no guess bound
+  against a password-holder) — confidential-OOB assumption explicit, §B
+  rewritten, Q2 upgraded to the fingerprint/SAS decision (F57); phrase-derived
+  rendezvous keys give **anyone signing authority** — §J/ADR-473 record
+  namespace-wide pre-squat and teardown = stop-republishing (F58). Mechanism
+  corrections: per-message auth renamed from "R4" to CBCL's **attestation
+  discipline** with named preimage + phase-key lookup (REQ-487/494, ADR-479,
+  §8.8 — F61); guarded import's base identification replaced with the
+  decidable conservative intervening-export rule (REQ-484/ADR-471/HP5 —
+  F59). New protocol surface: [[#REQ-502 Replicated Signed Roster]] +
+  §8.12 membership events (third-peer admission, roster TOML = cache —
+  F60); [[#REQ-503 Vault-Bound Peer Sessions]] + §8.11 vault selector +
+  versioned ALPN, vault id in attestation context/AEAD AD (F63);
+  [[#REQ-504 Replicated Vault Namespace Manifest]] — DocId → path manifest
+  CRDT, identity-preserving rename, deterministic case/NFC collision rule
+  (F64, Q12). Hardening: §8.1 control envelope gains framing/max/deadline
+  and its network boundary (was "local process"); REQ-501 covers every
+  untrusted frame (F62, TEST-501c); [[Merkle DAG]] reconciliation loops
+  until roots **and** vectors match — mixed-case TEST-486d (F65).
 - 0.12.0-strawman — fourth fresh-context adversarial pass (protocol blockers)
   → applied F45–F56. Bootstrap now satisfies its own gates: pairing control
   messages verify against an ephemeral [[Pre-Admission Pairing Identity]]
