@@ -249,3 +249,7 @@
 (claims agent:claude
   :at "2026-07-18T06:13:38Z"
   (given implemented-unreviewed-t9-mls-group-key-owner-committed-3-tests))
+
+(claims agent:claude
+  :at "2026-07-18T06:15:18Z"
+  (given implemented-unreviewed-t10-roster-role-gate-2-tests))
