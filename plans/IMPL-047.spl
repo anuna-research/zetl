@@ -151,3 +151,65 @@
 (claims agent:claude
   :at "2026-07-18T03:55:44Z"
   (given completed-t1-cli-surface))
+
+(claims agent:claude
+  :at "2026-07-18T03:58:20Z"
+  (given claim-v1-t2-daemon)
+  (normally r-cl-state-v1-t2-daemon claim-v1-t2-daemon state-claimed-v1-t2-daemon)
+  (normally r-cl-chain-v1-t2-daemon state-claimed-v1-t2-daemon claimed-t2-daemon)
+)
+
+;; Propagation rules: failures in 't2-daemon' block downstream tasks
+(normally r-propagate-t7-cbcl-control-from-t2-daemon-failed failed-t2-daemon upstream-blocked-t7-cbcl-control)
+(normally r-propagate-t7-cbcl-control-from-t2-daemon-permanently-failed permanently-failed-t2-daemon upstream-blocked-t7-cbcl-control)
+(normally r-propagate-t7-cbcl-control-from-t2-daemon-stale-v1 stale-v1-t2-daemon upstream-blocked-t7-cbcl-control)
+(normally r-propagate-t7-cbcl-control-from-t2-daemon-timeout-v1 timeout-v1-t2-daemon upstream-blocked-t7-cbcl-control)
+
+(claims agent:claude
+  :at "2026-07-18T04:07:23Z"
+  (given verified-t2-daemon-lifecycle-green-19-tests))
+
+(claims agent:claude
+  :at "2026-07-18T04:07:23Z"
+  (given completed-t2-daemon))
+
+(claims agent:claude
+  :at "2026-07-18T04:13:03Z"
+  (given claim-v1-t3-loro-store)
+  (normally r-cl-state-v1-t3-loro-store claim-v1-t3-loro-store state-claimed-v1-t3-loro-store)
+  (normally r-cl-chain-v1-t3-loro-store state-claimed-v1-t3-loro-store claimed-t3-loro-store)
+)
+
+;; Propagation rules: failures in 't3-loro-store' block downstream tasks
+(normally r-propagate-t4-guarded-import-from-t3-loro-store-failed failed-t3-loro-store upstream-blocked-t4-guarded-import)
+(normally r-propagate-t4-guarded-import-from-t3-loro-store-permanently-failed permanently-failed-t3-loro-store upstream-blocked-t4-guarded-import)
+(normally r-propagate-t4-guarded-import-from-t3-loro-store-stale-v1 stale-v1-t3-loro-store upstream-blocked-t4-guarded-import)
+(normally r-propagate-t4-guarded-import-from-t3-loro-store-timeout-v1 timeout-v1-t3-loro-store upstream-blocked-t4-guarded-import)
+(normally r-propagate-t5-namespace-manifest-from-t3-loro-store-failed failed-t3-loro-store upstream-blocked-t5-namespace-manifest)
+(normally r-propagate-t5-namespace-manifest-from-t3-loro-store-permanently-failed permanently-failed-t3-loro-store upstream-blocked-t5-namespace-manifest)
+(normally r-propagate-t5-namespace-manifest-from-t3-loro-store-stale-v1 stale-v1-t3-loro-store upstream-blocked-t5-namespace-manifest)
+(normally r-propagate-t5-namespace-manifest-from-t3-loro-store-timeout-v1 timeout-v1-t3-loro-store upstream-blocked-t5-namespace-manifest)
+(normally r-propagate-t6-merkle-reconcile-from-t3-loro-store-failed failed-t3-loro-store upstream-blocked-t6-merkle-reconcile)
+(normally r-propagate-t6-merkle-reconcile-from-t3-loro-store-permanently-failed permanently-failed-t3-loro-store upstream-blocked-t6-merkle-reconcile)
+(normally r-propagate-t6-merkle-reconcile-from-t3-loro-store-stale-v1 stale-v1-t3-loro-store upstream-blocked-t6-merkle-reconcile)
+(normally r-propagate-t6-merkle-reconcile-from-t3-loro-store-timeout-v1 timeout-v1-t3-loro-store upstream-blocked-t6-merkle-reconcile)
+
+(claims agent:claude
+  :at "2026-07-18T04:18:31Z"
+  (given verified-t3-loro-store-foundation-4-tests-persistence-determinism-convergence))
+
+(claims agent:claude
+  :at "2026-07-18T04:18:31Z"
+  (given blocked-by-t3-remaining-ws-migration-and-block-materialisation))
+
+(claims agent:claude
+  :at "2026-07-18T04:24:46Z"
+  (given verified-t6-reconcile-core-vv-exchange-convergence-4-tests))
+
+(claims agent:claude
+  :at "2026-07-18T04:26:42Z"
+  (given verified-t4-guarded-import-decision-core-5-tests-f59-rule))
+
+(claims agent:claude
+  :at "2026-07-18T04:30:46Z"
+  (given verified-t5-manifest-core-4-tests-create-rename-delete-convergence-collision))

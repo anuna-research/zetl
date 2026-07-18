@@ -16,6 +16,7 @@ pub mod blocks;
 pub mod diamond;
 pub mod guarded_import;
 pub mod loro_store;
+pub mod manifest;
 pub mod marks;
 pub mod reconcile;
 pub mod marks_doc;

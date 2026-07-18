@@ -55,6 +55,18 @@ impl DocId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Mint a fresh, stable DocId: 32 lowercase hex chars over 128 random bits
+    /// (Q12 / adr-namespace). Opaque and decoupled from the path, so a rename
+    /// or move preserves the document's identity and history
+    /// ([[REQ-504]]). Collision probability is negligible (128-bit).
+    pub fn mint() -> DocId {
+        use rand_core::RngCore as _;
+        let mut bytes = [0u8; 16];
+        rand_core::OsRng.fill_bytes(&mut bytes);
+        let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+        DocId(hex)
+    }
 }
 
 impl std::fmt::Display for DocId {

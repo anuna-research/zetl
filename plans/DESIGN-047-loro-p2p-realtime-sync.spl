@@ -227,3 +227,11 @@
 (claims agent:claude
   :at "2026-07-18T04:11:13Z"
   (given completed-adr-merkle-sync))
+
+(claims agent:claude
+  :at "2026-07-18T04:30:46Z"
+  (given decided-q12-docid-minted-opaque-manifest-loro-map))
+
+(claims agent:claude
+  :at "2026-07-18T04:30:46Z"
+  (given completed-adr-namespace))

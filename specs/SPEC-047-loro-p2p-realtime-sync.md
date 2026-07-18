@@ -2,7 +2,7 @@
 id: SPEC-047
 title: "Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing"
 status: draft
-version: 0.19.0-strawman
+version: 0.20.0-strawman
 last-updated: 2026-07-18
 ---
 
@@ -93,7 +93,7 @@ capitals.
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | SPEC-047                                                                                |
 | Title        | Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing         |
-| Version      | 0.19.0-strawman                                                                          |
+| Version      | 0.20.0-strawman                                                                          |
 | Status       | Draft (strawman; pending DESIGN-047 execution)                                          |
 | Author       | Agent (Claude Opus 4.8 [1M]) under [[PROTO-001]] v1.11.0                                |
 | Audience     | Agent, Human                                                                            |
@@ -927,10 +927,16 @@ paths had no convergence rule, leaving
 [[#REQ-485 Merkle Convergence Witness]] /
 [[#REQ-486 Merkle Anti-Entropy Reconciliation]] unsatisfiable at vault
 scope). Materialisation reads the manifest; the [[Merkle Vault Root]]'s
-path-sorted file roots are computed over manifest paths. DocId scheme and
-the exact collision-disambiguation rule are
-`[Provisional — DESIGN-047 task adr-namespace]` ([[#18. Open Questions]]
-Q12).
+path-sorted file roots are computed over manifest paths. **DocId scheme
+and collision rule (adr-namespace, 0.20.0):** a [[DocId]] is a **minted,
+opaque, path-independent 128-bit id** (32 lowercase hex) — so a rename or
+move is a value change on a stable key, preserving identity and history
+(not delete+create). The manifest is a [[Loro]] map `DocId → path`.
+**Collision rule:** when several DocIds resolve to the same folded path,
+the lexicographically-smallest DocId keeps the path and the rest take a
+deterministic disambiguated path (`stem (docid-prefix).ext`) — never a
+silent overwrite. Path folding is `[Provisional: ASCII lower-case; full
+NFC + Unicode case-fold deferred]`.
 
 **Trace:** [[#TEST-504a]], [[#TEST-504b]], [[#TEST-504c]], [[#CON-471 Loro Store and Materialisation]], [[#CON-473 Peer Session]], [[#OBS-471 Materialisation]], [[#OBS-472 Sync convergence]].
 
@@ -2861,13 +2867,18 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
     interaction with did-crdt's own ADR-002 key-compromise recovery (a
     compromised controller key can author removals). Joins the Q7 MLS
     composition review. ([[#ADR-481 did:crdt as the Member Identity Layer]])
-12. **Namespace manifest design (F64).**
-    [[#REQ-504 Replicated Vault Namespace Manifest]] requires a stable
-    [[DocId]] scheme, the manifest CRDT shape ([[Loro]] map vs movable tree —
-    interacts with Q3 granularity), the case-folding policy for
-    case-insensitive filesystems, and the deterministic
-    collision-disambiguation rule (deterministic renamed-path formula; user
-    surfacing). Owner: DESIGN-047 `adr-namespace`.
+12. **Namespace manifest design (F64) — RESOLVED (0.20.0, adr-namespace).**
+    [[#REQ-504 Replicated Vault Namespace Manifest]]: [[DocId]] = minted
+    opaque 128-bit id (32 hex), path-independent so renames preserve
+    identity; manifest CRDT shape = a [[Loro]] **map** `DocId → path` (map,
+    not movable tree — Q3 is doc-per-note, so the manifest is a flat
+    id→path index, not a hierarchy); collision rule = smallest DocId keeps
+    the folded path, others get `stem (docid-prefix).ext` — deterministic,
+    no silent overwrite. Path folding is provisional ASCII lower-case (full
+    NFC + Unicode case-fold deferred, `// SIMPLIFY:` in `crdt::manifest`).
+    Implemented: IMPL-047 T5 (`src/crdt/manifest.rs`, TEST-504a/b green);
+    TEST-504c (concurrent rename vs edit) is a follow-up. Details in
+    [[#REQ-504 Replicated Vault Namespace Manifest]].
 
 ---
 
@@ -2905,8 +2916,18 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.19.0</summary>
+<summary>Revision history — 0.1.0 → 0.20.0</summary>
 
+- 0.20.0-strawman — DESIGN-047 `adr-namespace` resolved **Q12 (namespace
+  manifest)**: [[DocId]] = minted opaque 128-bit id (path-independent →
+  renames preserve identity); manifest = a [[Loro]] map `DocId → path`;
+  collision rule = smallest DocId keeps the folded path, others
+  disambiguate deterministically. Provisional markers on REQ-504/Q12
+  removed (ASCII case-fold stays provisional). Implemented as IMPL-047 T5
+  (`src/crdt/manifest.rs`). Alongside the implementation track this cycle:
+  T4 (guarded-import fold/stage decision) and the T6 version-vector
+  reconciliation core also landed and verified; T3 Loro store foundation +
+  property tests earlier.
 - 0.19.0-strawman — DESIGN-047 `adr-merkle-sync` resolved **Q3 (CRDT
   granularity)**: one [[Loro]] document per note keyed by manifest
   [[DocId]], plus one vault-level manifest document — not a single
