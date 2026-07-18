@@ -19,6 +19,7 @@ pub mod loro_store;
 pub mod manifest;
 pub mod marks;
 pub mod reconcile;
+pub mod vault_fs;
 pub mod witness;
 pub mod marks_doc;
 
