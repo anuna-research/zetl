@@ -16,8 +16,14 @@
 //! ╚══════════════════════════════════════════════════════════════════════╝
 //!
 //! Reuse over reinvention: pairing composes the audited [`crate::cap::pair`]
-//! SPAKE2 primitive (SPEC-034); the group key will compose `openmls`
-//! (ADR-482) and identity `../did-crdt` (ADR-481) once those deps build.
+//! SPAKE2 primitive (SPEC-034); the group key composes `openmls` (ADR-482);
+//! member identity composes `../did-crdt` (ADR-481).
+//!
+//! Implemented (UNREVIEWED): [`pair`] (T8 SPAKE2 ceremony), [`group`] (T9 MLS
+//! Owner-committed membership), [`roster`] (T10 role gate), [`identity`] (T11
+//! did:crdt), [`revocation`] (T13 durable rotation). NOT implemented: the iroh
+//! QUIC transport (T12 — iroh 0.21 has an upstream compile error; a newer iroh
+//! needs a different integration) and the CBCL network control plane (T7).
 
 pub mod group;
 pub mod identity;
