@@ -17,6 +17,7 @@ pub mod hooks;
 #[cfg(feature = "mcp")]
 pub mod mcp;
 pub mod merkle;
+pub mod p2p;
 #[cfg(feature = "mobile")]
 pub mod mobile_capture;
 #[cfg(feature = "mobile")]
