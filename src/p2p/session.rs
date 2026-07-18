@@ -174,11 +174,11 @@ mod tests {
 
         let op = group::provider();
         let bp = group::provider();
-        let owner = GroupIdentity::new("did:crdt:owner").unwrap();
-        let bob = GroupIdentity::new("did:crdt:bob").unwrap();
+        let owner = GroupIdentity::new("did:crdt:owner", &[1u8; 32]).unwrap();
+        let bob = GroupIdentity::new("did:crdt:bob", &[2u8; 32]).unwrap();
         let mut ogroup = group::create_group(&op, &owner, b"vault").unwrap();
         let (_kb, kp) = group::build_key_package(&bp, &bob).unwrap();
-        let kp = group::key_package_from_bytes(&op, &kp, &bob.did).unwrap();
+        let kp = group::key_package_from_bytes(&op, &kp, &bob.did, &bob.endpoint_id).unwrap();
         let (_c, welcome) = group::add_member(&op, &mut ogroup, &owner, kp).unwrap();
         let mut bgroup = group::join_from_welcome(&bp, &welcome, &owner.did).unwrap();
 

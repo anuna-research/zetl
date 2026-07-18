@@ -48,7 +48,13 @@ impl Roster {
         let key_epoch = group.epoch().as_u64();
         let mut entries = BTreeMap::new();
         for m in group.members() {
-            let did = String::from_utf8_lossy(m.credential.serialized_content()).to_string();
+            // Decode the DID from the leaf credential grammar (did ‖ endpoint);
+            // skip any leaf whose credential does not parse (fail closed).
+            let Ok((did, _endpoint)) =
+                crate::p2p::group::decode_credential(m.credential.serialized_content())
+            else {
+                continue;
+            };
             let role = if did == owner_did {
                 Role::Owner
             } else {
@@ -113,11 +119,11 @@ mod tests {
     fn two_member_group() -> (MlsGroup, String, String) {
         let op = provider();
         let bp = provider();
-        let owner = GroupIdentity::new("did:crdt:owner").unwrap();
-        let bob = GroupIdentity::new("did:crdt:bob").unwrap();
+        let owner = GroupIdentity::new("did:crdt:owner", &[1u8; 32]).unwrap();
+        let bob = GroupIdentity::new("did:crdt:bob", &[2u8; 32]).unwrap();
         let mut group = create_group(&op, &owner, b"vault").unwrap();
         let (_kb, kp_bytes) = build_key_package(&bp, &bob).unwrap();
-        let kp = key_package_from_bytes(&op, &kp_bytes, &bob.did).unwrap();
+        let kp = key_package_from_bytes(&op, &kp_bytes, &bob.did, &bob.endpoint_id).unwrap();
         add_member(&op, &mut group, &owner, kp).unwrap();
         (group, owner.did, bob.did)
     }

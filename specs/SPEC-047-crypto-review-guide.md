@@ -107,12 +107,27 @@ gap:
 3. `daemon/p2p.rs:87` `admits` + `daemon/p2p.rs:102-106` refuse an unadmitted
    peer **before any vault frame** (fail-closed), then `finish()` the connection.
 
-- **Scrutinise:** the *binding* between the transport endpoint id (Ed25519 QUIC
-  key) and the member DID. Today the daemon's admit set is a set of endpoint ids
-  loaded from a file (§5, a SIMPLIFY ceiling) — it does **not** yet cryptographically
-  resolve endpoint-id → DID via the did:crdt device set. So the current gate
-  trusts provisioning, not a signed device registration. This is the weakest
-  link in the *wired* path and is called out as the ceiling to close.
+- **Binding — now cryptographic in the library (was provisioned).** The member
+  leaf credential now binds `did ‖ endpoint_id` (`group.rs` `encode_credential`
+  / `decode_credential`, a fixed 32-byte suffix grammar). At admission,
+  `key_package_from_bytes` (`group.rs:184`) verifies **both** the joiner's DID
+  *and* that the credential's endpoint id equals the pairing-authenticated one —
+  so a joiner cannot bind an endpoint it does not control.
+  `group::endpoint_owner` (`group.rs:117`) then resolves a QUIC-authenticated
+  endpoint id to its member DID via the MLS-authenticated, Owner-authorised
+  leaf. Chain: `pair authenticates E` → Owner admits KeyPackage binding
+  `(DID, E)` → leaf is MLS-authenticated → `E` connects, QUIC authenticates it →
+  `endpoint_owner` resolves `E` → member. No did:crdt signing needed (that
+  becomes the multi-device generalisation). Tested:
+  `endpoint_resolves_to_member_only` (member resolves, stranger → `None`,
+  endpoint-mismatch admission rejected).
+- **Scrutinise:** (a) the credential grammar is a fixed 32-byte suffix on
+  `BasicCredential` bytes — a LeafNode extension would be cleaner (flagged as a
+  ceiling in `group.rs:86`); confirm the suffix split can't be gamed (DID is the
+  UTF-8 prefix, endpoint the raw 32-byte tail). (b) The binding is only as strong
+  as the pairing ceremony that authenticates `E` (§2.3). (c) The leaf signing key
+  and the transport key are **deliberately separate** (no cross-protocol Ed25519
+  reuse); confirm that's the right call vs. binding them.
 
 ### 2.3 Mutual pubkey confirmation in pairing (MITM defence)
 
@@ -182,11 +197,14 @@ plaintext is not on the wire.
 
 Each is annotated in-code with an upgrade path and a traced artefact:
 
-1. **Admit set is provisioned from a file** (`daemon/p2p.rs:41-45`), not resolved
-   live from the MLS roster + did:crdt device keys (REQ-497/500). Consequence:
-   the wired gate trusts an operator-written `p2p/admitted` file of endpoint ids,
-   not a signed device registration. **This is the gap that most weakens the
-   end-to-end story** and should be top of the "before ship" list.
+1. **Admit set is provisioned from a file *in the daemon only*** (`daemon/p2p.rs`).
+   The cryptographic resolver (`group::endpoint_owner`, §2.2) now exists and is
+   tested; the flat file is an **interim shim** only because the daemon does not
+   yet hold the live MLS group (that is the durable-MLS-provider slice, elephant
+   REQ-306). Once the daemon loads the group, `admits(E)` becomes
+   `endpoint_owner(group, E).is_some()` and the file is deleted. The binding
+   itself is no longer provisioned-trust — only its *consumption in the daemon*
+   is pending. This moved from "top gap" to "wiring pending".
 2. **In-daemon sync is unsealed** (`daemon/p2p.rs:125-128`): transport-auth +
    roster-gated only. REQ-499 sealing (§4) composes on top once a durable MLS
    provider exists.
@@ -233,7 +251,10 @@ Each is annotated in-code with an upgrade path and a traced artefact:
 The highest-value adversarial questions, ranked: **(a)** ~~is MLS leaf 0
 immutable enough~~ — **investigated and resolved** (§2.1): effectively immutable
 via our gate + MLS's dual self-removal prohibition; reviewer should confirm the
-conjunction and the availability caveat. **(b)** is the endpoint-id ↔ DID binding
-real or provisioned-trust (§2.2, §5.1)? — **now the top open item.** **(c)** is
-the bidirectional application-message sealing free of ratchet/nonce hazards
-(§4)?
+conjunction and the availability caveat. **(b)** ~~is the endpoint-id ↔ DID
+binding real or provisioned-trust~~ — **addressed** (§2.2): now MLS-bound in the
+leaf credential and verified at admission against the pairing-authenticated
+endpoint; resolver tested. Remaining: credential-grammar-vs-extension, the
+pairing dependency, and wiring the resolver into the daemon (needs durable MLS).
+**(c)** is the bidirectional application-message sealing free of ratchet/nonce
+hazards (§4)? — **now the top remaining crypto-design question.**

@@ -39,10 +39,13 @@ pub struct P2pService {
     /// (REQ-482/492).
     //
     // SIMPLIFY (rung 5, ceiling): the admit set is loaded from a provisioned
-    // file rather than resolved live from the MLS roster (T10) + did:crdt
-    // verification methods (T11, REQ-497/500). Upgrade path: derive it from the
-    // group's member DIDs and each DID's registered device keys, refreshed on
-    // every membership epoch change. Traced to ADR-481/482.
+    // file. The *cryptographic* replacement already exists and is tested —
+    // `group::endpoint_owner` resolves a QUIC-authenticated endpoint id to its
+    // member DID via the MLS-bound leaf credential (REQ-482/492/497). Wiring it
+    // here needs the daemon to hold the live MLS group, which is the durable-MLS
+    // -provider slice (elephant REQ-306). Until then this file is the interim
+    // shim; the binding it stands in for is no longer provisioned-trust in the
+    // library. Traced to ADR-481/482.
     admitted: HashSet<[u8; 32]>,
 }
 
