@@ -50,6 +50,32 @@ messages instead — see §4.
 
 ---
 
+## 1b. The identity hierarchy (one key per device; DID per user; roster per wiki)
+
+```
+wiki  = vault = one MLS group / roster            ── many actors per wiki
+ └── actor = user = did:crdt DID                   ── one DID, many devices
+      └── device = one Ed25519 key (DeviceIdentity)
+           ├── transport endpoint id  (iroh NodeId, QUIC-authenticated)
+           ├── did:crdt device key     (verification method in the DID doc)
+           └── Loro actor id / PeerID  (per-replica, attributes this device's edits)
+```
+
+`DeviceIdentity` (`src/p2p/identity.rs`) is the single key a node creates before
+joining; transport id, DID, and Loro PeerID all derive from it, so a node/user
+is one identity across transport, membership, and content.
+
+**Terminology caution — "actor" is overloaded.** At the *content* layer, Loro's
+"actor" (PeerID) is **per-device** (per replica). At the *identity* layer, an
+"actor" is a **user = DID**, which owns many devices. So the map is
+`Loro PeerID → device key → DID`: many PeerIDs per DID, many DIDs per wiki.
+
+**What is single-device today:** one DID is derived from one device key, so
+device ≡ user. The "one DID, many devices" row — and the `PeerID → DID` reverse
+map for a *secondary* device — lives in the DID document's verification-method
+set, which needs did:crdt **signed deltas** (REQ-500, Q11). Until then, treat
+each device as its own DID.
+
 ## 1a. Is a DID a *verified* identity? (matters if a DID is a content subject)
 
 **Yes for single-device, by self-certification — not by assignment.** A did:crdt

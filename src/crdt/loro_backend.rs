@@ -181,6 +181,20 @@ impl LoroCrdtDocument {
         Ok(Self { doc: configured_doc() })
     }
 
+    /// Bind this replica's Loro actor id (PeerID) to a stable device identity,
+    /// so its edits are attributed to that device rather than a random per-load
+    /// id (SPEC-047 — a node/user is identified by its DID all the way down to
+    /// edit attribution). Set before the first edit. The u64 comes from
+    /// [`crate::p2p::identity::DeviceIdentity::loro_peer`].
+    pub fn set_actor(&self, peer: u64) -> Result<()> {
+        self.doc.set_peer_id(peer).context("set loro actor id")
+    }
+
+    /// This replica's current Loro actor id.
+    pub fn actor(&self) -> u64 {
+        self.doc.peer_id()
+    }
+
     pub fn from_markdown(markdown: &str) -> Result<Self> {
         let mut this = Self::new()?;
         this.ingest(markdown, true)?;

@@ -94,6 +94,17 @@ impl NoteDoc {
         }
     }
 
+    /// Bind this replica's edit-attribution actor id to a stable device identity
+    /// ([`crate::p2p::identity::DeviceIdentity::loro_peer`]). Set before editing.
+    pub fn set_actor(&self, peer: u64) -> Result<()> {
+        self.inner.set_actor(peer)
+    }
+
+    /// This replica's current Loro actor id (who its edits attribute to).
+    pub fn actor(&self) -> u64 {
+        self.inner.actor()
+    }
+
     /// Load a note document from a persisted snapshot (REQ-472 C4: restart
     /// reloads canonical state *with* causal history — a snapshot carries the
     /// full oplog, so subsequent concurrent edits still merge).
