@@ -50,6 +50,38 @@ messages instead — see §4.
 
 ---
 
+## 1a. Is a DID a *verified* identity? (matters if a DID is a content subject)
+
+**Yes for single-device, by self-certification — not by assignment.** A did:crdt
+DID is `did:crdt:blake3(genesis ‖ device_key)` (did-crdt `document.rs:245`), so
+it is the content-address of a key. We exploit that:
+
+- `GroupIdentity::new(endpoint_id)` (`group.rs`) **derives** the DID from the
+  device's transport endpoint key — the DID is not a label anyone chooses.
+- `verify_did_binding(did, endpoint_id)` (`group.rs`) recomputes the address and
+  is the admission check; `key_package_from_bytes` rejects any leaf whose DID is
+  not the self-certifying address of the endpoint it binds.
+- The QUIC handshake proves control of the endpoint key ⟹ controlling the
+  endpoint proves control of the DID. So a DID resolved by `endpoint_owner` is a
+  **verified** identity, safe to use as a content subject / author.
+
+**Limits the reviewer must weigh before relying on it for attribution:**
+- **Single-device only.** One DID = one device key today. Multiple devices under
+  one DID, and key rotation, are the did:crdt verification-method set, which
+  needs **signed deltas** (did-crdt phase-2, REQ-500, Q11). Until then a DID that
+  loses/rotates its device key cannot be re-proven.
+- **The transport key *is* the DID device key.** That unification is what makes
+  self-certification work without did-crdt signing; confirm it's acceptable that
+  the network identity and the content-identity are the same key (it does mean a
+  device-key compromise is a full identity compromise).
+- **Attribution granularity.** Sync frames are authored by MLS *leaves*; a leaf's
+  DID is now verified, so "authored by did:crdt:X" is sound — but only at the
+  sync-session granularity. Per-edit signing (so a *stored* wiki edit carries a
+  verifiable author, independent of who synced it) is **not** implemented; that
+  is a separate design question if edit-level provenance is needed.
+
+---
+
 ## 2. The trust-boundary decisions (review these first)
 
 These are the load-bearing *design* choices encoded in code. A subtle error

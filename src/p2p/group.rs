@@ -49,32 +49,51 @@ pub struct GroupIdentity {
 }
 
 impl GroupIdentity {
-    /// Build an MLS identity whose leaf credential binds the member `did` to
-    /// this device's transport `endpoint_id` (the iroh QUIC key). This binding
-    /// is what makes the roster gate *cryptographic* rather than provisioned:
-    /// once the Owner authorises the Add, the leaf is MLS-authenticated, so a
-    /// peer that the QUIC handshake proves holds `endpoint_id` resolves — via
-    /// [`endpoint_owner`] — to exactly this member. The pairing ceremony
-    /// ([`crate::p2p::pair`]) is what authenticates `endpoint_id` as the
-    /// joiner's real key before the Owner ever builds this credential.
+    /// Build an MLS identity for the device whose transport key is `endpoint_id`
+    /// (the iroh QUIC key, which is also the did:crdt device key). The member's
+    /// **DID is derived** from that key — `did:crdt:blake3(genesis ‖ key)` — so
+    /// it is *self-certifying*, not an assigned label: controlling `endpoint_id`
+    /// (which the QUIC handshake proves) proves control of the DID. The leaf
+    /// credential binds `did ‖ endpoint_id`; once the Owner admits it the leaf
+    /// is MLS-authenticated, so [`endpoint_owner`] resolves an authenticated
+    /// endpoint to a DID whose ownership is cryptographic, not provisioned.
     ///
     /// The leaf signing key is a *separate* fresh Ed25519 keypair (NOT the
-    /// transport key — cross-protocol key reuse is deliberately avoided; the
-    /// binding is by credential content, reviewed under Q1/Q7).
-    pub fn new(did: &str, endpoint_id: &[u8; 32]) -> Result<GroupIdentity> {
+    /// transport/DID key — cross-protocol key reuse is deliberately avoided).
+    ///
+    /// Single-device today. Multi-device (several endpoint keys under one DID)
+    /// is the did:crdt verification-method set, which needs signed deltas
+    /// (REQ-500, gated on Q11).
+    pub fn new(endpoint_id: &[u8; 32]) -> Result<GroupIdentity> {
+        let did = derive_did(endpoint_id)?;
         let signer = SignatureKeyPair::new(SignatureScheme::ED25519)
             .map_err(|e| anyhow!("generate MLS signer: {e:?}"))?;
         let credential = CredentialWithKey {
-            credential: BasicCredential::new(encode_credential(did, endpoint_id)).into(),
+            credential: BasicCredential::new(encode_credential(&did, endpoint_id)).into(),
             signature_key: signer.public().into(),
         };
         Ok(GroupIdentity {
             signer,
             credential,
-            did: did.to_string(),
+            did,
             endpoint_id: *endpoint_id,
         })
     }
+}
+
+/// The canonical did:crdt DID for a device key: `did:crdt:blake3(genesis ‖ key)`
+/// (via [`crate::p2p::identity`]). A pure, deterministic function of the key —
+/// this is what makes a DID *self-certifying* against the key that controls it.
+pub fn derive_did(endpoint_id: &[u8; 32]) -> Result<String> {
+    Ok(crate::p2p::identity::MemberIdentity::genesis(endpoint_id)?.did())
+}
+
+/// Verify a claimed DID is genuinely the content-address of `endpoint_id` — the
+/// check that turns an Owner-asserted label into a self-verified identity. Used
+/// at admission so no leaf can ever carry a DID it does not cryptographically
+/// own.
+pub fn verify_did_binding(did: &str, endpoint_id: &[u8; 32]) -> bool {
+    derive_did(endpoint_id).is_ok_and(|expected| expected == did)
 }
 
 /// The leaf-credential grammar (LangSec — a defined format at the membership
@@ -184,7 +203,6 @@ pub fn build_key_package(
 pub fn key_package_from_bytes(
     provider: &OpenMlsRustCrypto,
     bytes: &[u8],
-    expected_did: &str,
     expected_endpoint: &[u8; 32],
 ) -> Result<KeyPackage> {
     let kp_in = KeyPackageIn::tls_deserialize_exact(bytes)
@@ -193,17 +211,21 @@ pub fn key_package_from_bytes(
     let kp = kp_in
         .validate(provider.crypto(), ProtocolVersion::Mls10)
         .map_err(|e| anyhow!("validate key package: {e:?}"))?;
-    // Recognise the credential grammar, then verify BOTH bound facts against
-    // what pairing authenticated: the joiner's DID *and* the joiner's transport
-    // endpoint id. Verifying the endpoint here is what stops a joiner binding a
-    // key they do not control (claiming another device's endpoint) — the leaf
-    // this becomes is the sole cryptographic source for [`endpoint_owner`].
+    // Recognise the credential grammar, then verify the two facts that make the
+    // member's identity cryptographic rather than assigned:
+    //   1. the bound endpoint is the one pairing authenticated (the joiner
+    //      controls it), and
+    //   2. the bound DID is the *self-certifying* content-address of that
+    //      endpoint — so the leaf cannot carry a DID it does not own (no Owner
+    //      labelling, no impersonation of another member's DID).
+    // The leaf this becomes is the sole cryptographic source for
+    // [`endpoint_owner`], so a DID it yields is a verified identity.
     let (did, endpoint) = decode_credential(kp.leaf_node().credential().serialized_content())?;
-    if did != expected_did {
-        anyhow::bail!("key package credential DID != authenticated DID {expected_did}");
-    }
     if &endpoint != expected_endpoint {
         anyhow::bail!("key package credential endpoint != pairing-authenticated endpoint");
+    }
+    if !verify_did_binding(&did, &endpoint) {
+        anyhow::bail!("key package DID is not the self-certifying address of its endpoint key");
     }
     Ok(kp)
 }
@@ -407,16 +429,18 @@ mod tests {
     fn create_add_join() {
         let op = provider();
         let bp = provider();
-        let owner = GroupIdentity::new("did:crdt:owner", &[1u8; 32]).unwrap();
-        let bob = GroupIdentity::new("did:crdt:bob", &[2u8; 32]).unwrap();
+        let owner = GroupIdentity::new(&[1u8; 32]).unwrap();
+        let bob = GroupIdentity::new(&[2u8; 32]).unwrap();
 
         let mut group = create_group(&op, &owner, VAULT).unwrap();
-        assert_eq!(member_dids(&group), vec!["did:crdt:owner".to_string()]);
+        assert_eq!(member_dids(&group), vec![owner.did.clone()]);
+        // The DID is self-certifying — the content-address of the device key —
+        // not an assigned string (REQ-497).
+        assert!(verify_did_binding(&owner.did, &[1u8; 32]));
+        assert!(!verify_did_binding(&owner.did, &[2u8; 32]), "owner DID is not bob's key");
 
         let (_kb, kp_bytes) = build_key_package(&bp, &bob).unwrap();
-        // REQ-497: a mismatched DID is rejected at admission.
-        assert!(key_package_from_bytes(&op, &kp_bytes, "did:crdt:wrong", &bob.endpoint_id).is_err());
-        let kp = key_package_from_bytes(&op, &kp_bytes, &bob.did, &bob.endpoint_id).unwrap();
+        let kp = key_package_from_bytes(&op, &kp_bytes, &bob.endpoint_id).unwrap();
 
         let (_commit, welcome) = add_member(&op, &mut group, &owner, kp).unwrap();
         let bob_group = join_from_welcome(&bp, &welcome, &owner.did).unwrap();
@@ -437,24 +461,26 @@ mod tests {
     fn endpoint_resolves_to_member_only() {
         let op = provider();
         let bp = provider();
-        let owner = GroupIdentity::new("did:crdt:owner", &[1u8; 32]).unwrap();
-        let bob = GroupIdentity::new("did:crdt:bob", &[2u8; 32]).unwrap();
+        let owner = GroupIdentity::new(&[1u8; 32]).unwrap();
+        let bob = GroupIdentity::new(&[2u8; 32]).unwrap();
 
         let mut group = create_group(&op, &owner, VAULT).unwrap();
         let (_kb, kp_bytes) = build_key_package(&bp, &bob).unwrap();
 
-        // Admission binds BOTH the DID and the pairing-authenticated endpoint:
-        // a KeyPackage whose credential endpoint does not match is refused.
+        // A KeyPackage validated against an endpoint that isn't the one it binds
+        // is refused (the joiner must control the endpoint it claims).
         assert!(
-            key_package_from_bytes(&op, &kp_bytes, &bob.did, &[9u8; 32]).is_err(),
+            key_package_from_bytes(&op, &kp_bytes, &[9u8; 32]).is_err(),
             "endpoint mismatch at admission must be rejected"
         );
-        let kp = key_package_from_bytes(&op, &kp_bytes, &bob.did, &bob.endpoint_id).unwrap();
+        let kp = key_package_from_bytes(&op, &kp_bytes, &bob.endpoint_id).unwrap();
         add_member(&op, &mut group, &owner, kp).unwrap();
 
-        // The owner's and bob's authenticated endpoints resolve to their DIDs.
-        assert_eq!(endpoint_owner(&group, &[1u8; 32]).as_deref(), Some("did:crdt:owner"));
-        assert_eq!(endpoint_owner(&group, &[2u8; 32]).as_deref(), Some("did:crdt:bob"));
+        // Each authenticated endpoint resolves to the self-certifying DID that
+        // its key derives — verifiably, not by label.
+        assert_eq!(endpoint_owner(&group, &[1u8; 32]), Some(owner.did.clone()));
+        assert_eq!(endpoint_owner(&group, &[2u8; 32]), Some(bob.did.clone()));
+        assert_eq!(endpoint_owner(&group, &[1u8; 32]).as_deref(), Some(derive_did(&[1u8; 32]).unwrap().as_str()));
         // A stranger's endpoint resolves to nothing — a resolved address is not
         // membership.
         assert_eq!(endpoint_owner(&group, &[42u8; 32]), None);
@@ -469,19 +495,19 @@ mod tests {
         let op = provider();
         let bp = provider();
         let cp = provider();
-        let owner = GroupIdentity::new("did:crdt:owner", &[1u8; 32]).unwrap();
-        let bob = GroupIdentity::new("did:crdt:bob", &[2u8; 32]).unwrap();
-        let carol = GroupIdentity::new("did:crdt:carol", &[3u8; 32]).unwrap();
+        let owner = GroupIdentity::new(&[1u8; 32]).unwrap();
+        let bob = GroupIdentity::new(&[2u8; 32]).unwrap();
+        let carol = GroupIdentity::new(&[3u8; 32]).unwrap();
 
         let mut group = create_group(&op, &owner, VAULT).unwrap();
         let (_kb, kp_bytes) = build_key_package(&bp, &bob).unwrap();
-        let kp = key_package_from_bytes(&op, &kp_bytes, &bob.did, &bob.endpoint_id).unwrap();
+        let kp = key_package_from_bytes(&op, &kp_bytes, &bob.endpoint_id).unwrap();
         let (_c, welcome) = add_member(&op, &mut group, &owner, kp).unwrap();
         let mut bob_group = join_from_welcome(&bp, &welcome, &owner.did).unwrap();
 
         // Bob (a non-Owner, leaf 1) tries to add Carol → the Owner rejects it.
         let (_ck, carol_kp_bytes) = build_key_package(&cp, &carol).unwrap();
-        let carol_kp = key_package_from_bytes(&bp, &carol_kp_bytes, &carol.did, &carol.endpoint_id).unwrap();
+        let carol_kp = key_package_from_bytes(&bp, &carol_kp_bytes, &carol.endpoint_id).unwrap();
         let (bob_commit, _w) = add_member(&bp, &mut bob_group, &bob, carol_kp).unwrap();
         let err = process_commit(&op, &mut group, &bob_commit, &owner.did);
         assert!(err.is_err(), "a non-Owner commit must be rejected: {err:?}");
@@ -493,18 +519,18 @@ mod tests {
     fn owner_removes_member() {
         let op = provider();
         let bp = provider();
-        let owner = GroupIdentity::new("did:crdt:owner", &[1u8; 32]).unwrap();
-        let bob = GroupIdentity::new("did:crdt:bob", &[2u8; 32]).unwrap();
+        let owner = GroupIdentity::new(&[1u8; 32]).unwrap();
+        let bob = GroupIdentity::new(&[2u8; 32]).unwrap();
 
         let mut group = create_group(&op, &owner, VAULT).unwrap();
         let (_kb, kp_bytes) = build_key_package(&bp, &bob).unwrap();
-        let kp = key_package_from_bytes(&op, &kp_bytes, &bob.did, &bob.endpoint_id).unwrap();
+        let kp = key_package_from_bytes(&op, &kp_bytes, &bob.endpoint_id).unwrap();
         add_member(&op, &mut group, &owner, kp).unwrap();
         assert_eq!(member_dids(&group).len(), 2);
         let epoch_before = group.epoch();
 
         remove_member(&op, &mut group, &owner, &bob.did).unwrap();
-        assert_eq!(member_dids(&group), vec!["did:crdt:owner".to_string()]);
+        assert_eq!(member_dids(&group), vec![owner.did.clone()]);
         assert!(group.epoch() > epoch_before, "removal advances the epoch");
     }
 
@@ -516,14 +542,14 @@ mod tests {
         let op = provider();
         let bp = provider();
         let ep = provider();
-        let owner = GroupIdentity::new("did:crdt:owner", &[1u8; 32]).unwrap();
-        let bob = GroupIdentity::new("did:crdt:bob", &[2u8; 32]).unwrap();
-        let eve = GroupIdentity::new("did:crdt:eve", &[4u8; 32]).unwrap();
+        let owner = GroupIdentity::new(&[1u8; 32]).unwrap();
+        let bob = GroupIdentity::new(&[2u8; 32]).unwrap();
+        let eve = GroupIdentity::new(&[4u8; 32]).unwrap();
 
         // Owner + Bob share one group; Eve is outside it entirely.
         let mut group = create_group(&op, &owner, VAULT).unwrap();
         let (_kb, kp_bytes) = build_key_package(&bp, &bob).unwrap();
-        let kp = key_package_from_bytes(&op, &kp_bytes, &bob.did, &bob.endpoint_id).unwrap();
+        let kp = key_package_from_bytes(&op, &kp_bytes, &bob.endpoint_id).unwrap();
         let (_commit, welcome) = add_member(&op, &mut group, &owner, kp).unwrap();
         let mut bob_group = join_from_welcome(&bp, &welcome, &owner.did).unwrap();
         let mut eve_group = create_group(&ep, &eve, VAULT).unwrap();
