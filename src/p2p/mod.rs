@@ -22,4 +22,5 @@
 pub mod group;
 pub mod identity;
 pub mod pair;
+pub mod revocation;
 pub mod roster;

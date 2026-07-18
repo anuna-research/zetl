@@ -253,3 +253,7 @@
 (claims agent:claude
   :at "2026-07-18T06:15:18Z"
   (given implemented-unreviewed-t10-roster-role-gate-2-tests))
+
+(claims agent:claude
+  :at "2026-07-18T06:17:04Z"
+  (given implemented-unreviewed-t13-durable-rotation-outbox-req506-2-tests))
