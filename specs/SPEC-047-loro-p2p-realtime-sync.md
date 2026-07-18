@@ -2,8 +2,8 @@
 id: SPEC-047
 title: "Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing"
 status: draft
-version: 0.13.0-strawman
-last-updated: 2026-07-13
+version: 0.16.0-strawman
+last-updated: 2026-07-18
 ---
 
 # SPEC-047: Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing
@@ -59,7 +59,8 @@ Decisions:    [[#ADR-470 Loro as Canonical Store Markdown+Git as Export]] ·
               [[#ADR-477 Single Per-Vault Group Key]] ·
               [[#ADR-478 Merkle DAG as Convergence Witness and Reconciliation Index]] ·
               [[#ADR-479 CBCL as the Control-Plane Message Language]] ·
-              [[#ADR-481 did:crdt as the Member Identity Layer]] (auth-core · human-gated)
+              [[#ADR-481 did:crdt as the Member Identity Layer]] (auth-core · human-gated) ·
+              [[#ADR-482 MLS for Group Key Agreement and Membership Commits]] (crypto · human-gated, stakeholder-directed)
 Load-bearing: [[#REQ-491 SPAKE2 Channel Authentication]] (the pairing secret) ·
               [[#REQ-476 DHT-Bootstrapped SPAKE2 Pairing]] (rendezvous discovery) ·
               [[#REQ-477 Phrase OOB-Only Non-Leak]] ·
@@ -87,14 +88,14 @@ capitals.
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | SPEC-047                                                                                |
 | Title        | Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing         |
-| Version      | 0.13.0-strawman                                                                          |
+| Version      | 0.16.0-strawman                                                                          |
 | Status       | Draft (strawman; pending DESIGN-047 execution)                                          |
 | Author       | Agent (Claude Opus 4.8 [1M]) under [[PROTO-001]] v1.11.0                                |
 | Audience     | Agent, Human                                                                            |
 | Trace        | [[PROTO-001]] §Phase 1, §Phase 2, §AI Trust Boundaries                                  |
 | Parent       | [[SPEC-020]] Multi-User Collaborative Editing                                           |
 | Supersedes   | [[SPEC-004]] Distributed Sync (see [[#ADR-475 Supersede SPEC-004 Goblins OCapN Sidecar]]) |
-| Related      | [[SPEC-034]], [[SPEC-036-spake2-onboarding]], [[SPEC-040-zetl-mobile]], [[SPEC-041-pluggable-collab-auth]] |
+| Related      | [[SPEC-034]], [[SPEC-036-spake2-onboarding]], [[SPEC-040-zetl-mobile]], [[SPEC-041-pluggable-collab-auth]]; downstream implementation evidence: [[elephant-3000]] (`../elephant-3000`, whose SPEC-002/SPEC-004 name this spec as their pattern source — F67–F71) |
 | Plan         | `plans/DESIGN-047-loro-p2p-realtime-sync.spl`                                           |
 | Review tier  | Tier 1 (cryptography + authentication core + network trust boundary)                    |
 
@@ -155,15 +156,17 @@ with deterministic [[Materialization]] to Markdown; a [[P2P]] sync engine
 ([[Version Vector]] delta sync + [[Ephemeral Store]] presence); [[pkarr]]/[[Mainline DHT]]
 discovery; a [[did:crdt]] member-identity layer over device [[NodeId]]s
 ([[#ADR-481 did:crdt as the Member Identity Layer]]); serverless [[SPAKE2]]
-pairing into a per-vault [[Group Key]]; CLI
+pairing into a per-vault [[Group Key]] managed by an [[MLS]] group
+([[#ADR-482 MLS for Group Key Agreement and Membership Commits]]); CLI
 under the existing groups — `zetl daemon {start,stop,status}` (mirroring
 `zetl serve`) and `zetl collab {pair,join,peers,revoke}` (extending the existing
 `zetl collab` group, reusing SPEC-036's `zetl collab join`) per
 [[#ADR-480 CLI Surface Follows Existing zetl Conventions]]; input grammars,
 threat model, observability.
 
-**Out of scope (successor specs):** pairwise web-of-trust ACLs
-([[#ADR-477 Single Per-Vault Group Key]]); multi-user as a *v1* milestone
+**Out of scope (successor specs):** pairwise web-of-trust ACLs and
+delegatable admission authority
+([[#ADR-477 Single Per-Vault Group Key]], F66); multi-user as a *v1* milestone
 (machinery supports it; v1 targets multi-device); migration tooling from
 [[diamond-types]]; mobile daemon packaging beyond noted constraints; relay
 operation/federation; **runtime dialect gossip** — v1 ships the [[CBCL]] dialects
@@ -198,7 +201,9 @@ with the CLI binary, peer-to-peer dialect propagation is deferred
 
 - **Role:** Controls vault [[Group Key]] membership.
 - **Goals:** Pair devices/peers; audit the roster; revoke so sync actually stops
-  (enforceable among honest daemons — membership authority is local policy, not
+  (enforceable among honest daemons — [[#REQ-505 Role-Gated Membership Authority]]
+  makes honest verifiers reject non-owner membership commits; against a
+  malicious key-holder membership authority remains local policy, not
   cryptography, until the web-of-trust successor; [[#12. Threat Model]] §N).
 - **Constraints:** Owns the vault; drives `zetl collab pair`/`zetl collab revoke`.
 - **Daily workflow:** pair on demand → audit `zetl collab peers` → revoke on loss.
@@ -502,7 +507,9 @@ it to surviving roster members, FOR the [[users/vault-owner/user|Owner]], WITHIN
 [[#NFR-474 Revocation Propagation]] and such that the revoked [[NodeId]] cannot
 decrypt post-revocation sync (enforced on the wire by
 [[#REQ-499 Group-Keyed Sync Frames]] — the rotated key actually seals every
-sync frame; F46).
+sync frame; F46). Mechanism: the rotation is the Owner's [[MLS]] Remove
+commit for the revoked device's leaf, which advances the group epoch
+([[#ADR-482 MLS for Group Key Agreement and Membership Commits]]).
 
 **Trace:** [[#TEST-481a]], [[#TEST-481b]], [[#TEST-481c]], [[#CON-477 Group Key Roster and Revocation]], [[#OBS-477 Roster audit]].
 
@@ -771,17 +778,18 @@ on-roster [[did:crdt]] document as a revocation event that rotates the
 accepted key-removal delta, WITH the removed [[NodeId]] unable to decrypt
 post-rotation sync — composing the DID layer's key revocation with the
 transport layer's epoch rotation so neither can silently lag the other
-([[#18. Open Questions]] Q11). Rotation is a first-class **rotation event**,
-not a local side effect of delta acceptance: the device that authors the
-key-removal delta also authors one signed rotation event
-`{rotation_id = removal-delta id, new key_epoch, survivor envelopes}`;
-receivers apply it **idempotently keyed on `rotation_id`** — CRDT delivery may
-present the same signed removal any number of times, and re-delivery MUST NOT
-advance the epoch again, nor may a receiving peer mint its own fresh key for
-someone else's removal (partitioned peers independently generating different
-keys for one removal would never converge — F49). Concurrent rotation events
-from *distinct* removals order by the epoch-precedence rule of the Q7
-group-key package.
+([[#18. Open Questions]] Q11). Mechanism
+([[#ADR-482 MLS for Group Key Agreement and Membership Commits]]): the
+rotation is the Owner's [[MLS]] **Remove commit** for the removed
+device's leaf, issued by the Owner's daemon on accepting the key-removal
+delta. This dissolves the former bespoke rotation-event design (F49's
+`rotation_id` dedup and the concurrent-removal epoch-precedence rule):
+commits are totally epoch-ordered, so a re-delivered commit targets a
+past epoch and is discarded, and partitioned peers can never mint
+divergent keys — they only ever apply the Owner's commit. Residual
+(Q11/§O): a key-removal delta that converges while every Owner device is
+offline leaves the rotation pending until an Owner device commits — the
+removed key stays inside the group for that window.
 
 **Trace:** [[#TEST-498a]], [[#TEST-498b]], [[#TEST-498c]], [[#CON-477 Group Key Roster and Revocation]], [[#OBS-477 Roster audit]], [[#OBS-482 Identity verification]].
 
@@ -796,7 +804,11 @@ alone cannot deliver the post-revocation undecryptability of
 [[#REQ-481 Revocation by Key Rotation]] and
 [[#REQ-498 DID Key Removal Triggers Key Rotation]] — rotating a key that never
 protects sync frames protects nothing; the group-key AEAD is what makes
-[[#TEST-481c]] and [[#TEST-498b]] satisfiable (F46). Presence frames remain
+[[#TEST-481c]] and [[#TEST-498b]] satisfiable (F46). The epoch data key is
+distributed to members as an [[MLS]] application message in the current
+epoch, so a removed leaf never receives the post-rotation key
+([[#ADR-482 MLS for Group Key Agreement and Membership Commits]]).
+Presence frames remain
 control-plane [[CBCL]] over the roster-gated channel (session metadata, not
 vault content).
 
@@ -815,7 +827,12 @@ everywhere (accepted — K was valid in the delta's causal past — while the
 removal still rotates the epoch per
 [[#REQ-498 DID Key Removal Triggers Key Rotation]]); the residual — a
 compromised key back-dating its causal context — joins the Q11 human
-auth-core review ([[#18. Open Questions]] Q11).
+auth-core review ([[#18. Open Questions]] Q11). Scope
+([[#ADR-482 MLS for Group Key Agreement and Membership Commits]]): this
+order-independence governs [[did:crdt]] *deltas*; roster **membership
+commits** are totally epoch-ordered per
+[[#REQ-502 Replicated Signed Roster]] and are not merged under these
+semantics.
 
 **Trace:** [[#TEST-500a]], [[#TEST-500b]], [[#CON-477 Group Key Roster and Revocation]], [[#OBS-482 Identity verification]].
 
@@ -838,26 +855,33 @@ connection-state exhaustion (F52/F62).
 
 ### REQ-502: Replicated Signed Roster
 
-The system SHALL replicate vault membership as a log of **signed membership
-events** — an *admission event* authored by the pairing device (binding the
-completed [[SPAKE2]] ceremony transcript, the new member's [[did:crdt]]
-genesis or added verification method, and the roster entry) and a *removal
-event* (the rotation event of
-[[#REQ-498 DID Key Removal Triggers Key Rotation]]) — exchanged over the
-roster-gated encrypted channel and merged under the order-independent
-semantics of [[#REQ-500 Order-Independent DID Authorization]], FOR every
-roster mutation, WITH any two peers holding the same event set deriving an
-identical roster (members, devices, roles, `key_epoch`) and a third peer
-accepting a member it never paired with only via an admission event whose
-author is, in the event's causal context, an on-roster device (F60). This is
-what makes third-peer admission coherent: after A pairs C, B receives C's
-genesis *carried by A's signed admission event* — the ceremony-only genesis
-rule of [[#8.10 did:crdt Delta]] binds the *pairing devices*; everyone else
-verifies the admission event instead. The local
-[[#8.7 Roster Schema]] TOML is a **projection cache** of this log, never the
-authority. Conflict rule: concurrent admission and removal of the same
-device resolves removal-wins (fail-closed), then epoch precedence per the Q7
-package.
+The system SHALL replicate vault membership as the Owner's totally-ordered
+sequence of signed [[MLS]] **membership commits** — an Add commit on
+admission (issued inside the completed [[SPAKE2]] ceremony), a Remove
+commit on device or member removal
+([[#ADR-482 MLS for Group Key Agreement and Membership Commits]]) —
+carried on a replicated **membership lane** of the vault's [[Loro]] store
+and processed strictly in epoch order, FOR every roster mutation, WITH a
+commit for a future epoch buffered until its predecessors arrive, a
+commit at or below the local epoch discarded as already applied
+(re-delivery idempotent), any two peers having processed the same commit
+prefix deriving an identical roster (members, devices, roles,
+`key_epoch` = MLS epoch), and a third peer accepting a member it never
+paired with only by processing the Owner's Add commit for that member's
+leaf, authorised per
+[[#REQ-505 Role-Gated Membership Authority]] (F60/F66). This is what
+makes third-peer admission coherent: after A pairs C, B applies the
+Owner's Add commit from the lane on reconnect — the ceremony-only
+genesis rule of [[#8.10 did:crdt Delta]] binds the *pairing devices*;
+everyone else verifies the commit. Welcome messages never ride the lane
+(they travel only inside the pairing ceremony —
+[[#CON-474 Pairing Protocol]]); epoch data-key application messages do.
+The local [[#8.7 Roster Schema]] TOML is a **projection cache** of MLS
+group state × [[did:crdt]] documents, never the authority. Total epoch
+order supersedes the former order-independent membership-event merge:
+F60's causal-context authorisation and the removal-wins /
+epoch-precedence conflict rules survive only for [[did:crdt]] deltas
+under [[#REQ-500 Order-Independent DID Authorization]].
 
 **Trace:** [[#TEST-502a]], [[#TEST-502b]], [[#TEST-502c]], [[#CON-477 Group Key Roster and Revocation]], [[#OBS-477 Roster audit]], [[#OBS-482 Identity verification]].
 
@@ -904,6 +928,78 @@ the exact collision-disambiguation rule are
 Q12).
 
 **Trace:** [[#TEST-504a]], [[#TEST-504b]], [[#TEST-504c]], [[#CON-471 Loro Store and Materialisation]], [[#CON-473 Peer Session]], [[#OBS-471 Materialisation]], [[#OBS-472 Sync convergence]].
+
+### REQ-505: Role-Gated Membership Authority
+
+The system SHALL accept a membership commit ([[#8.12 Membership Commit]])
+only when its sender leaf's signature key resolves, through the roster
+projection at the commit's epoch, to a device of the `owner`-role member
+(sole-committer — [[#ADR-482 MLS for Group Key Agreement and Membership Commits]];
+a member manages their *own* device set by self-scoped [[did:crdt]] delta,
+which the Owner's daemon realises as the corresponding Remove commit per
+[[#REQ-498 DID Key Removal Triggers Key Rotation]]),
+FOR every received membership commit, WITH the roster `role` field taking
+exactly the values `owner | member`, fixed at admission (no role-mutation
+events in v1; vault genesis creates the group with the Owner's DID as
+`owner` and the creating device as the first leaf, *its [[NodeId]] on the
+roster* — F70: a genesis
+that omits the Owner's own device leaves the
+[[#REQ-492 Roster Gate Before Vault Frame]] gate refusing the Owner's
+sessions in both directions, the composed-loop defect `../elephant-3000`
+hit as its BUG-002 and caught only by a two-daemon end-to-end test), and
+an unauthorised commit rejected as `unauthorized-author` before it mutates
+roster state. Authority is judged from the commit's *sender-leaf signature
+key* resolved through the roster projection — never from any
+author-identity field the commit declares about itself: an identity string
+is attacker-chosen, and authorising on it admits an impersonation that
+key-resolution refuses (F67; `../elephant-3000` enforces its equivalent
+steward-only rule by MLS leaf index rather than credential-string
+comparison for exactly this reason, with a regression test for the
+forged-credential case).
+Rationale (F66): the Owner-only policy of [[#CON-474 Pairing Protocol]] C1
+bound only the *authoring* CLI, while the acceptance rule of
+[[#REQ-502 Replicated Signed Roster]] validated **any** on-roster author —
+so a compromised non-owner daemon (threat §D, a strictly weaker adversary
+than §N's malicious key-holder) could author admission events every honest
+peer accepted. This gate makes non-delegatable admission enforceable *among
+honest verifiers at the replication boundary*, not just at the command line.
+Excluded from the gate: a member's [[did:crdt]] delta adding or removing a
+verification method of their **own** DID
+([[#ADR-481 did:crdt as the Member Identity Layer]]) — self-scoped device
+management is member-delegated by design and is not membership authority.
+Role checking binds honest verifiers only; the §N key-holder residual
+(sealing the [[Group Key]] onward, forking the roster) is unchanged, and
+*delegatable* admission — owner-granted admission rights, transitive trust
+chains — is explicitly deferred to the web-of-trust successor of
+[[#ADR-477 Single Per-Vault Group Key]], where [[did:crdt]] controller
+proofs give delegation an authenticated substrate.
+
+**Trace:** [[#TEST-505a]], [[#TEST-505b]], [[#TEST-505c]], [[#CON-477 Group Key Roster and Revocation]], [[#OBS-477 Roster audit]], [[#OBS-482 Identity verification]].
+
+### REQ-506: Durable Epoch Rotation
+
+The system SHALL record every [[Group Key]] rotation durably — the
+signed [[MLS]] commit
+([[#ADR-482 MLS for Group Key Agreement and Membership Commits]]) and,
+for a removal, the pre-rotation epoch — BEFORE the
+rotating daemon advances its own epoch, completing the publish and
+re-seal exactly once on crash recovery, FOR every rotation of
+[[#REQ-481 Revocation by Key Rotation]] and
+[[#REQ-498 DID Key Removal Triggers Key Rotation]], WITH a daemon that
+crashes between advancing its own epoch and publishing the rotation
+never leaving surviving peers stranded behind the new epoch (unable to
+decrypt [[#REQ-499 Group-Keyed Sync Frames]] payloads or process later
+rotations), and recovery guarded by the recorded pre-rotation epoch so
+an interrupted rotation is completed, never repeated (F68 — REQ-481/498
+specified *what* rotates but no durability ordering, so a crash mid-
+rotation could strand the vault). Pattern source: the transactional
+outbox of `../elephant-3000` (its SPEC-004 REQ-306 /
+`e2ee::recover_outbox`) — the commit is written and fsynced before the
+local epoch merge; recovery republishes the exact recorded bytes and
+completes the key rotation at most once, keyed on the recorded
+pre-rotation generation.
+
+**Trace:** [[#TEST-506a]], [[#TEST-506b]], [[#CON-477 Group Key Roster and Revocation]], [[#OBS-477 Roster audit]].
 
 ---
 
@@ -1150,15 +1246,23 @@ so the omission is a decision.
 **Options:** (A) one per-vault [[Group Key]]; (B) pairwise per-edge keys with
 per-folder/role scoping ([[SPEC-036-spake2-onboarding]] style).
 
-**Decision:** (A). Membership = roster; revocation = rotate + re-seal. (B)
+**Decision:** (A). Membership = roster; revocation = rotate + re-seal
+(mechanism: [[#ADR-482 MLS for Group Key Agreement and Membership Commits]]). (B)
 deferred (heavier key management; YAGNI until demand).
 
 **Consequences:** (−) Any member reads the whole vault; revocation is coarse;
 **admission authority is unenforceable against a malicious member** — any
 key-holder can seal the [[Group Key]] onward or fork the roster, so
 Owner-controlled membership binds honest daemons only
-([[#12. Threat Model]] §N, F34); the write/admission dual moves to the
-web-of-trust successor along with (B).
+([[#12. Threat Model]] §N, F34) — though among honest verifiers it is now
+enforced at the replication boundary, not just the CLI
+([[#REQ-505 Role-Gated Membership Authority]], F66); the write/admission
+dual moves to the web-of-trust successor along with (B). **Admission
+authority is non-delegatable in v1** (F66): owner-granted admission rights
+and transitive trust chains are deferred to that same successor — they are
+precisely the transitive-authority problem it owns, and no v1 user goal
+traces to them ([[users/vault-owner/user|Owner]] profile: "controls
+membership"; the roster `role` field is the recorded extension point).
 
 ### ADR-478: Merkle DAG as Convergence Witness and Reconciliation Index
 
@@ -1265,7 +1369,14 @@ frame (~50 µs each on commodity hardware — well inside
 [[#NFR-477 Remote Edit Propagation Latency]]'s budget; recorded so the cost is
 a decision, not an accident — F37). (−) Adds a Tier-1
 dependency whose attestation/R4 path is auth-core and must be in the
-human-review package.
+human-review package. (−) Divergent downstream evidence (0.15.0):
+`../elephant-3000` evaluated [[CBCL]] for its *local* control plane and
+chose loopback HTTP + bearer token instead (its ADR-106), arguing R1–R5
+earn their weight only at the inter-agent trust boundary, not same-user
+loopback. The decision here stands — one recogniser across local and
+network planes is this ADR's warrant — but DESIGN-047
+`adr-control-proto` MUST confirm the local-plane choice explicitly
+against that argument rather than inherit it silently.
 
 ### ADR-480: CLI Surface Follows Existing zetl Conventions
 
@@ -1333,7 +1444,12 @@ methods (fees, confirmation delay — the coordination did-crdt exists to avoid)
 **Decision:** (B). One [[did:crdt]] document per member; the roster maps
 DID → {devices, role, added_at, key_epoch} and a device [[NodeId]] is admitted
 only as a currently-valid verification method of an on-roster DID
-([[#REQ-497 DID-Bound Member Identity]]). Pairing a new device adds a
+([[#REQ-497 DID-Bound Member Identity]]). `role` takes exactly
+`owner | member`, is fixed at admission (vault genesis mints the `owner`;
+no role-mutation events in v1), and authorises exactly one thing:
+membership commits per [[#REQ-505 Role-Gated Membership Authority]] —
+delegatable admission is deferred with
+[[#ADR-477 Single Per-Vault Group Key]]'s successor (F66). Pairing a new device adds a
 verification method (a signed delta authored by an existing device key);
 losing a device removes one, which MUST also rotate the [[Group Key]] epoch
 ([[#REQ-498 DID Key Removal Triggers Key Rotation]]). DID deltas are exchanged
@@ -1361,6 +1477,76 @@ member's whole device fleet — it MUST NOT be published to the public DHT
 (threat §P). (−) `zetl collab revoke` grows a member-level form
 (`revoke <did>` vs device-level `revoke <nodeid>`) — CLI detail deferred to
 DESIGN-047 `adr-identity`.
+
+### ADR-482: MLS for Group Key Agreement and Membership Commits
+
+**`[Provisional — DESIGN-047 task adr-group-key]` · No-go area: group
+cryptography, human review required. Adopted on stakeholder direction
+(2026-07-18), following the prior-art review of `../elephant-3000`
+(0.15.0).** · **Status:** Proposed
+
+**Context:** The Q7 group-key package asked the human crypto review to
+bless a bespoke sealed-sender scheme plus hand-rolled epoch, rotation, and
+re-seal rules — the most dangerous novel construction in the spec.
+`../elephant-3000` (its SPEC-004) implements the same requirement shape
+with [[MLS]] (RFC 9420, openmls 0.8) under a sole-committer rule, and
+0.14.0's [[#REQ-505 Role-Gated Membership Authority]] already fixed
+membership authority as Owner-only *for policy reasons* — so MLS's main
+P2P weakness (multi-committer fork resolution) costs zetl nothing.
+
+**Options:** (A) bespoke sealed-sender group key (status quo — novel
+Tier-1 crypto, all of Q7 open); (B) **[[MLS]] via openmls, Owner as sole
+committer** — one group per vault, leaf per *device*, credential = the
+member's [[did:crdt]] DID; (C) MLS with multi-committer + fork
+resolution (dMLS) — more machinery than the v1 authority model permits.
+
+**Decision:** (B). One MLS group per vault (`group_id` = vault id,
+ciphersuite `[Provisional: MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519]`,
+leaf keys HKDF-derived per vault from the device identity seed — never
+the [[NodeId]] key itself, no cross-protocol reuse). One **leaf per
+device**; the leaf credential carries the member's DID, and admission
+verifies the leaf key is a current verification method of that DID
+([[#REQ-497 DID-Bound Member Identity]]). Only devices of the
+`owner`-role member commit (Add, Remove — [[#REQ-505 Role-Gated Membership Authority]]);
+commit authorisation resolves the sender **leaf**'s signature key through
+the roster projection to the owner DID — never credential-string equality
+(F67). Commits ride a replicated **membership lane** of the vault's
+[[Loro]] store, processed strictly in epoch order
+([[#REQ-502 Replicated Signed Roster]]); Welcome messages travel only
+inside the pairing ceremony ([[#CON-474 Pairing Protocol]]). Data-plane
+composition: MLS distributes the current **epoch data key** as an
+application message; sync frames stay AEAD-sealed under it with
+`key_epoch` (= MLS epoch) and vault id in the associated data —
+[[#REQ-499 Group-Keyed Sync Frames]] unchanged. No key-history keybook:
+content at rest is plaintext on member disks
+([[#ADR-476 Encryption at Rest is Opt-In]]) and a joiner receives history
+over a session sealed under the *current* epoch, so only the current
+generation is ever distributed (simpler than elephant's full-history
+keybook — a deliberate divergence, recorded).
+
+**Consequences:** (+) The human review audits a composition
+(SPAKE2 ∘ MLS ∘ did:crdt) instead of a novel construction; Simplicity
+Ladder rung 4 (openmls + the elephant/hark durable-provider pattern) on
+the highest-risk component. (+) Total epoch order collapses the
+F48/F49/F60 order-independent *membership* machinery: removal-wins,
+rotation-event dedup, and concurrent-removal epoch precedence dissolve
+into "process the Owner's commits in order, buffer ahead, discard
+behind"; [[#REQ-500 Order-Independent DID Authorization]] rescopes to
+[[did:crdt]] deltas only. (+) MLS gives post-compromise security via
+commits — the bespoke design had none. (+) Removing a device's leaf *is*
+the rotation, making [[#REQ-498 DID Key Removal Triggers Key Rotation]] a
+mechanism rather than a cross-layer consistency rule. (−) openmls joins
+the Tier-1 auth-core review package (in place of, not in addition to,
+the bespoke scheme). (−) Membership changes and rotations require an
+Owner device online: a member's key-removal delta converging while every
+Owner device is offline leaves rotation pending until one commits — a
+new stale-window residual joining threat §O and Q11. (−) Total Owner
+device loss freezes membership (solo profile: equivalent to vault-backup
+loss; team profile: documented ceiling).
+// SIMPLIFY: sole-committer MLS; ceiling: delegatable admission /
+// Owner-loss recovery in the web-of-trust successor; upgrade path:
+// multi-committer MLS with fork resolution (dMLS / openmls helpers)
+// (trace: this ADR, [[#ADR-477 Single Per-Vault Group Key]]).
 
 ---
 
@@ -1502,25 +1688,33 @@ exhaustion aborts the pairing and tears down the rendezvous record; C9
 conferred by [[SPAKE2]] key confirmation over the transcript (F45); C10
 (REQ-501) length maxima and read deadlines are enforced before any
 authentication exists on **both** pre-auth planes — [[SPAKE2]] frames AND the
-pairing control envelope (F52/F62).
+pairing control envelope (F52/F62); C11 (REQ-476) a ceremony that fails at
+*any* step leaves the joiner with no partial vault state — no roster entry,
+no key material, no store directory (F71; the `../elephant-3000` join
+ceremony materialises local state only after the sealed key handover for
+exactly this reason, and clears a half-joined shell before re-joining).
 
 **Error model:** single opaque `auth-failed`; distinct `reachability-failed`,
 `malformed-input`.
 
 **Implements:** [[#REQ-476 DHT-Bootstrapped SPAKE2 Pairing]], [[#REQ-477 Phrase OOB-Only Non-Leak]], [[#REQ-478 Single-Use Phrase]], [[#REQ-479 Failure-Message Indistinguishability]], [[#REQ-480 Group-Key Admission Gate]], [[#REQ-488 Choreographies as Verified R5 Causal-Protocol Contracts]], [[#REQ-491 SPAKE2 Channel Authentication]], [[#REQ-496 Pairing Attempt Rate Limit]], [[#REQ-501 Bounded Frame Recognition]].
-**Verified by:** [[#TEST-476a]], [[#TEST-476b]], [[#TEST-476c]], [[#TEST-477a]], [[#TEST-477b]], [[#TEST-477c]], [[#TEST-478a]], [[#TEST-478b]], [[#TEST-479a]], [[#TEST-479c]], [[#TEST-480a]], [[#TEST-480b]], [[#TEST-491a]], [[#TEST-496a]], [[#TEST-496b]], [[#TEST-501a]], [[#TEST-501b]].
+**Verified by:** [[#TEST-476a]], [[#TEST-476b]], [[#TEST-476c]], [[#TEST-476d]], [[#TEST-477a]], [[#TEST-477b]], [[#TEST-477c]], [[#TEST-478a]], [[#TEST-478b]], [[#TEST-479a]], [[#TEST-479c]], [[#TEST-480a]], [[#TEST-480b]], [[#TEST-491a]], [[#TEST-496a]], [[#TEST-496b]], [[#TEST-501a]], [[#TEST-501b]].
 
 ### CON-477: Group Key Roster and Revocation
 
-**Interface:** the replicated **membership-event log** of
-[[#REQ-502 Replicated Signed Roster]] (signed admission/removal events,
-[[#8.12 Membership Event]], exchanged over the roster-gated channel — F60),
-locally projected into a roster cache (`[Provisional: .zetl/peers.toml` mode
+**Interface:** the per-vault [[MLS]] group and its replicated
+**membership lane** of [[#REQ-502 Replicated Signed Roster]] (the Owner's
+epoch-ordered Add/Remove commits + epoch data-key application messages,
+[[#8.12 Membership Commit]], carried by the vault's [[Loro]] store over
+the roster-gated channel — F60,
+[[#ADR-482 MLS for Group Key Agreement and Membership Commits]]), locally
+projected into a roster cache (`[Provisional: .zetl/peers.toml` mode
 `0600`]`, never the authority) mapping [[did:crdt]] DID → {devices:
-[[[NodeId]]], role, added_at, key_epoch}
+[[[NodeId]]], role: `owner | member` (immutable in v1 —
+[[#REQ-505 Role-Gated Membership Authority]]), added_at, key_epoch}
 ([[#ADR-481 did:crdt as the Member Identity Layer]], [[#REQ-497 DID-Bound Member Identity]]);
-`apply_membership_event(event) -> Accepted | Rejected` merges a signed
-admission/removal event;
+`process_membership_commit(msg) -> Applied | Buffered | Rejected`
+validates and applies one lane element in epoch order;
 `zetl collab revoke <nodeid>` (device) rotates epoch + schedules re-seal
 (positional id, mirroring `zetl collab share revoke <jti>`; the member-level
 `revoke <did>` form is `[Provisional — DESIGN-047 task adr-identity]`);
@@ -1532,34 +1726,54 @@ folds a signed [[did:crdt]] delta into a member's document.
 ([[#8.7 Roster Schema]]); recogniser = a `serde` TOML decoder + schema validation
 (it is trusted local state, but recognised before use per Principle 14). DID
 deltas arriving from peers are recognised per [[#8.10 did:crdt Delta]] before
-`apply_did_delta` runs; membership events per [[#8.12 Membership Event]]
-before `apply_membership_event` runs (F60).
+`apply_did_delta` runs; membership commits per [[#8.12 Membership Commit]]
+(CBCL envelope, then openmls validation) before
+`process_membership_commit` applies anything (F60).
 
 **Pre-conditions:** C1 (REQ-481) caller is the [[users/vault-owner/user|Owner]];
 C5 (REQ-497/REQ-500) a delta's Linked-Data Proof verifies against a key valid
 in the delta's *causal context* before it mutates the document
 (order-independent — F48); a **genesis delta**, self-signed by the key it
 introduces, is accepted only inside a completed [[SPAKE2]] pairing ceremony
-that binds the new DID to the joiner's durable [[NodeId]] (F47).
+that binds the new DID to the joiner's durable [[NodeId]] (F47); C9
+(REQ-502/REQ-505) an Add commit for a DID already on the roster is
+rejected `already-member` — a duplicate member identity would make roster
+key-resolution ambiguous and lets a second entry carry the Owner's DID,
+the credential-confusion `../elephant-3000` guards against at admission
+(F69).
 
 **Post-conditions:** C2 (REQ-481) revoked [[NodeId]] removed; new epoch sealed to
 survivors within [[#NFR-474 Revocation Propagation]]; C3 (REQ-481) revoked peer
 rejected by [[#CON-473 Peer Session]]; C4 (REQ-480) entries added only via
-completed [[SPAKE2]]; C6 (REQ-498) an accepted key-removal delta rotates the
-[[Group Key]] epoch before the removal is considered applied — via the
-removal author's single signed rotation event, applied idempotently keyed on
-`rotation_id` (re-delivery never re-rotates; receivers never mint their own
-key for another author's removal — F49); C7 (REQ-502) any two peers holding
-the same membership-event set derive an identical roster — a third peer
-admits a member it never paired with only via an admission event whose
-author is on-roster in the event's causal context; concurrent
-admission/removal of one device resolves removal-wins (F60).
+completed [[SPAKE2]]; C6 (REQ-498) an accepted key-removal delta is
+realised as the Owner's Remove commit for the removed leaf before the
+removal is considered applied — commits are epoch-ordered, so
+re-delivery targets a past epoch and is discarded, and no receiver ever
+mints its own key (F49 dissolved by ADR-482; Owner-offline deferral is
+the recorded Q11/§O residual); C7 (REQ-502) any two peers having
+processed the same commit prefix derive an identical roster — a third
+peer admits a member it never paired with only by processing the Owner's
+Add commit; ahead-of-epoch commits buffer, at-or-behind commits are
+discarded (F60); C8 (REQ-505)
+a membership commit is applied only when its sender leaf resolves to an
+`owner`-role device (sole committer; a member's own device management
+flows as did:crdt deltas), role fixed at admission — an unauthorised
+commit is rejected
+`unauthorized-author`, never merged (F66); C10 (REQ-506) a rotation is
+durably recorded before the rotating daemon advances its own epoch, and
+recovery completes an interrupted rotation exactly once (F68).
 
 **Error model:** `not-on-roster`; `last-member` (cannot revoke the sole member);
-`invalid-did-delta` (proof/recognition failure — dropped, logged).
+`invalid-did-delta` (proof/recognition failure — dropped, logged);
+`unauthorized-author` (membership commit whose sender leaf does not
+resolve to an owner-role device — dropped, logged; F66); `already-member`
+(Add commit for a
+DID already on the roster — dropped, logged; F69); `epoch-gap` (commit
+ahead of the local epoch — buffered, not an error; surfaced if the gap
+persists past `[Provisional: 60 s]`).
 
-**Implements:** [[#REQ-480 Group-Key Admission Gate]], [[#REQ-481 Revocation by Key Rotation]], [[#REQ-497 DID-Bound Member Identity]], [[#REQ-498 DID Key Removal Triggers Key Rotation]], [[#REQ-500 Order-Independent DID Authorization]], [[#REQ-502 Replicated Signed Roster]].
-**Verified by:** [[#TEST-480a]], [[#TEST-480b]], [[#TEST-481a]], [[#TEST-481b]], [[#TEST-481c]], [[#TEST-497a]], [[#TEST-497b]], [[#TEST-498a]], [[#TEST-498b]], [[#TEST-498c]], [[#TEST-500a]], [[#TEST-500b]], [[#TEST-502a]], [[#TEST-502b]], [[#TEST-502c]].
+**Implements:** [[#REQ-480 Group-Key Admission Gate]], [[#REQ-481 Revocation by Key Rotation]], [[#REQ-497 DID-Bound Member Identity]], [[#REQ-498 DID Key Removal Triggers Key Rotation]], [[#REQ-500 Order-Independent DID Authorization]], [[#REQ-502 Replicated Signed Roster]], [[#REQ-505 Role-Gated Membership Authority]], [[#REQ-506 Durable Epoch Rotation]].
+**Verified by:** [[#TEST-480a]], [[#TEST-480b]], [[#TEST-481a]], [[#TEST-481b]], [[#TEST-481c]], [[#TEST-497a]], [[#TEST-497b]], [[#TEST-498a]], [[#TEST-498b]], [[#TEST-498c]], [[#TEST-500a]], [[#TEST-500b]], [[#TEST-502a]], [[#TEST-502b]], [[#TEST-502c]], [[#TEST-502d]], [[#TEST-505a]], [[#TEST-505b]], [[#TEST-505c]], [[#TEST-506a]], [[#TEST-506b]].
 
 ---
 
@@ -1704,8 +1918,8 @@ and the joiner's durable [[NodeId]] bound to the ceremony transcript
 ([[#REQ-497 DID-Bound Member Identity]]); and a fresh device with no local DID
 or roster state accepts the roster + DID documents transferred inside the
 ceremony as its bootstrap trust root (HP1 step 5). A **third-peer** genesis
-(a member the receiver never paired with) is accepted only inside a signed
-admission event ([[#8.12 Membership Event]], F60). Boundary: **network,
+(a member the receiver never paired with) is accepted only as carried by
+the Owner's Add commit ([[#8.12 Membership Commit]], F60). Boundary: **network,
 untrusted** (a roster peer may still be malicious — §N).
 
 ### 8.11 Vault Selector
@@ -1719,18 +1933,23 @@ F63). The vault id then binds every subsequent frame (attestation context /
 AEAD associated data). Power: [[DCFL]] over regular framing. Recogniser:
 shared [[CBCL]] DPDA. Boundary: network, untrusted (pre-roster).
 
-### 8.12 Membership Event
-A signed roster **admission** or **removal** event
-([[#REQ-502 Replicated Signed Roster]], F60): a [[CBCL]] `zetl-sync` message
-carrying `{event_id, vault_id, author key, ceremony-transcript binding
-(admission) | rotation_id (removal), embedded did:crdt delta, roster entry,
-HLC causal context}`, attestation-signed by the authoring device. Recogniser:
-shared [[CBCL]] DPDA + attestation verify, THEN author-authority check in the
-event's causal context (an on-roster verification method —
-[[#REQ-500 Order-Independent DID Authorization]]), THEN the embedded
-[[#8.10 did:crdt Delta]] recognition. Boundary: network, untrusted (a roster
-peer may be malicious — §N; admission authority remains local policy against
-a key-holding adversary, F34).
+### 8.12 Membership Commit
+A signed [[MLS]] **membership commit** or **epoch data-key application
+message** on the membership lane ([[#REQ-502 Replicated Signed Roster]],
+[[#ADR-482 MLS for Group Key Agreement and Membership Commits]]): a
+[[CBCL]] `zetl-sync` lane element carrying `{vault_id, epoch,
+TLS-serialized MLSMessage}`. Recogniser: shared [[CBCL]] DPDA for the
+envelope, THEN openmls full validation (TLS deserialisation, group /
+epoch / leaf-signature checks; epoch ahead → buffer, at-or-behind →
+discard), THEN commit authorisation: the sender **leaf**'s signature key
+must resolve, through the roster projection, to a device of the
+`owner`-role DID ([[#REQ-505 Role-Gated Membership Authority]], F66/F67 —
+never credential-string equality); data-key application messages are
+accepted only from an Owner leaf. Welcome messages never ride this lane
+(pairing ceremony only — [[#CON-474 Pairing Protocol]]). Boundary:
+network, untrusted (a roster peer may be malicious — §N; against a
+key-holding adversary the sole-committer gate binds honest verifiers
+only, F34).
 
 No grammar in this spec exceeds context-free power; the control plane sits at
 [[DCFL]] (a decidable subset of CF), justified in
@@ -1762,7 +1981,8 @@ construction.
 | CLI verbs (pair/join/peers/revoke, daemon) | 6 — new verbs, but *on existing groups* | add to the existing `zetl collab` `clap` group + a `zetl daemon` group paralleling `zetl serve`; no new CLI idiom (Principle 15: options on the artefact with the right responsibility) ([[#ADR-480 CLI Surface Follows Existing zetl Conventions]]). |
 | Wire framing (data plane) | 2/4 — std length-prefix + [[Loro]] codec | no bespoke serialisation (Principle 14 bans string-concat formats). |
 | Namespace manifest | 4 — existing dependency ([[Loro]] map/movable tree) | `crdt::manifest` beside the content docs; the namespace converges by the same engine as content — no bespoke rename protocol ([[#REQ-504 Replicated Vault Namespace Manifest]], F64). |
-| Roster replication | 4/5 — compose [[did:crdt]] deltas + [[CBCL]] messages | `p2p::identity::events`; signed membership events reuse the attestation + HLC machinery — no new consensus layer ([[#REQ-502 Replicated Signed Roster]], F60). |
+| Roster replication | 4/5 — compose [[did:crdt]] deltas + [[CBCL]] messages | `p2p::identity::events`; membership commits ride the [[Loro]] lane and reuse the attestation machinery — no new consensus layer ([[#REQ-502 Replicated Signed Roster]], F60). |
+| [[Group Key]] agreement + membership commits | 4 — existing dependency (openmls; provider pattern from `../elephant-3000`/hark) | shared `p2p::mls`; Owner-committed RFC 9420 group replaces the bespoke sealed-sender design ([[#ADR-482 MLS for Group Key Agreement and Membership Commits]]). |
 
 No new abstraction is introduced with a single implementation
 ([[PROTO-001]] Discipline Rules); the [[CrdtBackend]] trait of the current code
@@ -1809,6 +2029,7 @@ negative-output); each TEST records `Validates:`.
 | **TEST-476a** | positive | example(e2e) | HP1 phrase→rendezvous→[[SPAKE2]]→key→sync | [[#REQ-476 DHT-Bootstrapped SPAKE2 Pairing]] |
 | **TEST-476b** | neg-input | example | wrong `word-word` → no key agreement → `auth-failed` | [[#REQ-491 SPAKE2 Channel Authentication]] |
 | **TEST-476c** | neg-output | example | failed [[SPAKE2]] yields no key / no roster entry | [[#REQ-491 SPAKE2 Channel Authentication]] |
+| **TEST-476d** | neg-output | integration | ceremony failed at any post-SPAKE2 step → joiner retains no partial vault state (no roster entry, key material, or store); re-pairing succeeds (F71) | [[#REQ-476 DHT-Bootstrapped SPAKE2 Pairing]] |
 | **TEST-477a** | positive | property+capture | phrase absent from URL/argv/env/wire | [[#REQ-477 Phrase OOB-Only Non-Leak]] |
 | **TEST-477b** | neg-input | example | phrase via argv/env refused (TTY-only) | [[#REQ-477 Phrase OOB-Only Non-Leak]] |
 | **TEST-477c** | neg-output | property | no frame/DHT record contains a phrase-deriving value | [[#REQ-477 Phrase OOB-Only Non-Leak]] |
@@ -1860,7 +2081,7 @@ negative-output); each TEST records `Validates:`.
 | **TEST-497b** | neg-input | integration | [[NodeId]] absent from every on-roster DID → rejected pre-frame | [[#REQ-497 DID-Bound Member Identity]] |
 | **TEST-498a** | positive | example | accepted key-removal delta → [[Group Key]] epoch rotates ≤ [[#NFR-474 Revocation Propagation]] | [[#REQ-498 DID Key Removal Triggers Key Rotation]] |
 | **TEST-498b** | neg-output | example | removed [[NodeId]] MUST NOT decrypt post-rotation frames | [[#REQ-498 DID Key Removal Triggers Key Rotation]] |
-| **TEST-498c** | neg-output | property | re-delivered/replayed removal delta (same `rotation_id`) MUST NOT advance the epoch again; no receiver mints its own key (F49) | [[#REQ-498 DID Key Removal Triggers Key Rotation]] |
+| **TEST-498c** | neg-output | property | re-delivered Remove commit (at-or-below local epoch) discarded — the epoch advances exactly once; no receiver ever mints its own key (F49 via ADR-482 epoch order) | [[#REQ-498 DID Key Removal Triggers Key Rotation]] |
 | **TEST-499a** | positive | integration | sync payload AEAD-sealed under current epoch → opened, decoded | [[#REQ-499 Group-Keyed Sync Frames]] |
 | **TEST-499b** | neg-input | example | frame under a stale/foreign `key_epoch` rejected before the [[Loro]] decoder runs (F46) | [[#REQ-499 Group-Keyed Sync Frames]] |
 | **TEST-500a** | positive | property | any permutation of the same signed delta set → identical DID + roster state (F48) | [[#REQ-500 Order-Independent DID Authorization]] |
@@ -1868,9 +2089,15 @@ negative-output); each TEST records `Validates:`.
 | **TEST-501a** | neg-input | example | over-limit length advertisement rejected at the prefix, no allocation (F52) | [[#REQ-501 Bounded Frame Recognition]] |
 | **TEST-501b** | neg-input | integration | stall-after-prefix (pre-auth) → connection state reclaimed at the read deadline | [[#REQ-501 Bounded Frame Recognition]] |
 | **TEST-501c** | neg-input | example | over-limit **control envelope** (pre-SPAKE2 pairing choreography) rejected at the prefix, no allocation (F62) | [[#REQ-501 Bounded Frame Recognition]] |
-| **TEST-502a** | positive | integration | three-peer offline admission: A pairs C offline from B → B accepts C via A's signed admission event on reconnect (F60) | [[#REQ-502 Replicated Signed Roster]] |
-| **TEST-502b** | neg-input | example | genesis for an unknown member without a valid admission event (author off-roster in the event's causal context) → rejected | [[#REQ-502 Replicated Signed Roster]] |
-| **TEST-502c** | neg-output | property | any permutation of one membership-event set → identical roster; concurrent admit+remove of one device → removal wins (F60) | [[#REQ-502 Replicated Signed Roster]] |
+| **TEST-502a** | positive | integration | three-peer offline admission: A (Owner) pairs C offline from B → B applies the Owner's Add commit from the lane on reconnect and admits C (F60) | [[#REQ-502 Replicated Signed Roster]] |
+| **TEST-502b** | neg-input | example | a member/leaf appearing without the Owner's Add commit on the lane → rejected | [[#REQ-502 Replicated Signed Roster]] |
+| **TEST-502c** | neg-output | property | commits delivered in any arrival order → identical roster (ahead buffered, at-or-behind discarded); an epoch gap is never skipped (F60 via ADR-482) | [[#REQ-502 Replicated Signed Roster]] |
+| **TEST-505a** | positive | example | Add commit authored by an `owner`-role leaf → accepted (F66) | [[#REQ-505 Role-Gated Membership Authority]] |
+| **TEST-505b** | neg-input | example | Add commit authored by a `member`-role leaf (on-roster, MLS-valid — incl. a forged owner-DID credential on a non-owner leaf, F67) → rejected `unauthorized-author`, roster unchanged (F66) | [[#REQ-505 Role-Gated Membership Authority]] |
+| **TEST-505c** | neg-input | example | Remove commit authored by a `member`-role leaf (even for its own DID's device) → rejected; the same device removal expressed as a self-scoped [[did:crdt]] delta is accepted and realised by the Owner's Remove commit (REQ-498) | [[#REQ-505 Role-Gated Membership Authority]] |
+| **TEST-502d** | neg-input | example | Add commit for a DID already on the roster → rejected `already-member`, roster unchanged (F69) | [[#REQ-502 Replicated Signed Roster]] |
+| **TEST-506a** | positive | integration | rotating daemon killed between its own epoch advance and the publish → recovery republishes the recorded rotation; survivors reach the new epoch (F68) | [[#REQ-506 Durable Epoch Rotation]] |
+| **TEST-506b** | neg-output | example | recovery of an interrupted removal MUST NOT rotate a second time (pre-rotation-epoch guard); re-delivery after recovery is idempotent | [[#REQ-506 Durable Epoch Rotation]] |
 | **TEST-503a** | positive | integration | multi-vault daemon: vault selector names vault X → roster check runs against X's roster, session syncs X (F63) | [[#REQ-503 Vault-Bound Peer Sessions]] |
 | **TEST-503b** | neg-input | example | frame bound to vault X replayed into a vault-Y session → rejected before interpretation (AD/attestation mismatch) | [[#REQ-503 Vault-Bound Peer Sessions]] |
 | **TEST-504a** | positive | property(convergence) | concurrent create/rename/delete on disconnected peers → identical DocId → path mapping; rename preserves history (F64) | [[#REQ-504 Replicated Vault Namespace Manifest]] |
@@ -1910,7 +2137,7 @@ negative-output); each TEST records `Validates:`.
 | **OBS-474** Pairing | metric | `zetl_pairing_duration_seconds`, `zetl_pairing_started_total` | [[#REQ-476 DHT-Bootstrapped SPAKE2 Pairing]], [[#NFR-471 Pairing Completion Latency]] |
 | **OBS-475** Pairing failure cause | metric | `zetl_pairing_failed_total{cause}` — **operator-channel label only** | [[#REQ-477 Phrase OOB-Only Non-Leak]], [[#REQ-479 Failure-Message Indistinguishability]], [[#REQ-496 Pairing Attempt Rate Limit]] |
 | **OBS-476** Pairing outcome log | log | operator-channel line per outcome with cause | [[#REQ-479 Failure-Message Indistinguishability]] |
-| **OBS-477** Roster audit | log | roster add/revoke + key-epoch rotation, [[NodeId]] + ts | [[#REQ-480 Group-Key Admission Gate]], [[#REQ-481 Revocation by Key Rotation]] |
+| **OBS-477** Roster audit | log | roster add/revoke + key-epoch rotation, [[NodeId]] + ts; rejected membership commits with cause (`unauthorized-author` — F66); buffered epoch-gap surfaced past its deadline | [[#REQ-480 Group-Key Admission Gate]], [[#REQ-481 Revocation by Key Rotation]], [[#REQ-505 Role-Gated Membership Authority]], [[#REQ-506 Durable Epoch Rotation]] |
 | **OBS-478** Off-roster rejections | metric | `zetl_offroster_rejections_total`, `zetl_malformed_frames_total`, `zetl_frame_reject_total{cause: stale-epoch\|over-limit\|read-deadline\|replayed-ref}` | [[#REQ-482 Roster-Gated Encrypted Transport]], [[#REQ-483 Full Recognition at Trust Boundaries]], [[#REQ-494 Control-to-Data Binding]], [[#REQ-499 Group-Keyed Sync Frames]], [[#REQ-501 Bounded Frame Recognition]] |
 | **OBS-479** External-edit import | log | import outcome (`folded`/`staged`) | [[#REQ-484 Guarded Import of External Markdown Edits]] |
 | **OBS-480** Convergence witness | metric | `zetl_root_mismatch_total` (integrity alarm), `zetl_reconcile_rounds`, `zetl_reconcile_skipped_total` (equal-root) | [[#REQ-485 Merkle Convergence Witness]], [[#REQ-486 Merkle Anti-Entropy Reconciliation]] |
@@ -2039,11 +2266,18 @@ negative-output); each TEST records `Validates:`.
   own replica, or fork the roster; the Owner-only pre-conditions
   ([[#CON-474 Pairing Protocol]] C1, [[#CON-477 Group Key Roster and Revocation]] C1)
   bind *honest* daemons only — membership authority is local policy, not
-  cryptography (F34). *Mitigation:* none at this layer — the write/admission
+  cryptography (F34). *Mitigation (partial — honest verifiers only):*
+  [[#REQ-505 Role-Gated Membership Authority]] moves the Owner-only rule
+  into the membership-commit acceptance check, so honest peers reject
+  membership commits from non-`owner` leaves — closing the strictly weaker
+  §D-grade hole where a *compromised* non-owner daemon could author
+  admissions every honest peer accepted (F66). Against the key-holding §N
+  adversary itself — sealing the key onward, forking the roster — none at
+  this layer: the write/admission
   dual of §L and of [[#ADR-477 Single Per-Vault Group Key]]'s read-coarseness;
   the [[users/vault-owner/user|Owner]] profile's "controls membership" goal is
   scoped accordingly. *Residual:* documented; the web-of-trust successor's
-  concern.
+  concern (delegatable admission deferred there too — F66).
 - **O. Revocation propagation window** — a survivor offline at revoke time
   ([[#NFR-474 Revocation Propagation]] binds *online* survivors only) still
   holds the old epoch and the revoked [[NodeId]] on its local roster, and will
@@ -2145,7 +2379,7 @@ REQ-### ←π→ TEST-### → CODE → OBS-###
 | 473 | 473a/c | 471 | 470 | 471 |
 | 474 | 474a/c | 473 | 470 | 472 |
 | 475 | 475a/b | 473 | 472 | 473 |
-| 476 | 476a, mut-rendezvous, adv | 474 | 473 | 474 |
+| 476 | 476a/d, mut-rendezvous, adv | 474 | 473 | 474 |
 | 477 | 477a/b/c | 474 | 473 | 475 |
 | 478 | 478a/b | 474 | 473 | 475 |
 | 479 | 479a/c, NFR-473 | 474 | — | 475,476 |
@@ -2171,9 +2405,11 @@ REQ-### ←π→ TEST-### → CODE → OBS-###
 | 499 | 499a/b | 473 | 477 | 478 |
 | 500 | 500a/b, fuzz-did | 477 | 481 | 482 |
 | 501 | 501a/b/c | 473,474 | — | 478 |
-| 502 | 502a/b/c | 477 | 481 | 477,482 |
+| 502 | 502a/b/c/d | 477 | 481 | 477,482 |
 | 503 | 503a/b | 473 | 472,479 | 478,481 |
 | 504 | 504a/b/c | 471,473 | 470,478 | 471,472 |
+| 505 | 505a/b/c | 477 | 477,481 | 477,482 |
+| 506 | 506a/b | 477 | 477,481 | 477 |
 
 Every REQ links ≥ 1 TEST per applicable type and ≥ 1 OBS (post-release;
 REQ-489 is a build-time CLI-surface conformance REQ with no runtime signal —
@@ -2317,6 +2553,54 @@ Per [[PROTO-001]] §AI Trust Boundaries. Tier-1 ⇒ synthesis trajectory recorde
     just document contents (Q12 raised). **F65** [[Merkle DAG]]
     reconciliation loops — recompare roots/vectors after every exchange; the
     mixed root-mismatch + byte-cancelling case gets TEST-486d.
+  - S₁₃ — targeted review of a user design question ("should add-member
+    permission be delegatable?") → decision **no for v1** (deferral recorded
+    on ADR-477/481) and **F66** applied: the review found the Owner-only
+    admission policy (CON-474 C1) enforced only at the authoring CLI while
+    the REQ-502/§8.12 acceptance rule validated *any* on-roster author — a
+    compromised non-owner daemon (§D) could author admissions every honest
+    peer accepted. [[#REQ-505 Role-Gated Membership Authority]] defines the
+    previously-undefined roster `role` field (`owner | member`, immutable in
+    v1) and gates membership-event acceptance on it (TEST-505a/b/c,
+    `unauthorized-author`, OBS-477); threat §N gains the partial
+    honest-verifier mitigation; self-scoped DID device management stays
+    member-delegated.
+  - S₁₄ — prior-art review of `../elephant-3000` on user direction (a
+    downstream sibling whose SPEC-002/SPEC-004 implement this spec's
+    pairing/roster patterns over MLS) → F67–F71 applied: F67 REQ-505
+    authority judged from the attestation signing key, never a
+    self-declared author field (elephant's leaf-index-not-credential-string
+    lesson + forged-credential regression test); F68
+    [[#REQ-506 Durable Epoch Rotation]] — transactional-outbox
+    crash-safety for rotation (record before advance, exactly-once
+    recovery); F69 `already-member` duplicate-admission rejection
+    (CON-477 C9, TEST-502d); F70 vault genesis seeds the roster with the
+    Owner's DID *and creating-device NodeId* (elephant BUG-002: missing
+    steward self-entry refused steward↔member sync both ways); F71
+    CON-474 C11 — a failed ceremony leaves no partial joiner state
+    (TEST-476d). Evidence recorded without deciding gated questions: Q7
+    gains the MLS/keybook/sole-committer candidate analysis, Q1 the
+    working downstream implementation of the routing/secret split,
+    ADR-479 the divergent loopback-control-plane counter-argument.
+  - S₁₅ — **adopted [[MLS]] on stakeholder direction** ("yes, adopt MLS"):
+    [[#ADR-482 MLS for Group Key Agreement and Membership Commits]]
+    (Proposed, crypto no-go, human-gated) — openmls, one group per vault,
+    leaf per device, credential = member DID, Owner as sole committer
+    (realising REQ-505's owner-only authority), commits on a replicated
+    Loro membership lane processed in epoch order, epoch data key
+    distributed as an MLS application message sealing REQ-499 frames, no
+    key-history keybook (plaintext-at-rest + current-epoch join sync).
+    Reworked REQ-498 (rotation = Owner's Remove commit; F49 rotation-event
+    machinery dissolved; Owner-offline deferral residual → Q11/§O),
+    REQ-502 (event-CRDT merge → epoch-ordered commit lane; buffer-ahead /
+    discard-behind), REQ-505 (sole-committer wording; self-scoped device
+    management via DID deltas realised by Owner commits), REQ-500 rescoped
+    to DID deltas, §8.12 regrammared as the MLS commit envelope, CON-477
+    reworked (`process_membership_commit`, `epoch-gap`), Q7 recast as the
+    MLS composition review, §9 placement row added. Tier-1 human review
+    NOT discharged — the decision is recorded as Proposed with the
+    stakeholder directive noted, exactly as elephant recorded its
+    ADR-105 supersession.
   - Adversarial tests: not yet generated (DESIGN-047 `test-strategy` +
     cross-model).
 - **Reviewer:** **PENDING** — Tier-1 requires cross-model adversarial review,
@@ -2370,6 +2654,8 @@ DESIGN-047 task lands.
 | 502 | ⚠ ADR-481 | ✓ | ✓ | ✓ | ⚠ | ✓ | ✓ | ✓ | ✓ | n/a | ✓ | ✓ | ✓ | ✓ | ✓ |
 | 503 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | 504 | ⚠ Q12 | ✓ | ✓ | ✓ | ⚠ | ✓ | ✓ | ✓ | ✓ | n/a | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 505 | ⚠ ADR-481 | ✓ | ✓ | ✓ | ⚠ | ✓ | ✓ | ✓ | ✓ | n/a | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 506 | ⚠ Q7 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | n/a | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 > **F18/F30 corrections.** The atomicity splits (F5/F6/F7 → REQ-490/491/492) make
 > REQ-470/476/482 genuinely single-obligation; their ✓Atomic now holds rather
@@ -2386,7 +2672,9 @@ DESIGN-047 task lands.
 > REQ-499's ⚠s close when the Q7 group-key package fixes the AEAD; REQ-501's
 > ⚠ Precise closes when DESIGN-047 `input-grammars` fixes the provisional frame
 > maxima and read deadline; REQ-503's ⚠ Precise closes when the ALPN string
-> and vault-id derivation are fixed (same task); REQ-502's ⚠s close with the
+> and vault-id derivation are fixed (same task); REQ-502's, REQ-505's, and
+> REQ-506's ⚠s
+> close with the
 > Q7/Q11 membership-event review; REQ-504's ⚠s close when DESIGN-047
 > `adr-namespace` fixes the DocId scheme and collision-disambiguation rule
 > (Q12).
@@ -2423,7 +2711,12 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
    **write-authority** consequence of the split — anyone derives the
    `HKDF(num)` signing key, so pkarr record authenticity at a rendezvous is
    void and the whole ~110k namespace is pre-squattable (F58, threat §J) —
-   is an acceptable availability residual. *(owner: HOC)*
+   is an acceptable availability residual. *(owner: HOC)* Downstream
+   evidence (0.15.0): `../elephant-3000` implements this split verbatim
+   (its SPEC-002 ADR-102 / `p2p::invite`) — a BIP39 wordlist, one
+   recogniser for the `4*5DIGIT-word-word` grammar, transcript-bound key
+   confirmation before any payload — and inherits this review as an
+   *open* item rather than assuming it sound.
 2. **Phrase-compromise recovery / pairing phishing (§B, §E) — upgraded by
    F57.** OOB phrase compromise is *complete pairing compromise*, not a
    bounded guess; the protocol currently ASSUMES a confidential, authentic
@@ -2443,13 +2736,23 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
    may force a foreground/push-triggered `zetld`.
 6. **Migration from [[diamond-types]].** One-shot `from_markdown` → [[Loro]], or
    oplog-history migration?
-7. **Group-key cryptography.** Sealed-sender scheme, key epochs, forward-secrecy,
-   and the sync-frame [[AEAD]] of [[#REQ-499 Group-Keyed Sync Frames]] (F46) —
-   no-go-area decisions for human review. Include epoch precedence /
-   anti-rollback: a peer that learns a higher `key_epoch` MUST refuse older
-   epochs, bounding the stale-survivor window of [[#12. Threat Model]] §O (F35);
-   and the epoch-precedence rule for rotation events from concurrent distinct
-   removals (F49, [[#REQ-498 DID Key Removal Triggers Key Rotation]]).
+7. **Group-key cryptography — now the MLS composition review.** The
+   mechanism is decided on stakeholder direction (0.16.0):
+   [[MLS]] with the Owner as sole committer
+   ([[#ADR-482 MLS for Group Key Agreement and Membership Commits]],
+   pattern proven in `../elephant-3000`); the bespoke sealed-sender
+   design and its concurrent-rotation precedence rule (F49) are
+   superseded. What remains for the human crypto review: (a) the
+   composition SPAKE2 ∘ MLS ∘ [[did:crdt]] as a whole; (b) the
+   provisional ciphersuite; (c) the epoch **data-key** pattern — a random
+   key distributed as an MLS application message, sealing
+   [[#REQ-499 Group-Keyed Sync Frames]] with epoch + vault id in the AAD
+   — versus MLS exporter secrets; (d) the multi-device-Owner commit
+   authorisation rule (any leaf resolving to the owner DID — F67: is the
+   resolution unforgeable under a compromised member leaf?); (e)
+   anti-rollback unchanged: a peer that learns a higher `key_epoch` MUST
+   refuse older epochs, bounding the stale-survivor window of
+   [[#12. Threat Model]] §O (F35).
 8. **Content-addressed block transfer (deferred).** Extend
    [[#ADR-478 Merkle DAG as Convergence Witness and Reconciliation Index]] so a
    joining/large-vault peer fetches only the [[Merkle DAG]] leaves it lacks
@@ -2469,20 +2772,23 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
     successor spec; it would reintroduce a runtime-extension attack surface and
     needs its own rate-limit + R1–R5-at-install threat analysis before it earns a
     place. Not needed for the v1 multi-device profile.
-11. **Revocation composition (DID layer ↔ Group Key layer).**
+11. **Revocation composition (DID layer ↔ MLS layer).**
     [[#REQ-498 DID Key Removal Triggers Key Rotation]] ties a verification-method
-    removal to an epoch rotation, but the ordering under partition needs the
-    human auth-core review: a key-removal delta that converges *after* the
+    removal to the Owner's Remove commit
+    ([[#ADR-482 MLS for Group Key Agreement and Membership Commits]]),
+    which simplifies but does not close this question. For the human
+    auth-core review: a key-removal delta that converges *after* the
     removed device has already synced under the old epoch; the
-    author-signed-rotation-event design of REQ-498 (F49 fixed the author —
-    the removal's author, deduplicated on `rotation_id` — but epoch precedence
-    across *concurrent distinct* removals is Q7's rule to confirm); the
+    **Owner-offline deferral window** — a removal delta accepted while no
+    Owner device is online leaves the removed leaf in the group until an
+    Owner commits (new with ADR-482; compare §O's survivor window); the
     forged-causal-context residual of
     [[#REQ-500 Order-Independent DID Authorization]] (a compromised key
-    back-dating its causal context to dodge its own removal — F48);
+    back-dating its causal context to dodge its own removal — F48, now
+    scoped to the DID layer);
     interaction with did-crdt's own ADR-002 key-compromise recovery (a
-    compromised controller key can author removals). Joins the Q7 group-key
-    package. ([[#ADR-481 did:crdt as the Member Identity Layer]])
+    compromised controller key can author removals). Joins the Q7 MLS
+    composition review. ([[#ADR-481 did:crdt as the Member Identity Layer]])
 12. **Namespace manifest design (F64).**
     [[#REQ-504 Replicated Vault Namespace Manifest]] requires a stable
     [[DocId]] scheme, the manifest CRDT shape ([[Loro]] map vs movable tree —
@@ -2513,8 +2819,77 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.13.0</summary>
+<summary>Revision history — 0.1.0 → 0.16.0</summary>
 
+- 0.16.0-strawman — **adopted [[MLS]] (RFC 9420) for group key agreement
+  and membership on stakeholder direction**
+  ([[#ADR-482 MLS for Group Key Agreement and Membership Commits]] —
+  Proposed, crypto no-go area, human review still required): openmls, one
+  group per vault (`group_id` = vault id), **leaf per device** with the
+  member's [[did:crdt]] DID as credential, **Owner as sole committer**
+  (the cryptographic realisation of
+  [[#REQ-505 Role-Gated Membership Authority]]), commits on a replicated
+  [[Loro]] **membership lane** processed strictly in epoch order
+  (buffer-ahead / discard-behind), the epoch **data key** distributed as
+  an MLS application message and sealing
+  [[#REQ-499 Group-Keyed Sync Frames]] unchanged; no key-history keybook
+  (deliberate divergence from elephant — plaintext at rest, joiners sync
+  under the current epoch). Consequences propagated: REQ-498's bespoke
+  rotation-event design (`rotation_id` dedup, F49 concurrent-removal
+  precedence) dissolved into epoch order, with the **Owner-offline
+  rotation-deferral window** recorded as a new Q11/§O residual; REQ-502
+  reworked from order-independent membership-event merge to the
+  epoch-ordered commit lane (F60 causal-context machinery retained only
+  for [[did:crdt]] deltas under REQ-500, now rescoped); §8.12 regrammared
+  as the MLS commit envelope (CBCL envelope → openmls validation →
+  owner-leaf resolution, F67); CON-477 reworked
+  (`process_membership_commit`, `epoch-gap` buffering); Q7 recast from
+  "design a sealed-sender scheme" to "review the SPAKE2 ∘ MLS ∘ did:crdt
+  composition" (ciphersuite, data-key-vs-exporter, multi-device-Owner
+  commit authorisation); §9 gains the openmls placement row (rung 4 via
+  the elephant/hark provider pattern); TEST-498c/502a-d/505a-c reworded
+  to the commit mechanism.
+- 0.15.0-strawman — prior-art review of `../elephant-3000` (downstream
+  sibling; its SPEC-002/SPEC-004 implement this spec's pairing/roster
+  patterns over [[MLS]] and name SPEC-047 as pattern source) → F67–F71.
+  Implementation lessons folded back as requirements: authority judged
+  from the attestation signing key, never a self-declared author field
+  (F67, REQ-505 — elephant authorises its steward by MLS leaf index, not
+  credential string, with a forged-credential regression test);
+  [[#REQ-506 Durable Epoch Rotation]] — rotation recorded durably before
+  the rotating daemon advances its own epoch, exactly-once completion on
+  recovery (F68, elephant's transactional outbox; CON-477 C10,
+  TEST-506a/b); admission of an already-on-roster DID rejected
+  `already-member` (F69, CON-477 C9, TEST-502d); vault genesis seeds the
+  roster with the Owner's DID **and creating-device [[NodeId]]** (F70 —
+  elephant BUG-002: the missing steward self-entry made the roster gate
+  refuse steward↔member sync in both directions, caught only by a
+  composed two-daemon e2e test; REQ-505); failed ceremony leaves no
+  partial joiner state (F71, CON-474 C11, TEST-476d). Evidence recorded
+  into gated questions without deciding them: Q7 gains the
+  MLS(openmls)/keybook/sole-committer candidate — which would collapse
+  much of the F48/F49/F60 order-independent-merge apparatus into
+  epoch-ordered Owner commits; Q1 notes the working downstream
+  implementation of the routing/secret split (review inherited as open);
+  ADR-479 records elephant's contrary loopback-HTTP control-plane
+  choice for DESIGN-047 to answer. Info table Related row links
+  [[elephant-3000]].
+- 0.14.0-strawman — admission-authority delegation reviewed on user question
+  → **non-delegatable in v1**, deferral recorded
+  ([[#ADR-477 Single Per-Vault Group Key]] /
+  [[#ADR-481 did:crdt as the Member Identity Layer]] consequences, §1.3
+  scope-out). Applied **F66**: the Owner-only admission policy bound only
+  the authoring CLI (CON-474 C1) while REQ-502/§8.12 accepted membership
+  events from *any* on-roster author — a compromised non-owner daemon
+  (threat §D) could author admissions every honest peer accepted. New
+  [[#REQ-505 Role-Gated Membership Authority]]: roster `role` defined at
+  last (`owner | member`, fixed at admission, genesis mints `owner`) and
+  membership-event acceptance gated on author role (owner for admissions;
+  owner-or-affected-member for removals; self-scoped DID device management
+  stays member-delegated); §8.12 recogniser + REQ-502 + CON-477 (C8,
+  `unauthorized-author`) tightened; TEST-505a/b/c; OBS-477 rejection
+  logging; threat §N partial honest-verifier mitigation; Owner profile
+  rescoped; §14/§16 rows.
 - 0.13.0-strawman — fifth fresh-context adversarial pass (structural gaps
   beyond the declared open questions, verified against `../cbcl-rs` and
   pkarr/spake2 docs) → applied F57–F65. Threat model honesty: OOB phrase
