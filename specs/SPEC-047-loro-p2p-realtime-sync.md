@@ -2,7 +2,7 @@
 id: SPEC-047
 title: "Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing"
 status: draft
-version: 0.16.0-strawman
+version: 0.17.0-strawman
 last-updated: 2026-07-18
 ---
 
@@ -88,7 +88,7 @@ capitals.
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | SPEC-047                                                                                |
 | Title        | Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing         |
-| Version      | 0.16.0-strawman                                                                          |
+| Version      | 0.17.0-strawman                                                                          |
 | Status       | Draft (strawman; pending DESIGN-047 execution)                                          |
 | Author       | Agent (Claude Opus 4.8 [1M]) under [[PROTO-001]] v1.11.0                                |
 | Audience     | Agent, Human                                                                            |
@@ -159,7 +159,7 @@ discovery; a [[did:crdt]] member-identity layer over device [[NodeId]]s
 pairing into a per-vault [[Group Key]] managed by an [[MLS]] group
 ([[#ADR-482 MLS for Group Key Agreement and Membership Commits]]); CLI
 under the existing groups — `zetl daemon {start,stop,status}` (mirroring
-`zetl serve`) and `zetl collab {pair,join,peers,revoke}` (extending the existing
+`zetl serve`) and `zetl collab {invite,join,peers,revoke}` (extending the existing
 `zetl collab` group, reusing SPEC-036's `zetl collab join`) per
 [[#ADR-480 CLI Surface Follows Existing zetl Conventions]]; input grammars,
 threat model, observability.
@@ -205,8 +205,8 @@ with the CLI binary, peer-to-peer dialect propagation is deferred
   makes honest verifiers reject non-owner membership commits; against a
   malicious key-holder membership authority remains local policy, not
   cryptography, until the web-of-trust successor; [[#12. Threat Model]] §N).
-- **Constraints:** Owns the vault; drives `zetl collab pair`/`zetl collab revoke`.
-- **Daily workflow:** pair on demand → audit `zetl collab peers` → revoke on loss.
+- **Constraints:** Owns the vault; drives `zetl collab invite`/`zetl collab revoke`.
+- **Daily workflow:** invite on demand → audit `zetl collab peers` → revoke on loss.
 
 ### [[users/operator/user|Operator]] (self-host; optional)
 
@@ -231,7 +231,7 @@ with the CLI binary, peer-to-peer dialect propagation is deferred
 
 **Steps:**
 
-1. `zetl collab pair --vault notes` on A → daemon mints a `num-word-word`
+1. `zetl collab invite --vault notes` on A → daemon mints a `num-word-word`
    [[Pairing Phrase]] (e.g. `4732-walnut-harbor` — the routing number is 4–5
    digits per [[#8.5 Pairing Phrase]]), prints it to stdout + a "waiting"
    status to stderr, derives the [[Rendezvous]] keypair, and publishes a short-TTL
@@ -276,7 +276,7 @@ generic auth failure; symmetric NAT, no relay → reachability error distinct fr
 auth ([[#ADR-474 Relay as Optional Fallback Not Requirement]]); phrase reused →
 generic auth failure ([[#REQ-478 Single-Use Phrase]]); third-party wrong-phrase
 attempt → phrase consumed (first-exchange-consumes,
-[[#REQ-478 Single-Use Phrase]]) → owner's `pair` reports failure and the owner
+[[#REQ-478 Single-Use Phrase]]) → owner's `invite` reports failure and the owner
 re-pairs with a fresh phrase ([[#12. Threat Model]] §M).
 
 ### HP2: Realtime Co-Editing After Pairing
@@ -1402,11 +1402,18 @@ group and daemon management under a new `zetl daemon` group paralleling
 gratuitous when `collab` already owns collaboration (Principle 15: options belong
 on the artefact that already has the right responsibility).
 
-**Decision:** (B). `zetl collab {pair,join,peers,revoke}` (extending the existing
+**Decision:** (B). `zetl collab {invite,join,peers,revoke}` (extending the existing
 group, reusing SPEC-036's `join`); `zetl daemon {start,stop,status}` manages the
 `zetld` process (as `dockerd`/`docker`). All inherit the global flags, the
 TTY-only secret convention for the [[Pairing Phrase]], positional ids, and the
-`not-yet-implemented` non-zero exit for unlanded verbs.
+`not-yet-implemented` non-zero exit for unlanded verbs. Naming (0.17.0,
+stakeholder direction): the owner-side verb is **`invite`**, not `pair` —
+"pair" names the whole ceremony, leaving ambiguous which side runs it,
+while `invite`/`join` are complementary speech acts naming each side's
+role (`../elephant-3000` reached the same naming independently:
+`theory invite` / `theory join`, `inviter_side`/`joiner_side`). "Pairing"
+remains the *protocol* term ([[Pairing Phrase]], the [[SPAKE2]] pairing
+ceremony); only the CLI verb changes.
 
 **Consequences:** (+) Zero new CLI idioms; discoverable via the same `--help`
 shape; the phrase reuses the audited TTY-only path; consistent machine output via
@@ -1560,10 +1567,10 @@ loss; team profile: documented ceiling).
 
 **Interface:** Local IPC (`[Provisional: $XDG_RUNTIME_DIR/zetld.sock`; named pipe
 on Windows]`) — versioned request/response + subscription. Control verbs:
-`attach`, `status`, `apply_ops`, `subscribe`, `pair`, `join`, `peers`, `revoke`.
+`attach`, `status`, `apply_ops`, `subscribe`, `invite`, `join`, `peers`, `revoke`.
 **CLI mapping** ([[#ADR-480 CLI Surface Follows Existing zetl Conventions]]):
 `zetl daemon {start,stop,status}` manages the `zetld` process (as `zetl serve`
-runs the web server); `zetl collab {pair,join,peers,revoke}` front the
+runs the web server); `zetl collab {invite,join,peers,revoke}` front the
 corresponding control verbs.
 
 **Grammar / Recogniser:** [[CBCL]] control messages (`zetl-pair`/`zetl-sync`
@@ -1660,13 +1667,19 @@ log); `root-mismatch-after-converge` (integrity alarm); `reachability-failed`
 **Implements:** [[#REQ-474 Conflict-Free Offline Merge]], [[#REQ-475 Serverless Peer Discovery]], [[#REQ-482 Roster-Gated Encrypted Transport]], [[#REQ-483 Full Recognition at Trust Boundaries]], [[#REQ-485 Merkle Convergence Witness]], [[#REQ-486 Merkle Anti-Entropy Reconciliation]], [[#REQ-487 Control-Plane Messages Recognised by the CBCL DPDA]], [[#REQ-488 Choreographies as Verified R5 Causal-Protocol Contracts]], [[#REQ-492 Roster Gate Before Vault Frame]], [[#REQ-493 Signed-Root Epoch Binding]], [[#REQ-494 Control-to-Data Binding]], [[#REQ-495 Signed-Root Freshness]], [[#REQ-499 Group-Keyed Sync Frames]], [[#REQ-501 Bounded Frame Recognition]], [[#REQ-503 Vault-Bound Peer Sessions]], [[#REQ-504 Replicated Vault Namespace Manifest]].
 **Verified by:** [[#TEST-474a]], [[#TEST-474c]], [[#TEST-475a]], [[#TEST-475b]], [[#TEST-482a]], [[#TEST-483a]], [[#TEST-483c]], [[#TEST-485a]], [[#TEST-485c]], [[#TEST-486a]], [[#TEST-486b]], [[#TEST-486c]], [[#TEST-486d]], [[#TEST-492a]], [[#TEST-492b]], [[#TEST-493a]], [[#TEST-493b]], [[#TEST-494a]], [[#TEST-494b]], [[#TEST-494c]], [[#TEST-495a]], [[#TEST-495b]], [[#TEST-499a]], [[#TEST-499b]], [[#TEST-501a]], [[#TEST-501b]], [[#TEST-501c]], [[#TEST-503a]], [[#TEST-503b]], [[#TEST-504a]], [[#TEST-504b]], [[#TEST-504c]].
 
-### CON-474: Pairing Protocol (`zetl collab pair` / `zetl collab join`)
+### CON-474: Pairing Protocol (`zetl collab invite` / `zetl collab join`)
 
-**Interface:** `zetl collab pair`: mint phrase, publish rendezvous [[pkarr]]
+**Interface:** `zetl collab invite`: mint phrase, publish rendezvous [[pkarr]]
 record, await peer, run [[SPAKE2]], seal [[Group Key]]. `zetl collab join`:
 TTY-prompt phrase, resolve rendezvous, connect, run [[SPAKE2]], receive sealed
 key. Both honour the global `--format`/`--json` and `--vault` flags and the
 standard non-zero-exit-on-error convention ([[#ADR-480 CLI Surface Follows Existing zetl Conventions]]).
+`--vault` on `invite` selects which vault the invitation admits into (a
+multi-vault daemon needs it — [[#REQ-503 Vault-Bound Peer Sessions]]);
+on `join` it is an OPTIONAL **pin** — the joiner learns the vault id
+inside the ceremony, and a supplied `--vault` makes the join fail closed
+if the ceremony offers a different vault (the `expected_theory` guard of
+`../elephant-3000`'s `joiner_side`).
 
 **Grammar / Recogniser:** phrase grammar [[#8.5 Pairing Phrase]] (ABNF, regular,
 TTY-only); handshake choreography is the [[CBCL]] `zetl-pair` dialect (DPDA;
@@ -1674,7 +1687,7 @@ the step order is an R5 causal-protocol contract — [[#REQ-488 Choreographies a
 [[SPAKE2]] bytes ride as an opaque payload [[#8.6 SPAKE2 Frame]] recognised by the
 `cap::pair` decoder (fuzzed).
 
-**Pre-conditions:** C1 (REQ-476) `pair` caller owns the vault; C2 (REQ-477) phrase
+**Pre-conditions:** C1 (REQ-476) `invite` caller owns the vault; C2 (REQ-477) phrase
 entered only via TTY; C3 (REQ-483) every [[SPAKE2]]/rendezvous frame recognised
 before use.
 
@@ -2062,7 +2075,7 @@ negative-output); each TEST records `Validates:`.
 | **TEST-487b** | neg-input | fuzz+example | non-conformant / attestation-invalid / wrong-phase-key message rejected, no action (F61) | [[#REQ-487 Control-Plane Messages Recognised by the CBCL DPDA]] |
 | **TEST-488a** | positive | example | in-order handshake satisfies the R5 causal-protocol contract | [[#REQ-488 Choreographies as Verified R5 Causal-Protocol Contracts]] |
 | **TEST-488b** | neg-input | property | out-of-order / undefined-step message rejected by the R5 contract | [[#REQ-488 Choreographies as Verified R5 Causal-Protocol Contracts]] |
-| **TEST-489a** | positive | example | `zetl collab pair --json` emits valid JSON; verbs live under `collab`/`daemon` | [[#REQ-489 P2P CLI Follows Existing zetl Conventions]] |
+| **TEST-489a** | positive | example | `zetl collab invite --json` emits valid JSON; verbs live under `collab`/`daemon` | [[#REQ-489 P2P CLI Follows Existing zetl Conventions]] |
 | **TEST-489b** | neg-input | example | error path exits non-zero; unlanded verb → `not-yet-implemented` | [[#REQ-489 P2P CLI Follows Existing zetl Conventions]] |
 | **TEST-490a** | positive | example | daemon survives client exit; committed state intact on reattach | [[#REQ-490 Daemon Survives Client Disconnection]] |
 | **TEST-491a** | positive | example(e2e) | matching `word-word` → SPAKE2 success → shared key | [[#REQ-491 SPAKE2 Channel Authentication]] |
@@ -2258,11 +2271,11 @@ negative-output); each TEST records `Validates:`.
   *Deliberate trade:* first-exchange-consumption preserves the one-online-guess
   bound on the ~22-bit secret; the alternative (success-only consumption) would
   grant repeated guesses. *Mitigation:* [[#REQ-496 Pairing Attempt Rate Limit]]
-  drops excess pre-handshake; the burn is visible (the owner's `pair` fails)
+  drops excess pre-handshake; the burn is visible (the owner's `invite` fails)
   and the owner re-pairs. *Residual:* availability nuisance under active
   attack — accepted for v1 (pairing is rare and interactive).
 - **N. Malicious-member admission / roster fork** — any current member holds
-  the [[Group Key]] and can seal it onward to a third party, run `pair` on its
+  the [[Group Key]] and can seal it onward to a third party, run `invite` on its
   own replica, or fork the roster; the Owner-only pre-conditions
   ([[#CON-474 Pairing Protocol]] C1, [[#CON-477 Group Key Roster and Revocation]] C1)
   bind *honest* daemons only — membership authority is local policy, not
@@ -2601,6 +2614,13 @@ Per [[PROTO-001]] §AI Trust Boundaries. Tier-1 ⇒ synthesis trajectory recorde
     NOT discharged — the decision is recorded as Proposed with the
     stakeholder directive noted, exactly as elephant recorded its
     ADR-105 supersession.
+  - S₁₆ — CLI verb rename on stakeholder direction: owner-side
+    `zetl collab pair` → **`zetl collab invite`** (ADR-480 rationale:
+    `invite`/`join` name each side's role; "pair" named the whole
+    ceremony ambiguously; elephant reached the same naming
+    independently). "Pairing" stays as protocol terminology. CON-474
+    also gains the `--vault` join **pin** (fail closed if the ceremony
+    offers a different vault — elephant's `expected_theory` guard).
   - Adversarial tests: not yet generated (DESIGN-047 `test-strategy` +
     cross-model).
 - **Reviewer:** **PENDING** — Tier-1 requires cross-model adversarial review,
@@ -2819,8 +2839,20 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.16.0</summary>
+<summary>Revision history — 0.1.0 → 0.17.0</summary>
 
+- 0.17.0-strawman — CLI verb rename on stakeholder direction:
+  `zetl collab pair` → **`zetl collab invite`** ([[#ADR-480 CLI Surface Follows Existing zetl Conventions]]
+  records the rationale: `invite`/`join` are complementary speech acts
+  naming each side's role, where "pair" named the whole ceremony and left
+  ambiguous which side runs it; `../elephant-3000` reached `invite`/`join`
+  independently). "Pairing" remains the protocol term ([[Pairing Phrase]],
+  [[SPAKE2]] pairing ceremony, CON-474 "Pairing Protocol"); surface
+  updated across §1.3, HP1, the Owner profile, CON-470's control verbs,
+  CON-474, threat §M/§N, TEST-489a. CON-474 additionally specifies
+  `--vault` semantics for multi-vault daemons: required selector on
+  `invite`, OPTIONAL fail-closed pin on `join` (the joiner learns the
+  vault id inside the ceremony — elephant's `expected_theory` guard).
 - 0.16.0-strawman — **adopted [[MLS]] (RFC 9420) for group key agreement
   and membership on stakeholder direction**
   ([[#ADR-482 MLS for Group Key Agreement and Membership Commits]] —
