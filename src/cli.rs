@@ -63,6 +63,13 @@ pub struct Cli {
     )]
     pub dir: String,
 
+    /// Named vault selector for a multi-vault `zetld` daemon (SPEC-047
+    /// REQ-503 / CON-474). Distinct from `-d/--dir` (a filesystem path):
+    /// `--vault` names one of several vaults a running daemon serves. When
+    /// unset, commands fall back to the `-d` path / current directory.
+    #[arg(long, env = "ZETL_VAULT", global = true)]
+    pub vault: Option<String>,
+
     /// Output format (auto-detects: table for TTY, JSON for pipes)
     #[arg(
         short = 'f',
@@ -662,12 +669,39 @@ pub enum Command {
 
     /// Manage collab credentials and share-by-link capability URLs
     #[command(
-        after_help = "Examples:\n  zetl collab passwd add alice       Set / change alice's password\n  zetl collab passwd list            List user_ids with passwords\n  zetl collab share mint --scope review/draft/** --role reader --site-url https://wiki.example.com\n  zetl collab share list             List minted capability URLs\n  zetl collab share revoke <jti>     Revoke a minted capability URL"
+        after_help = "Examples:\n  zetl collab passwd add alice       Set / change alice's password\n  zetl collab passwd list            List user_ids with passwords\n  zetl collab share mint --scope review/draft/** --role reader --site-url https://wiki.example.com\n  zetl collab share list             List minted capability URLs\n  zetl collab share revoke <jti>     Revoke a minted capability URL\n  zetl collab invite --vault notes   Mint a pairing invite for a peer\n  zetl collab join                   Redeem an invite (prompts for the phrase)\n  zetl collab peers                  List the vault roster\n  zetl collab revoke <nodeid>        Revoke a paired device"
     )]
     Collab {
         #[command(subcommand)]
         command: CollabCommand,
     },
+
+    /// Manage the persistent `zetld` sync daemon (SPEC-047 REQ-470/489)
+    ///
+    /// Parallels `zetl serve`: `zetld` owns vault state and P2P sessions so
+    /// clients attach over a local control channel. Verbs whose handlers
+    /// have not landed exit non-zero with a `not-yet-implemented`
+    /// diagnostic (ADR-480).
+    #[command(
+        after_help = "Examples:\n  zetl daemon start           Start zetld in the background\n  zetl daemon status          Report daemon health and joined vaults\n  zetl daemon stop            Stop the running daemon"
+    )]
+    Daemon {
+        #[command(subcommand)]
+        command: DaemonCommand,
+    },
+}
+
+/// Subcommands for `zetl daemon` (SPEC-047 REQ-489, ADR-480). The daemon
+/// verbs mirror `zetl serve`'s lifecycle shape; handlers are gated behind
+/// IMPL-047 T2 and stubbed `not-yet-implemented` until then.
+#[derive(Subcommand)]
+pub enum DaemonCommand {
+    /// Start the `zetld` daemon (backgrounds the process)
+    Start,
+    /// Stop the running `zetld` daemon via the control channel
+    Stop,
+    /// Report daemon health, uptime, joined vaults, and peer counts
+    Status,
 }
 
 /// Subcommands for `zetl collab`.
@@ -686,6 +720,46 @@ pub enum CollabCommand {
     Share {
         #[command(subcommand)]
         command: ShareCommand,
+    },
+
+    /// Mint a single-use pairing invite for a peer (SPEC-047 CON-474)
+    ///
+    /// Owner side of the SPAKE2 pairing ceremony: mints a `num-word-word`
+    /// phrase, publishes the rendezvous record, and admits the joiner into
+    /// the vault's roster on success. `--vault` selects which vault the
+    /// invite admits into on a multi-vault daemon (REQ-503).
+    #[command(
+        after_help = "Examples:\n  zetl collab invite                 Invite a peer into the current vault\n  zetl collab invite --vault notes   Invite into the named vault"
+    )]
+    Invite,
+
+    /// Redeem a pairing invite (SPEC-047 CON-474)
+    ///
+    /// Joiner side: prompts for the `num-word-word` phrase on the TTY (never
+    /// via argv or env — REQ-477), resolves the rendezvous, completes SPAKE2,
+    /// and syncs the vault. `--vault` optionally pins the expected vault and
+    /// fails closed if the ceremony offers a different one.
+    #[command(
+        after_help = "Examples:\n  zetl collab join                   Redeem an invite (prompts for the phrase)\n  zetl collab join --vault notes     Redeem, pinning the expected vault"
+    )]
+    Join,
+
+    /// List the vault roster (members and their devices)
+    ///
+    /// Never prints key material — mirrors `zetl collab share list`.
+    Peers,
+
+    /// Revoke a paired device by its NodeId (SPEC-047 REQ-481)
+    ///
+    /// Rotates the group-key epoch so the revoked device cannot decrypt
+    /// post-revocation sync. The member-level `revoke <did>` form is
+    /// deferred (DESIGN-047 adr-identity).
+    #[command(
+        after_help = "Examples:\n  zetl collab revoke <nodeid>        Revoke a device by NodeId"
+    )]
+    Revoke {
+        /// NodeId of the device to revoke.
+        nodeid: String,
     },
 }
 

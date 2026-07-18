@@ -1,0 +1,153 @@
+;; IMPL-047 — Loro P2P Realtime Sync implementation.
+;; Phase-3 execution plan under SPEC-047 0.18.0 middle path.
+;; M1 (non-no-go) buildable now. M2 (auth-core) GATED on crypto-review.
+;; Source: specs/IMPL-047-loro-p2p-realtime-sync.md
+
+(meta plan
+  (title "IMPL-047 Loro P2P Realtime Sync — implementation")
+  (description "Build SPEC-047 test-first. M1 non-no-go substrate proceeds now. M2 auth-core is gated on the DESIGN-047 crypto-review task and stays scaffolded as not-yet-implemented until then."))
+
+(given agent-claude-available)
+(given agent-hugo-available)
+
+;; The auth-core gate. verified-crypto-review-signed-off is DERIVED from the
+;; human sign-off fact, which is never given until the DESIGN-047
+;; crypto-review task completes (owner HOC). Until Hugo asserts
+;;   hence task assert '(given verified-crypto-review-hoc-signed)' plans/IMPL-047.spl --agent hugo
+;; no M2 task is ready. The rule keeps the gate literal defined for --strict
+;; while leaving it unconcluded.
+(given (not verified-crypto-review-hoc-signed))
+(always r-crypto-gate verified-crypto-review-hoc-signed verified-crypto-review-signed-off)
+
+;; ── M1 — non-no-go substrate ────────────────────────────────────────────
+(meta task-t1-cli-surface
+  (description "Add zetl daemon {start,stop,status} and extend collab with invite/join/peers/revoke, all honouring global flags and returning the not-yet-implemented non-zero exit. Build-time CLI conformance, no crypto.")
+  (acceptance "cargo build clean. A CLI test asserts the verbs parse, --json emits valid JSON, and unlanded verbs exit non-zero with not-yet-implemented. Satisfies TEST-489a/b."))
+(given task-t1-cli-surface)
+(given no-deps-t1-cli-surface)
+(normally r-ready-t1 (and task-t1-cli-surface no-deps-t1-cli-surface) ready-t1-cli-surface)
+(normally r-assign-t1 (and ready-t1-cli-surface agent-claude-available) assign-t1-cli-surface-claude)
+
+(meta task-t2-daemon
+  (description "zetld persistent process, loopback control channel, idempotent lifecycle, survives client disconnect. Control input recognised before action. No network crypto.")
+  (acceptance "daemon start/stop/status cycle works. TEST-470/471/490 pass. Control-channel grammar recognised before any action."))
+(given task-t2-daemon)
+(normally r-ready-t2 (and task-t2-daemon completed-t1-cli-surface) ready-t2-daemon)
+(normally r-assign-t2 (and ready-t2-daemon agent-claude-available) assign-t2-daemon-claude)
+
+(meta task-t3-loro-store
+  (description "Replace diamond-types with a Loro-backed crdt store, remove the CrdtBackend trait, deterministic materialisation to Markdown. Stage behind a temporary flag, migrate web/ws.rs last.")
+  (acceptance "Loro store persists snapshot+oplog. materialise is deterministic (property parse(materialise(x))==x). TEST-472/473/474 pass. web/ws.rs migrated, CrdtBackend removed."))
+(given task-t3-loro-store)
+(normally r-ready-t3 (and task-t3-loro-store completed-t1-cli-surface) ready-t3-loro-store)
+(normally r-assign-t3 (and ready-t3-loro-store agent-claude-available) assign-t3-loro-store-claude)
+
+(meta task-t4-guarded-import
+  (description "Guarded import of external Markdown edits per REQ-484 / ADR-471 F59 rule over Loro logical time. Fold-vs-stage; delete/rename as manifest ops.")
+  (acceptance "TEST-484a-e pass. A stale-buffer external save is staged, never folded away as deletions."))
+(given task-t4-guarded-import)
+(normally r-ready-t4 (and task-t4-guarded-import completed-t3-loro-store) ready-t4-guarded-import)
+(normally r-assign-t4 (and ready-t4-guarded-import agent-claude-available) assign-t4-guarded-import-claude)
+
+(meta task-t5-namespace-manifest
+  (description "DocId to path as a Loro manifest CRDT with create/rename/delete and the deterministic case/NFC collision rule. Depends on the DESIGN-047 adr-namespace task fixing the DocId scheme.")
+  (acceptance "TEST-504a-c pass. Converged peers derive one DocId to path map. Rename preserves history."))
+(given task-t5-namespace-manifest)
+(normally r-ready-t5 (and task-t5-namespace-manifest completed-t3-loro-store) ready-t5-namespace-manifest)
+(normally r-assign-t5 (and ready-t5-namespace-manifest agent-claude-available) assign-t5-namespace-manifest-claude)
+
+(meta task-t6-merkle-reconcile
+  (description "Reuse src/merkle.rs. vault_root compare then DAG descent then per-doc version vectors then Loro op deltas. Reconciliation loops until roots and vectors match.")
+  (acceptance "TEST-485/486 pass including the mixed root-mismatch plus byte-cancelling case (TEST-486d)."))
+(given task-t6-merkle-reconcile)
+(normally r-ready-t6 (and task-t6-merkle-reconcile completed-t3-loro-store) ready-t6-merkle-reconcile)
+(normally r-assign-t6 (and ready-t6-merkle-reconcile agent-claude-available) assign-t6-merkle-reconcile-claude)
+
+(meta task-t7-cbcl-control
+  (description "zetl-pair and zetl-sync CBCL dialects over ../cbcl-rs, one DPDA recognises all control messages. Data plane stays binary. Confirm the local-plane choice per the DESIGN-047 adr-control-proto item.")
+  (acceptance "TEST-487/488 pass. Control messages recognised by the shared DPDA. Data plane is length-prefixed binary."))
+(given task-t7-cbcl-control)
+(normally r-ready-t7 (and task-t7-cbcl-control completed-t2-daemon) ready-t7-cbcl-control)
+(normally r-assign-t7 (and ready-t7-cbcl-control agent-claude-available) assign-t7-cbcl-control-claude)
+
+;; ── M2 — auth-core (GATED on crypto-review) ─────────────────────────────
+(meta task-t8-spake2-pairing
+  (description "SPAKE2 pairing over the invite/join CLI (CON-474), reusing cap::pair. Rendezvous derivation, single-use burn, opaque failure. AUTH-CORE, GATED.")
+  (acceptance "TEST-476/478/479/491/496 pass. Crypto review signed off before any code."))
+(given task-t8-spake2-pairing)
+(normally r-ready-t8 (and task-t8-spake2-pairing completed-t7-cbcl-control verified-crypto-review-signed-off) ready-t8-spake2-pairing)
+(normally r-assign-t8 (and ready-t8-spake2-pairing agent-claude-available) assign-t8-spake2-pairing-claude)
+
+(meta task-t9-mls-group-key
+  (description "MLS via openmls, Owner-committed membership on the Loro lane, epoch data key as an application message. ADR-482. AUTH-CORE, GATED.")
+  (acceptance "TEST-499/502/506 pass. Crypto review signed off."))
+(given task-t9-mls-group-key)
+(normally r-ready-t9 (and task-t9-mls-group-key completed-t8-spake2-pairing verified-crypto-review-signed-off) ready-t9-mls-group-key)
+(normally r-assign-t9 (and ready-t9-mls-group-key agent-claude-available) assign-t9-mls-group-key-claude)
+
+(meta task-t10-roster-role-gate
+  (description "Roster + role gate (CON-477), owner-only membership commit authorisation. REQ-480/505. AUTH-CORE, GATED.")
+  (acceptance "TEST-480/505 pass. Crypto review signed off."))
+(given task-t10-roster-role-gate)
+(normally r-ready-t10 (and task-t10-roster-role-gate completed-t9-mls-group-key verified-crypto-review-signed-off) ready-t10-roster-role-gate)
+(normally r-assign-t10 (and ready-t10-roster-role-gate agent-claude-available) assign-t10-roster-role-gate-claude)
+
+(meta task-t11-did-identity
+  (description "did:crdt member identity via ../did-crdt (ADR-481). REQ-497/498/500. AUTH-CORE, GATED.")
+  (acceptance "TEST-497/498/500 pass. Crypto review signed off."))
+(given task-t11-did-identity)
+(normally r-ready-t11 (and task-t11-did-identity completed-t10-roster-role-gate verified-crypto-review-signed-off) ready-t11-did-identity)
+(normally r-assign-t11 (and ready-t11-did-identity agent-claude-available) assign-t11-did-identity-claude)
+
+(meta task-t12-sync-frames
+  (description "Group-keyed sync frames + roster-gated encrypted transport over iroh QUIC. REQ-482/492/499/503. AUTH-CORE, GATED.")
+  (acceptance "TEST-482/492/499/503 pass. Crypto review signed off."))
+(given task-t12-sync-frames)
+(normally r-ready-t12 (and task-t12-sync-frames completed-t11-did-identity verified-crypto-review-signed-off) ready-t12-sync-frames)
+(normally r-assign-t12 (and ready-t12-sync-frames agent-claude-available) assign-t12-sync-frames-claude)
+
+(meta task-t13-revocation
+  (description "Revocation + durable epoch rotation (Owner MLS Remove commit, transactional outbox). REQ-481/498/506. AUTH-CORE, GATED.")
+  (acceptance "TEST-481/498/506 pass. Crypto review signed off."))
+(given task-t13-revocation)
+(normally r-ready-t13 (and task-t13-revocation completed-t12-sync-frames verified-crypto-review-signed-off) ready-t13-revocation)
+(normally r-assign-t13 (and ready-t13-revocation agent-claude-available) assign-t13-revocation-claude)
+
+(claims agent:claude
+  :at "2026-07-18T03:50:31Z"
+  (given claim-v1-t1-cli-surface)
+  (normally r-cl-state-v1-t1-cli-surface claim-v1-t1-cli-surface state-claimed-v1-t1-cli-surface)
+  (normally r-cl-chain-v1-t1-cli-surface state-claimed-v1-t1-cli-surface claimed-t1-cli-surface)
+)
+
+;; Propagation rules: failures in 't1-cli-surface' block downstream tasks
+(normally r-propagate-t2-daemon-from-t1-cli-surface-failed failed-t1-cli-surface upstream-blocked-t2-daemon)
+(normally r-propagate-t2-daemon-from-t1-cli-surface-permanently-failed permanently-failed-t1-cli-surface upstream-blocked-t2-daemon)
+(normally r-propagate-t2-daemon-from-t1-cli-surface-stale-v1 stale-v1-t1-cli-surface upstream-blocked-t2-daemon)
+(normally r-propagate-t2-daemon-from-t1-cli-surface-timeout-v1 timeout-v1-t1-cli-surface upstream-blocked-t2-daemon)
+(normally r-propagate-t2-daemon-from-t1-cli-surface-blocked upstream-blocked-t1-cli-surface upstream-blocked-t2-daemon)
+(normally r-propagate-t3-loro-store-from-t1-cli-surface-failed failed-t1-cli-surface upstream-blocked-t3-loro-store)
+(normally r-propagate-t3-loro-store-from-t1-cli-surface-permanently-failed permanently-failed-t1-cli-surface upstream-blocked-t3-loro-store)
+(normally r-propagate-t3-loro-store-from-t1-cli-surface-stale-v1 stale-v1-t1-cli-surface upstream-blocked-t3-loro-store)
+(normally r-propagate-t3-loro-store-from-t1-cli-surface-timeout-v1 timeout-v1-t1-cli-surface upstream-blocked-t3-loro-store)
+(normally r-propagate-t3-loro-store-from-t1-cli-surface-blocked upstream-blocked-t1-cli-surface upstream-blocked-t3-loro-store)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-t7-cbcl-control-from-t2-daemon-blocked upstream-blocked-t2-daemon upstream-blocked-t7-cbcl-control)
+(normally r-propagate-t4-guarded-import-from-t3-loro-store-blocked upstream-blocked-t3-loro-store upstream-blocked-t4-guarded-import)
+(normally r-propagate-t5-namespace-manifest-from-t3-loro-store-blocked upstream-blocked-t3-loro-store upstream-blocked-t5-namespace-manifest)
+(normally r-propagate-t6-merkle-reconcile-from-t3-loro-store-blocked upstream-blocked-t3-loro-store upstream-blocked-t6-merkle-reconcile)
+(normally r-propagate-t8-spake2-pairing-from-t7-cbcl-control-blocked upstream-blocked-t7-cbcl-control upstream-blocked-t8-spake2-pairing)
+(normally r-propagate-t9-mls-group-key-from-t8-spake2-pairing-blocked upstream-blocked-t8-spake2-pairing upstream-blocked-t9-mls-group-key)
+(normally r-propagate-t10-roster-role-gate-from-t9-mls-group-key-blocked upstream-blocked-t9-mls-group-key upstream-blocked-t10-roster-role-gate)
+(normally r-propagate-t11-did-identity-from-t10-roster-role-gate-blocked upstream-blocked-t10-roster-role-gate upstream-blocked-t11-did-identity)
+(normally r-propagate-t12-sync-frames-from-t11-did-identity-blocked upstream-blocked-t11-did-identity upstream-blocked-t12-sync-frames)
+(normally r-propagate-t13-revocation-from-t12-sync-frames-blocked upstream-blocked-t12-sync-frames upstream-blocked-t13-revocation)
+
+(claims agent:claude
+  :at "2026-07-18T03:55:44Z"
+  (given verified-t1-cli-surface-green-10-tests))
+
+(claims agent:claude
+  :at "2026-07-18T03:55:44Z"
+  (given completed-t1-cli-surface))

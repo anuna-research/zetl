@@ -12087,6 +12087,19 @@ fn main() -> anyhow::Result<()> {
                 zetl::cli::ShareCommand::List => cmd_collab_share_list(&cli),
                 zetl::cli::ShareCommand::Revoke { jti } => cmd_collab_share_revoke(&cli, jti),
             },
+            // SPEC-047 P2P verbs (CON-474 / REQ-481). Handlers are IMPL-047
+            // M2 (auth-core) and gated on the DESIGN-047 crypto-review; the
+            // CLI surface lands now (REQ-489) stubbed not-yet-implemented.
+            zetl::cli::CollabCommand::Invite => cmd_p2p_stub(&cli, "collab", "invite"),
+            zetl::cli::CollabCommand::Join => cmd_p2p_stub(&cli, "collab", "join"),
+            zetl::cli::CollabCommand::Peers => cmd_p2p_stub(&cli, "collab", "peers"),
+            zetl::cli::CollabCommand::Revoke { .. } => cmd_p2p_stub(&cli, "collab", "revoke"),
+        },
+        Command::Daemon { command } => match command {
+            // IMPL-047 T2 (daemon + control channel); stubbed until it lands.
+            zetl::cli::DaemonCommand::Start => cmd_p2p_stub(&cli, "daemon", "start"),
+            zetl::cli::DaemonCommand::Stop => cmd_p2p_stub(&cli, "daemon", "stop"),
+            zetl::cli::DaemonCommand::Status => cmd_p2p_stub(&cli, "daemon", "status"),
         },
     }
 }
@@ -12310,6 +12323,31 @@ fn cmd_cap_stub(cli: &Cli, verb: &str) -> Result<()> {
     eprintln!("{message}");
     eprintln!(
         "Hint: this verb is planned (see SPEC-034 §6 REQ-3416) but its implementation has not landed yet."
+    );
+    std::process::exit(CAP_NOT_YET_IMPLEMENTED_EXIT);
+}
+
+/// Stub for the SPEC-047 P2P verbs (`zetl daemon *`, `zetl collab
+/// {invite,join,peers,revoke}`) whose handlers have not landed. Emits the
+/// `not-yet-implemented` diagnostic and exits `CAP_NOT_YET_IMPLEMENTED_EXIT`
+/// (2), reusing the `zetl cap` convention so CI gates treat every skeleton
+/// verb identically. Under `--json`/`-f json` the diagnostic is parseable
+/// JSON on stderr.
+///
+/// SPEC-047 REQ-489 / ADR-480 — every verb of the P2P CLI surface is
+/// reachable and predictable before its handler exists. Auth-core handlers
+/// (`invite`/`join`/`peers`/`revoke`) additionally wait on the DESIGN-047
+/// crypto-review gate; the daemon verbs wait on IMPL-047 T2.
+fn cmd_p2p_stub(cli: &Cli, group: &str, verb: &str) -> Result<()> {
+    let message =
+        format!("zetl {group} {verb}: not-yet-implemented (SPEC-047 REQ-489 CLI surface stub)");
+    let json_requested = cli.json || matches!(cli.format, OutputFormat::Json);
+    if json_requested {
+        exit_json_error(&message, CAP_NOT_YET_IMPLEMENTED_EXIT);
+    }
+    eprintln!("{message}");
+    eprintln!(
+        "Hint: this verb is planned (see SPEC-047 §7 / IMPL-047) but its implementation has not landed yet."
     );
     std::process::exit(CAP_NOT_YET_IMPLEMENTED_EXIT);
 }
