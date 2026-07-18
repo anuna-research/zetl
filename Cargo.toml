@@ -196,6 +196,12 @@ zeroize = "1"
 # cross-compile from Linux via osxcross (incomplete SDK).
 git2 = { version = "0.19", default-features = false }
 diamond-types = "1.0"
+# SPEC-047 ADR-470 / IMPL-047 T3: Loro is the canonical CRDT store for the
+# realtime P2P sync layer, and will replace diamond-types as the editing
+# engine (SPEC-047 §9 removes the CrdtBackend trait). Introduced additively
+# in `crdt::loro_store` — the diamond-types engine and the ws.rs migration
+# are unchanged in this slice. Q3 (SPEC-047 ADR-478): one LoroDoc per note.
+loro = "1"
 rmcp = { version = "1", optional = true, features = ["server", "transport-io", "server-side-http", "transport-streamable-http-server"] }
 # Optional, only pulled in by the `vendored-openssl` feature. Its sole
 # purpose is to propagate the `vendored` feature flag to the transitive
