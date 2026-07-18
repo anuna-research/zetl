@@ -245,3 +245,7 @@
 (claims agent:claude
   :at "2026-07-18T06:10:09Z"
   (given implemented-unreviewed-t11-did-crdt-member-identity-3-tests))
+
+(claims agent:claude
+  :at "2026-07-18T06:13:38Z"
+  (given implemented-unreviewed-t9-mls-group-key-owner-committed-3-tests))

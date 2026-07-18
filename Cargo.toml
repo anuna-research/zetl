@@ -206,6 +206,13 @@ loro = "1"
 # default features only — the heavy iroh/pkarr `sync` feature is OFF, so the
 # footprint is crdts/k256/base64ct). UNREVIEWED auth-core (src/p2p banner).
 did-crdt = { path = "../did-crdt" }
+# SPEC-047 ADR-482 / IMPL-047 T9: MLS group key (openmls, versions matching
+# ../elephant-3000's proven integration). UNREVIEWED auth-core (src/p2p banner).
+openmls = "0.8"
+openmls_basic_credential = "0.5"
+openmls_rust_crypto = "0.5"
+openmls_traits = "0.5"
+tls_codec = "0.4"
 rmcp = { version = "1", optional = true, features = ["server", "transport-io", "server-side-http", "transport-streamable-http-server"] }
 # Optional, only pulled in by the `vendored-openssl` feature. Its sole
 # purpose is to propagate the `vendored` feature flag to the transitive
