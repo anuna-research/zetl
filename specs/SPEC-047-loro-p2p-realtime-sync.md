@@ -2,7 +2,7 @@
 id: SPEC-047
 title: "Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing"
 status: draft
-version: 0.17.0-strawman
+version: 0.18.0-strawman
 last-updated: 2026-07-18
 ---
 
@@ -49,9 +49,12 @@ Metaphor:  A CB radio with a secret call-sign. You speak a short phrase once
 Legend:    CBCL = the Lean-verified control-message language (ADR-479), whose
            deterministic pushdown recogniser (DPDA) accepts a decidable
            context-free language (DCFL) — the LangSec warrant, §8; roster =
-           the per-vault list of admitted NodeIds (CON-477); CON-### =
-           interface contracts (§7); ─AST▶ = only typed, validated parse
-           output crosses into the pure core.
+           the per-vault map of member DID → device NodeIds (CON-477),
+           mutated only by Owner-signed MLS commits (REQ-505 · ADR-482,
+           the mechanism realising ADR-477's single Group Key — so
+           "who may add members" = the Owner, and only the Owner);
+           CON-### = interface contracts (§7); ─AST▶ = only typed,
+           validated parse output crosses into the pure core.
 
 Decisions:    [[#ADR-470 Loro as Canonical Store Markdown+Git as Export]] ·
               [[#ADR-472 iroh + pkarr for Transport and Discovery]] ·
@@ -68,7 +71,9 @@ Load-bearing: [[#REQ-491 SPAKE2 Channel Authentication]] (the pairing secret) ·
               [[#REQ-499 Group-Keyed Sync Frames]] (rotation bites the wire) ·
               [[#REQ-474 Conflict-Free Offline Merge]] ·
               [[#NFR-475 Pairing Secret Entropy Floor]]
-Open:         threat-model §H/§J rendezvous enumeration + write authority vs
+Open:         threat-model §H/§J rendezvous enumeration + rendezvous-record
+              write authority (a DHT-record property — membership authority
+              is settled, Owner-only) vs
               phrase entropy (owner: HOC, gating the Tier-1 crypto review) →
               [[#18. Open Questions]] Q1; §B OOB-compromise recovery
               (fingerprint/SAS) → Q2
@@ -88,7 +93,7 @@ capitals.
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | SPEC-047                                                                                |
 | Title        | Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing         |
-| Version      | 0.17.0-strawman                                                                          |
+| Version      | 0.18.0-strawman                                                                          |
 | Status       | Draft (strawman; pending DESIGN-047 execution)                                          |
 | Author       | Agent (Claude Opus 4.8 [1M]) under [[PROTO-001]] v1.11.0                                |
 | Audience     | Agent, Human                                                                            |
@@ -2621,6 +2626,21 @@ Per [[PROTO-001]] §AI Trust Boundaries. Tier-1 ⇒ synthesis trajectory recorde
     independently). "Pairing" stays as protocol terminology. CON-474
     also gains the `--vault` join **pin** (fail closed if the ceremony
     offers a different vault — elephant's `expected_theory` guard).
+  - S₁₇ — middle-path kickoff (0.18.0): §19 restructured into the
+    two-track plan; `plans/DESIGN-047-loro-p2p-realtime-sync.spl`
+    authored (validated `--strict`) with the Tier-1 gates as dependency-
+    encoded tasks. **Comprehension gate re-run** on the 0.18.0
+    Orientation block by a fresh-context subagent (tool-less, block-only):
+    PASSED intent restatement, both behaviour predictions (offline
+    concurrent edit convergence; stranger-connection refusal at the
+    roster gate), and locate-the-artefact c1–c3; c4 ("who may add
+    members") was **unanswerable from the block** — with two related
+    findings (ADR-477/482 relationship unexplained, roster keying
+    NodeId-vs-DID ambiguous). All three folded back into the Legend and
+    Open lines. Minor findings (rejected-connection failure mode,
+    first-contact vs steady-state discovery drawn as one arrow, CON-473/
+    474 legend asymmetry) recorded here as accepted at door altitude.
+    Cross-model review and human crypto review remain PENDING.
   - Adversarial tests: not yet generated (DESIGN-047 `test-strategy` +
     cross-model).
 - **Reviewer:** **PENDING** — Tier-1 requires cross-model adversarial review,
@@ -2821,15 +2841,29 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
 
 ## 19. Status & Next Actions
 
-- This strawman is an **input** to `plans/DESIGN-047-loro-p2p-realtime-sync.spl`,
-  not an output. The plan refines each Provisional section and runs Phase-0
-  prior-art research ([[Loro]], [[iroh]], [[pkarr]] maturity; DHT-privacy
-  literature; mobile background constraints).
-- **No implementation begins** until (a) Phase 1 + Phase 2 quality gates pass;
-  (b) cross-model adversarial review completes; (c) the fresh-context
-  comprehension gate on the [[#Orientation]] block passes; (d) a human domain
-  expert approves the cryptography + auth-core package, with the §H
-  enumeration analysis as the gating artefact.
+**Two-track middle path (0.18.0, stakeholder decision):** the spec stays
+`draft`, but work proceeds on two gated tracks rather than waiting whole.
+
+- **Track 1 — spec refinement to approval.**
+  `plans/DESIGN-047-loro-p2p-realtime-sync.spl` now exists (validated
+  `--strict`) and is the working plan: one task per Provisional marker
+  (`user-profiles`, `happy-paths`, the `adr-*` refinements,
+  `input-grammars`, `perf-budget`, `threat-model`, `test-strategy`) plus
+  the Tier-1 gates as explicit tasks — `comprehension-gate` (agent-run),
+  `cross-model-review` (REQUIRES a non-Anthropic model family — every
+  pass to date is Claude-family), and `crypto-review` (human, owner HOC:
+  Q1 rendezvous split, Q2 OOB/SAS, Q7 SPAKE2 ∘ MLS ∘ did:crdt
+  composition, Q11 revocation composition). `spec-approval` is
+  unreachable in the plan's logic until all four gate tasks complete —
+  the gates are encoded as dependencies, not prose.
+- **Track 2 — non-no-go implementation MAY begin now** (task
+  `impl-047-plan`): daemon lifecycle, [[Loro]] store + deterministic
+  materialisation, guarded import, namespace manifest, [[Merkle DAG]]
+  reconciliation, [[CBCL]] control plane, and CLI scaffolding with
+  `not-yet-implemented` exits ([[#ADR-480 CLI Surface Follows Existing zetl Conventions]]).
+  **Auth-core code — pairing, [[MLS]], roster, group key — MUST NOT be
+  implemented before `crypto-review` completes**; IMPL-047 encodes that
+  gate as a task dependency.
 - On approval, re-issue at `1.0.0`, remove Provisional markers, author the dead
   concept pages surfaced by `zetl check --dead-links`, and mark [[SPEC-004]]
   `superseded`.
@@ -2839,8 +2873,22 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.17.0</summary>
+<summary>Revision history — 0.1.0 → 0.18.0</summary>
 
+- 0.18.0-strawman — middle-path kickoff (stakeholder decision): §19
+  restructured into two gated tracks — spec refinement to approval
+  (DESIGN-047 plan authored at
+  `plans/DESIGN-047-loro-p2p-realtime-sync.spl`, `--strict`-valid, one
+  task per Provisional marker plus `comprehension-gate` /
+  `cross-model-review` / `crypto-review` / `spec-approval` with the gates
+  encoded as task dependencies) and non-no-go implementation
+  (`impl-047-plan`; auth-core code explicitly gated on `crypto-review`).
+  Fresh-context comprehension gate re-run on the Orientation block:
+  passed (intent, both behaviour predictions, locate c1–c3); its c4
+  finding — membership authority unanswerable from the block, with the
+  ADR-477/482 relationship and roster keying ambiguous — fixed in the
+  Legend/Open lines; minor door-altitude findings recorded in §15 S₁₇.
+  Cross-model and human crypto reviews remain pending.
 - 0.17.0-strawman — CLI verb rename on stakeholder direction:
   `zetl collab pair` → **`zetl collab invite`** ([[#ADR-480 CLI Surface Follows Existing zetl Conventions]]
   records the rationale: `invite`/`join` are complementary speech acts

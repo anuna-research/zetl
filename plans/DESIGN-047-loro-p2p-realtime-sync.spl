@@ -1,0 +1,203 @@
+;; DESIGN-047 — refine SPEC-047-loro-p2p-realtime-sync from strawman to approved.
+;; Middle path (0.18.0): non-no-go implementation may start in parallel (IMPL-047),
+;; auth-core/crypto implementation stays gated on crypto-review + spec-approval.
+;; Source spec: specs/SPEC-047-loro-p2p-realtime-sync.md (0.18.0-strawman).
+
+(meta plan
+  (title "DESIGN-047 Loro P2P Realtime Sync — spec refinement to approval")
+  (description "Resolve every Provisional marker in SPEC-047, run the Tier-1 gates (comprehension, cross-model, human crypto review), and approve the spec. Non-no-go implementation proceeds in parallel under IMPL-047."))
+
+;; ── agents ──────────────────────────────────────────────────────────────
+(given agent-claude-available)
+(given agent-hugo-available)
+
+;; ── Phase 0/1 — profiles and paths ──────────────────────────────────────
+(meta task-user-profiles
+  (description "Author canonical /users/{group}/user.md profiles (solo-multi-device, team-collaborator, vault-owner, operator) and run synthetic-user simulations per PROTO-001. Replace the Provisional section 2 of SPEC-047.")
+  (acceptance "users/*/user.md exist, spec section 2 no longer Provisional, simulation findings recorded as REQ deltas or explicitly nil"))
+(given task-user-profiles)
+(given no-deps-user-profiles)
+(normally r-ready-user-profiles (and task-user-profiles no-deps-user-profiles) ready-user-profiles)
+(normally r-assign-user-profiles (and ready-user-profiles agent-claude-available) assign-user-profiles-claude)
+
+(meta task-happy-paths
+  (description "Author happy-paths.md per profile and walk each HP1-HP5 flow of SPEC-047 section 3 against them. Replace the Provisional marker.")
+  (acceptance "users/*/happy-paths.md exist and SPEC-047 section 3 traces each HP to a profile task"))
+(given task-happy-paths)
+(given no-deps-happy-paths)
+(normally r-ready-happy-paths (and task-happy-paths no-deps-happy-paths) ready-happy-paths)
+(normally r-assign-happy-paths (and ready-happy-paths agent-claude-available) assign-happy-paths-claude)
+
+;; ── Phase 2 — ADR refinements (Provisional markers) ─────────────────────
+(meta task-adr-source-of-truth
+  (description "Firm up ADR-470 (Loro canonical, Markdown+git export) — snapshot cadence, fsync semantics, oplog compaction interaction with Q4.")
+  (acceptance "ADR-470 Provisional marker removed, Q4 answered or narrowed with rationale"))
+(given task-adr-source-of-truth)
+(given no-deps-adr-source-of-truth)
+(normally r-ready-adr-source-of-truth (and task-adr-source-of-truth no-deps-adr-source-of-truth) ready-adr-source-of-truth)
+(normally r-assign-adr-source-of-truth (and ready-adr-source-of-truth agent-claude-available) assign-adr-source-of-truth-claude)
+
+(meta task-adr-transport
+  (description "Firm up ADR-472 (iroh + pkarr) — relay policy defaults, NAT traversal assumptions, mobile constraints from SPEC-040.")
+  (acceptance "ADR-472 Provisional marker removed, Q5 narrowed, relay defaults stated"))
+(given task-adr-transport)
+(given no-deps-adr-transport)
+(normally r-ready-adr-transport (and task-adr-transport no-deps-adr-transport) ready-adr-transport)
+(normally r-assign-adr-transport (and ready-adr-transport agent-claude-available) assign-adr-transport-claude)
+
+(meta task-adr-rendezvous
+  (description "Firm up ADR-473 routing/secret split — size num for collision avoidance, confirm the 22-bit word-word floor with single-use burn and rate limit, analyse the F58 anyone-can-sign rendezvous residual. Feeds Q1.")
+  (acceptance "ADR-473 Provisional marker removed, NFR-475 numbers fixed, Q1 analysis document written for the crypto review"))
+(given task-adr-rendezvous)
+(given no-deps-adr-rendezvous)
+(normally r-ready-adr-rendezvous (and task-adr-rendezvous no-deps-adr-rendezvous) ready-adr-rendezvous)
+(normally r-assign-adr-rendezvous (and ready-adr-rendezvous agent-claude-available) assign-adr-rendezvous-claude)
+
+(meta task-adr-trust-model
+  (description "Firm up ADR-477 (single per-vault group key, deferral of web-of-trust and delegatable admission per F66).")
+  (acceptance "ADR-477 Provisional marker removed, successor-spec boundary stated"))
+(given task-adr-trust-model)
+(given no-deps-adr-trust-model)
+(normally r-ready-adr-trust-model (and task-adr-trust-model no-deps-adr-trust-model) ready-adr-trust-model)
+(normally r-assign-adr-trust-model (and ready-adr-trust-model agent-claude-available) assign-adr-trust-model-claude)
+
+(meta task-adr-merkle-sync
+  (description "Firm up ADR-478 (Merkle DAG witness + reconciliation) — resolve Q3 CRDT granularity since REQ-486 localisation unit depends on it.")
+  (acceptance "ADR-478 Provisional marker removed, Q3 decided, REQ-486 wording consistent with the decision"))
+(given task-adr-merkle-sync)
+(given no-deps-adr-merkle-sync)
+(normally r-ready-adr-merkle-sync (and task-adr-merkle-sync no-deps-adr-merkle-sync) ready-adr-merkle-sync)
+(normally r-assign-adr-merkle-sync (and ready-adr-merkle-sync agent-claude-available) assign-adr-merkle-sync-claude)
+
+(meta task-adr-control-proto
+  (description "Firm up ADR-479 (CBCL control plane) — answer Q9 canonical encoding and the elephant loopback-HTTP counter-argument for the local plane recorded at 0.15.0.")
+  (acceptance "ADR-479 Provisional marker removed, local-plane choice confirmed or revised with rationale, Q9 answered"))
+(given task-adr-control-proto)
+(given no-deps-adr-control-proto)
+(normally r-ready-adr-control-proto (and task-adr-control-proto no-deps-adr-control-proto) ready-adr-control-proto)
+(normally r-assign-adr-control-proto (and ready-adr-control-proto agent-claude-available) assign-adr-control-proto-claude)
+
+(meta task-adr-external-edits
+  (description "Firm up ADR-471 guarded import — the F59 conservative intervening-export rule and the cooperative editor provenance-token refinement path.")
+  (acceptance "ADR-471 Provisional marker removed, staging rule stated non-provisionally, provenance-token upgrade path recorded"))
+(given task-adr-external-edits)
+(given no-deps-adr-external-edits)
+(normally r-ready-adr-external-edits (and task-adr-external-edits no-deps-adr-external-edits) ready-adr-external-edits)
+(normally r-assign-adr-external-edits (and ready-adr-external-edits agent-claude-available) assign-adr-external-edits-claude)
+
+(meta task-adr-namespace
+  (description "Design the namespace manifest (Q12, F64) — DocId scheme, manifest CRDT shape vs Q3, case-folding policy, deterministic collision disambiguation.")
+  (acceptance "REQ-504 Provisional markers removed, DocId scheme and collision rule specified with worked examples"))
+(given task-adr-namespace)
+(given no-deps-adr-namespace)
+(normally r-ready-adr-namespace (and task-adr-namespace no-deps-adr-namespace) ready-adr-namespace)
+(normally r-assign-adr-namespace (and ready-adr-namespace agent-claude-available) assign-adr-namespace-claude)
+
+(meta task-adr-identity
+  (description "Firm up ADR-481 (did:crdt member identity) — member-level revoke CLI form, did-crdt ADR-002 key-compromise recovery and ADR-003 Sybil analysis folded into the review package.")
+  (acceptance "ADR-481 Provisional marker removed, revoke did CLI form specified, did-crdt review items enumerated for crypto-review"))
+(given task-adr-identity)
+(given no-deps-adr-identity)
+(normally r-ready-adr-identity (and task-adr-identity no-deps-adr-identity) ready-adr-identity)
+(normally r-assign-adr-identity (and ready-adr-identity agent-claude-available) assign-adr-identity-claude)
+
+(meta task-adr-group-key
+  (description "Firm up ADR-482 (MLS) — ciphersuite, leaf-key HKDF derivation constants, epoch data key vs MLS exporter, multi-device-Owner commit authorisation rule (F67), lane element framing. Prepare the Q7 composition dossier.")
+  (acceptance "ADR-482 Provisional markers removed, Q7 dossier written covering SPAKE2-MLS-didcrdt composition for the crypto review"))
+(given task-adr-group-key)
+(normally r-ready-adr-group-key (and task-adr-group-key completed-adr-identity) ready-adr-group-key)
+(normally r-assign-adr-group-key (and ready-adr-group-key agent-claude-available) assign-adr-group-key-claude)
+
+(meta task-input-grammars
+  (description "Fix the provisional frame maxima, read deadlines, ALPN string and vault-id derivation in section 8 (REQ-501, REQ-503).")
+  (acceptance "No Provisional values remain in section 8, each limit justified against NFR budgets"))
+(given task-input-grammars)
+(given no-deps-input-grammars)
+(normally r-ready-input-grammars (and task-input-grammars no-deps-input-grammars) ready-input-grammars)
+(normally r-assign-input-grammars (and ready-input-grammars agent-claude-available) assign-input-grammars-claude)
+
+(meta task-perf-budget
+  (description "Validate the NFR-470..477 numbers against Loro and iroh benchmarks on the target profile hardware.")
+  (acceptance "Each NFR either confirmed by measurement or revised with the measurement attached"))
+(given task-perf-budget)
+(given no-deps-perf-budget)
+(normally r-ready-perf-budget (and task-perf-budget no-deps-perf-budget) ready-perf-budget)
+(normally r-assign-perf-budget (and ready-perf-budget agent-claude-available) assign-perf-budget-claude)
+
+;; ── threat model and tests (depend on mechanism ADRs) ───────────────────
+(meta task-threat-model
+  (description "Write research/SPEC-047-threat-model.md — full model behind section 12, including the Owner-offline rotation window (Q11), DHT observer analysis, per-member fleet visibility (threat P).")
+  (acceptance "Document exists, every section-12 letter expanded with mitigation and residual, spec section 12 references it"))
+(given task-threat-model)
+(normally r-ready-threat-model (and task-threat-model completed-adr-rendezvous completed-adr-group-key) ready-threat-model)
+(normally r-assign-threat-model (and ready-threat-model agent-claude-available) assign-threat-model-claude)
+
+(meta task-test-strategy
+  (description "Complete section 10 — per-REQ test-type omission justifications, mutation targets, fuzz corpus plan, adversarial test generation plan per PROTO-001.")
+  (acceptance "Section 10 justification note resolved per REQ, adversarial test plan written"))
+(given task-test-strategy)
+(normally r-ready-test-strategy (and task-test-strategy completed-threat-model) ready-test-strategy)
+(normally r-assign-test-strategy (and ready-test-strategy agent-claude-available) assign-test-strategy-claude)
+
+;; ── Tier-1 gates ────────────────────────────────────────────────────────
+(meta task-comprehension-gate
+  (description "Fresh-context comprehension gate on the Orientation block per PROTO-001 — restate intent, predict behaviour on a concrete case, locate deciding artefacts. Record outcome in spec section 15.")
+  (acceptance "Gate transcript recorded, pass or findings folded back into the Orientation block"))
+(given task-comprehension-gate)
+(given no-deps-comprehension-gate)
+(normally r-ready-comprehension-gate (and task-comprehension-gate no-deps-comprehension-gate) ready-comprehension-gate)
+(normally r-assign-comprehension-gate (and ready-comprehension-gate agent-claude-available) assign-comprehension-gate-claude)
+
+(meta task-cross-model-review
+  (description "Adversarial review of the full spec by a non-Anthropic model family (PROTO-001 Principle 12 cross-model gate — all passes to date are Claude-family).")
+  (acceptance "Review findings from a non-Anthropic model recorded and dispositioned in the spec changelog"))
+(given task-cross-model-review)
+(normally r-ready-cross-model-review (and task-cross-model-review completed-threat-model) ready-cross-model-review)
+(normally r-assign-cross-model-review (and ready-cross-model-review agent-hugo-available) assign-cross-model-review-hugo)
+
+(meta task-crypto-review
+  (description "Human domain-expert review of the crypto and auth-core package — Q1 rendezvous split, Q2 OOB compromise and SAS decision, Q7 SPAKE2-MLS-didcrdt composition, Q11 revocation composition. Owner HOC.")
+  (acceptance "Signed review record for Q1 Q2 Q7 Q11 with accept or change verdicts, spec updated accordingly"))
+(given task-crypto-review)
+(normally r-ready-crypto-review (and task-crypto-review completed-adr-rendezvous completed-adr-group-key completed-threat-model) ready-crypto-review)
+(normally r-assign-crypto-review (and ready-crypto-review agent-hugo-available) assign-crypto-review-hugo)
+
+(meta task-spec-approval
+  (description "Flip SPEC-047 to approved — remove strawman notice, resolve remaining Provisional markers, record gate outcomes in section 15, re-issue at 1.0.0.")
+  (acceptance "Spec status approved at 1.0.0, all gates recorded discharged, zetl check clean of new dead links"))
+(given task-spec-approval)
+(normally r-ready-spec-approval
+  (and task-spec-approval completed-crypto-review completed-cross-model-review completed-comprehension-gate completed-test-strategy)
+  ready-spec-approval)
+(normally r-assign-spec-approval (and ready-spec-approval agent-hugo-available) assign-spec-approval-hugo)
+
+;; ── parallel implementation track (non-no-go) ───────────────────────────
+(meta task-impl-047-plan
+  (description "Author IMPL-047 for the non-no-go components — daemon lifecycle, Loro store and materialisation, guarded import, namespace manifest, Merkle reconciliation, CBCL control plane, CLI scaffolding with not-yet-implemented exits. Auth-core code explicitly excluded until crypto-review completes.")
+  (acceptance "IMPL-047 document plus plans/IMPL-047.spl exist, validate strict clean, no auth-core tasks unblocked before crypto-review"))
+(given task-impl-047-plan)
+(given no-deps-impl-047-plan)
+(normally r-ready-impl-047-plan (and task-impl-047-plan no-deps-impl-047-plan) ready-impl-047-plan)
+(normally r-assign-impl-047-plan (and ready-impl-047-plan agent-claude-available) assign-impl-047-plan-claude)
+
+(claims agent:claude
+  :at "2026-07-18T03:40:17Z"
+  (given claim-v1-comprehension-gate)
+  (normally r-cl-state-v1-comprehension-gate claim-v1-comprehension-gate state-claimed-v1-comprehension-gate)
+  (normally r-cl-chain-v1-comprehension-gate state-claimed-v1-comprehension-gate claimed-comprehension-gate)
+)
+
+;; Propagation rules: failures in 'comprehension-gate' block downstream tasks
+(normally r-propagate-spec-approval-from-comprehension-gate-failed failed-comprehension-gate upstream-blocked-spec-approval)
+(normally r-propagate-spec-approval-from-comprehension-gate-permanently-failed permanently-failed-comprehension-gate upstream-blocked-spec-approval)
+(normally r-propagate-spec-approval-from-comprehension-gate-stale-v1 stale-v1-comprehension-gate upstream-blocked-spec-approval)
+(normally r-propagate-spec-approval-from-comprehension-gate-timeout-v1 timeout-v1-comprehension-gate upstream-blocked-spec-approval)
+(normally r-propagate-spec-approval-from-comprehension-gate-blocked upstream-blocked-comprehension-gate upstream-blocked-spec-approval)
+
+(claims agent:claude
+  :at "2026-07-18T03:42:55Z"
+  (given verified-comprehension-gate-passed-with-findings-folded-back))
+
+(claims agent:claude
+  :at "2026-07-18T03:42:55Z"
+  (given completed-comprehension-gate))
