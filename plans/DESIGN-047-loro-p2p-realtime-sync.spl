@@ -235,3 +235,18 @@
 (claims agent:claude
   :at "2026-07-18T04:30:46Z"
   (given completed-adr-namespace))
+
+(claims agent:claude
+  :at "2026-07-18T04:43:54Z"
+  (given claim-v1-adr-control-proto)
+  (normally r-cl-state-v1-adr-control-proto claim-v1-adr-control-proto state-claimed-v1-adr-control-proto)
+  (normally r-cl-chain-v1-adr-control-proto state-claimed-v1-adr-control-proto claimed-adr-control-proto)
+)
+
+(claims agent:claude
+  :at "2026-07-18T04:45:23Z"
+  (given decided-adr-control-proto-two-planes-local-json-network-cbcl))
+
+(claims agent:claude
+  :at "2026-07-18T04:45:23Z"
+  (given completed-adr-control-proto))

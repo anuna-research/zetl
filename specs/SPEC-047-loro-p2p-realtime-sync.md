@@ -2,7 +2,7 @@
 id: SPEC-047
 title: "Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing"
 status: draft
-version: 0.20.0-strawman
+version: 0.21.0-strawman
 last-updated: 2026-07-18
 ---
 
@@ -93,7 +93,7 @@ capitals.
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | SPEC-047                                                                                |
 | Title        | Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing         |
-| Version      | 0.20.0-strawman                                                                          |
+| Version      | 0.21.0-strawman                                                                          |
 | Status       | Draft (strawman; pending DESIGN-047 execution)                                          |
 | Author       | Agent (Claude Opus 4.8 [1M]) under [[PROTO-001]] v1.11.0                                |
 | Audience     | Agent, Human                                                                            |
@@ -1414,10 +1414,20 @@ human-review package. (−) Divergent downstream evidence (0.15.0):
 `../elephant-3000` evaluated [[CBCL]] for its *local* control plane and
 chose loopback HTTP + bearer token instead (its ADR-106), arguing R1–R5
 earn their weight only at the inter-agent trust boundary, not same-user
-loopback. The decision here stands — one recogniser across local and
-network planes is this ADR's warrant — but DESIGN-047
-`adr-control-proto` MUST confirm the local-plane choice explicitly
-against that argument rather than inherit it silently.
+loopback.
+
+**adr-control-proto resolution — two control planes (0.20.0):** [[CBCL]]
+governs the **network** control plane (peer ↔ peer, [[#CON-473 Peer Session]]),
+where untrusted peers make R1–R5 (parser-equivalence, attestation,
+causal-protocol contracts) load-bearing. The **local** control plane
+(daemon ↔ same-user CLI clients over the [[#CON-470 Daemon Control Channel]]
+socket) uses **length-prefixed JSON**, not CBCL — the boundary is same-user
+loopback, where R1–R5 buy nothing, and JSON keeps the client surface
+trivial. This confirms `../elephant-3000`'s ADR-106 argument rather than
+inheriting the single-recogniser claim silently, and matches the T2
+implementation (`src/daemon/`). Q9 (a compact CBCL canonical encoding) is
+therefore scoped to the **network** plane only. Consequence: CON-470's
+recogniser is the local JSON decoder; CON-473's is the shared CBCL DPDA.
 
 ### ADR-480: CLI Surface Follows Existing zetl Conventions
 
@@ -1614,10 +1624,14 @@ on Windows]`) — versioned request/response + subscription. Control verbs:
 runs the web server); `zetl collab {invite,join,peers,revoke}` front the
 corresponding control verbs.
 
-**Grammar / Recogniser:** [[CBCL]] control messages (`zetl-pair`/`zetl-sync`
-dialects); grammar [[#8.1 Control Envelope]]; recogniser = the shared [[CBCL]]
-DPDA ([[DCFL]], parser-equivalence) + R1–R5 validation — no per-message ad-hoc
-parser. Trust boundary: local process.
+**Grammar / Recogniser:** **length-prefixed JSON** into closed `serde`
+request/response types (`deny_unknown_fields`), fully recognised before
+dispatch — NOT [[CBCL]]. Per the adr-control-proto resolution
+([[#ADR-479 CBCL as the Control-Plane Message Language]]), the *local*
+control plane is a same-user loopback socket where CBCL's R1–R5 buy
+nothing; CBCL governs the *network* peer session ([[#CON-473 Peer Session]])
+instead. Trust boundary: local process (socket `0600`). Over-length frames
+are rejected at the length prefix before allocation.
 
 **Pre-conditions:** C1 (REQ-470) caller is local, socket `0600`/per-user pipe;
 C2 (REQ-483) each request fully recognised before dispatch.
@@ -2916,8 +2930,19 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.20.0</summary>
+<summary>Revision history — 0.1.0 → 0.21.0</summary>
 
+- 0.21.0-strawman — DESIGN-047 `adr-control-proto` resolved: **two control
+  planes**. The *network* peer session ([[#CON-473 Peer Session]]) uses
+  [[CBCL]] (untrusted peers → R1–R5 load-bearing); the *local* daemon
+  control channel ([[#CON-470 Daemon Control Channel]]) uses length-prefixed
+  JSON, not CBCL (same-user loopback → R1–R5 buy nothing), confirming
+  elephant's ADR-106 argument and matching the T2 implementation. CON-470's
+  grammar/recogniser corrected from CBCL to the local JSON decoder; Q9
+  (compact CBCL encoding) scoped to the network plane. Implementation this
+  cycle also landed the T6 Merkle convergence witness (REQ-485, reusing
+  `merkle::compute_vault_root`) and the T3 Loro→Markdown export bridge
+  (ADR-470, path-traversal-safe).
 - 0.20.0-strawman — DESIGN-047 `adr-namespace` resolved **Q12 (namespace
   manifest)**: [[DocId]] = minted opaque 128-bit id (path-independent →
   renames preserve identity); manifest = a [[Loro]] map `DocId → path`;
