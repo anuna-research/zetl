@@ -1191,6 +1191,19 @@ supersedes [[SPEC-004]]. (−) Relies on iroh default relays unless self-run
 ([[#ADR-474 Relay as Optional Fallback Not Requirement]]); DHT privacy
 ([[#12. Threat Model]] §G/§H).
 
+**Version finding (adr-transport, IMPL-047 T12 review):** **pin `iroh = "1"`
+(1.0.x, stable), NOT 0.21.** iroh 0.21 fails to compile against the current
+toolchain — an upstream bug where `iroh-net` derives `Debug` on a type
+holding `iroh_quinn::Accept`, which is not `Debug`
+(`error[E0277]: iroh_quinn::Accept doesn't implement Debug`). iroh **1.0.2**
+compiles cleanly (verified). Note: `../did-crdt`'s optional `iroh = "0.21"`
+dep must stay OFF (its `sync` feature) so it does not pull the broken 0.21
+into the graph — zetl enables no did-crdt sync features, so there is no
+conflict. iroh 1.0's endpoint API is reorganised from 0.21
+(`Endpoint::builder(preset).bind()`, a `Router`, quinn-style
+`Connection`/bi-streams), so the T12 transport is written against the 1.0
+API. **T12 is unblocked; the transport is a buildable follow-up.**
+
 ### ADR-473: Phrase-Derived DHT Rendezvous for SPAKE2
 
 **`[Provisional — DESIGN-047 task adr-rendezvous]` · No-go area: human crypto

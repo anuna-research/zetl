@@ -265,3 +265,11 @@
 (claims agent:claude
   :at "2026-07-18T04:47:13Z"
   (given completed-adr-source-of-truth))
+
+(claims agent:claude
+  :at "2026-07-18T06:39:56Z"
+  (given decided-adr-transport-pin-iroh-1-not-0.21-upstream-compile-bug))
+
+(claims agent:claude
+  :at "2026-07-18T06:39:56Z"
+  (given completed-adr-transport))
