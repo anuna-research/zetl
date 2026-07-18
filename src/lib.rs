@@ -5,6 +5,7 @@ pub mod cache;
 pub mod cap;
 pub mod cli;
 pub mod crdt;
+pub mod daemon;
 pub mod drift;
 pub mod ecosystems;
 pub mod extensions;

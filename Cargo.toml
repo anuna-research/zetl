@@ -224,6 +224,14 @@ tower-http = { version = "0.6", features = ["compression-gzip", "compression-br"
 # variant when the client advertises `Accept-Encoding: br`.
 brotli = "7"
 
+# SPEC-047 IMPL-047 T2: the `zetld` daemon needs Unix process/socket
+# primitives — pid liveness (kill(pid, 0)) and setsid() for detaching the
+# daemon from the controlling terminal (REQ-490). Unix-only so non-unix
+# targets don't link it; the daemon module is cfg(unix)-guarded for those
+# calls.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 
 [dev-dependencies]
 assert_cmd = "2"

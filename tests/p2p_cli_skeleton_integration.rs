@@ -17,9 +17,10 @@ const DAEMON_VERBS: &[&str] = &["start", "stop", "status"];
 const COLLAB_P2P_VERBS: &[&str] = &["invite", "join", "peers", "revoke"];
 
 /// Stub verbs and any positional args needed to reach the handler (rather
-/// than a clap usage error). All are `not-yet-implemented` in T1.
-const DAEMON_STUBS: &[(&str, &[&str])] =
-    &[("start", &[]), ("stop", &[]), ("status", &[])];
+/// than a clap usage error). The `zetl collab` P2P verbs are auth-core and
+/// stay stubbed until the DESIGN-047 crypto-review gate; the `zetl daemon`
+/// verbs are IMPL-047 T2 and are now implemented (see
+/// tests/daemon_lifecycle_integration.rs), so they are NOT stubs here.
 const COLLAB_STUBS: &[(&str, &[&str])] = &[
     ("invite", &[]),
     ("join", &[]),
@@ -86,21 +87,6 @@ fn collab_each_p2p_verb_has_help() {
 }
 
 #[test]
-fn daemon_stub_verbs_exit_not_yet_implemented() {
-    for (verb, extra) in DAEMON_STUBS {
-        let mut args = vec!["daemon", verb];
-        args.extend_from_slice(extra);
-        cargo_bin_cmd!("zetl")
-            .args(&args)
-            .assert()
-            .code(2)
-            .stderr(predicate::str::contains(format!(
-                "zetl daemon {verb}: not-yet-implemented"
-            )));
-    }
-}
-
-#[test]
 fn collab_p2p_stub_verbs_exit_not_yet_implemented() {
     for (verb, extra) in COLLAB_STUBS {
         let mut args = vec!["collab", verb];
@@ -139,7 +125,7 @@ fn p2p_stub_emits_json_under_json_flag() {
 #[test]
 fn p2p_stub_emits_json_under_format_flag() {
     let assert = cargo_bin_cmd!("zetl")
-        .args(["-f", "json", "daemon", "status"])
+        .args(["-f", "json", "collab", "peers"])
         .assert()
         .code(2);
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);

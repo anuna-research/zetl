@@ -697,7 +697,13 @@ pub enum Command {
 #[derive(Subcommand)]
 pub enum DaemonCommand {
     /// Start the `zetld` daemon (backgrounds the process)
-    Start,
+    Start {
+        /// Run the daemon serve loop in the foreground instead of spawning a
+        /// detached process. Internal — `start` re-invokes itself with this
+        /// flag as the detached child.
+        #[arg(long, hide = true)]
+        foreground: bool,
+    },
     /// Stop the running `zetld` daemon via the control channel
     Stop,
     /// Report daemon health, uptime, joined vaults, and peer counts

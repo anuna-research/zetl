@@ -12096,12 +12096,83 @@ fn main() -> anyhow::Result<()> {
             zetl::cli::CollabCommand::Revoke { .. } => cmd_p2p_stub(&cli, "collab", "revoke"),
         },
         Command::Daemon { command } => match command {
-            // IMPL-047 T2 (daemon + control channel); stubbed until it lands.
-            zetl::cli::DaemonCommand::Start => cmd_p2p_stub(&cli, "daemon", "start"),
-            zetl::cli::DaemonCommand::Stop => cmd_p2p_stub(&cli, "daemon", "stop"),
-            zetl::cli::DaemonCommand::Status => cmd_p2p_stub(&cli, "daemon", "status"),
+            zetl::cli::DaemonCommand::Start { foreground } => cmd_daemon_start(&cli, *foreground),
+            zetl::cli::DaemonCommand::Stop => cmd_daemon_stop(&cli),
+            zetl::cli::DaemonCommand::Status => cmd_daemon_status(&cli),
         },
     }
+}
+
+// ── `zetl daemon` handlers (SPEC-047 REQ-470/471/490, IMPL-047 T2) ────────
+
+/// Resolve the vault root a daemon command targets. `--vault` (named,
+/// multi-vault) is not yet wired to a daemon registry (that is REQ-503 / a
+/// later slice); until then the daemon is per-directory via `-d/--dir`.
+fn daemon_vault_root(cli: &Cli) -> std::path::PathBuf {
+    zetl::daemon::server::resolve_vault_root(&cli.dir)
+}
+
+/// `zetl daemon start` — idempotent launch (REQ-470/471). With the hidden
+/// `--foreground` flag it *becomes* the daemon (the detached child path).
+fn cmd_daemon_start(cli: &Cli, foreground: bool) -> Result<()> {
+    let root = daemon_vault_root(cli);
+    if foreground {
+        // We are the detached child: run the serve loop until `stop`.
+        return zetl::daemon::lifecycle::run_foreground(&root);
+    }
+    use zetl::daemon::lifecycle::StartOutcome;
+    let outcome = zetl::daemon::lifecycle::start(&root)?;
+    let (msg, pid) = match outcome {
+        StartOutcome::Started { pid } => ("started", pid),
+        StartOutcome::AlreadyRunning { pid } => ("already-running", pid),
+        StartOutcome::RecoveredStale { pid } => ("started (recovered stale state)", pid),
+    };
+    if cli.json || matches!(cli.format, OutputFormat::Json) {
+        println!("{}", serde_json::json!({ "daemon": msg, "pid": pid }));
+    } else {
+        println!("zetld {msg} (pid {pid})");
+    }
+    Ok(())
+}
+
+/// `zetl daemon stop` — idempotent (REQ-471).
+fn cmd_daemon_stop(cli: &Cli) -> Result<()> {
+    let root = daemon_vault_root(cli);
+    use zetl::daemon::lifecycle::StopOutcome;
+    let msg = match zetl::daemon::lifecycle::stop(&root)? {
+        StopOutcome::Stopped => "stopped",
+        StopOutcome::AlreadyStopped => "not-running",
+    };
+    if cli.json || matches!(cli.format, OutputFormat::Json) {
+        println!("{}", serde_json::json!({ "daemon": msg }));
+    } else {
+        println!("zetld {msg}");
+    }
+    Ok(())
+}
+
+/// `zetl daemon status` — machine-readable liveness (REQ-471 C3).
+fn cmd_daemon_status(cli: &Cli) -> Result<()> {
+    let root = daemon_vault_root(cli);
+    let status = zetl::daemon::lifecycle::status(&root)?;
+    if cli.json || matches!(cli.format, OutputFormat::Json) {
+        println!("{}", serde_json::to_string_pretty(&status)?);
+    } else {
+        match &status {
+            zetl::daemon::DaemonStatus::NotRunning => println!("zetld: not running"),
+            zetl::daemon::DaemonStatus::Stale { reason } => println!("zetld: stale ({reason})"),
+            zetl::daemon::DaemonStatus::Running {
+                pid,
+                uptime_secs,
+                vaults,
+                peers,
+            } => println!(
+                "zetld: running (pid {pid}, up {uptime_secs}s, vaults [{}], {peers} peers)",
+                vaults.join(", ")
+            ),
+        }
+    }
+    Ok(())
 }
 
 // ── `zetl collab share` handlers (SPEC-041 REQ-4116/4117/4118, CON-4110) ──
