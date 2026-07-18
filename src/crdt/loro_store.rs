@@ -287,4 +287,67 @@ mod tests {
         assert!(DocId::parse("a b").is_err());
         assert!(DocId::parse("note-1_v.2").is_ok());
     }
+
+    // Property tests for the pure CRDT core (SPEC-047 §10: property-based
+    // testing for the Loro core — roundtrip + convergence invariants).
+    use proptest::prelude::*;
+
+    /// Apply a sequence of inserts, clamping each position into range so every
+    /// generated edit is valid.
+    fn apply_inserts(note: &mut NoteDoc, edits: &[(usize, String)]) {
+        for (p, t) in edits {
+            let len = note.materialise().chars().count();
+            let pos = if len == 0 { 0 } else { p % (len + 1) };
+            note.insert(pos, t).unwrap();
+        }
+    }
+
+    proptest! {
+        // REQ-472/473: persisting then reloading any content preserves it,
+        // and materialise is a referentially-transparent function of state.
+        #[test]
+        fn prop_snapshot_roundtrip_preserves_content(s in "[a-zA-Z0-9 \n#*_-]{0,60}") {
+            let tmp = tempfile::tempdir().unwrap();
+            let store = LoroStore::open(tmp.path());
+            let id = DocId::parse("p").unwrap();
+            let mut note = store.load_or_create(&id).unwrap();
+            note.set_content(&s).unwrap();
+            store.persist(&id, &note).unwrap();
+
+            let reloaded = LoroStore::open(tmp.path()).load_or_create(&id).unwrap();
+            prop_assert_eq!(reloaded.materialise(), s);
+        }
+
+        // REQ-474/485: two peers that start from a shared base, edit
+        // concurrently, and exchange the deltas each lacks converge to
+        // byte-identical state — conflict-free, order-independent.
+        #[test]
+        fn prop_two_peers_converge(
+            base in "[a-z ]{0,20}",
+            a_edits in prop::collection::vec((0usize..200, "[a-z]{1,4}"), 0..6),
+            b_edits in prop::collection::vec((0usize..200, "[A-Z]{1,4}"), 0..6),
+        ) {
+            let mut a = NoteDoc::new();
+            let mut b = NoteDoc::new();
+            a.set_content(&base).unwrap();
+
+            // b learns the shared base from a.
+            let empty = loro::VersionVector::default();
+            b.import_updates(&a.export_updates_since(&empty).unwrap()).unwrap();
+
+            // Concurrent divergent edits.
+            apply_inserts(&mut a, &a_edits);
+            apply_inserts(&mut b, &b_edits);
+
+            // Each exports exactly the ops the other lacks; both import.
+            let a_vv = a.oplog_vv();
+            let b_vv = b.oplog_vv();
+            let a_to_b = a.export_updates_since(&b_vv).unwrap();
+            let b_to_a = b.export_updates_since(&a_vv).unwrap();
+            a.import_updates(&b_to_a).unwrap();
+            b.import_updates(&a_to_b).unwrap();
+
+            prop_assert_eq!(a.materialise(), b.materialise());
+        }
+    }
 }
