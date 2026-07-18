@@ -63,10 +63,12 @@ pub struct Cli {
     )]
     pub dir: String,
 
-    /// Named vault selector for a multi-vault `zetld` daemon (SPEC-047
-    /// REQ-503 / CON-474). Distinct from `-d/--dir` (a filesystem path):
-    /// `--vault` names one of several vaults a running daemon serves. When
-    /// unset, commands fall back to the `-d` path / current directory.
+    // Traceability: SPEC-047 REQ-503 / CON-474 (kept out of the user-facing
+    // help text, which must not leak artefact IDs — cli_polish_integration).
+    /// Named vault selector for a multi-vault `zetld` daemon. Distinct from
+    /// `-d/--dir` (a filesystem path): `--vault` names one of several vaults a
+    /// running daemon serves. When unset, commands fall back to the `-d` path /
+    /// current directory.
     #[arg(long, env = "ZETL_VAULT", global = true)]
     pub vault: Option<String>,
 
@@ -676,12 +678,13 @@ pub enum Command {
         command: CollabCommand,
     },
 
-    /// Manage the persistent `zetld` sync daemon (SPEC-047 REQ-470/489)
+    // Traceability: SPEC-047 REQ-470/489, ADR-480 (kept out of the help text).
+    /// Manage the persistent `zetld` sync daemon
     ///
     /// Parallels `zetl serve`: `zetld` owns vault state and P2P sessions so
     /// clients attach over a local control channel. Verbs whose handlers
     /// have not landed exit non-zero with a `not-yet-implemented`
-    /// diagnostic (ADR-480).
+    /// diagnostic.
     #[command(
         after_help = "Examples:\n  zetl daemon start           Start zetld in the background\n  zetl daemon status          Report daemon health and joined vaults\n  zetl daemon stop            Stop the running daemon"
     )]
