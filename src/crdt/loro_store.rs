@@ -154,8 +154,9 @@ impl NoteDoc {
     }
 
     /// Merge a peer's exported updates into this document (conflict-free —
-    /// REQ-474).
-    pub fn import_updates(&mut self, bytes: &[u8]) -> Result<()> {
+    /// REQ-474). Takes `&self` — `LoroDoc` is interior-mutable — so it composes
+    /// with the [`crate::crdt::reconcile::Syncable`] sync abstraction.
+    pub fn import_updates(&self, bytes: &[u8]) -> Result<()> {
         self.doc.import(bytes).context("import loro updates")?;
         Ok(())
     }
