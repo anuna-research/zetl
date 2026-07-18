@@ -1,21 +1,18 @@
-//! Loro-backed rich-text [`CrdtBackend`] (SPEC-047 ADR-470/§9, IMPL-047 T3).
+//! The Loro-backed rich-text editing document (SPEC-047 ADR-470/§9, IMPL-047 T3).
 //!
-//! The editing engine on [[Loro]], replacing the diamond-types
-//! [`super::diamond::DiamondCrdtDocument`]. Where diamond keeps a text oplog +
-//! a sibling marks oplog, Loro's rich text is natively Peritext (text with
-//! expand-aware style marks), so one `LoroText` container holds both. Block
-//! structure (headings, lists, fences) is stored as literal text exactly as
-//! diamond does; only inline marks live in the style layer. The markdown
+//! The one editing engine, on [[Loro]] (replacing the former diamond-types
+//! engine + `CrdtBackend` trait). Loro's rich text is natively Peritext (text
+//! with expand-aware style marks), so one `LoroText` container holds both text
+//! and inline marks. Block structure (headings, lists, fences) is stored as
+//! literal text; only inline marks live in the style layer. The markdown
 //! mapping is the shared `marks` module (`parse_inline_marks` /
-//! `serialize_to_markdown`), so the two engines round-trip identically.
+//! `serialize_to_markdown`).
 
-use std::any::Any;
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
 use loro::{ExpandType, ExportMode, LoroDoc, LoroValue, StyleConfig, StyleConfigMap, TextDelta};
 
-use super::backend::CrdtBackend;
 use super::blocks::BlockToken;
 use super::marks::{parse_inline_marks, serialize_to_markdown, ExpandMark, Mark, MarkType, Scalar};
 
@@ -162,28 +159,30 @@ impl LoroCrdtDocument {
     }
 }
 
-impl CrdtBackend for LoroCrdtDocument {
-    fn new() -> Result<Self> {
+/// The editing surface (formerly the `CrdtBackend` trait, now inherent — one
+/// engine, no indirection, per SPEC-047 §9).
+impl LoroCrdtDocument {
+    pub fn new() -> Result<Self> {
         Ok(Self { doc: configured_doc() })
     }
 
-    fn from_markdown(markdown: &str) -> Result<Self> {
-        let mut this = <Self as CrdtBackend>::new()?;
+    pub fn from_markdown(markdown: &str) -> Result<Self> {
+        let mut this = Self::new()?;
         this.load_markdown(markdown)?;
         Ok(this)
     }
 
-    fn load(data: &[u8]) -> Result<Self> {
+    pub fn load(data: &[u8]) -> Result<Self> {
         let doc = configured_doc();
         doc.import(data).context("import loro editing snapshot")?;
         Ok(Self { doc })
     }
 
-    fn text(&self) -> Result<String> {
+    pub fn text(&self) -> Result<String> {
         Ok(self.text_handle().to_string())
     }
 
-    fn marks(&self) -> Result<Vec<Mark>> {
+    pub fn marks(&self) -> Result<Vec<Mark>> {
         // Reconstruct contiguous mark spans by walking the rich-text delta,
         // tracking each style key's open span until it lapses or changes value.
         let mut open: HashMap<String, (Scalar, usize)> = HashMap::new();
@@ -234,7 +233,7 @@ impl CrdtBackend for LoroCrdtDocument {
         Ok(out)
     }
 
-    fn splice_text(&mut self, pos: usize, del: isize, text: &str) -> Result<()> {
+    pub fn splice_text(&mut self, pos: usize, del: isize, text: &str) -> Result<()> {
         if del < 0 {
             anyhow::bail!("splice_text: del must be non-negative (got {del})");
         }
@@ -253,7 +252,7 @@ impl CrdtBackend for LoroCrdtDocument {
         Ok(())
     }
 
-    fn mark(&mut self, mark_type: &MarkType, start: usize, end: usize) -> Result<()> {
+    pub fn mark(&mut self, mark_type: &MarkType, start: usize, end: usize) -> Result<()> {
         self.text_handle()
             .mark(start..end, mark_type.name(), scalar_to_loro(mark_type.scalar_value()))
             .with_context(|| format!("loro mark {}", mark_type.name()))?;
@@ -261,7 +260,7 @@ impl CrdtBackend for LoroCrdtDocument {
         Ok(())
     }
 
-    fn unmark(&mut self, mark_type: &MarkType, start: usize, end: usize) -> Result<()> {
+    pub fn unmark(&mut self, mark_type: &MarkType, start: usize, end: usize) -> Result<()> {
         self.text_handle()
             .unmark(start..end, mark_type.name())
             .with_context(|| format!("loro unmark {}", mark_type.name()))?;
@@ -269,7 +268,7 @@ impl CrdtBackend for LoroCrdtDocument {
         Ok(())
     }
 
-    fn to_markdown(&self) -> Result<String> {
+    pub fn to_markdown(&self) -> Result<String> {
         let text = self.text()?;
         if text.is_empty() {
             return Ok(String::new());
@@ -277,33 +276,27 @@ impl CrdtBackend for LoroCrdtDocument {
         Ok(serialize_to_markdown(&text, &self.marks()?))
     }
 
-    fn save(&mut self) -> Vec<u8> {
+    pub fn save(&mut self) -> Vec<u8> {
         self.doc
             .export(ExportMode::snapshot())
             .expect("export loro snapshot")
     }
 
-    fn fork(&mut self) -> Box<dyn CrdtBackend> {
-        // Snapshot round-trip: an independent document with the same history.
+    /// Fork into an independent document with the same history (snapshot
+    /// round-trip).
+    pub fn fork(&mut self) -> LoroCrdtDocument {
         let bytes = self.save();
-        Box::new(<Self as CrdtBackend>::load(&bytes).expect("fork via snapshot"))
+        Self::load(&bytes).expect("fork via snapshot")
     }
 
-    fn merge(&mut self, other: &mut dyn CrdtBackend) -> Result<()> {
-        let other = other
-            .as_any_mut()
-            .downcast_mut::<LoroCrdtDocument>()
-            .context("merge: incompatible CRDT backend")?;
+    /// Merge another document's ops into this one (conflict-free).
+    pub fn merge(&mut self, other: &LoroCrdtDocument) -> Result<()> {
         let patch = other
             .doc
             .export(ExportMode::all_updates())
             .context("export loro updates for merge")?;
         self.doc.import(&patch).context("import loro updates on merge")?;
         Ok(())
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 }
 
@@ -415,8 +408,8 @@ mod tests {
         let mut b = a.fork();
         a.splice_text(4, 0, " A").unwrap();
         b.splice_text(0, 0, "B ").unwrap();
-        a.merge(b.as_mut()).unwrap();
-        b.merge(&mut a).unwrap();
+        a.merge(&b).unwrap();
+        b.merge(&a).unwrap();
         assert_eq!(a.text().unwrap(), b.text().unwrap());
     }
 
@@ -426,7 +419,7 @@ mod tests {
         let mut b = a.fork();
         a.mark(&MarkType::Bold, 0, 5).unwrap();
         b.mark(&MarkType::Italic, 6, 11).unwrap();
-        a.merge(b.as_mut()).unwrap();
+        a.merge(&b).unwrap();
         let out = a.to_markdown().unwrap();
         assert!(out.contains("**hello**"), "bold from A: {out}");
         assert!(out.contains("*world*"), "italic from B: {out}");

@@ -1,7 +1,7 @@
 //! Project-owned mark types for the Peritext CRDT engine.
 //!
 //! The `Mark` / `Scalar` / `ExpandMark` types here form the engine-agnostic
-//! surface [`crate::crdt::CrdtBackend`] hands back to callers, so no
+//! surface the editing backend hands back to callers, so no
 //! third-party CRDT types leak into the trait.
 //!
 //! `Scalar` is intentionally the narrow subset of scalar values zetl ever
@@ -70,7 +70,7 @@ impl Scalar {
 
 /// Project-owned CRDT mark span.
 ///
-/// Returned from [`crate::crdt::CrdtBackend::marks`] so every backend hands
+/// Returned from [`crate::crdt::loro_backend::LoroCrdtDocument::marks`] so every backend hands
 /// back the same owned struct regardless of its internal storage format.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Mark {
@@ -232,7 +232,7 @@ fn scalar_to_string(v: &Scalar) -> Option<String> {
 // markdown into plain text + inline-mark ranges without touching the CRDT;
 // `serialize_to_markdown` is its inverse, emitting canonical markdown from
 // text + marks per REQ-020-027. The diamond backend drives them via
-// `CrdtBackend::splice_text` / `mark` / `unmark`.
+// `LoroCrdtDocument::splice_text` / `mark` / `unmark`.
 
 /// Plain text extracted from a line of markdown along with the inline marks
 /// discovered while parsing it.
