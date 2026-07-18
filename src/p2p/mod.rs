@@ -22,10 +22,10 @@
 //! Implemented (UNREVIEWED): [`pair`] (T8 SPAKE2 ceremony), [`group`] (T9 MLS
 //! Owner-committed membership), [`roster`] (T10 role gate), [`identity`] (T11
 //! did:crdt), [`revocation`] (T13 durable rotation), [`control`] (T7 CBCL
-//! network control-message recogniser). NOT implemented: the iroh QUIC
-//! transport (T12) — the network wiring that carries these frames; blocked by
-//! an upstream iroh dependency issue (see the iroh-version note in the
-//! DESIGN-047 `adr-transport` task).
+//! network control-message recogniser), [`session`] (T12 roster-gated stream
+//! sync core), [`transport`] (T12 iroh QUIC endpoint — pinned to iroh 1.x per
+//! ADR-472; the 0.21 compile bug is resolved). All M2 network tasks (T7-T13)
+//! are now implemented but remain UNREVIEWED pending the human crypto review.
 
 pub mod control;
 pub mod group;
@@ -34,3 +34,4 @@ pub mod pair;
 pub mod revocation;
 pub mod roster;
 pub mod session;
+pub mod transport;

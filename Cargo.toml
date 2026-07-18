@@ -219,6 +219,11 @@ tls_codec = "0.4"
 # UNREVIEWED auth-core-adjacent (the attestation path is auth-core).
 cbcl-core = { path = "../cbcl-rs/crates/cbcl-core" }
 cbcl-parser = { path = "../cbcl-rs/crates/cbcl-parser" }
+# SPEC-047 REQ-483 / IMPL-047 T12 / ADR-472: iroh QUIC transport for the peer
+# sync session. Pin to 1.x — 0.21 fails to compile (upstream `iroh_quinn::Accept:
+# !Debug`); 1.0.2 builds clean. default features give the n0 relay/DNS discovery
+# + tls-ring provider. UNREVIEWED auth-core (src/p2p banner).
+iroh = "1"
 rmcp = { version = "1", optional = true, features = ["server", "transport-io", "server-side-http", "transport-streamable-http-server"] }
 # Optional, only pulled in by the `vendored-openssl` feature. Its sole
 # purpose is to propagate the `vendored` feature flag to the transitive

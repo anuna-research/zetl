@@ -20,7 +20,7 @@
 //! [[Group Key]] epoch (REQ-499 — composes T9), and the [[Merkle DAG]] coarse
 //! filter that skips exchange for unchanged docs (ADR-478).
 
-use crate::crdt::loro_store::{LoroStore, NoteDoc};
+use crate::crdt::loro_store::LoroStore;
 use crate::crdt::manifest::Manifest;
 use crate::crdt::reconcile::Syncable;
 use crate::p2p::roster::Roster;
@@ -108,7 +108,7 @@ async fn read_frame<S: AsyncRead + Unpin>(stream: &mut S) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crdt::loro_store::DocId;
+    use crate::crdt::loro_store::{DocId, NoteDoc};
 
     // REQ-486: two peers with divergent notes converge over a stream.
     #[tokio::test]

@@ -18,7 +18,7 @@
 //! data-key distribution as an MLS application message (REQ-499 sealing), and
 //! the Loro membership-lane transport (REQ-502).
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use openmls::prelude::{
     BasicCredential, Ciphersuite, CredentialWithKey, KeyPackage, KeyPackageBundle, KeyPackageIn,
     LeafNodeIndex, MlsGroup, MlsGroupCreateConfig, MlsGroupJoinConfig, MlsMessageBodyIn,
