@@ -145,9 +145,9 @@ fn daemon_owns_vault_store_and_materialises() {
     // Content survives the round-trip through the Loro store.
     assert_eq!(
         std::fs::read_to_string(vault.join("one.md")).unwrap(),
-        "# One\n\nbody"
+        "# One\n\nbody\n"
     );
-    assert_eq!(std::fs::read_to_string(vault.join("sub/two.md")).unwrap(), "two");
+    assert_eq!(std::fs::read_to_string(vault.join("sub/two.md")).unwrap(), "two\n");
 }
 
 #[test]

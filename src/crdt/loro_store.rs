@@ -9,19 +9,15 @@
 //!
 //! Purity: [`NoteDoc::materialise`] is deterministic and I/O-free (REQ-473 C3).
 //! The effectful shell ([`LoroStore`]) performs snapshot persistence.
-//
-// SIMPLIFY: `materialise` returns the note's plain text content, not yet the
-// SPEC-006 block-typed Markdown AST. Ceiling: byte-agreement with the existing
-// materialisation pipeline (needed for the REQ-485 Merkle witness); upgrade
-// path: map Loro containers to the block/mark model in a following T3 slice
-// (trace: SPEC-047 REQ-473 / CON-471).
+//!
+//! A [`NoteDoc`] *is* a rich-text [`LoroCrdtDocument`] (the editing engine):
+//! store and editor share one Loro model (SPEC-047 §9). `materialise` returns
+//! canonical Markdown via `to_markdown`.
 
+use super::loro_backend::LoroCrdtDocument;
 use anyhow::{Context, Result};
-use loro::{ExportMode, LoroDoc};
 use std::path::{Path, PathBuf};
 
-/// The Loro text container holding a note's body.
-const CONTENT_CONTAINER: &str = "content";
 /// Subdirectory of `.zetl/` holding per-note Loro snapshots.
 const LORO_SUBDIR: &str = "loro";
 /// Snapshot file extension.
@@ -75,10 +71,13 @@ impl std::fmt::Display for DocId {
     }
 }
 
-/// One note's CRDT document — a `LoroDoc` with a single text container. Wraps
-/// the Loro handle so callers work in terms of note content, not containers.
+/// One note's canonical CRDT document. Unified with the editing engine
+/// (SPEC-047 ADR-470/§9): a `NoteDoc` *is* a rich-text
+/// [`LoroCrdtDocument`], so the note the store persists and syncs is the same
+/// representation the editor edits — one model, not two. Content in and out is
+/// canonical Markdown ([`materialise`](Self::materialise) = `to_markdown`).
 pub struct NoteDoc {
-    doc: LoroDoc,
+    inner: LoroCrdtDocument,
 }
 
 impl Default for NoteDoc {
@@ -90,75 +89,68 @@ impl Default for NoteDoc {
 impl NoteDoc {
     /// A fresh, empty note document.
     pub fn new() -> NoteDoc {
-        NoteDoc { doc: LoroDoc::new() }
+        NoteDoc {
+            inner: LoroCrdtDocument::new().expect("empty loro document is infallible"),
+        }
     }
 
     /// Load a note document from a persisted snapshot (REQ-472 C4: restart
     /// reloads canonical state *with* causal history — a snapshot carries the
     /// full oplog, so subsequent concurrent edits still merge).
     pub fn from_snapshot(bytes: &[u8]) -> Result<NoteDoc> {
-        let doc = LoroDoc::new();
-        doc.import(bytes).context("import loro snapshot")?;
-        Ok(NoteDoc { doc })
+        Ok(NoteDoc {
+            inner: LoroCrdtDocument::load(bytes)?,
+        })
     }
 
-    /// Replace the note's content with `text` (a coarse whole-body edit; the
-    /// fine-grained editing path is the WebSocket layer's future migration).
-    /// Commits so the op is durable in the oplog.
-    pub fn set_content(&mut self, text: &str) -> Result<()> {
-        let handle = self.doc.get_text(CONTENT_CONTAINER);
-        handle
-            .update(text, loro::UpdateOptions::default())
-            .context("update loro text")?;
-        self.doc.commit();
-        Ok(())
+    /// Replace the note's content with canonical Markdown (parsed into the
+    /// rich-text model; exact bytes preserved — no editor newline normalising).
+    pub fn set_content(&mut self, markdown: &str) -> Result<()> {
+        self.inner.set_markdown(markdown)
     }
 
-    /// Insert `text` at unicode index `pos` (a primitive edit for tests and the
-    /// coming editing-layer migration).
+    /// Insert `text` at unicode index `pos`.
     pub fn insert(&mut self, pos: usize, text: &str) -> Result<()> {
-        self.doc
-            .get_text(CONTENT_CONTAINER)
-            .insert(pos, text)
-            .context("insert loro text")?;
-        self.doc.commit();
-        Ok(())
+        self.inner.splice_text(pos, 0, text)
     }
 
-    /// Deterministic materialisation to the note body (REQ-473 C3:
-    /// referentially transparent — identical Loro state yields identical
-    /// bytes). Pure, no I/O.
+    /// Deterministic materialisation to canonical Markdown (REQ-473 C3:
+    /// referentially transparent — identical Loro state yields identical bytes).
     pub fn materialise(&self) -> String {
-        self.doc.get_text(CONTENT_CONTAINER).to_string()
+        self.inner.to_markdown().unwrap_or_default()
+    }
+
+    /// The note's text length in unicode scalars (distinct from the canonical
+    /// materialised length, which may add a trailing newline). Callers indexing
+    /// into the text (e.g. [`insert`](Self::insert)) clamp against this.
+    pub fn len(&self) -> usize {
+        self.inner.text().map(|t| t.chars().count()).unwrap_or(0)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Full snapshot (history + state) for persistence.
     pub fn snapshot(&self) -> Result<Vec<u8>> {
-        self.doc
-            .export(ExportMode::snapshot())
-            .context("export loro snapshot")
+        Ok(self.inner.save())
     }
 
-    /// Op-log version vector — the per-document sync cursor (REQ-486
-    /// reconciliation localises on these).
+    /// Op-log version vector — the per-document sync cursor (REQ-486).
     pub fn oplog_vv(&self) -> loro::VersionVector {
-        self.doc.oplog_vv()
+        self.inner.oplog_vv()
     }
 
-    /// Export the ops this document has that a peer at `remote` lacks (delta
-    /// sync — REQ-486). `remote` is the peer's [`oplog_vv`].
+    /// Export the ops this document has that a peer at `remote` lacks (REQ-486).
     pub fn export_updates_since(&self, remote: &loro::VersionVector) -> Result<Vec<u8>> {
-        self.doc
-            .export(ExportMode::updates(remote))
-            .context("export loro updates")
+        self.inner.export_updates_since(remote)
     }
 
     /// Merge a peer's exported updates into this document (conflict-free —
-    /// REQ-474). Takes `&self` — `LoroDoc` is interior-mutable — so it composes
-    /// with the [`crate::crdt::reconcile::Syncable`] sync abstraction.
+    /// REQ-474). `&self` — Loro is interior-mutable — composing with the
+    /// [`crate::crdt::reconcile::Syncable`] abstraction.
     pub fn import_updates(&self, bytes: &[u8]) -> Result<()> {
-        self.doc.import(bytes).context("import loro updates")?;
-        Ok(())
+        self.inner.import_updates(bytes)
     }
 }
 
@@ -240,7 +232,7 @@ mod tests {
         // Reopen from disk (fresh store) — canonical state reloads.
         let store2 = LoroStore::open(tmp.path());
         let reloaded = store2.load_or_create(&id).unwrap();
-        assert_eq!(reloaded.materialise(), "# Title\n\nbody");
+        assert_eq!(reloaded.materialise(), "# Title\n\nbody\n");
     }
 
     // TEST-473: materialise is referentially transparent — identical state,
@@ -255,7 +247,7 @@ mod tests {
         b.insert(0, "hello ").unwrap();
         b.insert(6, "world").unwrap();
 
-        assert_eq!(a.materialise(), "hello world");
+        assert_eq!(a.materialise(), "hello world\n");
         assert_eq!(a.materialise(), b.materialise());
         // Referential transparency: repeated calls agree.
         assert_eq!(a.materialise(), a.materialise());
@@ -271,7 +263,7 @@ mod tests {
         // b learns a's ops (b had none), then both edit concurrently.
         let empty = loro::VersionVector::default();
         b.import_updates(&a.export_updates_since(&empty).unwrap()).unwrap();
-        assert_eq!(b.materialise(), "shared");
+        assert_eq!(b.materialise(), "shared\n");
 
         a.insert(6, " by A").unwrap();
         b.insert(0, "X ").unwrap();
@@ -309,7 +301,7 @@ mod tests {
     /// generated edit is valid.
     fn apply_inserts(note: &mut NoteDoc, edits: &[(usize, String)]) {
         for (p, t) in edits {
-            let len = note.materialise().chars().count();
+            let len = note.len();
             let pos = if len == 0 { 0 } else { p % (len + 1) };
             note.insert(pos, t).unwrap();
         }
@@ -328,7 +320,7 @@ mod tests {
             store.persist(&id, &note).unwrap();
 
             let reloaded = LoroStore::open(tmp.path()).load_or_create(&id).unwrap();
-            prop_assert_eq!(reloaded.materialise(), s);
+            prop_assert_eq!(reloaded.materialise(), note.materialise());
         }
 
         // REQ-474/485: two peers that start from a shared base, edit

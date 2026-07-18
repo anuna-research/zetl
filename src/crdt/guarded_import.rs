@@ -96,9 +96,8 @@ pub enum ImportOutcome {
 /// performs the write, keeping this function free of the conflict-area I/O so
 /// the decision stays testable).
 ///
-/// The Markdown → Loro fold currently replaces the note body (the plain-text
-/// foundation of T3); block-structured folding lands with T3's materialisation
-/// slice.
+/// The Markdown → Loro fold replaces the note body via the canonical rich-text
+/// ingestion (`NoteDoc::set_content`).
 pub fn import_external(
     note: &mut NoteDoc,
     markdown: &str,
@@ -186,7 +185,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out, ImportOutcome::Folded);
-        assert_eq!(note.materialise(), "edited body");
+        assert_eq!(note.materialise(), "edited body\n");
 
         // Stage path: note untouched, staged path returned.
         let out = import_external(
@@ -197,6 +196,6 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out, ImportOutcome::Staged(PathBuf::from("/conflict/x.md")));
-        assert_eq!(note.materialise(), "edited body", "staged write must not fold");
+        assert_eq!(note.materialise(), "edited body\n", "staged write must not fold");
     }
 }

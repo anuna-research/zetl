@@ -80,7 +80,12 @@ impl LoroCrdtDocument {
     /// block prefixes and fenced/frontmatter lines are inserted as literal
     /// text; inline marks are collected and applied after the text exists so
     /// inclusive marks never absorb the structural newlines.
-    fn load_markdown(&mut self, markdown: &str) -> Result<()> {
+    ///
+    /// `add_trailing_newline` applies the editor's trailing-newline invariant
+    /// (REQ-020-027) — true for the live editing engine (`from_markdown`),
+    /// false for the canonical store (`set_markdown`), which preserves the
+    /// note's exact byte content so import→export round-trips faithfully.
+    fn ingest(&mut self, markdown: &str, add_trailing_newline: bool) -> Result<()> {
         let lines: Vec<&str> = markdown.lines().collect();
         let mut pending: Vec<(MarkType, usize, usize)> = Vec::new();
         let mut pos: usize = 0;
@@ -130,12 +135,22 @@ impl LoroCrdtDocument {
             }
         }
 
-        let text = self.text()?;
-        if !text.is_empty() && !text.ends_with('\n') {
-            self.splice_text(pos, 0, "\n")?;
+        if add_trailing_newline {
+            let text = self.text()?;
+            if !text.is_empty() && !text.ends_with('\n') {
+                self.splice_text(pos, 0, "\n")?;
+            }
         }
+        // Apply inline marks. A mark whose range is invalid (e.g. from
+        // malformed markdown that the inline parser mis-bracketed) is skipped,
+        // not fatal — the text is always ingested faithfully; only the
+        // problematic style is dropped. Ingestion of arbitrary content must
+        // never fail (the store imports whatever a file holds).
+        let text_len = self.text_handle().len_unicode();
         for (mt, start, end) in pending {
-            self.mark(&mt, start, end)?;
+            if start <= end && end <= text_len {
+                let _ = self.mark(&mt, start, end);
+            }
         }
         Ok(())
     }
@@ -168,8 +183,37 @@ impl LoroCrdtDocument {
 
     pub fn from_markdown(markdown: &str) -> Result<Self> {
         let mut this = Self::new()?;
-        this.load_markdown(markdown)?;
+        this.ingest(markdown, true)?;
         Ok(this)
+    }
+
+    /// Replace the whole content by re-ingesting `markdown` (canonical store
+    /// path, no trailing-newline normalisation — preserves exact bytes).
+    pub fn set_markdown(&mut self, markdown: &str) -> Result<()> {
+        let len = self.text_handle().len_unicode();
+        if len > 0 {
+            self.text_handle().delete(0, len).context("clear text")?;
+        }
+        self.ingest(markdown, false)?;
+        Ok(())
+    }
+
+    /// Op-log version vector — the per-document sync cursor (REQ-486).
+    pub fn oplog_vv(&self) -> loro::VersionVector {
+        self.doc.oplog_vv()
+    }
+
+    /// Export the ops a peer at `remote` lacks (delta sync — REQ-486).
+    pub fn export_updates_since(&self, remote: &loro::VersionVector) -> Result<Vec<u8>> {
+        self.doc
+            .export(ExportMode::updates(remote))
+            .context("export loro updates")
+    }
+
+    /// Merge a peer's exported updates (conflict-free — REQ-474).
+    pub fn import_updates(&self, bytes: &[u8]) -> Result<()> {
+        self.doc.import(bytes).context("import loro updates")?;
+        Ok(())
     }
 
     pub fn load(data: &[u8]) -> Result<Self> {
@@ -276,7 +320,7 @@ impl LoroCrdtDocument {
         Ok(serialize_to_markdown(&text, &self.marks()?))
     }
 
-    pub fn save(&mut self) -> Vec<u8> {
+    pub fn save(&self) -> Vec<u8> {
         self.doc
             .export(ExportMode::snapshot())
             .expect("export loro snapshot")

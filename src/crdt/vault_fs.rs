@@ -145,7 +145,7 @@ mod tests {
         manifest.create(&a, "notes/alpha.md").unwrap();
         manifest.create(&b, "beta.md").unwrap();
         let mut na = NoteDoc::new();
-        na.set_content("# Alpha\n\nbody").unwrap();
+        na.set_content("# Alpha\n\nbody\n").unwrap();
         store.persist(&a, &na).unwrap();
         let mut nb = NoteDoc::new();
         nb.set_content("beta content").unwrap();
@@ -155,11 +155,11 @@ mod tests {
         assert_eq!(written, 2);
         assert_eq!(
             std::fs::read_to_string(vault.join("notes/alpha.md")).unwrap(),
-            "# Alpha\n\nbody"
+            "# Alpha\n\nbody\n"
         );
         assert_eq!(
             std::fs::read_to_string(vault.join("beta.md")).unwrap(),
-            "beta content"
+            "beta content\n"
         );
     }
 
@@ -200,7 +200,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let vault = tmp.path();
         std::fs::create_dir_all(vault.join("sub")).unwrap();
-        std::fs::write(vault.join("top.md"), "# Top\n\nbody").unwrap();
+        std::fs::write(vault.join("top.md"), "# Top\n\nbody\n").unwrap();
         std::fs::write(vault.join("sub/nested.md"), "nested content").unwrap();
         // Non-markdown and hidden files are ignored.
         std::fs::write(vault.join("image.png"), b"binary").unwrap();
@@ -227,11 +227,11 @@ mod tests {
         export_vault(out.path(), &manifest, &store).unwrap();
         assert_eq!(
             std::fs::read_to_string(out.path().join("top.md")).unwrap(),
-            "# Top\n\nbody"
+            "# Top\n\nbody\n"
         );
         assert_eq!(
             std::fs::read_to_string(out.path().join("sub/nested.md")).unwrap(),
-            "nested content"
+            "nested content\n"
         );
     }
 }

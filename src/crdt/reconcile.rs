@@ -161,7 +161,7 @@ mod tests {
         let mut lacks = NoteDoc::new();
 
         reconcile_pair(&have, &lacks).unwrap();
-        assert_eq!(lacks.materialise(), "# Note\n\ncontent");
+        assert_eq!(lacks.materialise(), "# Note\n\ncontent\n");
     }
 
     // Vault-level: reconcile several docs across two on-disk stores; both
@@ -204,8 +204,8 @@ mod tests {
         }
         // The shared doc converged the concurrent edit; the private docs
         // propagated whole.
-        assert_eq!(sa.load_or_create(&only_b).unwrap().materialise(), "B private");
-        assert_eq!(sb.load_or_create(&only_a).unwrap().materialise(), "A private");
+        assert_eq!(sa.load_or_create(&only_b).unwrap().materialise(), "B private\n");
+        assert_eq!(sb.load_or_create(&only_a).unwrap().materialise(), "A private\n");
     }
 
     // Vault-level: two peers with divergent manifests + notes converge to
@@ -247,7 +247,7 @@ mod tests {
                 sb.load_or_create(id).unwrap().materialise(),
             );
         }
-        assert_eq!(sb.load_or_create(&n1).unwrap().materialise(), "A's note");
-        assert_eq!(sa.load_or_create(&n2).unwrap().materialise(), "B's note");
+        assert_eq!(sb.load_or_create(&n1).unwrap().materialise(), "A's note\n");
+        assert_eq!(sa.load_or_create(&n2).unwrap().materialise(), "B's note\n");
     }
 }
