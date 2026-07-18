@@ -1105,7 +1105,7 @@ LAN conditions WITH 95th percentile — the quantification of "realtime" that
 
 ### ADR-470: Loro as Canonical Store, Markdown+Git as Export
 
-**`[Provisional — DESIGN-047 task adr-source-of-truth]`** · **Status:** Proposed
+**Status:** Proposed (adr-source-of-truth resolved: durability + Q4 direction)
 
 **Context:** Markdown is canonical today; offline-first merge
 ([[#REQ-474 Conflict-Free Offline Merge]]) needs persisted causal history, else
@@ -1123,6 +1123,23 @@ oplog's fsync-on-commit append ([[#REQ-472 Loro Canonical Store]], F39). (−) L
 zetl; external edits need guarded import
 ([[#ADR-471 Guarded Import for External Markdown Edits]]); oplog growth (shallow
 snapshots — [[#18. Open Questions]] Q4).
+
+**Durability + persistence format (adr-source-of-truth, 0.21.0), as
+implemented in `crdt::loro_store` (T3):** each note is persisted as a full
+[[Loro]] **snapshot** (history + state) at `.zetl/loro/<DocId>.loro`,
+written **atomically** — temp file, `fsync`, rename — so a crash never
+leaves a torn file (F39 durability contract). A [[Loro]] snapshot carries
+the whole oplog, so persisting a snapshot *is* the compacted form; there is
+no separate append-only oplog file to replay. **Cadence:** persist at
+daemon commit/materialisation boundaries (post-`commit`), not per
+keystroke — the in-memory `LoroDoc` holds live edits; a snapshot is taken
+when the daemon quiesces a change. **Q4 (oplog growth) direction:** because
+snapshots are self-compacting, growth is bounded by re-snapshotting; for a
+pathologically long single-note history, `ExportMode::ShallowSnapshot`
+(a git-shallow-clone-style truncated history) is the escape hatch — its
+exact trigger threshold is deferred tuning, not a v1 blocker. Q4 is thus
+narrowed from "how is history persisted" (answered: self-compacting
+snapshots) to "when to shallow-truncate" (a tuning knob).
 
 ### ADR-471: Guarded Import for External Markdown Edits
 
@@ -2822,8 +2839,14 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
    Consistent with REQ-486/§8's per-document localisation (F43 closed);
    diverges from `../elephant-3000`'s one-doc-per-theory because zetl's unit
    of state is many notes, not one corpus. Unblocks IMPL-047 T3.
-4. **Oplog growth / shallow snapshots.** Compaction aggressiveness vs
-   offline-merge correctness (HP3 fallback).
+4. **Oplog growth / shallow snapshots — NARROWED (0.21.0,
+   adr-source-of-truth).** Persistence is self-compacting full [[Loro]]
+   snapshots per note (see
+   [[#ADR-470 Loro as Canonical Store, Markdown+Git as Export]]), so
+   "how is history persisted" is answered. What remains is a tuning knob:
+   the threshold at which a pathologically long single-note history is
+   truncated via `ExportMode::ShallowSnapshot` vs offline-merge
+   correctness (HP3 fallback) — not a v1 blocker.
 5. **Mobile daemon.** iOS/Android background limits ([[SPEC-040-zetl-mobile]])
    may force a foreground/push-triggered `zetld`.
 6. **Migration from [[diamond-types]].** One-shot `from_markdown` → [[Loro]], or

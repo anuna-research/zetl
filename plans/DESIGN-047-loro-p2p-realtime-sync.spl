@@ -250,3 +250,18 @@
 (claims agent:claude
   :at "2026-07-18T04:45:23Z"
   (given completed-adr-control-proto))
+
+(claims agent:claude
+  :at "2026-07-18T04:45:58Z"
+  (given claim-v1-adr-source-of-truth)
+  (normally r-cl-state-v1-adr-source-of-truth claim-v1-adr-source-of-truth state-claimed-v1-adr-source-of-truth)
+  (normally r-cl-chain-v1-adr-source-of-truth state-claimed-v1-adr-source-of-truth claimed-adr-source-of-truth)
+)
+
+(claims agent:claude
+  :at "2026-07-18T04:47:13Z"
+  (given decided-adr470-durability-self-compacting-snapshots-atomic-fsync))
+
+(claims agent:claude
+  :at "2026-07-18T04:47:13Z"
+  (given completed-adr-source-of-truth))
