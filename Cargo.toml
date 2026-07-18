@@ -213,6 +213,12 @@ openmls_basic_credential = "0.5"
 openmls_rust_crypto = "0.5"
 openmls_traits = "0.5"
 tls_codec = "0.4"
+# SPEC-047 ADR-479 / IMPL-047 T7: CBCL network control-plane message language
+# (sibling ../cbcl-rs workspace crates — the Lean-verified DPDA recogniser).
+# One recogniser for all control messages (REQ-487, no parser-differential).
+# UNREVIEWED auth-core-adjacent (the attestation path is auth-core).
+cbcl-core = { path = "../cbcl-rs/crates/cbcl-core" }
+cbcl-parser = { path = "../cbcl-rs/crates/cbcl-parser" }
 rmcp = { version = "1", optional = true, features = ["server", "transport-io", "server-side-http", "transport-streamable-http-server"] }
 # Optional, only pulled in by the `vendored-openssl` feature. Its sole
 # purpose is to propagate the `vendored` feature flag to the transitive

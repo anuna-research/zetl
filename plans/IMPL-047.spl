@@ -257,3 +257,7 @@
 (claims agent:claude
   :at "2026-07-18T06:17:04Z"
   (given implemented-unreviewed-t13-durable-rotation-outbox-req506-2-tests))
+
+(claims agent:claude
+  :at "2026-07-18T06:33:52Z"
+  (given implemented-unreviewed-t7-cbcl-control-recogniser-req487-3-tests))

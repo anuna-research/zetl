@@ -21,10 +21,13 @@
 //!
 //! Implemented (UNREVIEWED): [`pair`] (T8 SPAKE2 ceremony), [`group`] (T9 MLS
 //! Owner-committed membership), [`roster`] (T10 role gate), [`identity`] (T11
-//! did:crdt), [`revocation`] (T13 durable rotation). NOT implemented: the iroh
-//! QUIC transport (T12 — iroh 0.21 has an upstream compile error; a newer iroh
-//! needs a different integration) and the CBCL network control plane (T7).
+//! did:crdt), [`revocation`] (T13 durable rotation), [`control`] (T7 CBCL
+//! network control-message recogniser). NOT implemented: the iroh QUIC
+//! transport (T12) — the network wiring that carries these frames; blocked by
+//! an upstream iroh dependency issue (see the iroh-version note in the
+//! DESIGN-047 `adr-transport` task).
 
+pub mod control;
 pub mod group;
 pub mod identity;
 pub mod pair;
