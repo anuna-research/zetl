@@ -28,6 +28,8 @@ pub use backend::CrdtBackend;
 
 /// The CRDT backend used by the WebSocket editing layer.
 ///
-/// Aliases [`diamond::DiamondCrdtDocument`] — the only backend after
-/// IMPL-029 Phase 7 flipped the default and removed the legacy engine.
-pub use diamond::DiamondCrdtDocument as WsCrdtBackend;
+/// Aliases [`loro_backend::LoroCrdtDocument`] — SPEC-047 ADR-470/§9 makes
+/// [[Loro]] the one editing engine, replacing diamond-types. The
+/// `diamond` module is retained for now (its own unit tests still run) and
+/// removed in a follow-up cleanup slice once no path references it.
+pub use loro_backend::LoroCrdtDocument as WsCrdtBackend;
