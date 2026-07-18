@@ -63,11 +63,33 @@ here defeats the primitives underneath.
 This is modelled on the `../elephant-3000` forged-credential lesson: **do not
 authorise by the attacker-chosen credential string.**
 
-- **Scrutinise:** is leaf 0 *actually* immutable across MLS operations in
-  openmls 0.8? If a `Remove`+`Add` could ever renumber leaves such that a
-  non-owner lands at leaf 0, the whole gate falls. I believe MLS leaves are
-  stable/blank-on-remove and the creator keeps leaf 0, but this is exactly the
-  invariant a reviewer must confirm against RFC 9420 + openmls semantics.
+- **Is leaf 0 immutable? — investigated, answer: structurally no, effectively
+  yes (sound).** Leaf reuse *is* real in MLS: `free_leaf_index`
+  (openmls-0.8.1 `treesync/diff.rs:229`) returns the **leftmost blank** leaf, and
+  within a commit removes are applied first (`proposal_store.rs:508`), so a
+  `[Remove(0), Add(x)]` commit *would* refill leaf 0. What makes leaf 0
+  effectively immutable here is the conjunction of three facts:
+  1. the creator is leaf 0 (`builder.rs:186`);
+  2. only leaf 0 may author an accepted commit — our gate at `group.rs:239`
+     (`sender == Sender::Member(LeafNodeIndex(0))`), which also rejects external
+     commits since their sender type is `NewMemberCommit`, not `Member`;
+  3. a committer cannot remove itself — openmls enforces this at **creation**
+     (`commit_builder.rs:575` `CreateCommitError::CannotRemoveSelf`) *and*
+     **processing** (`proposal_store.rs:317` ValSem200 `SelfRemoval`).
+
+  The only party allowed to commit (leaf 0) is exactly the one that cannot be
+  removed by a commit ⟹ leaf 0 never blanks ⟹ `free_leaf_index` never returns 0
+  ⟹ never reused. Corollary: this vindicates the leaf check over a credential
+  check — a malicious owner adding a second member who *forges*
+  `BasicCredential = owner_did` puts that member at leaf 1+, and the leaf-0 gate
+  means they are **not** owner.
+- **Residual for the reviewer:** (a) the guarantee is a *conjunction* of our gate
+  + MLS's self-removal rule — it holds only while `process_commit` keeps the
+  exact `Member(0)` sender check and never loosens it to a credential
+  comparison; (b) **availability flip-side** — because leaf 0 can never be
+  removed, losing the owner device key *permanently freezes* the group (no
+  membership change ever again). Intended REQ-505 posture, but owner key-loss is
+  unrecoverable; ties into the REQ-506 rotation story.
 - **Note the asymmetry:** `roster.rs:52` determines Owner by *credential-string
   comparison* (`did == owner_did`). The roster is a **projection/view** for UI
   and the admit decision; the **cryptographic enforcement** is at commit time in
@@ -208,7 +230,10 @@ Each is annotated in-code with an upgrade path and a traced artefact:
 6. `src/p2p/identity.rs` + `roster.rs` + `revocation.rs` — identity structure,
    the roster-as-view nuance, and rotation recovery.
 
-The highest-value adversarial questions, ranked: **(a)** is MLS leaf 0
-immutable enough to carry the entire Owner-authority model (§2.1)? **(b)** is the
-endpoint-id ↔ DID binding real or provisioned-trust (§2.2, §5.1)? **(c)** is the
-bidirectional application-message sealing free of ratchet/nonce hazards (§4)?
+The highest-value adversarial questions, ranked: **(a)** ~~is MLS leaf 0
+immutable enough~~ — **investigated and resolved** (§2.1): effectively immutable
+via our gate + MLS's dual self-removal prohibition; reviewer should confirm the
+conjunction and the availability caveat. **(b)** is the endpoint-id ↔ DID binding
+real or provisioned-trust (§2.2, §5.1)? — **now the top open item.** **(c)** is
+the bidirectional application-message sealing free of ratchet/nonce hazards
+(§4)?
