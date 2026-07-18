@@ -25,6 +25,7 @@ use super::loro_store::DocId;
 use anyhow::{Context, Result};
 use loro::{ExportMode, LoroDoc, LoroValue};
 use std::collections::BTreeMap;
+use std::path::Path;
 
 const PATHS_MAP: &str = "paths";
 
@@ -142,6 +143,39 @@ impl Manifest {
     pub fn import_updates(&self, bytes: &[u8]) -> Result<()> {
         self.doc.import(bytes).context("import manifest updates")?;
         Ok(())
+    }
+
+    /// Persist the manifest snapshot atomically under `.zetl/loro/manifest.loro`
+    /// (0600), alongside the per-note snapshots.
+    pub fn save(&self, vault_root: &Path) -> Result<()> {
+        use std::io::Write as _;
+        let dir = vault_root.join(".zetl").join("loro");
+        std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
+        let path = dir.join("manifest.loro");
+        let bytes = self.doc.export(ExportMode::snapshot()).context("export manifest")?;
+        let tmp = path.with_extension("loro.tmp");
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt as _;
+            opts.mode(0o600);
+        }
+        let mut f = opts.open(&tmp).with_context(|| format!("open {}", tmp.display()))?;
+        f.write_all(&bytes)?;
+        f.sync_all()?;
+        std::fs::rename(&tmp, &path)?;
+        Ok(())
+    }
+
+    /// Load a vault's manifest, or a fresh empty one if none is persisted.
+    pub fn load(vault_root: &Path) -> Result<Manifest> {
+        let path = vault_root.join(".zetl").join("loro").join("manifest.loro");
+        match std::fs::read(&path) {
+            Ok(bytes) => Manifest::from_snapshot(&bytes),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Manifest::new()),
+            Err(e) => Err(e).with_context(|| format!("read {}", path.display())),
+        }
     }
 }
 
