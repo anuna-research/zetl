@@ -16,6 +16,7 @@ pub mod blocks;
 pub mod diamond;
 pub mod loro_store;
 pub mod marks;
+pub mod reconcile;
 pub mod marks_doc;
 
 pub use backend::CrdtBackend;
