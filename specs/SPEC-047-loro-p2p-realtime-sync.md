@@ -2,7 +2,7 @@
 id: SPEC-047
 title: "Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing"
 status: draft
-version: 0.18.0-strawman
+version: 0.19.0-strawman
 last-updated: 2026-07-18
 ---
 
@@ -93,7 +93,7 @@ capitals.
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | SPEC-047                                                                                |
 | Title        | Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing         |
-| Version      | 0.18.0-strawman                                                                          |
+| Version      | 0.19.0-strawman                                                                          |
 | Status       | Draft (strawman; pending DESIGN-047 execution)                                          |
 | Author       | Agent (Claude Opus 4.8 [1M]) under [[PROTO-001]] v1.11.0                                |
 | Audience     | Agent, Human                                                                            |
@@ -1271,7 +1271,7 @@ membership"; the roster `role` field is the recorded extension point).
 
 ### ADR-478: Merkle DAG as Convergence Witness and Reconciliation Index
 
-**`[Provisional — DESIGN-047 task adr-merkle-sync]`** · **Status:** Proposed
+**Status:** Proposed (adr-merkle-sync resolved; Q3 CRDT granularity decided)
 
 **Context:** [[Loro]] is op/causal and authoritative for *merge*, but gives no
 cheap "are we in sync?" check and no independent integrity witness. zetl already
@@ -1312,6 +1312,36 @@ computed at quiescence, not per keystroke; its witness property is contingent on
 deterministic materialisation + AST chunking. (−) Full content-addressed
 block *transfer* (fetch only missing leaves) is the natural extension but is
 **deferred** ([[#18. Open Questions]] Q8) to keep v1 scoped.
+
+**Q3 resolution — CRDT granularity (adr-merkle-sync, 0.19.0):** the vault is
+**one [[Loro]] document per note**, keyed by the stable [[DocId]] of the
+namespace manifest ([[#REQ-504 Replicated Vault Namespace Manifest]]), **plus
+one vault-level manifest document** — *not* a single container tree for the
+whole vault.
+
+- *Why doc-per-note.* The reconciliation unit is already "documents"
+  throughout [[#REQ-486 Merkle Anti-Entropy Reconciliation]] and §8; the
+  manifest already makes a note a first-class `DocId → path` entity. Per-note
+  documents give the [[Merkle DAG]] a natural localisation target (descend to
+  the changed notes, ship only their [[Loro]] op deltas), independent per-note
+  presence and [[Version Vector]]s, and per-note snapshot/oplog compaction
+  (Q4) — matching zetl's file-per-note model. This resolves F43 (the
+  localisation unit is doc-per-note; REQ-486/§8 need no rewording).
+- *Why not one doc per vault.* `../elephant-3000` uses a single Loro document
+  per theory because a theory's unit of state *is* one corpus (a list of
+  signed entries); zetl's unit is many independently-edited notes, so its
+  model does not transfer. A single vault-wide document would couple every
+  note's oplog, defeat per-note localisation, and make snapshot cost
+  whole-vault.
+- *Trade-off.* Many small documents mean more per-document [[Version Vector]]
+  bookkeeping across a large vault; the vault-level `vault_root` comparison
+  (this ADR) is the coarse filter that keeps whole-vault "are we synced?" a
+  single hash check, descending to per-note vectors only for the notes the DAG
+  flags — so the bookkeeping is paid only on divergence, not every sync.
+
+This unblocks IMPL-047 T3 (the [[Loro]] store): the store is a keyed
+collection of per-note [[Loro]] documents plus the manifest document, each
+persisted as snapshot + oplog under `.zetl/loro/<DocId>`.
 
 ### ADR-479: CBCL as the Control-Plane Message Language
 
@@ -2765,11 +2795,13 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
    ships in v1 (mandatory vs opt-in) or the OOB-channel assumption is
    accepted and documented for the v1 profiles. (Carries
    [[SPEC-036-spake2-onboarding]] §G.)
-3. **CRDT granularity.** One [[Loro]] doc per note, or one container tree per
-   vault? Affects sync chattiness, presence, snapshot cost. Note:
-   [[#REQ-486 Merkle Anti-Entropy Reconciliation]] and §8 word their
-   localisation unit as *documents* (doc-per-note); resolving Q3 to a single
-   container tree requires rewording that unit (F43).
+3. **CRDT granularity — RESOLVED (0.19.0, adr-merkle-sync).** Decision:
+   **one [[Loro]] doc per note + one vault-level manifest doc**, not a single
+   container tree — see the Q3 resolution in
+   [[#ADR-478 Merkle DAG as Convergence Witness and Reconciliation Index]].
+   Consistent with REQ-486/§8's per-document localisation (F43 closed);
+   diverges from `../elephant-3000`'s one-doc-per-theory because zetl's unit
+   of state is many notes, not one corpus. Unblocks IMPL-047 T3.
 4. **Oplog growth / shallow snapshots.** Compaction aggressiveness vs
    offline-merge correctness (HP3 fallback).
 5. **Mobile daemon.** iOS/Android background limits ([[SPEC-040-zetl-mobile]])
@@ -2873,8 +2905,20 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.18.0</summary>
+<summary>Revision history — 0.1.0 → 0.19.0</summary>
 
+- 0.19.0-strawman — DESIGN-047 `adr-merkle-sync` resolved **Q3 (CRDT
+  granularity)**: one [[Loro]] document per note keyed by manifest
+  [[DocId]], plus one vault-level manifest document — not a single
+  container tree ([[#ADR-478 Merkle DAG as Convergence Witness and Reconciliation Index]]
+  Q3-resolution block). Consistent with REQ-486/§8's per-document
+  localisation (F43 closed); diverges from elephant's one-doc-per-theory
+  because zetl's unit of state is many notes, not one corpus. ADR-478
+  Provisional marker removed. Unblocks IMPL-047 T3 (the Loro store is a
+  keyed collection of per-note documents + the manifest, each persisted
+  as snapshot + oplog under `.zetl/loro/<DocId>`). Runs alongside the
+  IMPL-047 implementation track: T1 (P2P CLI surface) and T2 (`zetld`
+  daemon lifecycle) landed and verified on this branch.
 - 0.18.0-strawman — middle-path kickoff (stakeholder decision): §19
   restructured into two gated tracks — spec refinement to approval
   (DESIGN-047 plan authored at

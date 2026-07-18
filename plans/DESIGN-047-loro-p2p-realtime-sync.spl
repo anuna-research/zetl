@@ -201,3 +201,29 @@
 (claims agent:claude
   :at "2026-07-18T03:42:55Z"
   (given completed-comprehension-gate))
+
+(claims agent:claude
+  :at "2026-07-18T03:47:40Z"
+  (given claim-v1-impl-047-plan)
+  (normally r-cl-state-v1-impl-047-plan claim-v1-impl-047-plan state-claimed-v1-impl-047-plan)
+  (normally r-cl-chain-v1-impl-047-plan state-claimed-v1-impl-047-plan claimed-impl-047-plan)
+)
+
+(claims agent:claude
+  :at "2026-07-18T03:50:31Z"
+  (given completed-impl-047-plan))
+
+(claims agent:claude
+  :at "2026-07-18T04:09:53Z"
+  (given claim-v1-adr-merkle-sync)
+  (normally r-cl-state-v1-adr-merkle-sync claim-v1-adr-merkle-sync state-claimed-v1-adr-merkle-sync)
+  (normally r-cl-chain-v1-adr-merkle-sync state-claimed-v1-adr-merkle-sync claimed-adr-merkle-sync)
+)
+
+(claims agent:claude
+  :at "2026-07-18T04:11:13Z"
+  (given decided-q3-doc-per-note-plus-manifest))
+
+(claims agent:claude
+  :at "2026-07-18T04:11:13Z"
+  (given completed-adr-merkle-sync))
