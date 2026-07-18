@@ -151,6 +151,35 @@ fn daemon_owns_vault_store_and_materialises() {
 }
 
 #[test]
+fn daemon_reimports_external_edits() {
+    let tmp = tempfile::tempdir().unwrap();
+    let vault = tmp.path();
+    std::fs::write(vault.join("note.md"), "original\n").unwrap();
+    let _guard = Daemon(vault);
+
+    let (code, _) = daemon(vault, &["start"]);
+    assert_eq!(code, 0);
+    await_state(vault, "running");
+
+    // An external editor changes the note's file while the daemon owns it.
+    std::fs::write(vault.join("note.md"), "edited externally\n").unwrap();
+
+    // REQ-484: reimport folds the external edit into the canonical store.
+    let (code, out) = daemon(vault, &["reimport"]);
+    assert_eq!(code, 0, "reimport should succeed: {out}");
+    let v: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!(v["folded"], 1, "one external edit folded: {v}");
+    assert_eq!(v["staged"], 0);
+
+    // Materialising re-writes the canonical (now-edited) content.
+    daemon(vault, &["materialise"]);
+    assert_eq!(
+        std::fs::read_to_string(vault.join("note.md")).unwrap(),
+        "edited externally\n"
+    );
+}
+
+#[test]
 fn recovers_from_crashed_daemon_stale_state() {
     let tmp = tempfile::tempdir().unwrap();
     let vault = tmp.path();

@@ -713,6 +713,11 @@ pub enum DaemonCommand {
     /// Exports every note the daemon owns back to disk (SPEC-047 ADR-470: Loro
     /// is canonical, Markdown is the export). Requires a running daemon.
     Materialise,
+    /// Fold external Markdown edits back into the daemon's canonical store
+    ///
+    /// Re-imports notes whose files were changed outside the daemon (SPEC-047
+    /// REQ-484 guarded import). Requires a running daemon.
+    Reimport,
 }
 
 /// Subcommands for `zetl collab`.

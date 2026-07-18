@@ -185,6 +185,24 @@ pub fn materialise(vault_root: &Path) -> Result<u32> {
     }
 }
 
+/// `zetl daemon reimport` — ask the running daemon to fold external Markdown
+/// edits back into its canonical store (REQ-484). Returns (folded, staged).
+pub fn reimport(vault_root: &Path) -> Result<(u32, u32)> {
+    match observe(vault_root).0 {
+        Liveness::Running => {
+            let resp = rt()?.block_on(client::request(vault_root, &ControlRequest::Reimport))?;
+            match resp {
+                ControlResponse::Reimported { folded, staged } => Ok((folded, staged)),
+                ControlResponse::Error { kind, message } => {
+                    anyhow::bail!("reimport failed ({kind}): {message}")
+                }
+                other => anyhow::bail!("unexpected control reply to reimport: {other:?}"),
+            }
+        }
+        _ => anyhow::bail!("no running daemon for this vault — start it with `zetl daemon start`"),
+    }
+}
+
 /// Spawn `zetl daemon start --foreground --dir <vault>` as a detached,
 /// session-leader child so it survives the launching shell and the parent
 /// `start` process exiting (REQ-490).

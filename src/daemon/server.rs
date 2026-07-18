@@ -185,6 +185,18 @@ async fn handle_conn(
                 },
             }
         }
+        ControlRequest::Reimport => {
+            match vault_fs::reimport_vault(vault_root, &vault.store, &vault.manifest) {
+                Ok((folded, staged)) => ControlResponse::Reimported {
+                    folded: folded as u32,
+                    staged: staged as u32,
+                },
+                Err(e) => ControlResponse::Error {
+                    kind: "reimport-failed".into(),
+                    message: e.to_string(),
+                },
+            }
+        }
         ControlRequest::Stop => {
             let _ = respond(&mut stream, &ControlResponse::Ok).await;
             shutdown.notify_one();

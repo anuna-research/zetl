@@ -138,6 +138,9 @@ pub enum ControlRequest {
     /// Materialise the canonical store to the vault's Markdown files (ADR-470
     /// export). Replies [`ControlResponse::Materialised`].
     Materialise,
+    /// Re-import external Markdown edits into the canonical store (REQ-484
+    /// guarded import). Replies [`ControlResponse::Reimported`].
+    Reimport,
     /// Shut the daemon down cleanly.
     Stop,
 }
@@ -150,6 +153,9 @@ pub enum ControlResponse {
     Status(DaemonStatus),
     /// Materialised `count` notes to the vault's Markdown files.
     Materialised { count: u32 },
+    /// Re-imported external edits: `folded` into the store, `staged` to the
+    /// conflict area.
+    Reimported { folded: u32, staged: u32 },
     /// Acknowledged a mutating request (e.g. `stop`).
     Ok,
     /// Typed error (CON-470: `vault-not-found`, `malformed-request`, …).
@@ -219,6 +225,7 @@ mod tests {
             ControlRequest::Ping,
             ControlRequest::Status,
             ControlRequest::Materialise,
+            ControlRequest::Reimport,
             ControlRequest::Stop,
         ] {
             let json = serde_json::to_string(&req).unwrap();

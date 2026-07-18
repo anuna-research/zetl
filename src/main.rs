@@ -12100,6 +12100,7 @@ fn main() -> anyhow::Result<()> {
             zetl::cli::DaemonCommand::Stop => cmd_daemon_stop(&cli),
             zetl::cli::DaemonCommand::Status => cmd_daemon_status(&cli),
             zetl::cli::DaemonCommand::Materialise => cmd_daemon_materialise(&cli),
+            zetl::cli::DaemonCommand::Reimport => cmd_daemon_reimport(&cli),
         },
     }
 }
@@ -12160,6 +12161,18 @@ fn cmd_daemon_materialise(cli: &Cli) -> Result<()> {
         println!("{}", serde_json::json!({ "materialised": count }));
     } else {
         println!("materialised {count} notes to Markdown");
+    }
+    Ok(())
+}
+
+/// `zetl daemon reimport` — fold external Markdown edits into the store (REQ-484).
+fn cmd_daemon_reimport(cli: &Cli) -> Result<()> {
+    let root = daemon_vault_root(cli);
+    let (folded, staged) = zetl::daemon::lifecycle::reimport(&root)?;
+    if cli.json || matches!(cli.format, OutputFormat::Json) {
+        println!("{}", serde_json::json!({ "folded": folded, "staged": staged }));
+    } else {
+        println!("reimported: {folded} folded, {staged} staged");
     }
     Ok(())
 }

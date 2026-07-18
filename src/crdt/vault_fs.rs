@@ -72,6 +72,64 @@ pub fn import_vault(vault_root: &Path, store: &LoroStore, manifest: &Manifest) -
     Ok(count)
 }
 
+/// Re-import external Markdown edits back into the canonical store (REQ-484,
+/// ADR-471). For each note the manifest names, compares the on-disk file to
+/// the store's canonical materialisation; a difference is an external edit,
+/// routed through the guarded-import decision ([`super::guarded_import`]).
+///
+/// The daemon's store notes are not concurrently edited by the daemon itself
+/// (editing rides the WebSocket layer; sync is gated on M2), so
+/// `unmaterialised_daemon_op` is false and a clean external edit **folds**.
+/// The staging path activates once concurrent daemon ops exist (sync/editing
+/// integration). Returns (folded, staged) counts. A missing file is skipped
+/// (a delete is a manifest op, F38 — not handled here).
+pub fn reimport_vault(
+    vault_root: &Path,
+    store: &LoroStore,
+    manifest: &Manifest,
+) -> Result<(usize, usize)> {
+    use super::guarded_import::{decide, ExternalWrite, ImportDecision, ImportState};
+    let (mut folded, mut staged) = (0, 0);
+    for (id, rel) in manifest.resolve() {
+        let path = safe_join(vault_root, &rel)?;
+        let disk = match std::fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e).with_context(|| format!("read {}", path.display())),
+        };
+        let note = store.load_or_create(&id)?;
+        let canonical = note.materialise();
+        // Unchanged (matches the canonical export) → nothing to do.
+        let write = if disk == canonical {
+            continue;
+        } else {
+            ExternalWrite::Edited
+        };
+        let state = ImportState {
+            write,
+            unmaterialised_daemon_op: false,
+            intervening_export: false,
+        };
+        match decide(state) {
+            ImportDecision::Fold => {
+                let mut n = store.load_or_create(&id)?;
+                n.set_content(&disk)?;
+                store.persist(&id, &n)?;
+                folded += 1;
+            }
+            ImportDecision::Stage(_) => {
+                let conflict = vault_root.join(".zetl").join("conflicts").join(&rel);
+                if let Some(parent) = conflict.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                write_atomic(&conflict, disk.as_bytes())?;
+                staged += 1;
+            }
+        }
+    }
+    Ok((folded, staged))
+}
+
 /// Vault-relative `.md` paths (forward-slash), skipping `.zetl/` and any
 /// dot-directory. Deterministic order (sorted).
 fn markdown_files(vault_root: &Path) -> Result<Vec<PathBuf>> {
@@ -190,6 +248,37 @@ mod tests {
 
         assert!(export_vault(vault, &manifest, &store).is_err());
         assert!(!tmp.path().parent().unwrap().join("escape.md").exists());
+    }
+
+    // REQ-484: an external edit to a note's Markdown file folds back into the
+    // canonical store; an unchanged file is a no-op.
+    #[test]
+    fn reimport_folds_external_edits() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vault = tmp.path();
+        std::fs::write(vault.join("note.md"), "original\n").unwrap();
+        let store = LoroStore::open(vault);
+        let manifest = Manifest::new();
+        import_vault(vault, &store, &manifest).unwrap();
+        export_vault(vault, &manifest, &store).unwrap();
+
+        // No external change → nothing folded.
+        let (folded, staged) = reimport_vault(vault, &store, &manifest).unwrap();
+        assert_eq!((folded, staged), (0, 0), "unchanged file is a no-op");
+
+        // An external editor changes the file.
+        std::fs::write(vault.join("note.md"), "edited by hand\n").unwrap();
+        let (folded, staged) = reimport_vault(vault, &store, &manifest).unwrap();
+        assert_eq!((folded, staged), (1, 0), "external edit folds");
+
+        // The canonical store now reflects the edit.
+        let id = manifest
+            .resolve()
+            .into_iter()
+            .find(|(_, p)| p == "note.md")
+            .unwrap()
+            .0;
+        assert_eq!(store.load_or_create(&id).unwrap().materialise(), "edited by hand\n");
     }
 
     // REQ-470: import a vault's Markdown into the store, then export it back —
