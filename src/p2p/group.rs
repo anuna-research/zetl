@@ -12,10 +12,12 @@
 //! index** (the Owner is permanently leaf 0), never by the attacker-chosen
 //! credential string — elephant's forged-credential lesson.
 //!
-//! Scope of this slice: the in-memory group operations, verified with the
-//! standard `OpenMlsRustCrypto` provider. Deferred (later slices): the durable
-//! provider + transactional outbox crash-safety (elephant REQ-306), the epoch
-//! data-key distribution as an MLS application message (REQ-499 sealing), and
+//! Scope: the in-memory group operations (create/add/join/remove, Owner-only
+//! commit authorisation) plus [`seal`]/[`open`] — the group-keyed sync-frame
+//! confidentiality of REQ-499, realised as MLS application messages and driven
+//! by [`GroupSealer`] through the session's `FrameSeal` layer. Verified with
+//! the standard `OpenMlsRustCrypto` provider. Deferred (later slices): the
+//! durable provider + transactional outbox crash-safety (elephant REQ-306) and
 //! the Loro membership-lane transport (REQ-502).
 
 use anyhow::{anyhow, Result};
@@ -263,6 +265,63 @@ fn serialize_out(msg: &MlsMessageOut) -> Result<Vec<u8>> {
         .map_err(|e| anyhow!("serialize mls message: {e:?}"))
 }
 
+/// Seal an application payload — e.g. a sync frame — under the group's current
+/// MLS epoch key (REQ-499), returning the serialized encrypted `PrivateMessage`.
+/// This is the composition-first realisation of "group-keyed sync frames": it
+/// reuses openmls's own AEAD and per-leaf sender ratchet rather than a bespoke
+/// cipher, so confidentiality is bound to group membership at the current epoch
+/// (a removed member, past the rotation, cannot derive the key — REQ-481/499).
+pub fn seal(
+    provider: &OpenMlsRustCrypto,
+    group: &mut MlsGroup,
+    signer: &SignatureKeyPair,
+    payload: &[u8],
+) -> Result<Vec<u8>> {
+    let out = group
+        .create_message(provider, signer, payload)
+        .map_err(|e| anyhow!("seal application message: {e:?}"))?;
+    serialize_out(&out)
+}
+
+/// Adapts an MLS group into the session's [`FrameSeal`] layer (REQ-499), so
+/// [`sync_one_sealed`](crate::p2p::session::sync_one_sealed) seals each sync
+/// frame under the group key without the session knowing about openmls. Borrows
+/// the live group so the sender/receiver ratchets advance across the exchange.
+pub struct GroupSealer<'a> {
+    pub provider: &'a OpenMlsRustCrypto,
+    pub group: &'a mut MlsGroup,
+    pub signer: &'a SignatureKeyPair,
+}
+
+impl crate::p2p::session::FrameSeal for GroupSealer<'_> {
+    fn seal(&mut self, plaintext: &[u8]) -> Result<Vec<u8>> {
+        seal(self.provider, self.group, self.signer, plaintext)
+    }
+    fn open(&mut self, sealed: &[u8]) -> Result<Vec<u8>> {
+        open(self.provider, self.group, sealed)
+    }
+}
+
+/// Open a frame sealed by a fellow group member at the current epoch (REQ-499).
+/// Fails closed: anything that is not an encrypted application message — a
+/// plaintext `PublicMessage`, a commit, a proposal — is rejected, so the sync
+/// path only ever accepts group-keyed confidential frames.
+pub fn open(provider: &OpenMlsRustCrypto, group: &mut MlsGroup, sealed: &[u8]) -> Result<Vec<u8>> {
+    let msg = MlsMessageIn::tls_deserialize_exact(sealed)
+        .map_err(|e| anyhow!("parse sealed frame: {e:?}"))?;
+    let protocol: ProtocolMessage = match msg.extract() {
+        MlsMessageBodyIn::PrivateMessage(m) => m.into(),
+        _ => anyhow::bail!("sealed frames must be an encrypted PrivateMessage (REQ-499)"),
+    };
+    let processed = group
+        .process_message(provider, protocol)
+        .map_err(|e| anyhow!("open sealed frame: {e:?}"))?;
+    match processed.into_content() {
+        ProcessedMessageContent::ApplicationMessage(app) => Ok(app.into_bytes()),
+        _ => anyhow::bail!("sealed frame was not an application message"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -343,5 +402,39 @@ mod tests {
         remove_member(&op, &mut group, &owner, &bob.did).unwrap();
         assert_eq!(member_dids(&group), vec!["did:crdt:owner".to_string()]);
         assert!(group.epoch() > epoch_before, "removal advances the epoch");
+    }
+
+    // REQ-499: a sync frame sealed under the group key by one member is opened
+    // by a fellow member — and is opaque to a non-member (a separate group at a
+    // different epoch cannot decrypt it).
+    #[test]
+    fn sealed_frame_round_trips_within_the_group_only() {
+        let op = provider();
+        let bp = provider();
+        let ep = provider();
+        let owner = GroupIdentity::new("did:crdt:owner").unwrap();
+        let bob = GroupIdentity::new("did:crdt:bob").unwrap();
+        let eve = GroupIdentity::new("did:crdt:eve").unwrap();
+
+        // Owner + Bob share one group; Eve is outside it entirely.
+        let mut group = create_group(&op, &owner, VAULT).unwrap();
+        let (_kb, kp_bytes) = build_key_package(&bp, &bob).unwrap();
+        let kp = key_package_from_bytes(&op, &kp_bytes, &bob.did).unwrap();
+        let (_commit, welcome) = add_member(&op, &mut group, &owner, kp).unwrap();
+        let mut bob_group = join_from_welcome(&bp, &welcome, &owner.did).unwrap();
+        let mut eve_group = create_group(&ep, &eve, VAULT).unwrap();
+
+        let frame = b"version-vector-and-loro-delta";
+        let sealed = seal(&op, &mut group, &owner.signer, frame).unwrap();
+
+        // A fellow member opens it to the original plaintext.
+        assert_eq!(open(&bp, &mut bob_group, &sealed).unwrap(), frame);
+        // A non-member cannot (wrong group / epoch key).
+        assert!(open(&ep, &mut eve_group, &sealed).is_err());
+        // Plaintext is not on the wire.
+        assert!(
+            !sealed.windows(frame.len()).any(|w| w == frame),
+            "the payload must be encrypted, not framed in the clear"
+        );
     }
 }

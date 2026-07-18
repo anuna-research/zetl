@@ -39,25 +39,63 @@ pub fn roster_admits(roster: &Roster, peer_did: &str) -> bool {
     roster.contains(peer_did)
 }
 
+/// Confidentiality layer for sync frames (REQ-499). Wraps each frame before it
+/// hits the wire and unwraps each inbound frame, keeping the sync protocol
+/// itself independent of *how* frames are protected. The production sealer is
+/// the MLS group key ([`crate::p2p::group::GroupSealer`]); [`Plain`] is the
+/// unsealed path used for the transport-agnostic tests and for the QUIC-only
+/// (handshake-authenticated but not group-sealed) mode.
+pub trait FrameSeal {
+    fn seal(&mut self, plaintext: &[u8]) -> Result<Vec<u8>>;
+    fn open(&mut self, sealed: &[u8]) -> Result<Vec<u8>>;
+}
+
+/// The identity sealer: frames go on the wire as-is. Used where the transport
+/// already provides confidentiality, or in tests.
+pub struct Plain;
+
+impl FrameSeal for Plain {
+    fn seal(&mut self, plaintext: &[u8]) -> Result<Vec<u8>> {
+        Ok(plaintext.to_vec())
+    }
+    fn open(&mut self, sealed: &[u8]) -> Result<Vec<u8>> {
+        Ok(sealed.to_vec())
+    }
+}
+
 /// Symmetrically sync one replicated document over `stream`: exchange version
 /// vectors, then the deltas each side lacks (REQ-486). Both peers run this;
-/// after it returns, quiescent peers hold identical op state.
+/// after it returns, quiescent peers hold identical op state. Frames go on the
+/// wire unsealed — see [`sync_one_sealed`] for the group-keyed path (REQ-499).
 pub async fn sync_one<S, T>(stream: &mut S, doc: &T) -> Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin,
     T: Syncable,
 {
+    sync_one_sealed(stream, doc, &mut Plain).await
+}
+
+/// As [`sync_one`], but every frame is sealed under `sealer` before it is sent
+/// and opened on receipt (REQ-499). With [`crate::p2p::group::GroupSealer`]
+/// this binds the exchange to MLS group membership at the current epoch, so a
+/// removed member — past the rotation — can neither read nor forge sync frames.
+pub async fn sync_one_sealed<S, T, K>(stream: &mut S, doc: &T, sealer: &mut K) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+    T: Syncable,
+    K: FrameSeal,
+{
     // 1. Exchange op-log version vectors.
-    let my_vv = doc.sync_vv();
-    write_frame(stream, &my_vv.encode()).await?;
-    let peer_vv_bytes = read_frame(stream).await?;
+    let my_vv = doc.sync_vv().encode();
+    write_frame(stream, &sealer.seal(&my_vv)?).await?;
+    let peer_vv_bytes = sealer.open(&read_frame(stream).await?)?;
     let peer_vv = loro::VersionVector::decode(&peer_vv_bytes)
         .map_err(|e| anyhow::anyhow!("decode peer version vector: {e:?}"))?;
 
     // 2. Export exactly what the peer lacks; import what they send us.
     let my_delta = doc.sync_export(&peer_vv)?;
-    write_frame(stream, &my_delta).await?;
-    let peer_delta = read_frame(stream).await?;
+    write_frame(stream, &sealer.seal(&my_delta)?).await?;
+    let peer_delta = sealer.open(&read_frame(stream).await?)?;
     doc.sync_import(&peer_delta)?;
     Ok(())
 }
@@ -125,6 +163,41 @@ mod tests {
         rb.unwrap();
         assert_eq!(a.materialise(), b.materialise(), "converged");
         assert_eq!(a.oplog_vv(), b.oplog_vv());
+    }
+
+    // REQ-499: a sync between two MLS group members converges even though every
+    // frame is sealed under the group key (and the plaintext delta never
+    // appears on the wire).
+    #[tokio::test]
+    async fn sealed_sync_converges_between_group_members() {
+        use crate::p2p::group::{self, GroupIdentity, GroupSealer};
+
+        let op = group::provider();
+        let bp = group::provider();
+        let owner = GroupIdentity::new("did:crdt:owner").unwrap();
+        let bob = GroupIdentity::new("did:crdt:bob").unwrap();
+        let mut ogroup = group::create_group(&op, &owner, b"vault").unwrap();
+        let (_kb, kp) = group::build_key_package(&bp, &bob).unwrap();
+        let kp = group::key_package_from_bytes(&op, &kp, &bob.did).unwrap();
+        let (_c, welcome) = group::add_member(&op, &mut ogroup, &owner, kp).unwrap();
+        let mut bgroup = group::join_from_welcome(&bp, &welcome, &owner.did).unwrap();
+
+        let mut a = NoteDoc::new();
+        a.set_content("base").unwrap();
+        let mut b = NoteDoc::from_snapshot(&a.snapshot().unwrap()).unwrap();
+        a.insert(4, " A").unwrap();
+        b.insert(0, "B ").unwrap();
+
+        let (mut sa, mut sb) = tokio::io::duplex(1 << 16);
+        let mut owner_sealer = GroupSealer { provider: &op, group: &mut ogroup, signer: &owner.signer };
+        let mut bob_sealer = GroupSealer { provider: &bp, group: &mut bgroup, signer: &bob.signer };
+        let (ra, rb) = tokio::join!(
+            sync_one_sealed(&mut sa, &a, &mut owner_sealer),
+            sync_one_sealed(&mut sb, &b, &mut bob_sealer),
+        );
+        ra.unwrap();
+        rb.unwrap();
+        assert_eq!(a.materialise(), b.materialise(), "converged under the group key");
     }
 
     // REQ-486 at vault scope: two peers with divergent manifests + notes
