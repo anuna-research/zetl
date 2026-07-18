@@ -213,3 +213,35 @@
 (claims agent:claude
   :at "2026-07-18T04:30:46Z"
   (given verified-t5-manifest-core-4-tests-create-rename-delete-convergence-collision))
+
+(claims agent:claude
+  :at "2026-07-18T04:33:50Z"
+  (given verified-t6-vault-reconcile-manifest-plus-notes-92-crdt-tests-green))
+
+(claims agent:claude
+  :at "2026-07-18T04:38:17Z"
+  (given verified-req485-merkle-vault-witness-3-tests-reuses-spec006-primitive))
+
+(claims agent:claude
+  :at "2026-07-18T04:39:55Z"
+  (given verified-t3-vault-fs-export-bridge-3-tests-adr470-materialised-export))
+
+(claims agent:claude
+  :at "2026-07-18T05:05:20Z"
+  (given verified-t3-loro-rich-text-backend-14-tests-plus-38-ws-tests-green-engine-swapped))
+
+(claims agent:claude
+  :at "2026-07-18T05:12:58Z"
+  (given completed-t3-loro-store))
+
+(claims agent:claude
+  :at "2026-07-18T05:45:59Z"
+  (given completed-t4-guarded-import))
+
+(claims agent:claude
+  :at "2026-07-18T05:56:36Z"
+  (given implemented-unreviewed-t8-spake2-pairing-ceremony-core-3-tests))
+
+(claims agent:claude
+  :at "2026-07-18T06:10:09Z"
+  (given implemented-unreviewed-t11-did-crdt-member-identity-3-tests))

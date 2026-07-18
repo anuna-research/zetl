@@ -202,6 +202,10 @@ diamond-types = "1.0"
 # in `crdt::loro_store` — the diamond-types engine and the ws.rs migration
 # are unchanged in this slice. Q3 (SPEC-047 ADR-478): one LoroDoc per note.
 loro = "1"
+# SPEC-047 ADR-481 / IMPL-047 T11: did:crdt member identity (sibling crate,
+# default features only — the heavy iroh/pkarr `sync` feature is OFF, so the
+# footprint is crdts/k256/base64ct). UNREVIEWED auth-core (src/p2p banner).
+did-crdt = { path = "../did-crdt" }
 rmcp = { version = "1", optional = true, features = ["server", "transport-io", "server-side-http", "transport-streamable-http-server"] }
 # Optional, only pulled in by the `vendored-openssl` feature. Its sole
 # purpose is to propagate the `vendored` feature flag to the transitive

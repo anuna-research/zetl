@@ -19,4 +19,5 @@
 //! SPAKE2 primitive (SPEC-034); the group key will compose `openmls`
 //! (ADR-482) and identity `../did-crdt` (ADR-481) once those deps build.
 
+pub mod identity;
 pub mod pair;
