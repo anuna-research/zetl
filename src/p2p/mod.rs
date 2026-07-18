@@ -33,3 +33,4 @@ pub mod identity;
 pub mod pair;
 pub mod revocation;
 pub mod roster;
+pub mod session;
