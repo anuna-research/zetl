@@ -14,16 +14,18 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
 /// The vault state a running daemon owns (REQ-470): the canonical per-note
-/// Loro store and the namespace manifest.
-struct VaultState {
-    store: LoroStore,
-    manifest: Manifest,
+/// Loro store and the namespace manifest. Shared behind an `Arc<Mutex<..>>` so
+/// the control loop and the P2P sync service ([`super::p2p`]) serialise access
+/// and never mutate the store concurrently.
+pub(crate) struct VaultState {
+    pub(crate) store: LoroStore,
+    pub(crate) manifest: Manifest,
 }
 
 impl VaultState {
     /// Load the vault's manifest + store, bootstrapping from existing Markdown
     /// on first run (an empty manifest means the store has never been built).
-    fn open(vault_root: &Path) -> Result<VaultState> {
+    pub(crate) fn open(vault_root: &Path) -> Result<VaultState> {
         let manifest = Manifest::load(vault_root)?;
         let store = LoroStore::open(vault_root);
         if manifest.resolve().is_empty() {
@@ -32,14 +34,19 @@ impl VaultState {
         Ok(VaultState { store, manifest })
     }
 
-    fn note_count(&self) -> u32 {
+    /// Construct directly from parts (tests / provisioning).
+    pub(crate) fn from_parts(store: LoroStore, manifest: Manifest) -> VaultState {
+        VaultState { store, manifest }
+    }
+
+    pub(crate) fn note_count(&self) -> u32 {
         self.manifest.resolve().len() as u32
     }
 }
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::Notify;
+use tokio::sync::{Mutex, Notify};
 use std::sync::Arc;
 
 /// Hard cap on a single control frame (REQ-501 spirit at the local boundary):
@@ -88,21 +95,41 @@ pub async fn run(vault_root: &Path) -> Result<()> {
         .unwrap_or_else(|| vault_root.display().to_string());
 
     // The daemon becomes the single owner of the vault's canonical state
-    // (REQ-470), bootstrapping from Markdown on first run.
-    let vault = VaultState::open(vault_root)?;
+    // (REQ-470), bootstrapping from Markdown on first run. Shared behind a Mutex
+    // with the P2P service so vault mutations serialise.
+    let vault = Arc::new(Mutex::new(VaultState::open(vault_root)?));
+
+    // Start the P2P sync service iff the vault has been provisioned for it
+    // (opt-in keyfile). UNREVIEWED auth-core — see super::p2p. A local-only
+    // vault runs exactly as before.
+    let p2p_task = match super::p2p::P2pService::open(vault_root).await {
+        Ok(Some(service)) => {
+            let vault = vault.clone();
+            Some(tokio::spawn(async move { let _ = service.serve(vault).await; }))
+        }
+        Ok(None) => None,
+        Err(e) => {
+            // Provisioned but unstartable → refuse P2P, keep serving locally.
+            eprintln!("zetld: P2P service disabled: {e:#}");
+            None
+        }
+    };
 
     let result = accept_loop(
         &listener,
         started_at,
         &vault_label,
         vault_root,
-        &vault,
+        vault.clone(),
         shutdown.clone(),
     )
     .await;
 
-    // Clean shutdown: drop the listener, remove socket + record so the next
-    // `status` reports NotRunning rather than a stale record.
+    // Clean shutdown: stop the P2P listener, drop the control listener, remove
+    // socket + record so the next `status` reports NotRunning.
+    if let Some(task) = p2p_task {
+        task.abort();
+    }
     drop(listener);
     let _ = std::fs::remove_file(&sock);
     let _ = std::fs::remove_file(&rec);
@@ -115,7 +142,7 @@ async fn accept_loop(
     started_at: u64,
     vault_label: &str,
     vault_root: &Path,
-    vault: &VaultState,
+    vault: Arc<Mutex<VaultState>>,
     shutdown: Arc<Notify>,
 ) -> Result<()> {
     loop {
@@ -131,7 +158,7 @@ async fn accept_loop(
                 // Handle inline: control traffic is low-volume and strictly
                 // ordered per connection. A handler that requests shutdown
                 // notifies the loop, which exits on the next select.
-                handle_conn(stream, started_at, vault_label, vault_root, vault, &shutdown).await;
+                handle_conn(stream, started_at, vault_label, vault_root, &vault, &shutdown).await;
             }
         }
     }
@@ -142,7 +169,7 @@ async fn handle_conn(
     started_at: u64,
     vault_label: &str,
     vault_root: &Path,
-    vault: &VaultState,
+    vault: &Arc<Mutex<VaultState>>,
     shutdown: &Arc<Notify>,
 ) {
     let req = match read_frame(&mut stream).await {
@@ -169,14 +196,18 @@ async fn handle_conn(
         ControlRequest::Ping => ControlResponse::Pong {
             api_version: CONTROL_API_VERSION,
         },
-        ControlRequest::Status => ControlResponse::Status(DaemonStatus::Running {
-            pid: std::process::id() as i32,
-            uptime_secs: now_unix().saturating_sub(started_at),
-            vaults: vec![vault_label.to_string()],
-            notes: vault.note_count(),
-            peers: 0, // wired when the P2P session layer lands (M2)
-        }),
+        ControlRequest::Status => {
+            let notes = vault.lock().await.note_count();
+            ControlResponse::Status(DaemonStatus::Running {
+                pid: std::process::id() as i32,
+                uptime_secs: now_unix().saturating_sub(started_at),
+                vaults: vec![vault_label.to_string()],
+                notes,
+                peers: 0, // per-peer session accounting is a later T12 slice
+            })
+        }
         ControlRequest::Materialise => {
+            let vault = vault.lock().await;
             match vault_fs::export_vault(vault_root, &vault.manifest, &vault.store) {
                 Ok(count) => ControlResponse::Materialised { count: count as u32 },
                 Err(e) => ControlResponse::Error {
@@ -186,6 +217,7 @@ async fn handle_conn(
             }
         }
         ControlRequest::Reimport => {
+            let vault = vault.lock().await;
             match vault_fs::reimport_vault(vault_root, &vault.store, &vault.manifest) {
                 Ok((folded, staged)) => ControlResponse::Reimported {
                     folded: folded as u32,

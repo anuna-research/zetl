@@ -22,6 +22,7 @@
 // DESIGN-047 `adr-control-proto` task (trace: SPEC-047 ADR-479).
 
 pub mod client;
+pub mod p2p;
 pub mod lifecycle;
 pub mod server;
 

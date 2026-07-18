@@ -60,6 +60,17 @@ impl Peer {
         session::sync_one(&mut duplex, doc).await
     }
 
+    /// Sync a whole vault with this peer over the bi-stream (manifest then
+    /// notes), driving [`session::sync_vault`] (REQ-486 at vault scope).
+    pub async fn sync_vault(
+        &mut self,
+        store: &crate::crdt::loro_store::LoroStore,
+        manifest: &crate::crdt::manifest::Manifest,
+    ) -> Result<()> {
+        let mut duplex = tokio::io::join(&mut self.recv, &mut self.send);
+        session::sync_vault(&mut duplex, store, manifest).await
+    }
+
     /// Gracefully close: FIN our send half (ordered *after* every frame we
     /// wrote, so the peer receives them all), drain the recv half to the peer's
     /// FIN (so we have everything they sent), then close the connection. This

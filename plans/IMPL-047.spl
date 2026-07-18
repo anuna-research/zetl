@@ -261,3 +261,19 @@
 (claims agent:claude
   :at "2026-07-18T06:33:52Z"
   (given implemented-unreviewed-t7-cbcl-control-recogniser-req487-3-tests))
+
+(claims agent:claude
+  :at "2026-07-18T07:00:22Z"
+  (given implemented-t12-transport-session-unreviewed))
+
+(claims agent:claude
+  :at "2026-07-18T07:00:22Z"
+  (given deferred-t12-req499-mls-frame-sealing))
+
+(claims agent:claude
+  :at "2026-07-18T07:05:46Z"
+  (given implemented-t12-req499-mls-frame-sealing))
+
+(claims agent:claude
+  :at "2026-07-18T07:23:49Z"
+  (given implemented-t12-daemon-wiring-unreviewed))
