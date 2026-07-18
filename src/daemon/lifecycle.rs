@@ -166,6 +166,25 @@ pub fn run_foreground(vault_root: &Path) -> Result<()> {
     rt()?.block_on(server::run(vault_root))
 }
 
+/// `zetl daemon materialise` — ask the running daemon to export its canonical
+/// store to the vault's Markdown files. Returns the number of notes written.
+/// Errors if no daemon is running (the daemon owns the store).
+pub fn materialise(vault_root: &Path) -> Result<u32> {
+    match observe(vault_root).0 {
+        Liveness::Running => {
+            let resp = rt()?.block_on(client::request(vault_root, &ControlRequest::Materialise))?;
+            match resp {
+                ControlResponse::Materialised { count } => Ok(count),
+                ControlResponse::Error { kind, message } => {
+                    anyhow::bail!("materialise failed ({kind}): {message}")
+                }
+                other => anyhow::bail!("unexpected control reply to materialise: {other:?}"),
+            }
+        }
+        _ => anyhow::bail!("no running daemon for this vault — start it with `zetl daemon start`"),
+    }
+}
+
 /// Spawn `zetl daemon start --foreground --dir <vault>` as a detached,
 /// session-leader child so it survives the launching shell and the parent
 /// `start` process exiting (REQ-490).

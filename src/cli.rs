@@ -708,6 +708,11 @@ pub enum DaemonCommand {
     Stop,
     /// Report daemon health, uptime, joined vaults, and peer counts
     Status,
+    /// Materialise the daemon's canonical store to the vault's Markdown files
+    ///
+    /// Exports every note the daemon owns back to disk (SPEC-047 ADR-470: Loro
+    /// is canonical, Markdown is the export). Requires a running daemon.
+    Materialise,
 }
 
 /// Subcommands for `zetl collab`.

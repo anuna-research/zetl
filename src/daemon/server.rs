@@ -7,8 +7,35 @@ use super::{
     record_path, socket_path, ControlRequest, ControlResponse, DaemonRecord, DaemonStatus,
     CONTROL_API_VERSION,
 };
+use crate::crdt::loro_store::LoroStore;
+use crate::crdt::manifest::Manifest;
+use crate::crdt::vault_fs;
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
+
+/// The vault state a running daemon owns (REQ-470): the canonical per-note
+/// Loro store and the namespace manifest.
+struct VaultState {
+    store: LoroStore,
+    manifest: Manifest,
+}
+
+impl VaultState {
+    /// Load the vault's manifest + store, bootstrapping from existing Markdown
+    /// on first run (an empty manifest means the store has never been built).
+    fn open(vault_root: &Path) -> Result<VaultState> {
+        let manifest = Manifest::load(vault_root)?;
+        let store = LoroStore::open(vault_root);
+        if manifest.resolve().is_empty() {
+            vault_fs::import_vault(vault_root, &store, &manifest)?;
+        }
+        Ok(VaultState { store, manifest })
+    }
+
+    fn note_count(&self) -> u32 {
+        self.manifest.resolve().len() as u32
+    }
+}
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
@@ -60,7 +87,19 @@ pub async fn run(vault_root: &Path) -> Result<()> {
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| vault_root.display().to_string());
 
-    let result = accept_loop(&listener, started_at, &vault_label, shutdown.clone()).await;
+    // The daemon becomes the single owner of the vault's canonical state
+    // (REQ-470), bootstrapping from Markdown on first run.
+    let vault = VaultState::open(vault_root)?;
+
+    let result = accept_loop(
+        &listener,
+        started_at,
+        &vault_label,
+        vault_root,
+        &vault,
+        shutdown.clone(),
+    )
+    .await;
 
     // Clean shutdown: drop the listener, remove socket + record so the next
     // `status` reports NotRunning rather than a stale record.
@@ -70,10 +109,13 @@ pub async fn run(vault_root: &Path) -> Result<()> {
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn accept_loop(
     listener: &UnixListener,
     started_at: u64,
     vault_label: &str,
+    vault_root: &Path,
+    vault: &VaultState,
     shutdown: Arc<Notify>,
 ) -> Result<()> {
     loop {
@@ -89,7 +131,7 @@ async fn accept_loop(
                 // Handle inline: control traffic is low-volume and strictly
                 // ordered per connection. A handler that requests shutdown
                 // notifies the loop, which exits on the next select.
-                handle_conn(stream, started_at, vault_label, &shutdown).await;
+                handle_conn(stream, started_at, vault_label, vault_root, vault, &shutdown).await;
             }
         }
     }
@@ -99,6 +141,8 @@ async fn handle_conn(
     mut stream: UnixStream,
     started_at: u64,
     vault_label: &str,
+    vault_root: &Path,
+    vault: &VaultState,
     shutdown: &Arc<Notify>,
 ) {
     let req = match read_frame(&mut stream).await {
@@ -129,8 +173,18 @@ async fn handle_conn(
             pid: std::process::id() as i32,
             uptime_secs: now_unix().saturating_sub(started_at),
             vaults: vec![vault_label.to_string()],
+            notes: vault.note_count(),
             peers: 0, // wired when the P2P session layer lands (M2)
         }),
+        ControlRequest::Materialise => {
+            match vault_fs::export_vault(vault_root, &vault.manifest, &vault.store) {
+                Ok(count) => ControlResponse::Materialised { count: count as u32 },
+                Err(e) => ControlResponse::Error {
+                    kind: "materialise-failed".into(),
+                    message: e.to_string(),
+                },
+            }
+        }
         ControlRequest::Stop => {
             let _ = respond(&mut stream, &ControlResponse::Ok).await;
             shutdown.notify_one();

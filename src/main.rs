@@ -12099,6 +12099,7 @@ fn main() -> anyhow::Result<()> {
             zetl::cli::DaemonCommand::Start { foreground } => cmd_daemon_start(&cli, *foreground),
             zetl::cli::DaemonCommand::Stop => cmd_daemon_stop(&cli),
             zetl::cli::DaemonCommand::Status => cmd_daemon_status(&cli),
+            zetl::cli::DaemonCommand::Materialise => cmd_daemon_materialise(&cli),
         },
     }
 }
@@ -12151,6 +12152,18 @@ fn cmd_daemon_stop(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
+/// `zetl daemon materialise` — export the daemon's store to Markdown (ADR-470).
+fn cmd_daemon_materialise(cli: &Cli) -> Result<()> {
+    let root = daemon_vault_root(cli);
+    let count = zetl::daemon::lifecycle::materialise(&root)?;
+    if cli.json || matches!(cli.format, OutputFormat::Json) {
+        println!("{}", serde_json::json!({ "materialised": count }));
+    } else {
+        println!("materialised {count} notes to Markdown");
+    }
+    Ok(())
+}
+
 /// `zetl daemon status` — machine-readable liveness (REQ-471 C3).
 fn cmd_daemon_status(cli: &Cli) -> Result<()> {
     let root = daemon_vault_root(cli);
@@ -12165,9 +12178,10 @@ fn cmd_daemon_status(cli: &Cli) -> Result<()> {
                 pid,
                 uptime_secs,
                 vaults,
+                notes,
                 peers,
             } => println!(
-                "zetld: running (pid {pid}, up {uptime_secs}s, vaults [{}], {peers} peers)",
+                "zetld: running (pid {pid}, up {uptime_secs}s, vaults [{}], {notes} notes, {peers} peers)",
                 vaults.join(", ")
             ),
         }

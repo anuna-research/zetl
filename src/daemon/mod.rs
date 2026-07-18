@@ -119,6 +119,8 @@ pub enum DaemonStatus {
         uptime_secs: u64,
         /// Vaults the daemon serves (v1: exactly one; multi-vault is REQ-503).
         vaults: Vec<String>,
+        /// Notes the daemon owns in the canonical store (manifest size).
+        notes: u32,
         /// Connected P2P peers across served vaults.
         peers: u32,
     },
@@ -133,6 +135,9 @@ pub enum ControlRequest {
     Ping,
     /// Report health — the daemon replies [`ControlResponse::Status`].
     Status,
+    /// Materialise the canonical store to the vault's Markdown files (ADR-470
+    /// export). Replies [`ControlResponse::Materialised`].
+    Materialise,
     /// Shut the daemon down cleanly.
     Stop,
 }
@@ -143,6 +148,8 @@ pub enum ControlRequest {
 pub enum ControlResponse {
     Pong { api_version: u32 },
     Status(DaemonStatus),
+    /// Materialised `count` notes to the vault's Markdown files.
+    Materialised { count: u32 },
     /// Acknowledged a mutating request (e.g. `stop`).
     Ok,
     /// Typed error (CON-470: `vault-not-found`, `malformed-request`, …).
@@ -192,6 +199,7 @@ mod tests {
             pid: 7,
             uptime_secs: 12,
             vaults: vec!["notes".into()],
+            notes: 5,
             peers: 2,
         };
         let v: serde_json::Value =
@@ -207,7 +215,12 @@ mod tests {
 
     #[test]
     fn control_request_response_roundtrip() {
-        for req in [ControlRequest::Ping, ControlRequest::Status, ControlRequest::Stop] {
+        for req in [
+            ControlRequest::Ping,
+            ControlRequest::Status,
+            ControlRequest::Materialise,
+            ControlRequest::Stop,
+        ] {
             let json = serde_json::to_string(&req).unwrap();
             assert_eq!(serde_json::from_str::<ControlRequest>(&json).unwrap(), req);
         }

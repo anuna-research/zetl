@@ -119,6 +119,38 @@ fn status_of_pristine_vault_is_not_running() {
 }
 
 #[test]
+fn daemon_owns_vault_store_and_materialises() {
+    let tmp = tempfile::tempdir().unwrap();
+    let vault = tmp.path();
+    // Seed the vault with Markdown before the daemon starts.
+    std::fs::write(vault.join("one.md"), "# One\n\nbody").unwrap();
+    std::fs::create_dir_all(vault.join("sub")).unwrap();
+    std::fs::write(vault.join("sub/two.md"), "two").unwrap();
+    let _guard = Daemon(vault);
+
+    let (code, _) = daemon(vault, &["start"]);
+    assert_eq!(code, 0);
+    await_state(vault, "running");
+
+    // REQ-470: the daemon bootstrapped and now owns the two notes.
+    let (_c, s) = daemon(vault, &["status"]);
+    let v: serde_json::Value = serde_json::from_str(s.trim()).unwrap();
+    assert_eq!(v["notes"], 2, "daemon owns both markdown notes: {v}");
+
+    // Materialise exports the canonical store back to disk.
+    let (code, out) = daemon(vault, &["materialise"]);
+    assert_eq!(code, 0, "materialise should succeed: {out}");
+    let v: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!(v["materialised"], 2);
+    // Content survives the round-trip through the Loro store.
+    assert_eq!(
+        std::fs::read_to_string(vault.join("one.md")).unwrap(),
+        "# One\n\nbody"
+    );
+    assert_eq!(std::fs::read_to_string(vault.join("sub/two.md")).unwrap(), "two");
+}
+
+#[test]
 fn recovers_from_crashed_daemon_stale_state() {
     let tmp = tempfile::tempdir().unwrap();
     let vault = tmp.path();
