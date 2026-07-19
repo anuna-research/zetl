@@ -66,9 +66,13 @@ fn now_unix() -> u64 {
 pub async fn run(vault_root: &Path) -> Result<()> {
     let sock = socket_path(vault_root);
     let rec = record_path(vault_root);
-    let rt_dir = sock.parent().expect("socket has a parent");
-    std::fs::create_dir_all(rt_dir)
-        .with_context(|| format!("create runtime dir {}", rt_dir.display()))?;
+    // The socket lives in a short, secured runtime dir (SUN_LEN); the record is
+    // vault-local. Create/verify both.
+    super::ensure_socket_dir().context("prepare socket runtime dir")?;
+    if let Some(rec_dir) = rec.parent() {
+        std::fs::create_dir_all(rec_dir)
+            .with_context(|| format!("create vault runtime dir {}", rec_dir.display()))?;
+    }
 
     // A leftover socket from a crashed daemon would block bind; the caller
     // (`lifecycle::start`) has already classified staleness and cleaned, but

@@ -29,24 +29,76 @@ pub mod server;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// Control-socket file name inside a vault's `.zetl/` directory. Per-vault
-/// (not `$XDG_RUNTIME_DIR`) so one daemon owns one vault and the socket shares
-/// the vault's filesystem permissions (CON-470 C1).
-pub const SOCKET_NAME: &str = "zetld.sock";
 /// Daemon discovery record file name inside `.zetl/`.
 pub const RECORD_NAME: &str = "zetld.json";
 /// Control-protocol version — bumped when the request/response shape changes.
 pub const CONTROL_API_VERSION: u32 = 1;
 
-/// Path to a vault's `.zetl/` runtime directory.
+/// Path to a vault's `.zetl/` runtime directory (record + Loro store + P2P
+/// provisioning). Vault-local, no length limit.
 pub fn runtime_dir(vault_root: &Path) -> PathBuf {
     vault_root.join(".zetl")
 }
-/// Path to a vault's control socket.
-pub fn socket_path(vault_root: &Path) -> PathBuf {
-    runtime_dir(vault_root).join(SOCKET_NAME)
+
+/// Short, user-private base for control **sockets**. A Unix socket path must fit
+/// `SUN_LEN` (~104 bytes on macOS, 108 on Linux), so the socket cannot live
+/// under a deep vault path — a vault nested in the user's home would exceed the
+/// limit and the daemon would fail to bind. Mirrors `../hark`: prefer
+/// `$XDG_RUNTIME_DIR` (Linux user runtime), else the OS temp dir (`$TMPDIR` on
+/// macOS is per-user private), under a `zetl` subdir. The discovery *record*
+/// stays in [`runtime_dir`] (vault-local, no length limit) so clients still find
+/// the daemon by vault path.
+fn socket_dir() -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("zetl")
 }
-/// Path to a vault's daemon discovery record.
+
+/// Path to a vault's control socket: a short hashed name under [`socket_dir`],
+/// keyed by the vault's **canonical** path so each vault gets a stable, distinct
+/// socket that fits `SUN_LEN` no matter how deep the vault lives. Server and
+/// client both call this, so they always agree without consulting the record.
+pub fn socket_path(vault_root: &Path) -> PathBuf {
+    let canon = std::fs::canonicalize(vault_root).unwrap_or_else(|_| vault_root.to_path_buf());
+    let digest = blake3::hash(canon.to_string_lossy().as_bytes());
+    socket_dir().join(format!("z-{}.sock", &digest.to_hex()[..16]))
+}
+
+/// Create [`socket_dir`] owner-only (0700) and verify it is a non-symlink
+/// directory owned by us with no group/other access — so a hostile pre-existing
+/// dir (e.g. under a world-writable `/tmp` fallback) is rejected rather than
+/// trusted. Mirrors `../hark`'s `create_dir_owner_only` + `ensure_secure_path`.
+///
+/// This preserves the CON-470 C1 same-user control boundary (0600 socket in a
+/// 0700 owner-verified dir) that the previous vault-local socket relied on the
+/// vault's own permissions for — the boundary is the socket's perms, not its
+/// location.
+pub fn ensure_socket_dir() -> std::io::Result<PathBuf> {
+    use std::io::{Error, ErrorKind};
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+
+    let dir = socket_dir();
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&dir)?;
+
+    let meta = std::fs::symlink_metadata(&dir)?;
+    if meta.file_type().is_symlink() || !meta.is_dir() {
+        return Err(Error::new(ErrorKind::PermissionDenied, "socket dir is not a real directory"));
+    }
+    // Safety: geteuid is always successful and has no preconditions.
+    if meta.uid() != unsafe { libc::geteuid() } {
+        return Err(Error::new(ErrorKind::PermissionDenied, "socket dir is not owned by the current user"));
+    }
+    if meta.mode() & 0o077 != 0 {
+        return Err(Error::new(ErrorKind::PermissionDenied, "socket dir is group/other accessible"));
+    }
+    Ok(dir)
+}
+
+/// Path to a vault's daemon discovery record (vault-local, no length limit).
 pub fn record_path(vault_root: &Path) -> PathBuf {
     runtime_dir(vault_root).join(RECORD_NAME)
 }
@@ -166,6 +218,29 @@ pub enum ControlResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Regression: the control socket must NOT live under a (possibly deep) vault
+    // path — it must fit SUN_LEN. It lives in the short socket_dir, is stably
+    // keyed to the vault, and differs per vault; the record stays vault-local.
+    #[test]
+    fn socket_path_is_short_and_outside_the_vault() {
+        let deep = Path::new("/a/very/deeply/nested/vault/path/that/would/blow/past/the/unix/domain/socket/length/limit/on/most/platforms/vault");
+        let sock = socket_path(deep);
+
+        assert!(!sock.starts_with(deep), "socket must not be under the vault");
+        assert!(sock.starts_with(socket_dir()), "socket lives in the short runtime dir");
+        assert!(
+            sock.as_os_str().len() < 104,
+            "socket path must fit SUN_LEN, got {} bytes: {}",
+            sock.as_os_str().len(),
+            sock.display()
+        );
+        // Stable and per-vault.
+        assert_eq!(sock, socket_path(deep), "stable for a given vault");
+        assert_ne!(sock, socket_path(Path::new("/other/vault")), "distinct per vault");
+        // The record, by contrast, is vault-local (no length limit).
+        assert!(record_path(deep).starts_with(deep));
+    }
 
     // TEST-471: liveness classification is a total function of the three
     // observations, and every crashed/inconsistent state is recoverable.
