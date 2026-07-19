@@ -119,11 +119,11 @@ mod tests {
     fn two_member_group() -> (MlsGroup, String, String) {
         let op = provider();
         let bp = provider();
-        let owner = GroupIdentity::new("did:crdt:owner", &[1u8; 32]).unwrap();
-        let bob = GroupIdentity::new("did:crdt:bob", &[2u8; 32]).unwrap();
+        let owner = GroupIdentity::new(&[1u8; 32]).unwrap();
+        let bob = GroupIdentity::new(&[2u8; 32]).unwrap();
         let mut group = create_group(&op, &owner, b"vault").unwrap();
         let (_kb, kp_bytes) = build_key_package(&bp, &bob).unwrap();
-        let kp = key_package_from_bytes(&op, &kp_bytes, &bob.did, &bob.endpoint_id).unwrap();
+        let kp = key_package_from_bytes(&op, &kp_bytes, &bob.endpoint_id).unwrap();
         add_member(&op, &mut group, &owner, kp).unwrap();
         (group, owner.did, bob.did)
     }
