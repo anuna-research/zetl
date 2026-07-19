@@ -99,9 +99,31 @@ This is where "1 actor, many devices" actually lands for the wiki.
 `genesis(endpoint).did() == did` (single-device). Change to: **resolve the DID
 document and check the connecting endpoint key is an authorized (signed)
 verification method.** Any of a user's devices then resolves to the one DID.
-- Needs member DID docs available to the resolver (the roster / group carries or
-  fetches them; the did:crdt sync layer — `sync/gossip.rs`, `sync/live.rs` —
-  already exists upstream).
+
+**Transport decision — DID docs piggyback on the MLS membership lane (REQ-502),
+NOT did:crdt's own gossip/DHT (`sync/gossip.rs`, `sync/live.rs`).** Rationale: one
+authenticated channel, ordering consistent with membership changes, and no second
+sync substrate or pkarr/DHT dependency to secure. Signed did:crdt deltas ride the
+membership lane alongside MLS commits; each member keeps a `did_crdt::Document`
+per member-DID, updated via `merge_verified_delta` (verifies signature + causal
+authorization).
+
+**Same lane, two distinct authorities** (the important part): a payload's
+authorization is per-type, not per-lane —
+- **MLS commit** → *Owner*-authorized (leaf 0): which DIDs are members, and which
+  device leaves get the group key (REQ-505).
+- **did:crdt delta** → *member-self*-authorized (causal authorization over their
+  own DID): which endpoint keys are that member's devices (REQ-498).
+
+So **adding a syncing device is jointly authorized**: the member's did:crdt delta
+(signed by an existing device) vouches "endpoint E is my device," and — after the
+Owner verifies that delta on the lane — the Owner commits E's MLS leaf with
+credential `(member_DID, E)`, granting group-key access. The `endpoint_owner`
+resolver can then key off the MLS leaf credential (the group *is* the
+endpoint→DID registry), with the did:crdt device set as the authorization proof
+for why the Owner bound it. Neither authority can act as the other: the Owner
+cannot forge a member's device set, and a member cannot grant themselves group
+membership.
 
 ### B4 — Verified rotation / revocation · **S–M**
 Wire `revocation.rs` to did:crdt's signed **revoke-verification-method**; after
