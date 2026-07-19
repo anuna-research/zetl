@@ -57,7 +57,8 @@ mod tests {
     use super::*;
 
     fn seed(store: &LoroStore, manifest: &Manifest, id: &str, path: &str, body: &str) {
-        let did = DocId::parse(id).unwrap();
+        // Widen the short test tag to the fixed 32-lowercase-hex DocId grammar.
+        let did = DocId::parse(&format!("{:0>32}", id.replace('n', "d"))).unwrap();
         manifest.create(&did, path).unwrap();
         let mut note = NoteDoc::new();
         note.set_content(body).unwrap();
@@ -73,7 +74,10 @@ mod tests {
         let (sa, sb) = (LoroStore::open(ta.path()), LoroStore::open(tb.path()));
         let (ma, mb) = (Manifest::new(), Manifest::new());
 
-        assert_eq!(vault_witness(&ma, &sa).unwrap(), vault_witness(&mb, &sb).unwrap());
+        assert_eq!(
+            vault_witness(&ma, &sa).unwrap(),
+            vault_witness(&mb, &sb).unwrap()
+        );
 
         seed(&sa, &ma, "n1", "a.md", "hello");
         seed(&sb, &mb, "n1", "a.md", "hello");

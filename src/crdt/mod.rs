@@ -13,6 +13,7 @@
 //! [`reconcile`], Merkle [`witness`], and Markdown export ([`vault_fs`]).
 
 pub mod blocks;
+pub mod export_state;
 pub mod guarded_import;
 pub mod loro_backend;
 pub mod loro_store;
@@ -30,3 +31,21 @@ pub mod witness;
 /// `marks_doc`, `backend`) are removed: one engine, no speculative
 /// indirection (PROTO-001 Discipline Rules).
 pub use loro_backend::LoroCrdtDocument as WsCrdtBackend;
+
+/// Make a directory's entries durable after an atomic tmp+rename: syncing the
+/// temporary file alone does not persist the *rename* — a power loss right
+/// after can still lose the acknowledged snapshot. Every canonical-store
+/// persist path (note snapshots, manifest, rotation outbox) calls this after
+/// its rename. No-op on non-Unix (directories cannot be opened for sync).
+pub(crate) fn fsync_dir(dir: &std::path::Path) -> anyhow::Result<()> {
+    #[cfg(unix)]
+    {
+        use anyhow::Context as _;
+        std::fs::File::open(dir)
+            .and_then(|d| d.sync_all())
+            .with_context(|| format!("fsync dir {}", dir.display()))?;
+    }
+    #[cfg(not(unix))]
+    let _ = dir;
+    Ok(())
+}

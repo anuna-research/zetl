@@ -42,7 +42,9 @@ impl Default for Manifest {
 
 impl Manifest {
     pub fn new() -> Manifest {
-        Manifest { doc: LoroDoc::new() }
+        Manifest {
+            doc: LoroDoc::new(),
+        }
     }
 
     pub fn from_snapshot(bytes: &[u8]) -> Result<Manifest> {
@@ -102,21 +104,38 @@ impl Manifest {
 
     /// The resolved, collision-free `DocId → path` mapping every converged peer
     /// derives identically (REQ-504). When several DocIds collide on a folded
-    /// path, the smallest DocId keeps it; the rest are disambiguated.
+    /// path, the smallest DocId keeps it; the rest get generated names that are
+    /// reserved against the **entire** resolved namespace — a generated name
+    /// colliding with another group's stored path (or another generated name)
+    /// is extended deterministically, never silently overwritten.
     pub fn resolve(&self) -> BTreeMap<DocId, String> {
+        use std::collections::BTreeSet;
         let raw = self.raw_entries();
         let mut by_fold: BTreeMap<String, Vec<(DocId, String)>> = BTreeMap::new();
         for (id, path) in raw {
-            by_fold.entry(fold_path(&path)).or_default().push((id, path));
+            by_fold
+                .entry(fold_path(&path))
+                .or_default()
+                .push((id, path));
         }
+        // Every group's rank-0 entry keeps its stored path; those folded names
+        // are exactly the group keys, hence mutually distinct. Reserving them
+        // all up front means a generated name can never shadow a kept path in
+        // any group — not just its own.
+        let mut taken: BTreeSet<String> = by_fold.keys().cloned().collect();
         let mut out = BTreeMap::new();
-        for (_folded, mut group) in by_fold {
+        for group in by_fold.values() {
+            let mut group = group.clone();
             group.sort_by(|a, b| a.0.cmp(&b.0));
             for (rank, (id, path)) in group.into_iter().enumerate() {
                 let resolved = if rank == 0 {
                     path
                 } else {
-                    disambiguate(&path, &id)
+                    let candidate = disambiguation_candidates(&path, &id)
+                        .find(|c| !taken.contains(&fold_path(c)))
+                        .expect("candidate sequence is unbounded");
+                    taken.insert(fold_path(&candidate));
+                    candidate
                 };
                 out.insert(id, resolved);
             }
@@ -148,11 +167,21 @@ impl Manifest {
     /// Persist the manifest snapshot atomically under `.zetl/loro/manifest.loro`
     /// (0600), alongside the per-note snapshots.
     pub fn save(&self, vault_root: &Path) -> Result<()> {
+        self.save_to_dir(&vault_root.join(".zetl").join("loro"))
+    }
+
+    /// Persist the manifest snapshot into an explicit snapshot directory
+    /// (tmp + rename + directory fsync — same durability discipline as note
+    /// snapshots). [`crate::crdt::loro_store::LoroStore::persist_manifest`]
+    /// routes here so store and manifest agree on the directory.
+    pub(crate) fn save_to_dir(&self, dir: &Path) -> Result<()> {
         use std::io::Write as _;
-        let dir = vault_root.join(".zetl").join("loro");
-        std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
+        std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
         let path = dir.join("manifest.loro");
-        let bytes = self.doc.export(ExportMode::snapshot()).context("export manifest")?;
+        let bytes = self
+            .doc
+            .export(ExportMode::snapshot())
+            .context("export manifest")?;
         let tmp = path.with_extension("loro.tmp");
         let mut opts = std::fs::OpenOptions::new();
         opts.write(true).create(true).truncate(true);
@@ -161,11 +190,27 @@ impl Manifest {
             use std::os::unix::fs::OpenOptionsExt as _;
             opts.mode(0o600);
         }
-        let mut f = opts.open(&tmp).with_context(|| format!("open {}", tmp.display()))?;
+        let mut f = opts
+            .open(&tmp)
+            .with_context(|| format!("open {}", tmp.display()))?;
         f.write_all(&bytes)?;
         f.sync_all()?;
         std::fs::rename(&tmp, &path)?;
+        super::fsync_dir(dir)?;
         Ok(())
+    }
+
+    /// Whether a persisted manifest snapshot exists for this vault. This — not
+    /// the entry count — is the bootstrap signal: a persisted manifest with
+    /// zero entries is a valid state (every note deleted), and re-importing
+    /// stray Markdown over it would resurrect deleted content under fresh
+    /// DocIds.
+    pub fn snapshot_exists(vault_root: &Path) -> bool {
+        vault_root
+            .join(".zetl")
+            .join("loro")
+            .join("manifest.loro")
+            .exists()
     }
 
     /// Load a vault's manifest, or a fresh empty one if none is persisted.
@@ -184,14 +229,25 @@ fn fold_path(path: &str) -> String {
     path.to_lowercase()
 }
 
-/// Deterministic disambiguated path for a colliding DocId: insert a short
-/// DocId prefix before the extension, so the result is stable across peers.
-fn disambiguate(path: &str, id: &DocId) -> String {
-    let prefix = &id.as_str()[..id.as_str().len().min(8)];
-    match path.rfind('.') {
-        Some(dot) if dot > 0 => format!("{} ({}){}", &path[..dot], prefix, &path[dot..]),
-        _ => format!("{path} ({prefix})"),
-    }
+/// Deterministic, unbounded sequence of disambiguated paths for a colliding
+/// DocId: progressively longer DocId prefixes before the extension (8, 16, 24,
+/// then the full 32), then the full id with a numeric suffix. Stable across
+/// peers, so the first *globally free* candidate is the same everywhere.
+fn disambiguation_candidates<'a>(
+    path: &'a str,
+    id: &'a DocId,
+) -> impl Iterator<Item = String> + 'a {
+    let full = id.as_str();
+    (1u32..).map(move |k| {
+        let tag = match k {
+            1..=4 => full[..(k as usize * 8).min(full.len())].to_string(),
+            n => format!("{full}-{}", n - 4),
+        };
+        match path.rfind('.') {
+            Some(dot) if dot > 0 => format!("{} ({}){}", &path[..dot], tag, &path[dot..]),
+            _ => format!("{path} ({tag})"),
+        }
+    })
 }
 
 #[cfg(test)]
@@ -203,7 +259,7 @@ mod tests {
     #[test]
     fn create_rename_delete() {
         let m = Manifest::new();
-        let id = DocId::parse("aaaa").unwrap();
+        let id = DocId::parse(&"a".repeat(32)).unwrap();
         m.create(&id, "notes/a.md").unwrap();
         assert_eq!(m.raw_path(&id).as_deref(), Some("notes/a.md"));
 
@@ -232,8 +288,8 @@ mod tests {
     fn concurrent_edits_converge() {
         let a = Manifest::new();
         let b = Manifest::new();
-        let id1 = DocId::parse("id1").unwrap();
-        let id2 = DocId::parse("id2").unwrap();
+        let id1 = DocId::parse(&"1".repeat(32)).unwrap();
+        let id2 = DocId::parse(&"2".repeat(32)).unwrap();
 
         // A creates id1, B creates id2 — concurrently, distinct paths.
         a.create(&id1, "one.md").unwrap();
@@ -257,8 +313,8 @@ mod tests {
     #[test]
     fn colliding_paths_disambiguate_deterministically() {
         let m = Manifest::new();
-        let lo = DocId::parse("aaaa1111").unwrap();
-        let hi = DocId::parse("bbbb2222").unwrap();
+        let lo = DocId::parse(&"aaaa1111".repeat(4)).unwrap();
+        let hi = DocId::parse(&"bbbb2222".repeat(4)).unwrap();
         // Same path modulo case → collision.
         m.create(&lo, "Note.md").unwrap();
         m.create(&hi, "note.md").unwrap();
@@ -270,5 +326,39 @@ mod tests {
         assert_ne!(resolved[&hi], "note.md");
         assert_ne!(resolved[&lo].to_lowercase(), resolved[&hi].to_lowercase());
         assert!(resolved[&hi].contains("bbbb2222"));
+    }
+
+    // Regression: a *generated* collision name must be reserved against the
+    // whole namespace. Here a third note (its own fold group) already occupies
+    // the name the second colliding note would generate — resolution must not
+    // silently assign two DocIds the same path.
+    #[test]
+    fn generated_names_are_reserved_globally() {
+        let m = Manifest::new();
+        let lo = DocId::parse(&"aaaa1111".repeat(4)).unwrap();
+        let hi = DocId::parse(&"bbbb2222".repeat(4)).unwrap();
+        let squatter = DocId::parse(&"cccc3333".repeat(4)).unwrap();
+        m.create(&lo, "note.md").unwrap();
+        m.create(&hi, "Note.md").unwrap();
+        // Occupies exactly hi's first-choice generated name "note (bbbb2222).md".
+        m.create(&squatter, "note (bbbb2222).md").unwrap();
+
+        let resolved = m.resolve();
+        assert_eq!(resolved.len(), 3, "all entries survive");
+        let mut folded: Vec<String> = resolved.values().map(|p| p.to_lowercase()).collect();
+        folded.sort();
+        folded.dedup();
+        assert_eq!(
+            folded.len(),
+            3,
+            "no two DocIds share a resolved path: {resolved:?}"
+        );
+        // The squatter keeps its stored path; hi is pushed to a longer tag.
+        assert_eq!(resolved[&squatter], "note (bbbb2222).md");
+        assert!(
+            resolved[&hi].contains("bbbb2222bbbb2222"),
+            "extended tag: {}",
+            resolved[&hi]
+        );
     }
 }

@@ -102,7 +102,10 @@ impl DeviceIdentity {
     /// Reconstruct from a persisted 32-byte secret.
     pub fn from_secret(secret: [u8; 32]) -> DeviceIdentity {
         let endpoint_id = *iroh::SecretKey::from_bytes(&secret).public().as_bytes();
-        DeviceIdentity { secret, endpoint_id }
+        DeviceIdentity {
+            secret,
+            endpoint_id,
+        }
     }
 
     /// The transport secret (persist 0600; feeds `iroh::SecretKey`).
@@ -149,7 +152,10 @@ mod tests {
         let member = MemberIdentity::genesis(&device).unwrap();
 
         let did = member.did();
-        assert!(did.starts_with("did:crdt:"), "DID has the crdt method: {did}");
+        assert!(
+            did.starts_with("did:crdt:"),
+            "DID has the crdt method: {did}"
+        );
 
         let resolved = member.resolve().unwrap().expect("not deactivated");
         assert_eq!(resolved.id, did, "resolved document id is the DID");
@@ -208,6 +214,10 @@ mod tests {
         let mut note = NoteDoc::new();
         note.set_actor(dev.loro_peer()).unwrap();
         note.set_content("edited by this device").unwrap();
-        assert_eq!(note.actor(), dev.loro_peer(), "the edit's actor is the device id");
+        assert_eq!(
+            note.actor(),
+            dev.loro_peer(),
+            "the edit's actor is the device id"
+        );
     }
 }

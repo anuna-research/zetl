@@ -24,14 +24,23 @@ pub(crate) struct VaultState {
 
 impl VaultState {
     /// Load the vault's manifest + store, bootstrapping from existing Markdown
-    /// on first run (an empty manifest means the store has never been built).
+    /// only when **no manifest snapshot has ever been persisted**. A persisted
+    /// manifest with zero entries is a valid state (every note deleted);
+    /// re-importing stray Markdown over it would mint fresh DocIds and
+    /// resurrect deleted content. When the vault is provisioned for P2P, the
+    /// store binds the stable device actor so local edits attribute to this
+    /// device (not a random per-load PeerID).
     pub(crate) fn open(vault_root: &Path) -> Result<VaultState> {
+        let bootstrap = !Manifest::snapshot_exists(vault_root);
         let manifest = Manifest::load(vault_root)?;
-        let store = LoroStore::open(vault_root);
-        if manifest.resolve().is_empty() {
+        let mut store = LoroStore::open(vault_root);
+        if let Some(actor) = super::p2p::device_actor(vault_root) {
+            store = store.with_actor(actor);
+        }
+        if bootstrap {
             vault_fs::import_vault(vault_root, &store, &manifest)?;
         }
-        Ok(VaultState { store, manifest })
+        Ok(VaultState::from_parts(store, manifest))
     }
 
     /// Construct directly from parts (tests / provisioning).
@@ -43,11 +52,11 @@ impl VaultState {
         self.manifest.resolve().len() as u32
     }
 }
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{Mutex, Notify};
-use std::sync::Arc;
 
 /// Hard cap on a single control frame (REQ-501 spirit at the local boundary):
 /// recognise the length prefix before allocating, reject anything larger.
@@ -64,6 +73,13 @@ fn now_unix() -> u64 {
 /// and record on entry and removes them on clean exit. Blocks (async) for the
 /// daemon's lifetime.
 pub async fn run(vault_root: &Path) -> Result<()> {
+    // The vault must already exist: creating it here would race the socket
+    // identity — the parent hashed the *unresolved* path, while clients after
+    // creation canonicalize to a different name, stranding a live daemon.
+    let vault_root = vault_root
+        .canonicalize()
+        .with_context(|| format!("vault directory not found: {}", vault_root.display()))?;
+    let vault_root = vault_root.as_path();
     let sock = socket_path(vault_root);
     let rec = record_path(vault_root);
     // The socket lives in a short, secured runtime dir (SUN_LEN); the record is
@@ -74,12 +90,16 @@ pub async fn run(vault_root: &Path) -> Result<()> {
             .with_context(|| format!("create vault runtime dir {}", rec_dir.display()))?;
     }
 
-    // A leftover socket from a crashed daemon would block bind; the caller
-    // (`lifecycle::start`) has already classified staleness and cleaned, but
-    // remove defensively so a bind race fails closed rather than aliasing.
+    // Serialise startup: hold an exclusive per-vault flock for the daemon's
+    // lifetime. Two concurrent starts could otherwise both observe "no
+    // record", and the loser's unlink below would remove the winner's *live*
+    // listener. With the lock held, any leftover socket is provably stale
+    // (its owner would hold the lock), so the unlink is safe.
+    let _start_lock = super::StartLock::acquire(&sock.with_extension("lock"))
+        .context("another zetld is starting or serving this vault")?;
     let _ = std::fs::remove_file(&sock);
-    let listener =
-        UnixListener::bind(&sock).with_context(|| format!("bind control socket {}", sock.display()))?;
+    let listener = UnixListener::bind(&sock)
+        .with_context(|| format!("bind control socket {}", sock.display()))?;
     set_0600(&sock)?;
 
     let started_at = now_unix();
@@ -109,7 +129,9 @@ pub async fn run(vault_root: &Path) -> Result<()> {
     let p2p_task = match super::p2p::P2pService::open(vault_root).await {
         Ok(Some(service)) => {
             let vault = vault.clone();
-            Some(tokio::spawn(async move { let _ = service.serve(vault).await; }))
+            Some(tokio::spawn(async move {
+                let _ = service.serve(vault).await;
+            }))
         }
         Ok(None) => None,
         Err(e) => {
@@ -212,8 +234,18 @@ async fn handle_conn(
         }
         ControlRequest::Materialise => {
             let vault = vault.lock().await;
-            match vault_fs::export_vault(vault_root, &vault.manifest, &vault.store) {
-                Ok(count) => ControlResponse::Materialised { count: count as u32 },
+            // Fold (or stage) any external edits *before* overwriting the
+            // files: a `zetl serve` WebSocket flush or editor save that has
+            // not entered the oplog yet must never be silently clobbered by
+            // the export (REQ-484 / CON-471 C5). Until the WebSocket layer
+            // attaches to the daemon-owned document (M2 editing slice), this
+            // guarded reimport is what carries its writes into the store.
+            match vault_fs::reimport_vault(vault_root, &vault.store, &vault.manifest)
+                .and_then(|_| vault_fs::export_vault(vault_root, &vault.manifest, &vault.store))
+            {
+                Ok(count) => ControlResponse::Materialised {
+                    count: count as u32,
+                },
                 Err(e) => ControlResponse::Error {
                     kind: "materialise-failed".into(),
                     message: e.to_string(),
@@ -285,7 +317,9 @@ fn write_0600(path: &Path, bytes: &[u8]) -> Result<()> {
         use std::os::unix::fs::OpenOptionsExt as _;
         opts.mode(0o600);
     }
-    let mut f = opts.open(&tmp).with_context(|| format!("open {}", tmp.display()))?;
+    let mut f = opts
+        .open(&tmp)
+        .with_context(|| format!("open {}", tmp.display()))?;
     f.write_all(bytes)?;
     f.sync_all()?;
     std::fs::rename(&tmp, path)?;

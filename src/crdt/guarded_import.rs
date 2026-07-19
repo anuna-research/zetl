@@ -196,6 +196,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out, ImportOutcome::Staged(PathBuf::from("/conflict/x.md")));
-        assert_eq!(note.materialise(), "edited body\n", "staged write must not fold");
+        assert_eq!(
+            note.materialise(),
+            "edited body\n",
+            "staged write must not fold"
+        );
     }
 }

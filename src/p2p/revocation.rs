@@ -49,11 +49,41 @@ pub fn write_outbox(vault_runtime_dir: &Path, outbox: &RotationOutbox) -> Result
         use std::os::unix::fs::OpenOptionsExt as _;
         opts.mode(0o600);
     }
-    let mut f = opts.open(&tmp).with_context(|| format!("open {}", tmp.display()))?;
+    let mut f = opts
+        .open(&tmp)
+        .with_context(|| format!("open {}", tmp.display()))?;
     f.write_all(&bytes)?;
     f.sync_all()?; // durable before the epoch advances
     std::fs::rename(&tmp, &path)?;
+    // The rename's directory entry must also be durable, or a power loss can
+    // lose the outbox despite the file sync above.
+    crate::crdt::fsync_dir(vault_runtime_dir)?;
     Ok(())
+}
+
+/// The complete REQ-506 removal sequence in one call, so no caller can get
+/// the ordering wrong: create the (unmerged) Remove commit, record it durably
+/// in the rotation outbox, and only then advance the local epoch. A crash at
+/// any point leaves either no rotation (before the outbox write) or a
+/// recorded rotation that [`recovery_action`] completes exactly once.
+pub fn remove_member_durable(
+    vault_runtime_dir: &Path,
+    provider: &openmls_rust_crypto::OpenMlsRustCrypto,
+    group: &mut openmls::prelude::MlsGroup,
+    owner: &super::group::GroupIdentity,
+    did: &str,
+) -> Result<Vec<u8>> {
+    let pre_epoch = group.epoch().as_u64();
+    let commit = super::group::remove_member(provider, group, owner, did)?;
+    write_outbox(
+        vault_runtime_dir,
+        &RotationOutbox {
+            commit: commit.clone(),
+            pre_epoch,
+        },
+    )?;
+    super::group::merge_removal(provider, group)?;
+    Ok(commit)
 }
 
 /// Read a pending rotation, if a crash left one behind.
@@ -142,10 +172,7 @@ mod tests {
         // No outbox → nothing to do.
         assert_eq!(recovery_action(None, 5), Recovery::Nothing);
         // Crash before the epoch merged (live still at pre_epoch) → reapply.
-        assert_eq!(
-            recovery_action(Some(&ob), 3),
-            Recovery::ReapplyAndRepublish
-        );
+        assert_eq!(recovery_action(Some(&ob), 3), Recovery::ReapplyAndRepublish);
         // Crash after the merge (live advanced past pre_epoch) → republish only,
         // never re-rotate.
         assert_eq!(recovery_action(Some(&ob), 4), Recovery::RepublishOnly);

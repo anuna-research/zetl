@@ -90,7 +90,17 @@ pub fn status(vault_root: &Path) -> Result<DaemonStatus> {
 
 /// `zetl daemon start` (REQ-470/471). Idempotent: a live daemon is reported,
 /// not relaunched. A crashed daemon's leftovers are cleaned first.
+///
+/// The vault must exist: the socket name is keyed to the vault's *canonical*
+/// path, so a missing directory (created later by bootstrap) would hash to a
+/// different identity in the child than in every subsequent client —
+/// stranding a live but unreachable daemon. Rejecting up front (and passing
+/// the child the canonical path) keeps parent, child, and clients agreed.
 pub fn start(vault_root: &Path) -> Result<StartOutcome> {
+    let canon = vault_root
+        .canonicalize()
+        .with_context(|| format!("vault directory not found: {}", vault_root.display()))?;
+    let vault_root = canon.as_path();
     let (liveness, pid) = observe(vault_root);
     let recovered = match liveness {
         Liveness::Running => {

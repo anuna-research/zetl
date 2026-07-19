@@ -22,8 +22,8 @@
 // DESIGN-047 `adr-control-proto` task (trace: SPEC-047 ADR-479).
 
 pub mod client;
-pub mod p2p;
 pub mod lifecycle;
+pub mod p2p;
 pub mod server;
 
 use serde::{Deserialize, Serialize};
@@ -49,10 +49,17 @@ pub fn runtime_dir(vault_root: &Path) -> PathBuf {
 /// stays in [`runtime_dir`] (vault-local, no length limit) so clients still find
 /// the daemon by vault path.
 fn socket_dir() -> PathBuf {
-    std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-        .join("zetl")
+    match std::env::var_os("XDG_RUNTIME_DIR") {
+        // $XDG_RUNTIME_DIR is already per-user private.
+        Some(dir) => PathBuf::from(dir).join("zetl"),
+        // The temp-dir fallback may be shared (`/tmp` on Linux sessions
+        // without XDG_RUNTIME_DIR), and `ensure_socket_dir` requires the dir
+        // to be owned by the current user — a bare `/tmp/zetl` would let
+        // whichever user creates it first lock every other user out. Scope
+        // the fallback by UID so each user gets their own dir.
+        // Safety: geteuid is always successful and has no preconditions.
+        None => std::env::temp_dir().join(format!("zetl-{}", unsafe { libc::geteuid() })),
+    }
 }
 
 /// Path to a vault's control socket: a short hashed name under [`socket_dir`],
@@ -86,14 +93,23 @@ pub fn ensure_socket_dir() -> std::io::Result<PathBuf> {
 
     let meta = std::fs::symlink_metadata(&dir)?;
     if meta.file_type().is_symlink() || !meta.is_dir() {
-        return Err(Error::new(ErrorKind::PermissionDenied, "socket dir is not a real directory"));
+        return Err(Error::new(
+            ErrorKind::PermissionDenied,
+            "socket dir is not a real directory",
+        ));
     }
     // Safety: geteuid is always successful and has no preconditions.
     if meta.uid() != unsafe { libc::geteuid() } {
-        return Err(Error::new(ErrorKind::PermissionDenied, "socket dir is not owned by the current user"));
+        return Err(Error::new(
+            ErrorKind::PermissionDenied,
+            "socket dir is not owned by the current user",
+        ));
     }
     if meta.mode() & 0o077 != 0 {
-        return Err(Error::new(ErrorKind::PermissionDenied, "socket dir is group/other accessible"));
+        return Err(Error::new(
+            ErrorKind::PermissionDenied,
+            "socket dir is group/other accessible",
+        ));
     }
     Ok(dir)
 }
@@ -101,6 +117,36 @@ pub fn ensure_socket_dir() -> std::io::Result<PathBuf> {
 /// Path to a vault's daemon discovery record (vault-local, no length limit).
 pub fn record_path(vault_root: &Path) -> PathBuf {
     runtime_dir(vault_root).join(RECORD_NAME)
+}
+
+/// An exclusive per-vault startup lock (`flock(2)`), held for the daemon's
+/// lifetime so concurrent `start` races cannot yield two live daemons — the
+/// loser fails to acquire instead of unlinking the winner's live socket. The
+/// kernel releases the lock automatically when the process (and its fd) dies,
+/// so a crashed daemon never wedges the next start.
+pub struct StartLock {
+    _file: std::fs::File,
+}
+
+impl StartLock {
+    /// Acquire the lock at `path` (0600, created if absent), non-blocking:
+    /// if another process holds it, error out rather than wait.
+    pub fn acquire(path: &Path) -> std::io::Result<StartLock> {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        use std::os::unix::io::AsRawFd as _;
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .open(path)?;
+        // Safety: flock on an owned, open fd; no memory is passed.
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(StartLock { _file: file })
+    }
 }
 
 /// The daemon discovery record, written 0600 at startup and removed on clean
@@ -202,17 +248,27 @@ pub enum ControlRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "reply", rename_all = "kebab-case")]
 pub enum ControlResponse {
-    Pong { api_version: u32 },
+    Pong {
+        api_version: u32,
+    },
     Status(DaemonStatus),
     /// Materialised `count` notes to the vault's Markdown files.
-    Materialised { count: u32 },
+    Materialised {
+        count: u32,
+    },
     /// Re-imported external edits: `folded` into the store, `staged` to the
     /// conflict area.
-    Reimported { folded: u32, staged: u32 },
+    Reimported {
+        folded: u32,
+        staged: u32,
+    },
     /// Acknowledged a mutating request (e.g. `stop`).
     Ok,
     /// Typed error (CON-470: `vault-not-found`, `malformed-request`, …).
-    Error { kind: String, message: String },
+    Error {
+        kind: String,
+        message: String,
+    },
 }
 
 #[cfg(test)]
@@ -227,8 +283,14 @@ mod tests {
         let deep = Path::new("/a/very/deeply/nested/vault/path/that/would/blow/past/the/unix/domain/socket/length/limit/on/most/platforms/vault");
         let sock = socket_path(deep);
 
-        assert!(!sock.starts_with(deep), "socket must not be under the vault");
-        assert!(sock.starts_with(socket_dir()), "socket lives in the short runtime dir");
+        assert!(
+            !sock.starts_with(deep),
+            "socket must not be under the vault"
+        );
+        assert!(
+            sock.starts_with(socket_dir()),
+            "socket lives in the short runtime dir"
+        );
         assert!(
             sock.as_os_str().len() < 104,
             "socket path must fit SUN_LEN, got {} bytes: {}",
@@ -237,9 +299,31 @@ mod tests {
         );
         // Stable and per-vault.
         assert_eq!(sock, socket_path(deep), "stable for a given vault");
-        assert_ne!(sock, socket_path(Path::new("/other/vault")), "distinct per vault");
+        assert_ne!(
+            sock,
+            socket_path(Path::new("/other/vault")),
+            "distinct per vault"
+        );
         // The record, by contrast, is vault-local (no length limit).
         assert!(record_path(deep).starts_with(deep));
+    }
+
+    // Startup serialisation: two concurrent starts cannot both hold the
+    // per-vault lock, and a dead holder (dropped fd) releases it.
+    #[test]
+    fn start_lock_is_exclusive_and_released_on_drop() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("z.lock");
+        let held = StartLock::acquire(&path).unwrap();
+        assert!(
+            StartLock::acquire(&path).is_err(),
+            "second acquire must fail"
+        );
+        drop(held);
+        assert!(
+            StartLock::acquire(&path).is_ok(),
+            "kernel releases with the fd"
+        );
     }
 
     // TEST-471: liveness classification is a total function of the three
@@ -312,6 +396,9 @@ mod tests {
             message: "bad frame".into(),
         };
         let json = serde_json::to_string(&resp).unwrap();
-        assert_eq!(serde_json::from_str::<ControlResponse>(&json).unwrap(), resp);
+        assert_eq!(
+            serde_json::from_str::<ControlResponse>(&json).unwrap(),
+            resp
+        );
     }
 }

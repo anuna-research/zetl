@@ -23,27 +23,22 @@ const LORO_SUBDIR: &str = "loro";
 /// Snapshot file extension.
 const SNAPSHOT_EXT: &str = "loro";
 
-/// A stable identifier for one note document (Q3 / Q12). The exact scheme is
-/// `[Provisional — DESIGN-047 task adr-namespace]`; until it is fixed, a DocId
-/// is an opaque, filesystem-safe slug. Recognised (LangSec) before it is ever
-/// used to build a path — a DocId that could escape the store directory is
-/// rejected, never sanitised.
+/// A stable identifier for one note document (Q3 / Q12 / adr-namespace): the
+/// fixed grammar is **exactly 32 lowercase hex characters** — the form
+/// [`mint`](Self::mint) emits. Recognised (LangSec) before it is ever used to
+/// build a path — anything outside the grammar (a slug like `manifest`, a path
+/// component, mixed case) is rejected, never sanitised, so a manifest entry or
+/// library caller can neither alias the `manifest.loro` snapshot nor escape
+/// the store directory.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DocId(String);
 
 impl DocId {
-    /// Recognise a DocId: non-empty, `[A-Za-z0-9._-]+`, and neither `.` nor
-    /// `..` (which would be path components, not ids). Rejects anything that
-    /// could traverse out of the store directory (fail closed).
+    /// Recognise a DocId under the fixed grammar: 32 lowercase hex chars,
+    /// nothing else (fail closed).
     pub fn parse(s: &str) -> Result<DocId> {
-        if s.is_empty() || s == "." || s == ".." {
-            anyhow::bail!("invalid DocId {s:?}: empty or a path component");
-        }
-        if !s
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
-        {
-            anyhow::bail!("invalid DocId {s:?}: only [A-Za-z0-9._-] allowed");
+        if s.len() != 32 || !s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+            anyhow::bail!("invalid DocId {s:?}: expected exactly 32 lowercase hex chars");
         }
         Ok(DocId(s.to_string()))
     }
@@ -169,6 +164,10 @@ impl NoteDoc {
 /// Persists snapshots under `<vault>/.zetl/loro/`.
 pub struct LoroStore {
     dir: PathBuf,
+    /// The stable device actor bound onto every document this store hands out,
+    /// so local edits attribute to the device (SPEC-047 — DID-backed
+    /// attribution) instead of a fresh random PeerID per load.
+    actor: Option<u64>,
 }
 
 impl LoroStore {
@@ -177,7 +176,15 @@ impl LoroStore {
     pub fn open(vault_root: &Path) -> LoroStore {
         LoroStore {
             dir: vault_root.join(".zetl").join(LORO_SUBDIR),
+            actor: None,
         }
+    }
+
+    /// Bind the stable device actor ([`crate::p2p::identity::DeviceIdentity::
+    /// loro_peer`]) applied to every document this store creates or reloads.
+    pub fn with_actor(mut self, actor: u64) -> LoroStore {
+        self.actor = Some(actor);
+        self
     }
 
     fn snapshot_path(&self, id: &DocId) -> PathBuf {
@@ -185,16 +192,24 @@ impl LoroStore {
     }
 
     /// Load a note document from disk, or return a fresh one if none exists.
+    /// The store's device actor (if bound) is applied so subsequent local
+    /// edits attribute stably.
     pub fn load_or_create(&self, id: &DocId) -> Result<NoteDoc> {
         let path = self.snapshot_path(id);
-        match std::fs::read(&path) {
-            Ok(bytes) => NoteDoc::from_snapshot(&bytes),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(NoteDoc::new()),
-            Err(e) => Err(e).with_context(|| format!("read snapshot {}", path.display())),
+        let note = match std::fs::read(&path) {
+            Ok(bytes) => NoteDoc::from_snapshot(&bytes)?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => NoteDoc::new(),
+            Err(e) => return Err(e).with_context(|| format!("read snapshot {}", path.display())),
+        };
+        if let Some(actor) = self.actor {
+            note.set_actor(actor)?;
         }
+        Ok(note)
     }
 
-    /// Persist a note's snapshot atomically (tmp + rename), 0600.
+    /// Persist a note's snapshot atomically (tmp + rename + directory fsync —
+    /// the rename's directory entry must be durable before persist returns,
+    /// per the canonical-store durability contract), 0600.
     pub fn persist(&self, id: &DocId, note: &NoteDoc) -> Result<()> {
         use std::io::Write as _;
         std::fs::create_dir_all(&self.dir)
@@ -209,11 +224,23 @@ impl LoroStore {
             use std::os::unix::fs::OpenOptionsExt as _;
             opts.mode(0o600);
         }
-        let mut f = opts.open(&tmp).with_context(|| format!("open {}", tmp.display()))?;
+        let mut f = opts
+            .open(&tmp)
+            .with_context(|| format!("open {}", tmp.display()))?;
         f.write_all(&bytes)?;
         f.sync_all()?;
         std::fs::rename(&tmp, &path)?;
+        super::fsync_dir(&self.dir)?;
         Ok(())
+    }
+
+    /// Persist the vault's namespace manifest snapshot into this store's
+    /// directory (same durability discipline as note snapshots). Peers that
+    /// merge manifest ops MUST call this before reporting a sync complete —
+    /// otherwise a daemon restart reloads the pre-sync namespace and orphans
+    /// the newly persisted note snapshots.
+    pub fn persist_manifest(&self, manifest: &super::manifest::Manifest) -> Result<()> {
+        manifest.save_to_dir(&self.dir)
     }
 
     /// Whether a note is persisted.
@@ -232,7 +259,7 @@ mod tests {
     fn persist_and_reload_roundtrips() {
         let tmp = tempfile::tempdir().unwrap();
         let store = LoroStore::open(tmp.path());
-        let id = DocId::parse("note-alpha").unwrap();
+        let id = DocId::parse(&"a".repeat(32)).unwrap();
 
         let mut note = store.load_or_create(&id).unwrap();
         assert_eq!(note.materialise(), "");
@@ -273,7 +300,8 @@ mod tests {
 
         // b learns a's ops (b had none), then both edit concurrently.
         let empty = loro::VersionVector::default();
-        b.import_updates(&a.export_updates_since(&empty).unwrap()).unwrap();
+        b.import_updates(&a.export_updates_since(&empty).unwrap())
+            .unwrap();
         assert_eq!(b.materialise(), "shared\n");
 
         a.insert(6, " by A").unwrap();
@@ -291,17 +319,30 @@ mod tests {
         assert_eq!(a.materialise(), b.materialise());
     }
 
-    // TEST (REQ-483 spirit / LangSec): a DocId that could traverse the store
-    // directory is rejected, never sanitised.
+    // TEST (REQ-483 spirit / LangSec): only the fixed 32-lowercase-hex grammar
+    // is accepted — a slug that could alias the manifest snapshot or traverse
+    // the store directory is rejected, never sanitised.
     #[test]
-    fn docid_rejects_traversal_and_bad_chars() {
+    fn docid_enforces_the_fixed_grammar() {
         assert!(DocId::parse("").is_err());
         assert!(DocId::parse(".").is_err());
         assert!(DocId::parse("..").is_err());
         assert!(DocId::parse("../secret").is_err());
         assert!(DocId::parse("a/b").is_err());
-        assert!(DocId::parse("a b").is_err());
-        assert!(DocId::parse("note-1_v.2").is_ok());
+        assert!(
+            DocId::parse("manifest").is_err(),
+            "would alias manifest.loro"
+        );
+        assert!(DocId::parse("note-1_v.2").is_err(), "slugs are not ids");
+        assert!(DocId::parse(&"A".repeat(32)).is_err(), "uppercase rejected");
+        assert!(DocId::parse(&"g".repeat(32)).is_err(), "non-hex rejected");
+        assert!(DocId::parse(&"a".repeat(31)).is_err(), "short rejected");
+        assert!(DocId::parse(&"a".repeat(33)).is_err(), "long rejected");
+        assert!(DocId::parse(&"0123456789abcdef".repeat(2)).is_ok());
+        assert!(
+            DocId::parse(DocId::mint().as_str()).is_ok(),
+            "mint round-trips"
+        );
     }
 
     // Property tests for the pure CRDT core (SPEC-047 §10: property-based
@@ -325,7 +366,7 @@ mod tests {
         fn prop_snapshot_roundtrip_preserves_content(s in "[a-zA-Z0-9 \n#*_-]{0,60}") {
             let tmp = tempfile::tempdir().unwrap();
             let store = LoroStore::open(tmp.path());
-            let id = DocId::parse("p").unwrap();
+            let id = DocId::parse(&"9".repeat(32)).unwrap();
             let mut note = store.load_or_create(&id).unwrap();
             note.set_content(&s).unwrap();
             store.persist(&id, &note).unwrap();

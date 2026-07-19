@@ -44,7 +44,12 @@ fn configured_doc() -> LoroDoc {
     let doc = LoroDoc::new();
     let mut styles = StyleConfigMap::new();
     for (key, expand) in MARK_KEYS {
-        styles.insert((*key).into(), StyleConfig { expand: expand_of(*expand) });
+        styles.insert(
+            (*key).into(),
+            StyleConfig {
+                expand: expand_of(*expand),
+            },
+        );
     }
     doc.config_text_style(styles);
     doc
@@ -85,7 +90,12 @@ impl LoroCrdtDocument {
     /// (REQ-020-027) — true for the live editing engine (`from_markdown`),
     /// false for the canonical store (`set_markdown`), which preserves the
     /// note's exact byte content so import→export round-trips faithfully.
-    fn ingest(&mut self, markdown: &str, add_trailing_newline: bool) -> Result<()> {
+    fn ingest(
+        &mut self,
+        markdown: &str,
+        add_trailing_newline: bool,
+        clear_styles: bool,
+    ) -> Result<()> {
         let lines: Vec<&str> = markdown.lines().collect();
         let mut pending: Vec<(MarkType, usize, usize)> = Vec::new();
         let mut pos: usize = 0;
@@ -141,12 +151,25 @@ impl LoroCrdtDocument {
                 self.splice_text(pos, 0, "\n")?;
             }
         }
+        // When replacing existing content (`set_markdown`), expand-inclusive
+        // styles (bold, italic, …) from the *old* text can survive the delete
+        // as active boundaries at offset 0 and bleed onto the freshly inserted
+        // text — replacing `**old**` with `plain` must not materialise as
+        // `**plain**`. Clear every mark key across the new text before
+        // applying the marks the input actually carries.
+        let text_len = self.text_handle().len_unicode();
+        if clear_styles && text_len > 0 {
+            for (key, _) in MARK_KEYS {
+                self.text_handle()
+                    .unmark(0..text_len, key)
+                    .with_context(|| format!("clear inherited {key} marks"))?;
+            }
+        }
         // Apply inline marks. A mark whose range is invalid (e.g. from
         // malformed markdown that the inline parser mis-bracketed) is skipped,
         // not fatal — the text is always ingested faithfully; only the
         // problematic style is dropped. Ingestion of arbitrary content must
         // never fail (the store imports whatever a file holds).
-        let text_len = self.text_handle().len_unicode();
         for (mt, start, end) in pending {
             if start <= end && end <= text_len {
                 let _ = self.mark(&mt, start, end);
@@ -178,7 +201,9 @@ impl LoroCrdtDocument {
 /// engine, no indirection, per SPEC-047 §9).
 impl LoroCrdtDocument {
     pub fn new() -> Result<Self> {
-        Ok(Self { doc: configured_doc() })
+        Ok(Self {
+            doc: configured_doc(),
+        })
     }
 
     /// Bind this replica's Loro actor id (PeerID) to a stable device identity,
@@ -197,18 +222,20 @@ impl LoroCrdtDocument {
 
     pub fn from_markdown(markdown: &str) -> Result<Self> {
         let mut this = Self::new()?;
-        this.ingest(markdown, true)?;
+        this.ingest(markdown, true, false)?;
         Ok(this)
     }
 
     /// Replace the whole content by re-ingesting `markdown` (canonical store
     /// path, no trailing-newline normalisation — preserves exact bytes).
+    /// Inherited expand-aware styles from the replaced text are cleared so the
+    /// new content carries exactly the marks the input declares.
     pub fn set_markdown(&mut self, markdown: &str) -> Result<()> {
         let len = self.text_handle().len_unicode();
         if len > 0 {
             self.text_handle().delete(0, len).context("clear text")?;
         }
-        self.ingest(markdown, false)?;
+        self.ingest(markdown, false, true)?;
         Ok(())
     }
 
@@ -270,7 +297,12 @@ impl LoroCrdtDocument {
                 .collect();
             for k in to_close {
                 let (val, start) = open.remove(&k).expect("key was open");
-                out.push(Mark { name: k, value: val, start, end: pos });
+                out.push(Mark {
+                    name: k,
+                    value: val,
+                    start,
+                    end: pos,
+                });
             }
             // Open any active key not already open.
             for (k, v) in active {
@@ -279,7 +311,12 @@ impl LoroCrdtDocument {
             pos += len;
         }
         for (k, (val, start)) in open {
-            out.push(Mark { name: k, value: val, start, end: pos });
+            out.push(Mark {
+                name: k,
+                value: val,
+                start,
+                end: pos,
+            });
         }
         // Deterministic order: by span start, then nesting, then name.
         out.sort_by(|a, b| {
@@ -312,7 +349,11 @@ impl LoroCrdtDocument {
 
     pub fn mark(&mut self, mark_type: &MarkType, start: usize, end: usize) -> Result<()> {
         self.text_handle()
-            .mark(start..end, mark_type.name(), scalar_to_loro(mark_type.scalar_value()))
+            .mark(
+                start..end,
+                mark_type.name(),
+                scalar_to_loro(mark_type.scalar_value()),
+            )
             .with_context(|| format!("loro mark {}", mark_type.name()))?;
         self.doc.commit();
         Ok(())
@@ -353,7 +394,9 @@ impl LoroCrdtDocument {
             .doc
             .export(ExportMode::all_updates())
             .context("export loro updates for merge")?;
-        self.doc.import(&patch).context("import loro updates on merge")?;
+        self.doc
+            .import(&patch)
+            .context("import loro updates on merge")?;
         Ok(())
     }
 }
@@ -373,6 +416,27 @@ mod tests {
             .unwrap()
             .to_markdown()
             .unwrap()
+    }
+
+    // Regression: replacing marked content must not let expand-inclusive
+    // styles survive the delete and bleed onto the replacement — `**old**`
+    // replaced with `plain` must not materialise as `**plain**`.
+    #[test]
+    fn set_markdown_clears_inherited_marks() {
+        let mut d = LoroCrdtDocument::from_markdown("**old**\n").unwrap();
+        assert_eq!(d.to_markdown().unwrap(), "**old**\n");
+        d.set_markdown("plain").unwrap();
+        assert_eq!(d.to_markdown().unwrap(), "plain\n");
+        assert!(
+            d.marks().unwrap().is_empty(),
+            "no styles inherited: {:?}",
+            d.marks()
+        );
+
+        // Marks the replacement itself declares are still applied.
+        let mut d = LoroCrdtDocument::from_markdown("*italic everywhere*\n").unwrap();
+        d.set_markdown("now **bold** here").unwrap();
+        assert_eq!(d.to_markdown().unwrap(), "now **bold** here\n");
     }
 
     #[test]
@@ -399,7 +463,10 @@ mod tests {
 
     #[test]
     fn wikilink_round_trip() {
-        assert_eq!(md("see [[Target|alias]] here\n"), "see [[Target|alias]] here\n");
+        assert_eq!(
+            md("see [[Target|alias]] here\n"),
+            "see [[Target|alias]] here\n"
+        );
     }
 
     #[test]
@@ -434,7 +501,7 @@ mod tests {
 
     #[test]
     fn save_load_content_equivalent() {
-        let mut a = LoroCrdtDocument::from_markdown("**bold** and *em*\n").unwrap();
+        let a = LoroCrdtDocument::from_markdown("**bold** and *em*\n").unwrap();
         let bytes = a.save();
         let b = LoroCrdtDocument::load(&bytes).unwrap();
         assert_eq!(a.text().unwrap(), b.text().unwrap());
@@ -443,7 +510,7 @@ mod tests {
 
     #[test]
     fn marks_survive_save_load() {
-        let mut a = LoroCrdtDocument::from_markdown("**bold** text\n").unwrap();
+        let a = LoroCrdtDocument::from_markdown("**bold** text\n").unwrap();
         let bytes = a.save();
         let b = LoroCrdtDocument::load(&bytes).unwrap();
         assert_eq!(a.marks().unwrap(), b.marks().unwrap());

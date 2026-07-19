@@ -72,7 +72,16 @@ mod tests {
     // returns Ok/Err (the DPDA is a decidable recogniser).
     #[test]
     fn recognition_is_total() {
-        for input in ["", "(", ")", "((((", "(tell)", "(reply)", "\0\0", "(unknown-perf @x \"y\")"] {
+        for input in [
+            "",
+            "(",
+            ")",
+            "((((",
+            "(tell)",
+            "(reply)",
+            "\0\0",
+            "(unknown-perf @x \"y\")",
+        ] {
             let _ = recognise(input); // must not panic
         }
     }

@@ -132,7 +132,7 @@ mod tests {
     fn converged_peers_do_no_work() {
         let mut a = NoteDoc::new();
         a.set_content("same").unwrap();
-        let mut b = NoteDoc::from_snapshot(&a.snapshot().unwrap()).unwrap();
+        let b = NoteDoc::from_snapshot(&a.snapshot().unwrap()).unwrap();
         assert_eq!(reconcile_pair(&a, &b).unwrap(), 0);
     }
 
@@ -158,7 +158,7 @@ mod tests {
     fn peer_learns_unknown_note() {
         let mut have = NoteDoc::new();
         have.set_content("# Note\n\ncontent").unwrap();
-        let mut lacks = NoteDoc::new();
+        let lacks = NoteDoc::new();
 
         reconcile_pair(&have, &lacks).unwrap();
         assert_eq!(lacks.materialise(), "# Note\n\ncontent\n");
@@ -173,9 +173,9 @@ mod tests {
         let sa = LoroStore::open(ta.path());
         let sb = LoroStore::open(tb.path());
 
-        let shared = DocId::parse("shared").unwrap();
-        let only_a = DocId::parse("only-a").unwrap();
-        let only_b = DocId::parse("only-b").unwrap();
+        let shared = DocId::parse(&"5".repeat(32)).unwrap();
+        let only_a = DocId::parse(&"a".repeat(32)).unwrap();
+        let only_b = DocId::parse(&"b".repeat(32)).unwrap();
 
         // A has `shared` (v1) and `only-a`; B has `shared` (concurrent edit)
         // and `only-b`.
@@ -204,8 +204,14 @@ mod tests {
         }
         // The shared doc converged the concurrent edit; the private docs
         // propagated whole.
-        assert_eq!(sa.load_or_create(&only_b).unwrap().materialise(), "B private\n");
-        assert_eq!(sb.load_or_create(&only_a).unwrap().materialise(), "A private\n");
+        assert_eq!(
+            sa.load_or_create(&only_b).unwrap().materialise(),
+            "B private\n"
+        );
+        assert_eq!(
+            sb.load_or_create(&only_a).unwrap().materialise(),
+            "A private\n"
+        );
     }
 
     // Vault-level: two peers with divergent manifests + notes converge to
@@ -223,8 +229,8 @@ mod tests {
 
         // A creates note n1; B creates note n2 — each registers it in its own
         // manifest and store, offline from the other.
-        let n1 = DocId::parse("n1").unwrap();
-        let n2 = DocId::parse("n2").unwrap();
+        let n1 = DocId::parse(&"1".repeat(32)).unwrap();
+        let n2 = DocId::parse(&"2".repeat(32)).unwrap();
         ma.create(&n1, "a.md").unwrap();
         let mut d1 = NoteDoc::new();
         d1.set_content("A's note").unwrap();

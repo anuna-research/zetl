@@ -116,7 +116,10 @@ pub fn encode_credential(did: &str, endpoint_id: &[u8; 32]) -> Vec<u8> {
 /// 32-byte endpoint suffix, and require the DID prefix be valid UTF-8. Rejects
 /// anything too short to carry an endpoint id.
 pub fn decode_credential(bytes: &[u8]) -> Result<(String, [u8; 32])> {
-    anyhow::ensure!(bytes.len() >= 32, "leaf credential too short to bind an endpoint id");
+    anyhow::ensure!(
+        bytes.len() >= 32,
+        "leaf credential too short to bind an endpoint id"
+    );
     let (did_bytes, ep) = bytes.split_at(bytes.len() - 32);
     let did = std::str::from_utf8(did_bytes)
         .map_err(|_| anyhow!("leaf credential DID is not valid UTF-8"))?
@@ -189,7 +192,12 @@ pub fn build_key_package(
         .store(provider.storage())
         .map_err(|e| anyhow!("store joiner signer: {e:?}"))?;
     let bundle = KeyPackage::builder()
-        .build(CIPHERSUITE, provider, &joiner.signer, joiner.credential.clone())
+        .build(
+            CIPHERSUITE,
+            provider,
+            &joiner.signer,
+            joiner.credential.clone(),
+        )
         .map_err(|e| anyhow!("build key package: {e:?}"))?;
     let bytes = bundle
         .key_package()
@@ -277,6 +285,14 @@ pub fn join_from_welcome(
 
 /// Owner removes a member by their DID (new epoch — the removed leaf can no
 /// longer derive the group key: REQ-481/498 rotation).
+///
+/// The returned commit bytes are **unmerged**: the local epoch has *not*
+/// advanced yet. REQ-506 requires the commit to be durable (the rotation
+/// outbox, [`crate::p2p::revocation::write_outbox`]) *before* the merge — a
+/// crash after merging but before recording would strand surviving peers on
+/// the old epoch with no recorded bytes to republish. Call
+/// [`merge_removal`] once the outbox write has returned, or use
+/// [`crate::p2p::revocation::remove_member_durable`] which sequences both.
 pub fn remove_member(
     provider: &OpenMlsRustCrypto,
     group: &mut MlsGroup,
@@ -293,10 +309,16 @@ pub fn remove_member(
     let (commit, _, _) = group
         .remove_members(provider, &owner.signer, &[target.index])
         .map_err(|e| anyhow!("MLS remove member: {e:?}"))?;
+    serialize_out(&commit)
+}
+
+/// Advance the local epoch by merging the pending removal commit. Only call
+/// after the commit bytes returned by [`remove_member`] are durable in the
+/// rotation outbox (REQ-506 ordering).
+pub fn merge_removal(provider: &OpenMlsRustCrypto, group: &mut MlsGroup) -> Result<()> {
     group
         .merge_pending_commit(provider)
-        .map_err(|e| anyhow!("merge remove commit: {e:?}"))?;
-    serialize_out(&commit)
+        .map_err(|e| anyhow!("merge remove commit: {e:?}"))
 }
 
 /// Current member DIDs (from leaf credentials).
@@ -437,7 +459,10 @@ mod tests {
         // The DID is self-certifying — the content-address of the device key —
         // not an assigned string (REQ-497).
         assert!(verify_did_binding(&owner.did, &[1u8; 32]));
-        assert!(!verify_did_binding(&owner.did, &[2u8; 32]), "owner DID is not bob's key");
+        assert!(
+            !verify_did_binding(&owner.did, &[2u8; 32]),
+            "owner DID is not bob's key"
+        );
 
         let (_kb, kp_bytes) = build_key_package(&bp, &bob).unwrap();
         let kp = key_package_from_bytes(&op, &kp_bytes, &bob.endpoint_id).unwrap();
@@ -480,7 +505,10 @@ mod tests {
         // its key derives — verifiably, not by label.
         assert_eq!(endpoint_owner(&group, &[1u8; 32]), Some(owner.did.clone()));
         assert_eq!(endpoint_owner(&group, &[2u8; 32]), Some(bob.did.clone()));
-        assert_eq!(endpoint_owner(&group, &[1u8; 32]).as_deref(), Some(derive_did(&[1u8; 32]).unwrap().as_str()));
+        assert_eq!(
+            endpoint_owner(&group, &[1u8; 32]).as_deref(),
+            Some(derive_did(&[1u8; 32]).unwrap().as_str())
+        );
         // A stranger's endpoint resolves to nothing — a resolved address is not
         // membership.
         assert_eq!(endpoint_owner(&group, &[42u8; 32]), None);
@@ -529,7 +557,16 @@ mod tests {
         assert_eq!(member_dids(&group).len(), 2);
         let epoch_before = group.epoch();
 
-        remove_member(&op, &mut group, &owner, &bob.did).unwrap();
+        // REQ-506 ordering: the commit comes back unmerged (epoch unchanged)
+        // so a caller can make it durable first; the merge advances the epoch.
+        let commit = remove_member(&op, &mut group, &owner, &bob.did).unwrap();
+        assert!(!commit.is_empty());
+        assert_eq!(
+            group.epoch(),
+            epoch_before,
+            "commit is pending until merged"
+        );
+        merge_removal(&op, &mut group).unwrap();
         assert_eq!(member_dids(&group), vec![owner.did.clone()]);
         assert!(group.epoch() > epoch_before, "removal advances the epoch");
     }

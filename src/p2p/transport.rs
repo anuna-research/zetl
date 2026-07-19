@@ -9,10 +9,10 @@
 //! [`iroh`] 1.0 — a QUIC endpoint keyed by an Ed25519 [[Endpoint Id]], with
 //! authenticated peer identity (the remote's endpoint id is proven by the QUIC
 //! handshake, REQ-491) and hole-punching / relay fallback handled upstream. We
-//! add only: our ALPN, a dial helper, an accept helper that surfaces the
-//! authenticated peer id for the roster gate ([`session::roster_admits`]), and
-//! a [`Duplex`] adapter so a bi-stream drives the transport-agnostic
-//! [`session`] core unchanged.
+//! add only: our ALPN, a dial helper, and an accept helper that surfaces the
+//! authenticated peer id for the roster gate ([`session::roster_admits`])
+//! *before* any stream work; the bi-stream halves then drive the
+//! transport-agnostic [`session`] core unchanged.
 //!
 //! **The endpoint id is a transport fact, not authorisation.** `accept` returns
 //! the peer's authenticated id; the caller MUST resolve it to a DID and pass it
@@ -26,17 +26,47 @@ use crate::p2p::session;
 use anyhow::Result;
 use iroh::endpoint::{presets, Connection, RecvStream, SendStream};
 use iroh::{Endpoint, EndpointAddr, SecretKey};
-use tokio::io::Join;
+use std::time::Duration;
 
 /// Application-layer protocol id (REQ-483). Versioned so a future frame-format
 /// change is a new ALPN, not a silent renegotiation.
 pub const ALPN: &[u8] = b"zetl/sync/1";
 
-/// One QUIC bi-stream presented as a single `AsyncRead + AsyncWrite`, so the
-/// [`session`](crate::p2p::session) core runs over it exactly as over the
-/// in-memory duplex it is tested against. Built transiently from the stream
-/// halves in [`Peer::sync_note`].
-pub type Duplex<'a> = Join<&'a mut RecvStream, &'a mut SendStream>;
+/// An inbound connection whose QUIC handshake has completed: the authenticated
+/// endpoint id is available **before any stream work**, so the roster gate can
+/// refuse a stranger without ever awaiting an operation the stranger controls
+/// (a peer that completes the handshake and then never opens a stream must not
+/// wedge the accept loop).
+pub struct IncomingPeer {
+    /// The peer's endpoint id, authenticated by the QUIC handshake (REQ-491).
+    /// A transport fact — feed it through the roster gate before trusting it.
+    pub endpoint_id: [u8; 32],
+    conn: Connection,
+}
+
+impl IncomingPeer {
+    /// Admit: wait (bounded) for the peer to open the sync bi-stream. The
+    /// timeout caps how long an admitted-but-idle peer can hold a slot.
+    pub async fn into_peer(self, stream_timeout: Duration) -> Result<Peer> {
+        let (send, recv) = tokio::time::timeout(stream_timeout, self.conn.accept_bi())
+            .await
+            .map_err(|_| anyhow::anyhow!("peer opened no sync stream within {stream_timeout:?}"))?
+            .map_err(|e| anyhow::anyhow!("accept_bi: {e}"))?;
+        Ok(Peer {
+            endpoint_id: self.endpoint_id,
+            send,
+            recv,
+            conn: self.conn,
+        })
+    }
+
+    /// Refuse: close immediately. Deliberately *not* the graceful
+    /// [`Peer::finish`] drain — an unadmitted stranger gets no cooperative
+    /// teardown it could stall by never sending FIN.
+    pub fn refuse(self) {
+        self.conn.close(0u32.into(), b"not-admitted");
+    }
+}
 
 /// A live connection to one peer: its authenticated endpoint id and the sync
 /// bi-stream halves. Prefer [`Peer::finish`] over a plain drop — it does a
@@ -56,8 +86,7 @@ impl Peer {
     /// Sync one replicated document with this peer over the bi-stream, driving
     /// the transport-agnostic [`session::sync_one`] core (REQ-486).
     pub async fn sync_note<T: Syncable>(&mut self, doc: &T) -> Result<()> {
-        let mut duplex = tokio::io::join(&mut self.recv, &mut self.send);
-        session::sync_one(&mut duplex, doc).await
+        session::sync_one(&mut self.recv, &mut self.send, doc).await
     }
 
     /// Sync a whole vault with this peer over the bi-stream (manifest then
@@ -67,8 +96,7 @@ impl Peer {
         store: &crate::crdt::loro_store::LoroStore,
         manifest: &crate::crdt::manifest::Manifest,
     ) -> Result<()> {
-        let mut duplex = tokio::io::join(&mut self.recv, &mut self.send);
-        session::sync_vault(&mut duplex, store, manifest).await
+        session::sync_vault(&mut self.recv, &mut self.send, store, manifest).await
     }
 
     /// Gracefully close: FIN our send half (ordered *after* every frame we
@@ -136,13 +164,20 @@ impl SyncTransport {
             .open_bi()
             .await
             .map_err(|e| anyhow::anyhow!("open_bi: {e}"))?;
-        Ok(Peer { endpoint_id, send, recv, conn })
+        Ok(Peer {
+            endpoint_id,
+            send,
+            recv,
+            conn,
+        })
     }
 
-    /// Accept one inbound peer: complete the handshake, surface the
-    /// authenticated endpoint id (for the roster gate), and open the sync
-    /// bi-stream. Returns `None` when the endpoint is closed.
-    pub async fn accept(&self) -> Result<Option<Peer>> {
+    /// Accept one inbound peer: complete the handshake and surface the
+    /// authenticated endpoint id for the roster gate — **without** opening the
+    /// sync bi-stream. The caller gates first ([`IncomingPeer::refuse`]) and
+    /// only an admitted peer's [`IncomingPeer::into_peer`] awaits its stream.
+    /// Returns `None` when the endpoint is closed.
+    pub async fn accept(&self) -> Result<Option<IncomingPeer>> {
         let Some(incoming) = self.endpoint.accept().await else {
             return Ok(None);
         };
@@ -150,11 +185,7 @@ impl SyncTransport {
             .await
             .map_err(|e| anyhow::anyhow!("accept handshake: {e}"))?;
         let endpoint_id = *conn.remote_id().as_bytes();
-        let (send, recv) = conn
-            .accept_bi()
-            .await
-            .map_err(|e| anyhow::anyhow!("accept_bi: {e}"))?;
-        Ok(Some(Peer { endpoint_id, send, recv, conn }))
+        Ok(Some(IncomingPeer { endpoint_id, conn }))
     }
 }
 
@@ -194,7 +225,8 @@ mod tests {
 
         // Server side: accept one peer, sync its note.
         let server_task = tokio::spawn(async move {
-            let mut peer = server.accept().await.unwrap().expect("a peer");
+            let incoming = server.accept().await.unwrap().expect("a peer");
+            let mut peer = incoming.into_peer(Duration::from_secs(10)).await.unwrap();
             let mut doc = NoteDoc::new();
             doc.set_content("base").unwrap();
             doc.insert(4, " SERVER").unwrap();

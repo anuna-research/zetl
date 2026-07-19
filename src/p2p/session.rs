@@ -63,62 +63,91 @@ impl FrameSeal for Plain {
     }
 }
 
-/// Symmetrically sync one replicated document over `stream`: exchange version
-/// vectors, then the deltas each side lacks (REQ-486). Both peers run this;
-/// after it returns, quiescent peers hold identical op state. Frames go on the
-/// wire unsealed — see [`sync_one_sealed`] for the group-keyed path (REQ-499).
-pub async fn sync_one<S, T>(stream: &mut S, doc: &T) -> Result<()>
+/// Symmetrically sync one replicated document over a stream's read/write
+/// halves: exchange version vectors, then the deltas each side lacks
+/// (REQ-486). Both peers run this; after it returns, quiescent peers hold
+/// identical op state. Frames go on the wire unsealed — see
+/// [`sync_one_sealed`] for the group-keyed path (REQ-499).
+pub async fn sync_one<R, W, T>(reader: &mut R, writer: &mut W, doc: &T) -> Result<()>
 where
-    S: AsyncRead + AsyncWrite + Unpin,
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
     T: Syncable,
 {
-    sync_one_sealed(stream, doc, &mut Plain).await
+    sync_one_sealed(reader, writer, doc, &mut Plain).await
 }
 
 /// As [`sync_one`], but every frame is sealed under `sealer` before it is sent
 /// and opened on receipt (REQ-499). With [`crate::p2p::group::GroupSealer`]
 /// this binds the exchange to MLS group membership at the current epoch, so a
 /// removed member — past the rotation — can neither read nor forge sync frames.
-pub async fn sync_one_sealed<S, T, K>(stream: &mut S, doc: &T, sealer: &mut K) -> Result<()>
+///
+/// Each round sends and receives **concurrently**: the exchange is symmetric,
+/// so if both peers wrote their whole frame before reading, two frames larger
+/// than the transport's flow-control window would deadlock — each `write_all`
+/// waiting forever for the other side to drain.
+pub async fn sync_one_sealed<R, W, T, K>(
+    reader: &mut R,
+    writer: &mut W,
+    doc: &T,
+    sealer: &mut K,
+) -> Result<()>
 where
-    S: AsyncRead + AsyncWrite + Unpin,
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
     T: Syncable,
     K: FrameSeal,
 {
     // 1. Exchange op-log version vectors.
-    let my_vv = doc.sync_vv().encode();
-    write_frame(stream, &sealer.seal(&my_vv)?).await?;
-    let peer_vv_bytes = sealer.open(&read_frame(stream).await?)?;
+    let my_vv = sealer.seal(&doc.sync_vv().encode())?;
+    let (sent, received) = tokio::join!(write_frame(writer, &my_vv), read_frame(reader));
+    sent?;
+    let peer_vv_bytes = sealer.open(&received?)?;
     let peer_vv = loro::VersionVector::decode(&peer_vv_bytes)
         .map_err(|e| anyhow::anyhow!("decode peer version vector: {e:?}"))?;
 
     // 2. Export exactly what the peer lacks; import what they send us.
-    let my_delta = doc.sync_export(&peer_vv)?;
-    write_frame(stream, &sealer.seal(&my_delta)?).await?;
-    let peer_delta = sealer.open(&read_frame(stream).await?)?;
+    let my_delta = sealer.seal(&doc.sync_export(&peer_vv)?)?;
+    let (sent, received) = tokio::join!(write_frame(writer, &my_delta), read_frame(reader));
+    sent?;
+    let peer_delta = sealer.open(&received?)?;
     doc.sync_import(&peer_delta)?;
     Ok(())
 }
 
-/// Sync a whole vault over `stream`: converge the [`Manifest`] first (so both
-/// peers agree which notes exist), then sync every note the merged manifest
-/// names, in deterministic order. Persists merged notes. Symmetric — both
-/// peers run it and converge (REQ-486 at vault scope).
-pub async fn sync_vault<S>(
-    stream: &mut S,
+/// Sync a whole vault over a stream's halves: converge the [`Manifest`] first
+/// (so both peers agree which notes exist), then sync every note the merged
+/// manifest names, in deterministic order. Persists merged notes **and the
+/// merged manifest** — a peer's create/rename/delete that lived only in
+/// memory would be lost on daemon restart, orphaning the note snapshots
+/// persisted below. Symmetric — both peers run it and converge (REQ-486 at
+/// vault scope).
+pub async fn sync_vault<R, W>(
+    reader: &mut R,
+    writer: &mut W,
     store: &LoroStore,
     manifest: &Manifest,
 ) -> Result<()>
 where
-    S: AsyncRead + AsyncWrite + Unpin,
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
 {
-    // Manifest first — both peers then derive the same doc set.
-    sync_one(stream, manifest).await.context("sync manifest")?;
+    // Manifest first — both peers then derive the same doc set. Persist it
+    // before the (interruptible) per-note loop so the namespace is never
+    // newer in memory than on disk.
+    sync_one(reader, writer, manifest)
+        .await
+        .context("sync manifest")?;
+    store
+        .persist_manifest(manifest)
+        .context("persist merged manifest")?;
 
     let docs: Vec<_> = manifest.resolve().into_keys().collect();
     for id in docs {
         let note = store.load_or_create(&id)?;
-        sync_one(stream, &note).await.with_context(|| format!("sync note {id}"))?;
+        sync_one(reader, writer, &note)
+            .await
+            .with_context(|| format!("sync note {id}"))?;
         store.persist(&id, &note)?;
     }
     Ok(())
@@ -157,8 +186,13 @@ mod tests {
         a.insert(4, " A").unwrap();
         b.insert(0, "B ").unwrap();
 
-        let (mut sa, mut sb) = tokio::io::duplex(1 << 16);
-        let (ra, rb) = tokio::join!(sync_one(&mut sa, &a), sync_one(&mut sb, &b));
+        let (sa, sb) = tokio::io::duplex(1 << 16);
+        let (mut ar, mut aw) = tokio::io::split(sa);
+        let (mut br, mut bw) = tokio::io::split(sb);
+        let (ra, rb) = tokio::join!(
+            sync_one(&mut ar, &mut aw, &a),
+            sync_one(&mut br, &mut bw, &b)
+        );
         ra.unwrap();
         rb.unwrap();
         assert_eq!(a.materialise(), b.materialise(), "converged");
@@ -188,16 +222,30 @@ mod tests {
         a.insert(4, " A").unwrap();
         b.insert(0, "B ").unwrap();
 
-        let (mut sa, mut sb) = tokio::io::duplex(1 << 16);
-        let mut owner_sealer = GroupSealer { provider: &op, group: &mut ogroup, signer: &owner.signer };
-        let mut bob_sealer = GroupSealer { provider: &bp, group: &mut bgroup, signer: &bob.signer };
+        let (sa, sb) = tokio::io::duplex(1 << 16);
+        let (mut ar, mut aw) = tokio::io::split(sa);
+        let (mut br, mut bw) = tokio::io::split(sb);
+        let mut owner_sealer = GroupSealer {
+            provider: &op,
+            group: &mut ogroup,
+            signer: &owner.signer,
+        };
+        let mut bob_sealer = GroupSealer {
+            provider: &bp,
+            group: &mut bgroup,
+            signer: &bob.signer,
+        };
         let (ra, rb) = tokio::join!(
-            sync_one_sealed(&mut sa, &a, &mut owner_sealer),
-            sync_one_sealed(&mut sb, &b, &mut bob_sealer),
+            sync_one_sealed(&mut ar, &mut aw, &a, &mut owner_sealer),
+            sync_one_sealed(&mut br, &mut bw, &b, &mut bob_sealer),
         );
         ra.unwrap();
         rb.unwrap();
-        assert_eq!(a.materialise(), b.materialise(), "converged under the group key");
+        assert_eq!(
+            a.materialise(),
+            b.materialise(),
+            "converged under the group key"
+        );
     }
 
     // REQ-486 at vault scope: two peers with divergent manifests + notes
@@ -209,8 +257,8 @@ mod tests {
         let (sa, sb) = (LoroStore::open(ta.path()), LoroStore::open(tb.path()));
         let (ma, mb) = (Manifest::new(), Manifest::new());
 
-        let n1 = DocId::parse("n1").unwrap();
-        let n2 = DocId::parse("n2").unwrap();
+        let n1 = DocId::parse(&"1".repeat(32)).unwrap();
+        let n2 = DocId::parse(&"2".repeat(32)).unwrap();
         ma.create(&n1, "a.md").unwrap();
         let mut d1 = NoteDoc::new();
         d1.set_content("A note").unwrap();
@@ -220,8 +268,13 @@ mod tests {
         d2.set_content("B note").unwrap();
         sb.persist(&n2, &d2).unwrap();
 
-        let (mut da, mut db) = tokio::io::duplex(1 << 16);
-        let (ra, rb) = tokio::join!(sync_vault(&mut da, &sa, &ma), sync_vault(&mut db, &sb, &mb));
+        let (da, db) = tokio::io::duplex(1 << 16);
+        let (mut dar, mut daw) = tokio::io::split(da);
+        let (mut dbr, mut dbw) = tokio::io::split(db);
+        let (ra, rb) = tokio::join!(
+            sync_vault(&mut dar, &mut daw, &sa, &ma),
+            sync_vault(&mut dbr, &mut dbw, &sb, &mb)
+        );
         ra.unwrap();
         rb.unwrap();
 
@@ -233,5 +286,43 @@ mod tests {
                 sb.load_or_create(id).unwrap().materialise(),
             );
         }
+
+        // Regression: the merged manifest is durable — a daemon restart (a
+        // fresh load from disk) still names the peer's note, so the persisted
+        // snapshots are not orphaned.
+        let ma_reloaded = Manifest::load(ta.path()).unwrap();
+        assert_eq!(
+            ma_reloaded.resolve(),
+            ma.resolve(),
+            "manifest persisted after sync"
+        );
+    }
+
+    // Regression (symmetric-write deadlock): both peers' deltas exceed the
+    // stream's buffered window, so a sequential write-then-read exchange would
+    // block forever on write_all. The concurrent exchange must converge.
+    #[tokio::test]
+    async fn large_symmetric_deltas_do_not_deadlock() {
+        let mut a = NoteDoc::new();
+        a.set_content("base").unwrap();
+        let mut b = NoteDoc::from_snapshot(&a.snapshot().unwrap()).unwrap();
+        // ~200 KiB of divergent edits on each side, far beyond the 4 KiB pipe.
+        a.insert(0, &"A".repeat(200_000)).unwrap();
+        b.insert(0, &"B".repeat(200_000)).unwrap();
+
+        let (sa, sb) = tokio::io::duplex(4 << 10);
+        let (mut ar, mut aw) = tokio::io::split(sa);
+        let (mut br, mut bw) = tokio::io::split(sb);
+        let (ra, rb) = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+            tokio::join!(
+                sync_one(&mut ar, &mut aw, &a),
+                sync_one(&mut br, &mut bw, &b)
+            )
+        })
+        .await
+        .expect("symmetric large-delta sync must not deadlock");
+        ra.unwrap();
+        rb.unwrap();
+        assert_eq!(a.materialise(), b.materialise(), "converged");
     }
 }

@@ -64,14 +64,20 @@ impl P2pService {
         let transport = SyncTransport::bind(secret)
             .await
             .context("bind vault P2P endpoint")?;
-        Ok(Some(P2pService { transport, admitted }))
+        Ok(Some(P2pService {
+            transport,
+            admitted,
+        }))
     }
 
     /// Build a service from explicit material (tests, and the future
     /// provisioning path).
     pub async fn with(secret: SecretKey, admitted: HashSet<[u8; 32]>) -> Result<P2pService> {
         let transport = SyncTransport::bind(secret).await?;
-        Ok(P2pService { transport, admitted })
+        Ok(P2pService {
+            transport,
+            admitted,
+        })
     }
 
     pub fn endpoint_id(&self) -> [u8; 32] {
@@ -91,53 +97,86 @@ impl P2pService {
         self.admitted.contains(endpoint_id)
     }
 
-    /// Accept peers forever, syncing the vault with each admitted one. Serialises
-    /// vault access with the control loop via `vault` so the two never mutate the
-    /// store concurrently. A refused or failed peer never stops the loop
-    /// (REQ-490 spirit).
+    /// Accept peers forever, syncing the vault with each admitted one. The
+    /// roster gate runs on the handshake-authenticated endpoint id **before**
+    /// any stream operation the peer controls, and each admitted peer is
+    /// served on its own task (its stream-open bounded by a timeout) — so a
+    /// stranger who never opens a stream, or a stalling peer, cannot block
+    /// every legitimate peer behind it. A refused or failed peer never stops
+    /// the loop (REQ-490 spirit). Vault access still serialises on the shared
+    /// mutex, so the store is never mutated concurrently.
     pub(crate) async fn serve(&self, vault: SharedVault) -> Result<()> {
+        /// How long an admitted peer may take to open its sync bi-stream.
+        const STREAM_OPEN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
         loop {
-            let peer = match self.transport.accept().await {
-                Ok(Some(peer)) => peer,
+            let incoming = match self.transport.accept().await {
+                Ok(Some(incoming)) => incoming,
                 Ok(None) => return Ok(()), // endpoint closed
                 Err(_) => continue,
             };
-            if !self.admits(&peer.endpoint_id) {
-                // Fail closed: not on the roster → refuse before any vault frame.
-                peer.finish().await;
+            if !self.admits(&incoming.endpoint_id) {
+                // Fail closed: not on the roster → refuse before any vault
+                // frame. An immediate close, not a cooperative drain — a
+                // stranger gets nothing to stall.
+                incoming.refuse();
                 continue;
             }
-            let _ = self.sync_peer(peer, &vault).await;
+            let vault = vault.clone();
+            tokio::spawn(async move {
+                if let Ok(peer) = incoming.into_peer(STREAM_OPEN_TIMEOUT).await {
+                    let _ = sync_peer(peer, &vault).await;
+                }
+            });
         }
     }
 
     /// Dial an admitted peer and sync the vault once.
+    //
+    // Not yet reachable in production: the dial side arrives with the M2
+    // control verbs (`zetl collab …`). Exercised by the tests below.
+    #[allow(dead_code)]
     pub(crate) async fn connect_and_sync(
         &self,
         peer_addr: impl Into<EndpointAddr>,
         vault: &SharedVault,
     ) -> Result<()> {
         let peer = self.transport.connect(peer_addr).await?;
-        anyhow::ensure!(self.admits(&peer.endpoint_id), "peer is not admitted (roster gate)");
-        self.sync_peer(peer, vault).await
-    }
-
-    async fn sync_peer(&self, mut peer: Peer, vault: &SharedVault) -> Result<()> {
-        let result = {
-            let vs = vault.lock().await;
-            // SIMPLIFY (rung 5, ceiling): transport-authenticated + roster-gated
-            // sync. REQ-499 group-key frame sealing (session::sync_one_sealed via
-            // group::GroupSealer — implemented + tested) composes on top once the
-            // daemon holds the durable MLS group. Traced to ADR-482.
-            peer.sync_vault(&vs.store, &vs.manifest).await
-        };
-        peer.finish().await;
-        result
+        anyhow::ensure!(
+            self.admits(&peer.endpoint_id),
+            "peer is not admitted (roster gate)"
+        );
+        sync_peer(peer, vault).await
     }
 }
 
+async fn sync_peer(mut peer: Peer, vault: &SharedVault) -> Result<()> {
+    let result = {
+        let vs = vault.lock().await;
+        // SIMPLIFY (rung 5, ceiling): transport-authenticated + roster-gated
+        // sync. REQ-499 group-key frame sealing (session::sync_one_sealed via
+        // group::GroupSealer — implemented + tested) composes on top once the
+        // daemon holds the durable MLS group. Traced to ADR-482.
+        peer.sync_vault(&vs.store, &vs.manifest).await
+    };
+    peer.finish().await;
+    result
+}
+
+/// The stable Loro actor for this vault's device, when the vault is
+/// provisioned for P2P (the endpoint keyfile doubles as the device identity
+/// root — one key, three layers: transport, DID, edit attribution). `None`
+/// for an unprovisioned vault.
+pub(crate) fn device_actor(vault_root: &Path) -> Option<u64> {
+    let key_path = crate::daemon::runtime_dir(vault_root)
+        .join(P2P_DIR)
+        .join(KEY_FILE);
+    let secret = read_secret(&key_path).ok()?;
+    Some(crate::p2p::identity::DeviceIdentity::from_secret(secret.to_bytes()).loro_peer())
+}
+
 fn read_secret(path: &Path) -> Result<SecretKey> {
-    let bytes = std::fs::read(path).with_context(|| format!("read endpoint key {}", path.display()))?;
+    let bytes =
+        std::fs::read(path).with_context(|| format!("read endpoint key {}", path.display()))?;
     let arr: [u8; 32] = bytes
         .as_slice()
         .try_into()
@@ -161,11 +200,23 @@ fn read_admit_set(path: &Path) -> Result<HashSet<[u8; 32]>> {
     Ok(set)
 }
 
+/// Decode hex over *bytes*, never string slices: a malformed admit-file line
+/// containing multibyte UTF-8 (e.g. `aéx`) must yield a parse error, not a
+/// char-boundary panic that crashes a provisioned daemon at startup.
 fn hex_decode(s: &str) -> Result<Vec<u8>> {
-    anyhow::ensure!(s.len() % 2 == 0, "odd-length hex");
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| anyhow::anyhow!("bad hex: {e}")))
+    fn nibble(b: u8) -> Result<u8> {
+        match b {
+            b'0'..=b'9' => Ok(b - b'0'),
+            b'a'..=b'f' => Ok(b - b'a' + 10),
+            b'A'..=b'F' => Ok(b - b'A' + 10),
+            _ => anyhow::bail!("bad hex byte 0x{b:02x}"),
+        }
+    }
+    let bytes = s.as_bytes();
+    anyhow::ensure!(bytes.len().is_multiple_of(2), "odd-length hex");
+    bytes
+        .chunks_exact(2)
+        .map(|pair| Ok(nibble(pair[0])? << 4 | nibble(pair[1])?))
         .collect()
 }
 
@@ -176,7 +227,10 @@ mod tests {
     use crate::crdt::manifest::Manifest;
 
     fn vault(dir: &Path) -> SharedVault {
-        Arc::new(Mutex::new(VaultState::from_parts(LoroStore::open(dir), Manifest::new())))
+        Arc::new(Mutex::new(VaultState::from_parts(
+            LoroStore::open(dir),
+            Manifest::new(),
+        )))
     }
 
     // Two daemons, mutually admitted, converge a vault over the wired P2P
@@ -192,7 +246,7 @@ mod tests {
         // Seed divergent notes in each vault.
         {
             let g = va.lock().await;
-            let n = DocId::parse("na").unwrap();
+            let n = DocId::parse(&"a".repeat(32)).unwrap();
             g.manifest.create(&n, "a.md").unwrap();
             let mut d = NoteDoc::new();
             d.set_content("from A").unwrap();
@@ -200,7 +254,7 @@ mod tests {
         }
         {
             let g = vb.lock().await;
-            let n = DocId::parse("nb").unwrap();
+            let n = DocId::parse(&"b".repeat(32)).unwrap();
             g.manifest.create(&n, "b.md").unwrap();
             let mut d = NoteDoc::new();
             d.set_content("from B").unwrap();
@@ -212,7 +266,9 @@ mod tests {
         // Provisionally: to know each other's endpoint id we bind first.
         let server = P2pService::with(kb, HashSet::new()).await.unwrap();
         let server_id = server.endpoint_id();
-        let client = P2pService::with(ka, HashSet::from([server_id])).await.unwrap();
+        let client = P2pService::with(ka, HashSet::from([server_id]))
+            .await
+            .unwrap();
         let client_id = client.endpoint_id();
         // Server admits the client.
         let server = P2pService::with_admit(server, HashSet::from([client_id]));
@@ -242,7 +298,7 @@ mod tests {
         let vb = vault(tb.path());
         {
             let g = vb.lock().await;
-            let n = DocId::parse("secret").unwrap();
+            let n = DocId::parse(&"c".repeat(32)).unwrap();
             g.manifest.create(&n, "s.md").unwrap();
             let mut d = NoteDoc::new();
             d.set_content("private").unwrap();
@@ -250,9 +306,13 @@ mod tests {
         }
 
         // Server admits nobody; client is a stranger.
-        let server = P2pService::with(SecretKey::generate(), HashSet::new()).await.unwrap();
+        let server = P2pService::with(SecretKey::generate(), HashSet::new())
+            .await
+            .unwrap();
         let server_id = server.endpoint_id();
-        let client = P2pService::with(SecretKey::generate(), HashSet::from([server_id])).await.unwrap();
+        let client = P2pService::with(SecretKey::generate(), HashSet::from([server_id]))
+            .await
+            .unwrap();
         let server_addr = loopback_addr(&server);
 
         let server_task = {
@@ -266,7 +326,21 @@ mod tests {
         server_task.abort();
 
         let ga = va.lock().await;
-        assert_eq!(ga.manifest.resolve().len(), 0, "the stranger received no notes");
+        assert_eq!(
+            ga.manifest.resolve().len(),
+            0,
+            "the stranger received no notes"
+        );
+    }
+
+    // Regression: a malformed admit line with multibyte UTF-8 has even byte
+    // length but must parse-error, not panic on a char boundary.
+    #[test]
+    fn hex_decode_rejects_multibyte_without_panicking() {
+        assert!(hex_decode("aéx").is_err(), "even byte length, not hex");
+        assert!(hex_decode("aé").is_err(), "odd byte length");
+        assert!(hex_decode("zz").is_err());
+        assert_eq!(hex_decode("0aff").unwrap(), vec![0x0a, 0xff]);
     }
 
     // Test helpers ----------------------------------------------------------

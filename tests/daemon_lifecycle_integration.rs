@@ -28,8 +28,7 @@ fn daemon(vault: &Path, args: &[&str]) -> (i32, String) {
 fn status_state(vault: &Path) -> String {
     let (code, stdout) = daemon(vault, &["status"]);
     assert_eq!(code, 0, "daemon status should exit 0: {stdout}");
-    let v: serde_json::Value =
-        serde_json::from_str(stdout.trim()).expect("status is JSON");
+    let v: serde_json::Value = serde_json::from_str(stdout.trim()).expect("status is JSON");
     v["state"].as_str().unwrap_or("<none>").to_string()
 }
 
@@ -69,7 +68,10 @@ fn start_status_stop_cycle() {
     let (_c, s) = daemon(vault, &["status"]);
     let v: serde_json::Value = serde_json::from_str(s.trim()).unwrap();
     assert_eq!(v["state"], "running");
-    assert!(v["pid"].as_i64().unwrap_or(0) > 0, "running status has a pid: {v}");
+    assert!(
+        v["pid"].as_i64().unwrap_or(0) > 0,
+        "running status has a pid: {v}"
+    );
 
     // TEST-490a: the daemon survives the client (`start`/`status`) processes
     // exiting — it is still running here after those commands returned.
@@ -147,7 +149,10 @@ fn daemon_owns_vault_store_and_materialises() {
         std::fs::read_to_string(vault.join("one.md")).unwrap(),
         "# One\n\nbody\n"
     );
-    assert_eq!(std::fs::read_to_string(vault.join("sub/two.md")).unwrap(), "two\n");
+    assert_eq!(
+        std::fs::read_to_string(vault.join("sub/two.md")).unwrap(),
+        "two\n"
+    );
 }
 
 #[test]
