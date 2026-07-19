@@ -1,13 +1,14 @@
 # SPEC-047 — Scope: did:crdt delta signing (multi-device + verified rotation)
 
-**Headline:** the hard part is already built. `../did-crdt` has real Ed25519/k256
-delta **signing**, real signature **verification** against verification-method
-keys, and — the genuinely difficult piece — **order-independent causal
-authorization** (`causal::verify_causal`, wired into `Document::merge`) that
-enforces "only an already-authorized key may add another." All of that is
-implemented *and tested with real keys*. What remains is **integration and a few
-security-hygiene gaps**, not a crypto build. This scope is therefore much smaller
-than "add signing to did-crdt" sounds.
+**Headline:** `../did-crdt` needs essentially **no changes**. It already has real
+Ed25519/k256 delta **signing**, signature **verification** against
+verification-method keys, and — the genuinely hard piece — **order-independent
+causal authorization** (`causal::verify_causal`, wired into `Document::merge`)
+enforcing "only an already-authorized key may add another," all tested with real
+keys. Genesis is *deliberately* hash-authenticated, not signed (see below), so
+there is no genesis-signing work. **The entire remaining effort is zetl-side
+integration** (Workstream B) that *uses* did:crdt's existing signed-mutation +
+causal-authorization primitives to add multi-device and verified rotation.
 
 All `../did-crdt` citations are `src/core/*` unless noted. This is a scope, not
 an approval — the changes below are themselves auth-core and land under the same
@@ -29,41 +30,39 @@ The engine is present. The gaps are at the *edges*.
 
 ---
 
-## Workstream A — `../did-crdt` changes (upstream capability)
+## Design principle: genesis = hash-authenticated; mutations = signature-authenticated
 
-### A1 — Sign the genesis delta · **security-critical · S–M**
-Today `Document::new` emits `SignedDelta::unsigned` (`document.rs:280`), takes no
-signing key (`document.rs:231`), and `verify_signature` treats an empty proof on
-a VM-less doc as valid (`validate.rs:53-59`) — so genesis is never
-cryptographically verified.
-- Add a signing key to genesis: `new_signed(pubkey_multibase, &SigningKey)` (or a
-  key param on `new`) that calls `SignedDelta::new_genesis` (`delta.rs:232`).
-- Tighten `verify_signature` so a genesis delta's signature must verify against
-  the key it introduces (self-signed genesis); remove/limit the empty-proof
-  bypass.
-- **Watch:** the DID is `blake3(timestamp, proto_op, signer_key)` (`document.rs:245`).
-  Keep the DID a hash of *content*, independent of the signature, so existing DIDs
-  stay stable. Confirm under review.
+**Genesis deltas do NOT need signing.** The DID is `blake3(genesis ‖ device_key)`
+(`document.rs:245-248`), so the DID string *is* the commitment to the genesis
+key. Verifying genesis = recomputing the hash and checking it equals the DID
+(what zetl's `derive_did`/`verify_did_binding` already do). A signature over the
+genesis would be circular — it would sign a commitment the hash already makes.
+Control of the DID is proven by *using* the genesis key afterwards (post-genesis
+signatures; in zetl, the QUIC handshake against the endpoint==genesis-key
+binding). An unsigned genesis for a key you don't control merely yields a DID you
+cannot act as. So the empty-proof genesis path (`validate.rs:53-59`,
+`document.rs:280`) is **correct by design, not a gap** — leave it.
 
-### A2 — Document-level signed-mutation API · **M**
+**Only mutations need signatures**, and did:crdt already provides that end to end
+(sign `delta.rs:252`, verify `validate.rs:47`, authorize `causal.rs:55`). The
+signature on an add/remove-verification-method delta is non-redundant: it proves
+an *already-authorized* key authorized the change.
+
+## Workstream A — `../did-crdt` changes: minimal
+
+### A2 — Document-level signed-mutation API · **M · optional convenience**
 There are **no** authoring methods on `Document` (no add/remove verification
 method); callers hand-assemble deltas via `SignedDelta::new_with_parents`
-(`delta.rs:252`). Add convenience methods that build a *signed* delta at the
-current DAG heads:
-- `add_verification_method(&SigningKey, new_key, relationships)`,
-  `remove_verification_method(...)`, `deactivate(...)`.
-- Authorization is already enforced downstream by `verify_causal`; this is
-  parent-selection + signing convenience. This is the method the **add-a-device**
-  flow needs.
+(`delta.rs:252`) — which **already works**. A `Document::add_verification_method
+(&SigningKey, new_key, relationships)` / `remove_verification_method` /
+`deactivate` wrapper (parent-selection + signing convenience) would be nicer, but
+zetl can call the primitive directly, so this is optional, not blocking.
+Authorization is enforced downstream by `verify_causal`.
 
-### A3 — Close the bare-`merge` footgun · **security-critical · S (broad)**
-`Document::merge` (`document.rs:306`) does **not** verify signatures — only the
-`_verified_` wrappers do; bare `merge` accepts unsigned/forged deltas
-(`document.rs:300-305`). Either fold verification into `merge`, or make
-`_verified_` the only public apply path and keep bare `merge` crate-private.
-- Mechanical ripple: the many in-crate tests using `SignedDelta::unsigned` + bare
-  `merge` (helper `merge_op`, `document.rs:1015`) must sign, or use a `#[cfg(test)]`
-  unchecked path.
+*(Dropped: A1 "sign the genesis" — genesis is hash-authenticated by design, see
+above. Dropped: A3 "make merge verify" — bare `merge` is the apply primitive; the
+trust boundary is `merge_verified_*`, which the real untrusted-input callers
+already use. At most an optional guardrail, not a fix.)*
 
 ### A4 — De-risk / cleanup · **S**
 - `validate::check_authorisation` (`validate.rs:170-219`) is **dead code** relative
@@ -78,14 +77,15 @@ current DAG heads:
 
 ## Workstream B — zetl integration (consume signing)
 
-### B1 — Thread a signing key through identity · **M**
-`MemberIdentity::genesis` / `DeviceIdentity` must hold a signing key and sign the
-genesis (call A1). The device secret is *already* an Ed25519 key (the transport
-secret) — so it can sign did:crdt deltas directly.
-- **Decision for review (Q1/Q7):** that reuses the transport/DID key as the
-  did:crdt signing key — cross-protocol reuse. Either accept it with domain
-  separation (did:crdt's `signing_input` is a distinct structure) or derive a
-  separate signing subkey from the device seed. Recommend a derived subkey.
+### B1 — Thread a signing key for *post-genesis* deltas · **M**
+Genesis stays unsigned (hash-authenticated). What `DeviceIdentity` must gain is
+the ability to **sign mutation deltas** — the device-1 key signing the delta that
+introduces device 2. The device secret is *already* an Ed25519 key (the transport
+secret), so it can sign did:crdt deltas directly via `SignedDelta::new_with_parents`.
+- **Decision for review (Q1/Q7):** signing did:crdt deltas with the transport/DID
+  key is cross-protocol reuse. Either accept it with domain separation (did:crdt's
+  `signing_input` is a distinct structure) or derive a separate did:crdt signing
+  subkey from the device seed. Recommend a derived subkey.
 
 ### B2 — Add-a-device ceremony · **M**
 For "one actor, many devices": generate `DeviceIdentity` for device 2, then have
@@ -114,11 +114,10 @@ gives cryptographically-verified device removal, closing REQ-506's rotation loop
 ## Ordering & what it unlocks
 
 ```
-A1 (genesis signing) ─┐
-A3 (merge footgun)    ─┼─► security foundation (do first)
-A4 (cleanup)          ─┘
-        │
-A2 (mutation API) ──► B1 (sign genesis) ──► B2 (add device) ──► B3 (resolve device set) ──► B4 (rotation)
+(did:crdt already provides sign + verify + causal authorization — no A-work required)
+
+B1 (post-genesis signing key) ──► B2 (add device, signed by device 1)
+     ──► B3 (resolve signed device set) ──► B4 (verified rotation)
 ```
 
 **Unlocks for zetl:** multi-device DIDs (one actor, many devices), a
@@ -127,11 +126,10 @@ cryptographically-verified device set (so `endpoint_owner` resolves via the
 device's key stops resolving). It closes the crypto-guide §1a single-device limit
 and the §1b "one DID, many devices" row.
 
-**Rough total:** A ≈ 2 focused days (engine exists; A2/A3 are the substance),
-B ≈ 2–3 days (B3 is the meatiest). The dominant *risk* is not effort but the two
-review decisions: the genesis-signing tightening (A1) and the transport-key-reuse
-question (B1) — both squarely in the Q1/Q7 crypto review, not something to settle
-by implementing.
+**Rough total:** did:crdt ≈ 0 required (A2 is optional convenience). zetl B ≈ 2–3
+days (B3 is the meatiest). The dominant *risk* is one review decision — the
+transport-key-reuse question (B1, recommend a derived did:crdt signing subkey) —
+squarely in the Q1/Q7 crypto review, not settled by implementing.
 
 **Still out of scope (separate design):** per-*edit* provenance. This scope makes
 the DID's *device set* verifiable; it does not sign individual Loro ops, so wiki
