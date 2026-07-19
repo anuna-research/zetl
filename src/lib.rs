@@ -5,6 +5,11 @@ pub mod cache;
 pub mod cap;
 pub mod cli;
 pub mod crdt;
+// The zetld daemon is Unix-only for now: its control plane is a Unix-domain
+// socket and its lifecycle uses setsid()/kill(2). A Windows named-pipe
+// implementation is a later slice; gating (rather than stubbing) keeps the
+// x86_64-pc-windows-gnu cross-check honest about what actually runs there.
+#[cfg(unix)]
 pub mod daemon;
 pub mod drift;
 pub mod ecosystems;
@@ -17,13 +22,13 @@ pub mod hooks;
 #[cfg(feature = "mcp")]
 pub mod mcp;
 pub mod merkle;
-pub mod p2p;
 #[cfg(feature = "mobile")]
 pub mod mobile_capture;
 #[cfg(feature = "mobile")]
 pub mod mobile_git;
 #[cfg(feature = "mobile")]
 pub mod mobile_state;
+pub mod p2p;
 pub mod parsers;
 pub mod predicate_lints;
 pub mod predicates;

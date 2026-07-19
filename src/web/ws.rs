@@ -1446,7 +1446,7 @@ mod tests {
         use base64::Engine;
         // Build a real CRDT doc with some content and serialise it through
         // the same backend the ws wire now uses.
-        let mut authoritative = WsCrdtBackend::from_markdown("Hello world\n").unwrap();
+        let authoritative = WsCrdtBackend::from_markdown("Hello world\n").unwrap();
         let doc_b64 = base64::engine::general_purpose::STANDARD.encode(authoritative.save());
         let sync_json = serde_json::json!({ "type": "sync", "doc": doc_b64 }).to_string();
 
@@ -1908,7 +1908,7 @@ mod tests {
         let store = test_crdt_store();
         store.load_or_get("page").unwrap();
 
-        let mut seed = WsCrdtBackend::from_markdown("seed\n").unwrap();
+        let seed = WsCrdtBackend::from_markdown("seed\n").unwrap();
         let doc_b64 = base64::engine::general_purpose::STANDARD.encode(seed.save());
 
         store.apply_sync("page", "carol", &doc_b64).unwrap();

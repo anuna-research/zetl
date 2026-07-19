@@ -1076,6 +1076,7 @@ dependencies = [
 [[package]]
 name = "cbcl-core"
 version = "0.1.0"
+source = "git+https://codeberg.org/anuna/cbcl-rs.git?rev=1e43e472a3f05329af0b4c37df72c70054425b64#1e43e472a3f05329af0b4c37df72c70054425b64"
 dependencies = [
  "hashbrown 0.15.5",
  "sha2 0.10.9",
@@ -1084,6 +1085,7 @@ dependencies = [
 [[package]]
 name = "cbcl-parser"
 version = "0.1.0"
+source = "git+https://codeberg.org/anuna/cbcl-rs.git?rev=1e43e472a3f05329af0b4c37df72c70054425b64#1e43e472a3f05329af0b4c37df72c70054425b64"
 dependencies = [
  "cbcl-core",
 ]
@@ -1901,7 +1903,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccc2776f0c61eca1ca32528f85548abd1a4be8fb53d1b21c013e4f18da1e7090"
 dependencies = [
  "data-encoding",
- "syn 2.0.116",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -2075,6 +2077,7 @@ checksum = "ab03c107fafeb3ee9f5925686dbb7a73bc76e3932abb0d2b365cb64b169cf04c"
 [[package]]
 name = "did-crdt"
 version = "0.1.0"
+source = "git+https://codeberg.org/anuna/did-crdt.git?rev=adb5c7ac1423173f00201cddffa60fe672fb2a53#adb5c7ac1423173f00201cddffa60fe672fb2a53"
 dependencies = [
  "base64ct",
  "blake3",
@@ -13064,7 +13067,7 @@ dependencies = [
  "log",
  "serde",
  "thiserror 2.0.18",
- "windows 0.61.3",
+ "windows 0.62.2",
  "windows-core 0.62.2",
 ]
 

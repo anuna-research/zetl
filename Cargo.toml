@@ -202,10 +202,19 @@ diamond-types = "1.0"
 # in `crdt::loro_store` — the diamond-types engine and the ws.rs migration
 # are unchanged in this slice. Q3 (SPEC-047 ADR-478): one LoroDoc per note.
 loro = "1"
-# SPEC-047 ADR-481 / IMPL-047 T11: did:crdt member identity (sibling crate,
-# default features only — the heavy iroh/pkarr `sync` feature is OFF, so the
-# footprint is crdts/k256/base64ct). UNREVIEWED auth-core (src/p2p banner).
-did-crdt = { path = "../did-crdt" }
+# SPEC-047 ADR-481 / IMPL-047 T11: did:crdt member identity (default features
+# only — the heavy iroh/pkarr `sync` feature is OFF, so the footprint is
+# crdts/k256/base64ct). UNREVIEWED auth-core (src/p2p banner).
+#
+# Pinned by rev so a standalone checkout (CI, release, contributors) resolves
+# without the sibling working copies. For local sibling development, override
+# in an *uncommitted* `~/.cargo/config.toml` (config-based patch):
+#   [patch."https://codeberg.org/anuna/did-crdt.git"]
+#   did-crdt = { path = "/Users/you/Code/did-crdt" }
+#   [patch."https://codeberg.org/anuna/cbcl-rs.git"]
+#   cbcl-core = { path = "/Users/you/Code/cbcl-rs/crates/cbcl-core" }
+#   cbcl-parser = { path = "/Users/you/Code/cbcl-rs/crates/cbcl-parser" }
+did-crdt = { git = "https://codeberg.org/anuna/did-crdt.git", rev = "adb5c7ac1423173f00201cddffa60fe672fb2a53" }
 # SPEC-047 ADR-482 / IMPL-047 T9: MLS group key (openmls, versions matching
 # ../elephant-3000's proven integration). UNREVIEWED auth-core (src/p2p banner).
 openmls = "0.8"
@@ -214,11 +223,12 @@ openmls_rust_crypto = "0.5"
 openmls_traits = "0.5"
 tls_codec = "0.4"
 # SPEC-047 ADR-479 / IMPL-047 T7: CBCL network control-plane message language
-# (sibling ../cbcl-rs workspace crates — the Lean-verified DPDA recogniser).
-# One recogniser for all control messages (REQ-487, no parser-differential).
+# (cbcl-rs workspace crates — the Lean-verified DPDA recogniser). One
+# recogniser for all control messages (REQ-487, no parser-differential).
 # UNREVIEWED auth-core-adjacent (the attestation path is auth-core).
-cbcl-core = { path = "../cbcl-rs/crates/cbcl-core" }
-cbcl-parser = { path = "../cbcl-rs/crates/cbcl-parser" }
+# Rev-pinned for standalone checkouts — local override as for did-crdt above.
+cbcl-core = { git = "https://codeberg.org/anuna/cbcl-rs.git", rev = "1e43e472a3f05329af0b4c37df72c70054425b64" }
+cbcl-parser = { git = "https://codeberg.org/anuna/cbcl-rs.git", rev = "1e43e472a3f05329af0b4c37df72c70054425b64" }
 # SPEC-047 REQ-483 / IMPL-047 T12 / ADR-472: iroh QUIC transport for the peer
 # sync session. Pin to 1.x — 0.21 fails to compile (upstream `iroh_quinn::Accept:
 # !Debug`); 1.0.2 builds clean. default features give the n0 relay/DNS discovery

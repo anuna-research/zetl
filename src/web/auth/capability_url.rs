@@ -881,7 +881,7 @@ mod tests {
         use crate::web::auth::{AuthChain, AuthResolveState};
         use axum::body::Body;
         use axum::http::{Method, Request as HttpRequest, StatusCode};
-        use axum::routing::{get, put};
+        use axum::routing::get;
         use axum::Router;
         use tower::ServiceExt;
 

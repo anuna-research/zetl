@@ -12095,6 +12095,7 @@ fn main() -> anyhow::Result<()> {
             zetl::cli::CollabCommand::Peers => cmd_p2p_stub(&cli, "collab", "peers"),
             zetl::cli::CollabCommand::Revoke { .. } => cmd_p2p_stub(&cli, "collab", "revoke"),
         },
+        #[cfg(unix)]
         Command::Daemon { command } => match command {
             zetl::cli::DaemonCommand::Start { foreground } => cmd_daemon_start(&cli, *foreground),
             zetl::cli::DaemonCommand::Stop => cmd_daemon_stop(&cli),
@@ -12102,6 +12103,13 @@ fn main() -> anyhow::Result<()> {
             zetl::cli::DaemonCommand::Materialise => cmd_daemon_materialise(&cli),
             zetl::cli::DaemonCommand::Reimport => cmd_daemon_reimport(&cli),
         },
+        // The daemon's control plane is a Unix-domain socket (see src/lib.rs);
+        // until a named-pipe implementation lands, Windows reports the gap
+        // honestly instead of failing on a missing socket.
+        #[cfg(not(unix))]
+        Command::Daemon { .. } => {
+            anyhow::bail!("`zetl daemon` is not yet supported on this platform (Unix-only)")
+        }
     }
 }
 
@@ -12110,12 +12118,14 @@ fn main() -> anyhow::Result<()> {
 /// Resolve the vault root a daemon command targets. `--vault` (named,
 /// multi-vault) is not yet wired to a daemon registry (that is REQ-503 / a
 /// later slice); until then the daemon is per-directory via `-d/--dir`.
+#[cfg(unix)]
 fn daemon_vault_root(cli: &Cli) -> std::path::PathBuf {
     zetl::daemon::server::resolve_vault_root(&cli.dir)
 }
 
 /// `zetl daemon start` — idempotent launch (REQ-470/471). With the hidden
 /// `--foreground` flag it *becomes* the daemon (the detached child path).
+#[cfg(unix)]
 fn cmd_daemon_start(cli: &Cli, foreground: bool) -> Result<()> {
     let root = daemon_vault_root(cli);
     if foreground {
@@ -12138,6 +12148,7 @@ fn cmd_daemon_start(cli: &Cli, foreground: bool) -> Result<()> {
 }
 
 /// `zetl daemon stop` — idempotent (REQ-471).
+#[cfg(unix)]
 fn cmd_daemon_stop(cli: &Cli) -> Result<()> {
     let root = daemon_vault_root(cli);
     use zetl::daemon::lifecycle::StopOutcome;
@@ -12154,6 +12165,7 @@ fn cmd_daemon_stop(cli: &Cli) -> Result<()> {
 }
 
 /// `zetl daemon materialise` — export the daemon's store to Markdown (ADR-470).
+#[cfg(unix)]
 fn cmd_daemon_materialise(cli: &Cli) -> Result<()> {
     let root = daemon_vault_root(cli);
     let count = zetl::daemon::lifecycle::materialise(&root)?;
@@ -12166,11 +12178,15 @@ fn cmd_daemon_materialise(cli: &Cli) -> Result<()> {
 }
 
 /// `zetl daemon reimport` — fold external Markdown edits into the store (REQ-484).
+#[cfg(unix)]
 fn cmd_daemon_reimport(cli: &Cli) -> Result<()> {
     let root = daemon_vault_root(cli);
     let (folded, staged) = zetl::daemon::lifecycle::reimport(&root)?;
     if cli.json || matches!(cli.format, OutputFormat::Json) {
-        println!("{}", serde_json::json!({ "folded": folded, "staged": staged }));
+        println!(
+            "{}",
+            serde_json::json!({ "folded": folded, "staged": staged })
+        );
     } else {
         println!("reimported: {folded} folded, {staged} staged");
     }
@@ -12178,6 +12194,7 @@ fn cmd_daemon_reimport(cli: &Cli) -> Result<()> {
 }
 
 /// `zetl daemon status` — machine-readable liveness (REQ-471 C3).
+#[cfg(unix)]
 fn cmd_daemon_status(cli: &Cli) -> Result<()> {
     let root = daemon_vault_root(cli);
     let status = zetl::daemon::lifecycle::status(&root)?;
