@@ -296,6 +296,13 @@ fn path_to_rel_str(rel: &Path) -> String {
 /// under the vault root, or nothing is written.
 fn write_checked(vault_root: &Path, path: &Path, bytes: &[u8]) -> Result<()> {
     use std::io::Write as _;
+    // A byte-identical target is left untouched: a no-op rewrite still fires
+    // fs watchers — `zetl serve`'s watcher reloads (replaces) its live CRDT
+    // doc on any external write, desyncing connected editors — and churns
+    // mtimes, for zero information.
+    if std::fs::read(path).is_ok_and(|existing| existing == bytes) {
+        return Ok(());
+    }
     let parent = path.parent().unwrap_or(vault_root).to_path_buf();
     std::fs::create_dir_all(&parent).with_context(|| format!("create dir {}", parent.display()))?;
     verify_parent_within(vault_root, path)?;
