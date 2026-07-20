@@ -237,7 +237,7 @@ pub fn write_asset(
     };
 
     let sidecar = sidecar_path(root, slug);
-    let sidecar_tmp = tmp_dir(root).join(format!("{}.json", &tmp_name));
+    let sidecar_tmp = tmp_dir(root).join(format!("{}.json", tmp_name));
 
     // Write sidecar tmp
     if let Err(e) = fs::write(&sidecar_tmp, serde_json::to_vec_pretty(&meta).unwrap()) {

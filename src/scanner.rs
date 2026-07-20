@@ -1346,12 +1346,12 @@ pub fn build_merkle_leaves<'a>(
                                 // Compute hash input per §4.3.
                                 let hash_input: String = match &leaf_type {
                                     LeafType::Heading { level } => {
-                                        format!("{}{}", level, &normalized_text)
+                                        format!("{}{}", level, normalized_text)
                                     }
                                     LeafType::Paragraph => normalized_text.clone(),
                                     LeafType::List { ordered } => {
                                         let flag = if *ordered { "1" } else { "0" };
-                                        format!("{}{}", flag, &normalized_text)
+                                        format!("{}{}", flag, normalized_text)
                                     }
                                     LeafType::BlockQuote => normalized_text.clone(),
                                     LeafType::Table => normalized_text.clone(),

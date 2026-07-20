@@ -1248,7 +1248,7 @@ impl ViewApp {
             if self.debug_render {
                 eprintln!(
                     "[zetl view] navigate  from={} to={} history_depth={}",
-                    &page,
+                    page,
                     self.current_page,
                     self.nav_history.len(),
                 );
