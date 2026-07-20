@@ -93,7 +93,7 @@ capitals.
 | ------------ | -------------------------------------------------------------------------------------- |
 | Document ID  | SPEC-047                                                                                |
 | Title        | Loro CRDT Store + P2P Realtime Sync Daemon with DHT-Bootstrapped SPAKE2 Pairing         |
-| Version      | 0.21.0-strawman                                                                          |
+| Version      | 0.22.0-strawman                                                                          |
 | Status       | Draft (strawman; pending DESIGN-047 execution)                                          |
 | Author       | Agent (Claude Opus 4.8 [1M]) under [[PROTO-001]] v1.11.0                                |
 | Audience     | Agent, Human                                                                            |
@@ -1012,6 +1012,32 @@ pre-rotation generation.
 
 **Trace:** [[#TEST-506a]], [[#TEST-506b]], [[#CON-477 Group Key Roster and Revocation]], [[#OBS-477 Roster audit]].
 
+### REQ-507: Source-Coordinate Fidelity of the Live Editing Session
+
+The live-editing session document SHALL hold, as its text state, the
+exact unicode-scalar sequence of the page's raw [[Markdown]] source FOR
+every [[WebSocket]] editing session of [[SPEC-020]]
+([[SPEC-020#REQ-020-028]], [[SPEC-020#REQ-020-029]]) WITH every client
+splice operation at an in-range source offset applying successfully —
+never rejected for coordinate mismatch — from session start through
+every applied operation batch. The browser client is [[CodeMirror]]
+over the page's raw source, so its splice coordinates *are* source
+offsets; a server document holding anything other than that source
+(e.g. syntax-stripped rich text) desynchronises the coordinate frame.
+Rich-text ingestion (mark parsing, block tokenising) is confined to the
+canonical-store boundary ([[#REQ-472 Loro Canonical Store]]
+`set_content`/materialise) as a design consequence — see
+[[#ADR-483 Live Editing Session Documents Hold Raw Markdown Source]]
+(F72; regression [[BUG-025-ws-live-editing-coordinate-regression]]:
+rich ingestion in the session path silently rejected every keystroke on
+a note containing a [[wikilink]], and a quiescence flush could persist
+the stale server text — silent loss of unsaved typing).
+
+**Trace:** [[#TEST-507a]], [[#TEST-507b]], [[#TEST-507c]],
+[[SPEC-020#REQ-020-028]], [[SPEC-020#REQ-020-029]],
+[[BUG-025-ws-live-editing-coordinate-regression]],
+[[BUG-026-ws-op-offsets-utf16-vs-scalar]] (related latent defect).
+
 ---
 
 ## 5. Non-Functional Requirements
@@ -1636,6 +1662,54 @@ loss; team profile: documented ceiling).
 // multi-committer MLS with fork resolution (dMLS / openmls helpers)
 // (trace: this ADR, [[#ADR-477 Single Per-Vault Group Key]]).
 
+### ADR-483: Live Editing Session Documents Hold Raw Markdown Source
+
+**Status:** Accepted (2026-07-20; regression fix — BUG-025, found by
+live playtest, not by the unit suite).
+
+**Context:** §9's engine swap unified store and editor on the rich-text
+[[Loro]] document (text + expand-aware marks, mark syntax stripped into
+the style layer). But the deployed web client
+([[SPEC-020#REQ-020-028]]) is [[CodeMirror]] over the *raw Markdown
+source* and sends `Splice {pos, del, text}` in source coordinates. A
+rich session document's text is shorter than the source by exactly the
+stripped syntax, so on any note containing a wikilink/bold/etc. every
+in-range client op landed out of range server-side and was rejected —
+while the pre-swap diamond-types session document held the raw source
+and the same ops applied cleanly.
+
+**Options:** (A) client maps source→rich coordinates — REJECTED: needs
+a second Markdown recogniser in the browser mirroring the server's mark
+stripping, a parser-differential ("shotgun parser") at a trust boundary
+(Principle 14 / [[LangSec]] one-parser rule). (B) ship the [[Loro]] doc
+to the client (loro-wasm) and edit the rich model directly — REJECTED
+*here*: that is the M2 daemon-attachment slice's design space, not a
+regression fix (Simplicity Ladder: rung 6 vs rung 5). (C) the session
+document's text **is** the raw source (`from_source` — literal splice,
+no mark parse, no block tokens); rich ingestion happens only at the
+canonical-store boundary (`set_content`, guarded import, materialise).
+
+**Decision:** (C). The coordinate contract becomes trivially true — the
+server text is byte-for-byte what the client edits — restoring the
+diamond-era session semantics with one constructor.
+
+**Consequences:** (+) No client change; positions align by
+construction; flush of a markless source doc is the identity. (+) The
+live session and the canonical [[NoteDoc]] were *already* distinct
+documents (the daemon folds session flushes via
+[[#REQ-484 Guarded Import of External Markdown Edits]]), so no new
+split is introduced. (−) Mark-level concurrent merging is not exercised
+in live sessions — marks remain literal syntax inside the text CRDT,
+exactly as pre-swap. (−) The unification §9 promises ("one model for
+store and editor") is realised at the store boundary only until the M2
+attachment slice lands.
+// SIMPLIFY: plain-source session doc; ceiling: rich collaborative
+// marks over the wire (concurrent bold + text edits merging at the
+// style layer); upgrade path: the M2 WebSocket→daemon attachment (the
+// client adopts the store document via loro-wasm or a single shared
+// position-mapping recogniser) (trace: this ADR,
+// [[#REQ-507 Source-Coordinate Fidelity of the Live Editing Session]]).
+
 ---
 
 ## 7. Contracts
@@ -2196,6 +2270,9 @@ negative-output); each TEST records `Validates:`.
 | **TEST-502d** | neg-input | example | Add commit for a DID already on the roster → rejected `already-member`, roster unchanged (F69) | [[#REQ-502 Replicated Signed Roster]] |
 | **TEST-506a** | positive | integration | rotating daemon killed between its own epoch advance and the publish → recovery republishes the recorded rotation; survivors reach the new epoch (F68) | [[#REQ-506 Durable Epoch Rotation]] |
 | **TEST-506b** | neg-output | example | recovery of an interrupted removal MUST NOT rotate a second time (pre-rotation-epoch guard); re-delivery after recovery is idempotent | [[#REQ-506 Durable Epoch Rotation]] |
+| **TEST-507a** | positive | example | note containing `[[wikilink]]` syntax: session doc text == raw source; in-range source-offset splice applies; quiescence flush carries syntax + edit verbatim (BUG-025 regression) | [[#REQ-507 Source-Coordinate Fidelity of the Live Editing Session]] |
+| **TEST-507b** | neg-input | example | out-of-range splice rejected; session text unchanged (no partial application) | [[#REQ-507 Source-Coordinate Fidelity of the Live Editing Session]] |
+| **TEST-507c** | neg-output | example | serialising a markless source doc MUST be the identity — flush MUST NOT strip or inject mark syntax | [[#REQ-507 Source-Coordinate Fidelity of the Live Editing Session]] |
 | **TEST-503a** | positive | integration | multi-vault daemon: vault selector names vault X → roster check runs against X's roster, session syncs X (F63) | [[#REQ-503 Vault-Bound Peer Sessions]] |
 | **TEST-503b** | neg-input | example | frame bound to vault X replayed into a vault-Y session → rejected before interpretation (AD/attestation mismatch) | [[#REQ-503 Vault-Bound Peer Sessions]] |
 | **TEST-504a** | positive | property(convergence) | concurrent create/rename/delete on disconnected peers → identical DocId → path mapping; rename preserves history (F64) | [[#REQ-504 Replicated Vault Namespace Manifest]] |
@@ -2464,7 +2541,7 @@ requirement-localised repair; encoding = the `[[wikilinks]]` above, validated by
 ```
 REQ-### ←π→ TEST-### → CODE → OBS-###
         ↓                       ↑
-      CON-###               BUG-### (none yet)
+      CON-###               BUG-### ([[BUG-025-ws-live-editing-coordinate-regression|BUG-025]] → REQ-507)
         ↓
       ADR-###
 ```
@@ -2508,6 +2585,7 @@ REQ-### ←π→ TEST-### → CODE → OBS-###
 | 504 | 504a/b/c | 471,473 | 470,478 | 471,472 |
 | 505 | 505a/b/c | 477 | 477,481 | 477,482 |
 | 506 | 506a/b | 477 | 477,481 | 477 |
+| 507 | 507a/b/c | — | 483 | — |
 
 Every REQ links ≥ 1 TEST per applicable type and ≥ 1 OBS (post-release;
 REQ-489 is a build-time CLI-surface conformance REQ with no runtime signal —
@@ -2966,8 +3044,20 @@ Per [[PROTO-001]] §Ambiguity Resolution — prohibited vague terms replaced.
 ## Changelog
 
 <details>
-<summary>Revision history — 0.1.0 → 0.21.0</summary>
+<summary>Revision history — 0.1.0 → 0.22.0</summary>
 
+- 0.22.0-strawman — **BUG-025 regression fix** (F72): live playtest
+  (ar-crawl driving `zetl serve` + `zetld`) found the §9 engine swap broke
+  the SPEC-020 live-editing coordinate contract — every keystroke on a
+  note containing mark syntax was rejected server-side ("loro text
+  insert"), with quiescence flush able to persist stale text. New
+  [[#REQ-507 Source-Coordinate Fidelity of the Live Editing Session]] +
+  [[#ADR-483 Live Editing Session Documents Hold Raw Markdown Source]]
+  (session docs hold the raw source verbatim via `from_source`; rich
+  ingestion confined to the canonical-store boundary) + TEST-507a/b/c
+  (red-gated). Filed [[BUG-026-ws-op-offsets-utf16-vs-scalar]] as the
+  related latent defect (UTF-16 client offsets vs unicode-scalar server
+  indices on astral chars; pre-existing, deferred with owner).
 - 0.21.0-strawman — DESIGN-047 `adr-control-proto` resolved: **two control
   planes**. The *network* peer session ([[#CON-473 Peer Session]]) uses
   [[CBCL]] (untrusted peers → R1–R5 load-bearing); the *local* daemon

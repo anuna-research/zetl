@@ -454,7 +454,9 @@ impl CrdtDocStore {
         if md_path.exists() {
             let markdown = std::fs::read_to_string(&md_path)
                 .map_err(|e| anyhow::anyhow!("read {}: {e}", md_path.display()))?;
-            Ok(WsCrdtBackend::from_markdown(&markdown)?)
+            // Session docs hold the RAW source (ADR-483/REQ-507, BUG-025):
+            // client splice coordinates are source offsets.
+            Ok(WsCrdtBackend::from_source(&markdown)?)
         } else {
             Ok(WsCrdtBackend::new()?)
         }
@@ -858,7 +860,7 @@ impl CrdtDocStore {
             // ── Case 1: Clean CRDT — reload from disk ────────────────────
             let md_path = self.md_path_for_slug(slug);
             match std::fs::read_to_string(&md_path) {
-                Ok(markdown) => match WsCrdtBackend::from_markdown(&markdown) {
+                Ok(markdown) => match WsCrdtBackend::from_source(&markdown) {
                     Ok(new_doc) => {
                         entry.doc = new_doc;
                         entry.last_access = Instant::now();
@@ -883,7 +885,7 @@ impl CrdtDocStore {
             // ── Case 2: Dirty CRDT — merge external with live ────────────
             let md_path = self.md_path_for_slug(slug);
             match std::fs::read_to_string(&md_path) {
-                Ok(markdown) => match WsCrdtBackend::from_markdown(&markdown) {
+                Ok(markdown) => match WsCrdtBackend::from_source(&markdown) {
                     Ok(external_doc) => {
                         // Capture text before merge for diff computation (REQ-020-052).
                         let text_before = entry.doc.text().unwrap_or_default();
@@ -1628,6 +1630,85 @@ mod tests {
             assert_eq!(docs["page"].client_count, 0);
             assert!(docs["page"].disconnected_at.is_some());
         }
+    }
+
+    // BUG-025 regression (SPEC-047 ADR-483 / REQ-507, violates SPEC-020
+    // REQ-020-028/029): the live-editing doc's text must mirror the RAW
+    // Markdown source, because the browser client (CodeMirror over the page
+    // source) sends splice positions in source coordinates. A note containing
+    // mark syntax ("[[...]]") must (a) load with its source text intact,
+    // (b) accept an in-range source-coordinate splice, and (c) flush the
+    // edit back out with the syntax preserved verbatim.
+    #[test]
+    fn ws_doc_applies_source_coordinate_ops_on_marked_notes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = "# Home\n\nWelcome to [[Second Note]].\n";
+        std::fs::write(tmp.path().join("home.md"), source).unwrap();
+        let store = CrdtDocStore::new(Arc::new(tmp.keep()));
+        store.load_or_get("home").unwrap();
+
+        // (a) The session doc IS the source (positions line up from char 0).
+        {
+            let docs = store.docs.lock().unwrap();
+            assert_eq!(
+                docs["home"].doc.text().unwrap(),
+                source,
+                "live-editing doc must hold the raw source text"
+            );
+        }
+
+        // (b) The client appends at the END of its buffer — the source end.
+        let pos = source.chars().count();
+        store
+            .apply_ops(
+                "home",
+                "u1",
+                &[OpEntry::Splice {
+                    pos,
+                    del: 0,
+                    text: "typed after load.\n".into(),
+                }],
+            )
+            .expect("in-range source-coordinate splice must apply");
+
+        // (c) The flush carries both the syntax and the edit.
+        store.record_edit("home");
+        let (md, _gen) = store
+            .serialize_for_flush("home")
+            .expect("dirty doc flushes");
+        assert!(
+            md.contains("[[Second Note]]"),
+            "wikilink syntax preserved: {md}"
+        );
+        assert!(
+            md.contains("typed after load."),
+            "the edit reaches the flush: {md}"
+        );
+    }
+
+    // TEST-507b (neg-input): an out-of-range splice is rejected and the
+    // session text is untouched — no partial application.
+    #[test]
+    fn ws_doc_rejects_out_of_range_splice_without_corruption() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = "short\n";
+        std::fs::write(tmp.path().join("home.md"), source).unwrap();
+        let store = CrdtDocStore::new(Arc::new(tmp.keep()));
+        store.load_or_get("home").unwrap();
+
+        let far = source.chars().count() + 100;
+        let result = store.apply_ops(
+            "home",
+            "u1",
+            &[OpEntry::Splice {
+                pos: far,
+                del: 0,
+                text: "x".into(),
+            }],
+        );
+        assert!(result.is_err(), "out-of-range splice must be rejected");
+        let docs = store.docs.lock().unwrap();
+        assert_eq!(docs["home"].doc.text().unwrap(), source, "state unchanged");
     }
 
     #[test]

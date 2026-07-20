@@ -226,6 +226,21 @@ impl LoroCrdtDocument {
         Ok(this)
     }
 
+    /// A live-editing session document over the RAW Markdown source: the text
+    /// container holds `source` verbatim — no mark parsing, no block tokens —
+    /// so a client editing the source (CodeMirror in the web editor) can send
+    /// splice coordinates that apply directly (SPEC-047 ADR-483 / REQ-507;
+    /// BUG-025 regression: rich-text ingestion here silently rejected every
+    /// op on a note containing mark syntax). Rich-text ingestion belongs to
+    /// the canonical-store boundary (`set_markdown`), not the live session.
+    pub fn from_source(source: &str) -> Result<Self> {
+        let mut this = Self::new()?;
+        if !source.is_empty() {
+            this.splice_text(0, 0, source)?;
+        }
+        Ok(this)
+    }
+
     /// Replace the whole content by re-ingesting `markdown` (canonical store
     /// path, no trailing-newline normalisation — preserves exact bytes).
     /// Inherited expand-aware styles from the replaced text are cleared so the
@@ -416,6 +431,23 @@ mod tests {
             .unwrap()
             .to_markdown()
             .unwrap()
+    }
+
+    // TEST-507a/c (SPEC-047 ADR-483 / BUG-025): a session document over the
+    // raw source holds it verbatim — mark syntax is text, not style — and
+    // serialising it back is the identity (flush must neither strip nor
+    // inject syntax).
+    #[test]
+    fn from_source_holds_and_serialises_the_raw_source_verbatim() {
+        let source = "# H\n\nsee **bold** and [[Wiki Link|alias]] plus `code`\n";
+        let d = LoroCrdtDocument::from_source(source).unwrap();
+        assert_eq!(d.text().unwrap(), source, "text IS the source");
+        assert!(d.marks().unwrap().is_empty(), "no style-layer marks");
+        assert_eq!(
+            d.to_markdown().unwrap(),
+            source,
+            "serialisation is the identity"
+        );
     }
 
     // Regression: replacing marked content must not let expand-inclusive

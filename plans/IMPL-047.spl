@@ -277,3 +277,11 @@
 (claims agent:claude
   :at "2026-07-18T07:23:49Z"
   (given implemented-t12-daemon-wiring-unreviewed))
+
+(claims agent:claude
+  :at "2026-07-20T00:55:03Z"
+  (given discovered-bug-025-ws-source-coordinate-regression))
+
+(claims agent:claude
+  :at "2026-07-20T00:55:03Z"
+  (given verified-bug-025-fixed-red-gated-and-live-replayed))
